@@ -9,10 +9,12 @@ services:
       - "127.0.0.1:3002:3002"
     environment:
       NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
       PORT: "3002"
+      HOSTNAME: "0.0.0.0"
       SELF_HOSTED: "true"
+      STUDIO_PASSWORD: "${STUDIO_PASSWORD:-woodsmith-studio}"
+      SESSION_SECRET: "${SESSION_SECRET:-change-this-before-public}"
     volumes:
-      # Main website project files
-      - /volume2/docker_ssd/woodsmith:/app
-      # Newly bound photo directory mapped as Read-Only
+      - /volume2/docker_ssd/woodsmith/site/data:/app/site/data
       - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro

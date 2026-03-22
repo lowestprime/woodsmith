@@ -1,0 +1,11 @@
+{
+  "name": "woodsmith-workspace",
+  "private": true,
+  "scripts": {
+    "dev": "npm --prefix site run dev",
+    "build": "npm --prefix site run build",
+    "start": "npm --prefix site run start",
+    "typecheck": "npm --prefix site run typecheck",
+    "lint": "npm --prefix site run lint"
+  }
+}
