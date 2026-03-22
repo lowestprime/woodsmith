@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.deployed-commit
+node_modules
+.next
+data
+#recycle
+@eaDir
+**/@eaDir
