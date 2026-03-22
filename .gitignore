@@ -1,0 +1,35 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Node / web
+node_modules/
+.next/
+dist/
+build/
+coverage/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs / temp
+*.log
+tmp/
+temp/
+
+# Local data
+data/*.sqlite
+data/*.sqlite-shm
+data/*.sqlite-wal
+
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+*.tsbuildinfo
