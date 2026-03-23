@@ -2,159 +2,118 @@
 
 ## Goal
 
-Deploy the `lowestprime/woodsmith` site from `/volume2/docker_ssd/woodsmith/` on a Synology DS923+ so that:
+Deploy `lowestprime/woodsmith` from `/volume2/docker_ssd/woodsmith/` on the Synology DS923+ so that:
 
-- the app runs privately on `127.0.0.1:3002`
-- Synology Reverse Proxy exposes it safely over HTTPS
-- the SQLite database persists across rebuilds
-- the `pics/` library stays outside the image and mounts read-only
-- updates can be rolled out either by building on the NAS or, preferably, by building on a faster laptop and transferring the finished image
-- ongoing maintenance is manageable entirely over SSH
+- the app runs only on `127.0.0.1:3002`
+- Synology Reverse Proxy publishes it over HTTPS
+- SQLite persists in `site/data/woodsmith.sqlite`
+- `pics/` stays outside the image and mounts read-only
+- Next.js image-cache writes succeed without `EACCES` errors
+- updates are built quickly from WSL, transferred cleanly to the NAS Docker daemon, and rolled out predictably
+- the repository stays tidy and disk usage stays under control
 
-This guide is written against the audited repository behavior, not a guessed generic Next.js setup.
-
----
-
-## 1. What the repo actually does
-
-These details matter because they determine the safest and least fragile deployment sequence.
-
-- The root workspace is only a wrapper. Its scripts proxy into `site/` (`dev`, `build`, `start`, `typecheck`, `lint`).
-- The real app lives in `site/`.
-- The app is a Next.js standalone build (`output: "standalone"`), so production runs from `.next/standalone/server.js`.
-- The runtime requires `node --experimental-sqlite` because the app uses Node's built-in `node:sqlite`.
-- The production Docker image already bakes in the correct runtime behavior.
-- The checked-in Synology compose file binds only to `127.0.0.1:3002`, which is exactly what you want when Synology's reverse proxy sits in front.
-- Persistent data lives in `site/data`, and the actual database filename in the live repo is `woodsmith.sqlite`.
-- The image library is not stored in the DB or uploaded through the browser; it is served from `/app/pics` via a filesystem-backed media route.
+This final guide replaces the earlier drafts and keeps only the current production workflow. It is grounded in the live repo behavior, the final NAS runtime evidence, the WSL CIFS-mount clarification, and the latest container logs. The remaining runtime issue in the latest logs is the Next.js image-cache write failure at `/app/site/.next/cache` fileciteturn37file0. The final guide below fixes that directly by giving the cache its own writable runtime mount.
 
 ---
 
-## 2. Important design constraints you should know before deploying
+## 1. What matters from the actual app
 
-### 2.1 Best public URL shape
+The repo facts that control deployment are stable:
 
-Use a dedicated domain or subdomain, for example:
+- the real app lives under `site/`, while the root `package.json` is only a wrapper that proxies commands into `site/` fileciteturn26file0L1-L1
+- production is a Next.js standalone build (`output: "standalone"`) fileciteturn30file0L1-L1
+- the production image starts `server.js` with `node --experimental-sqlite` fileciteturn27file0L1-L1
+- the Dockerfile copies `.next/standalone`, `.next/static`, `public`, and `data` into the runtime image, but does **not** copy `pics/` fileciteturn27file0L1-L1
+- the media route serves files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to `/app/site` fileciteturn36file0L1-L1
+- the production compose model is image-based, loopback-bound on `127.0.0.1:3002`, runs as the NAS user IDs, and sets `MEDIA_ROOT=/app/pics` fileciteturn37file3
 
-- `woodsmith.example.com`
-- or `www.example.com` if this site is the root site
+The final NAS runtime evidence shows the correct steady state:
 
-Do **not** deploy it under a path prefix like `/woodsmith` unless you are prepared to modify the app. The audited `next.config.ts` only sets `output: "standalone"`; there is no `basePath` configuration.
-
-### 2.2 What the browser admin can and cannot do
-
-The browser admin can:
-
-- log into `/studio`
-- review all inquiries and reservations
-- update status, stage, public notes, internal notes, and timeline messages
-- manage a buyer dossier end to end
-
-The browser admin cannot currently:
-
-- add new portfolio pieces from the browser
-- upload new product photos from the browser
-- add or edit journal posts from the browser
-- manage payments, carts, shipping rates, taxes, or invoices inside the app
-
-Those content areas are still code-and-files driven from `site/lib/content.ts` and `pics/`.
-
-### 2.3 Two subtle but important implementation facts
-
-1. The real DB file is `site/data/woodsmith.sqlite`, not `woodsmith.db`.
-2. The dashboard counts a request as no longer open only when status is exactly `Delivered` or `Closed`.
-
-That means you should standardize your end-state statuses around those exact words.
-
-### 2.4 The biggest avoidable NAS build slowdown
-
-The repository's `.dockerignore` excludes `.git`, `node_modules`, build artifacts, secrets, and Synology metadata, but it does **not** exclude `pics/`.
-
-Because the compose file builds from the project root, Docker will still package the full `pics/` folder into the build context before the build starts, even though the Dockerfile never copies `pics/` into the image. In your current working tree, that is a major waste of NAS CPU, disk IO, and elapsed time.
-
-That is the strongest reason to prefer the laptop-build workflow below.
+- the image is loaded on the NAS and started through `docker compose`
+- the container runs as `uid=1026 gid=100(users)`
+- `/app/site/data` is writable
+- `/app/pics/Furniture` and `/app/pics/Cabinets` are present and readable
+- `curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG` returns `HTTP/1.1 200 OK` fileciteturn37file2
 
 ---
 
-## 3. Recommended deployment strategy
+## 2. The one authoritative deployment model
 
-## Recommendation
+Use this model every time:
 
-For your DS923+ the optimal default is:
+1. Keep the canonical project tree on the NAS at `/volume2/docker_ssd/woodsmith/`.
+2. Mount that same NAS tree into WSL at `/mnt/woodsmith` using the CIFS command you provided, so the source tree is identical in both places in normal operation fileciteturn37file1.
+3. Build `woodsmith:prod` from WSL.
+4. Export the finished image to a compressed tarball inside `releases/`.
+5. Load that tarball into the NAS Docker daemon.
+6. Start or refresh the service on the NAS with `docker compose`.
+7. Expose it only through Synology Reverse Proxy.
 
-1. keep the working tree on the NAS at `/volume2/docker_ssd/woodsmith/`
-2. build the Docker image on the laptop as `linux/amd64`
-3. transfer the finished image tarball to the NAS
-4. load it into Docker on the NAS
-5. run it with a compose file that references an `image:` tag instead of `build:`
-
-Why this is optimal here:
-
-- your NAS has a 2-core Ryzen R1600 and plenty of RAM, so builds are more likely to be CPU-bound than memory-bound
-- Next.js builds are compile-heavy and benefit more from faster client hardware
-- shipping a prebuilt image avoids repeatedly tarring the large root build context on the NAS
-- runtime on the NAS remains simple and robust because the container still mounts only persistent data and media
-
-Use NAS-native builds only as a fallback or for quick small tests.
+Important clarification: because `/mnt/woodsmith` is a CIFS mount to the NAS project directory, the **files** in the working tree are shared between WSL and the NAS. But the **Docker image itself** is not automatically present in the NAS Docker daemon just because it was built from that mounted path. Your own successful NAS rollout still required `docker load` from a tarball before `docker compose up -d` fileciteturn37file2. So export/import remains part of the final workflow.
 
 ---
 
-## 4. Final on-NAS layout
+## 3. Final on-disk layout
 
-Recommended project layout on the NAS:
+Use this final layout on the NAS:
 
 ```text
 /volume2/docker_ssd/woodsmith/
+├── .env
 ├── Dockerfile
 ├── docker-compose.synology.yml
-├── .env
 ├── pics/
 ├── site/
 │   └── data/
 │       ├── woodsmith.sqlite
 │       ├── woodsmith.sqlite-wal
 │       └── woodsmith.sqlite-shm
+├── cache/
+│   └── next-image/
 ├── releases/
 └── backups/
 ```
 
-Notes:
+Purpose of each runtime path:
 
-- `pics/` remains your master media library.
-- `site/data/` holds the database.
-- `releases/` is for imported image tarballs.
-- `backups/` is for DB/config backups.
+- `pics/`: master media library mounted read-only into the container
+- `site/data/`: persistent SQLite storage
+- `cache/next-image/`: writable Next.js image optimization cache; this is the permanent fix for the `mkdir '/app/site/.next/cache'` permission error seen in the live logs fileciteturn37file0
+- `releases/`: compressed image archives used for deploys and rollbacks
+- `backups/`: DB and config backups
 
-Create the runtime folders once:
+Create the runtime directories once on the NAS:
 
 ```bash
-mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups
+mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache/next-image /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chown -R Cooper:users /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chmod -R 770 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups
 ```
 
 ---
 
-## 5. One-time preparation on the NAS
+## 4. Final `.env`
 
-### 5.1 Create the production environment file
-
-Create `/volume2/docker_ssd/woodsmith/.env` with at least these two values:
+Maintain `/volume2/docker_ssd/woodsmith/.env` as:
 
 ```dotenv
+PUID=1026
+PGID=100
 STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
 
-Generate a strong session secret on the NAS:
+These IDs match the live NAS user mapping already verified in the SSH terminal output, where the running container is expected to use `uid=1026` and `gid=100(users)` fileciteturn37file2.
+
+Generate the session secret with:
 
 ```bash
 openssl rand -hex 32
 ```
 
-### 5.2 Keep the compose file runtime-oriented
+---
 
-The checked-in compose file builds locally on the NAS. For your long-term deployment, replace it with this image-based production compose file so that the NAS only runs an already-built image.
+## 5. Final `docker-compose.synology.yml`
 
-## Replacement content for `/volume2/docker_ssd/woodsmith/docker-compose.synology.yml`
+Use this as the authoritative NAS compose file:
 
 ```yaml
 services:
@@ -162,6 +121,7 @@ services:
     image: woodsmith:prod
     container_name: woodsmith
     restart: unless-stopped
+    user: "${PUID}:${PGID}"
     ports:
       - "127.0.0.1:3002:3002"
     environment:
@@ -170,421 +130,216 @@ services:
       PORT: "3002"
       HOSTNAME: "0.0.0.0"
       SELF_HOSTED: "true"
+      MEDIA_ROOT: "/app/pics"
       STUDIO_PASSWORD: "${STUDIO_PASSWORD}"
       SESSION_SECRET: "${SESSION_SECRET}"
     volumes:
       - /volume2/docker_ssd/woodsmith/site/data:/app/site/data
       - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro
+      - /volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache
 ```
 
-Why this is better than the checked-in compose file for your NAS:
+Why this is the final correct version:
 
-- avoids building on every update
-- makes rollback trivial by loading and re-tagging an older image
-- keeps secrets in `.env` rather than fallback defaults
-- preserves the deliberate `127.0.0.1:3002:3002` loopback-only exposure
+- `image:` keeps the NAS runtime-only and avoids repeated on-NAS builds
+- `user:` matches the real NAS identity already verified in production fileciteturn37file2
+- `MEDIA_ROOT=/app/pics` matches the filesystem-backed media route design fileciteturn36file0L1-L1
+- the new cache mount gives Next.js a writable destination for optimized images, eliminating the `EACCES` cache error from the container logs fileciteturn37file0
+- loopback-only binding preserves the intended reverse-proxy-only exposure model
+
+No additional code change is required for the cache fix if this writable cache mount is present and owned by `Cooper:users`.
 
 ---
 
-## 6. Optimal first deployment: build on laptop, transfer image, run on NAS
+## 6. Keep the repo lean before and after builds
 
-## 6.1 Build the image on the laptop
+The source tree visible from WSL and the NAS is the same CIFS-backed project tree fileciteturn37file1. To keep it tidy and small:
 
-From the repository root on the laptop, build explicitly for the NAS architecture:
+### Safe to remove from the working tree
+
+These are not required for the production image build and can be removed from the shared project tree whenever you want to reclaim space:
+
+```bash
+cd /mnt/woodsmith && rm -rf node_modules site/node_modules site/.next
+```
+
+Why this is safe:
+
+- the Docker build installs dependencies inside the build stage with `npm ci` and does not rely on host `node_modules` fileciteturn27file0L1-L1
+- the build context excludes `node_modules`, `site/node_modules`, and `site/.next`, so keeping them in the shared tree only consumes disk and makes the repository messier, not faster, for Docker builds fileciteturn20file0L1-L1
+
+### Release archive hygiene
+
+Keep only a small number of release archives on the NAS. This keeps rollback available without letting `releases/` grow forever:
+
+```bash
+cd /volume2/docker_ssd/woodsmith/releases && ls -1t woodsmith-prod-*.tar.gz | tail -n +4 | xargs -r rm -f
+```
+
+That keeps the three newest image archives.
+
+### Optional local Docker cleanup after a successful export
+
+If the laptop does not need to keep the image loaded locally after export:
+
+```bash
+docker image rm woodsmith:prod || true
+```
+
+And to reclaim builder cache opportunistically:
+
+```bash
+docker builder prune -f
+```
+
+Use that only if you actually want the space back; it can slow the next build slightly by removing cached layers.
+
+---
+
+## 7. Build from WSL
+
+From WSL, work directly inside the mounted NAS project root:
+
+```bash
+cd /mnt/woodsmith
+```
+
+Build for the NAS architecture:
 
 ```bash
 docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
 ```
 
-This is the safest command even if the laptop is not `linux/amd64`, because the DS923+ is x86-64.
+This remains the preferred build path because the app image compiles quickly from WSL while the NAS is better used as the runtime host. The DS923+ hardware profile is relatively modest for repeated compile-heavy Next.js builds, while your successful deployment flow already demonstrates the laptop-build → NAS-load model fileciteturn37file2.
 
-### Optional local smoke test before transfer
+---
+
+## 8. Optional local smoke test from WSL
+
+A local smoke test is still useful before you export the image:
 
 ```bash
-docker run --rm -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -v "$(pwd)/site/data:/app/site/data" -v "$(pwd)/pics:/app/pics:ro" woodsmith:prod
+docker run --rm -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -e MEDIA_ROOT=/app/pics -v "$(pwd)/site/data:/app/site/data" -v "$(pwd)/pics:/app/pics:ro" -v "$(pwd)/cache/next-image:/app/site/.next/cache" woodsmith:prod
 ```
 
-Then visit `http://localhost:3002` and verify:
-
-- the home page renders
-- `/studio/login` renders
-- an image-backed portfolio page loads media
+Because `/mnt/woodsmith` is the live CIFS-backed NAS tree, this validates against the same source files and runtime data paths you intend to use in production fileciteturn37file1. The image cache mount is included here too so the local smoke test mirrors the final production container behavior and does not recreate the cache permission error.
 
 Stop the test container with `Ctrl+C` when finished.
 
-## 6.2 Export the image to a compressed archive
+---
+
+## 9. Export the image to the NAS release directory
+
+Still from `/mnt/woodsmith`, export the finished image directly into the shared NAS `releases/` directory:
 
 ```bash
 mkdir -p releases && docker save woodsmith:prod | gzip > releases/woodsmith-prod-$(date +%F-%H%M%S).tar.gz
 ```
 
-## 6.3 Transfer the archive to the NAS
+Because `releases/` is inside the CIFS-mounted NAS project tree, this writes the archive straight into `/volume2/docker_ssd/woodsmith/releases/`.
 
-Example with `scp`:
+---
 
-```bash
-scp releases/woodsmith-prod-*.tar.gz root@GDRIVE:/volume2/docker_ssd/woodsmith/releases/
-```
+## 10. Load the image on the NAS
 
-## 6.4 Load the image on the NAS
+On the NAS SSH terminal:
 
 ```bash
-gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMSS.tar.gz | docker load
+gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docker load
 ```
 
-If the loaded tag is not exactly `woodsmith:prod`, retag it:
+Your live NAS transcript already shows this exact pattern working and loading `woodsmith:prod` successfully before the compose deployment fileciteturn37file2.
 
-```bash
-docker image tag <loaded-image-tag> woodsmith:prod
-```
+If multiple archives exist and you want to load a specific one, use its exact filename instead of the glob.
 
-## 6.5 Start the container on the NAS
+---
 
-From the project root on the NAS:
+## 11. Deploy or update the service on the NAS
+
+From the NAS project root:
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml up -d
 ```
 
-If your DSM shell exposes `docker-compose` instead of `docker compose`, use the legacy command with the same flags.
-
-## 6.6 Validate locally on the NAS before reverse proxy
-
-```bash
-curl -I http://127.0.0.1:3002
-```
-
-You want a successful HTTP response header rather than a connection failure.
-
-### Watch logs during first startup
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml logs -f woodsmith
-```
+This is the single command to use both for first deploy and routine refreshes after loading a newer `woodsmith:prod` image.
 
 ---
 
-## 7. Reverse proxy setup on Synology
+## 12. Verify the live NAS container
 
-The compose file intentionally binds the app only to loopback. So Synology Reverse Proxy should forward to:
+Run these final checks on the NAS after every deploy:
+
+### Confirm runtime identity
+
+```bash
+cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'id'
+```
+
+Expected shape: `uid=1026 gid=100(users)` as already verified in the successful NAS runtime evidence fileciteturn37file2.
+
+### Confirm DB path is writable
+
+```bash
+cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'ls -ld /app/site/data && test -w /app/site/data && echo DATA_WRITE_OK || echo DATA_WRITE_FAIL'
+```
+
+### Confirm media path is readable
+
+```bash
+cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'printf "MEDIA_ROOT=%s\n" "$MEDIA_ROOT"; ls -ld /app/pics /app/pics/Furniture /app/pics/Cabinets; test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL'
+```
+
+### Confirm the media route returns the actual image
+
+```bash
+curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+```
+
+Your current NAS output already shows the final good state for all of these checks, including `DATA_WRITE_OK`, `IMG_READ_OK`, and `HTTP/1.1 200 OK` for the direct media request fileciteturn37file2.
+
+### Confirm the cache error is gone
+
+```bash
+cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml logs --tail=200 woodsmith
+```
+
+After the cache mount is added, the recurring `Failed to write image to cache ... mkdir '/app/site/.next/cache'` messages seen in the latest container logs should no longer appear fileciteturn37file0.
+
+---
+
+## 13. Synology Reverse Proxy
+
+Expose the site only through Synology Reverse Proxy.
+
+Use this target:
 
 - destination protocol: `http`
 - destination host: `127.0.0.1`
 - destination port: `3002`
 
-## Recommended public setup
+Recommended source:
 
 - source protocol: `https`
-- source hostname: your chosen domain or subdomain
+- source host: your chosen site domain or subdomain
 - source port: `443`
-- destination protocol: `http`
-- destination hostname: `127.0.0.1`
-- destination port: `3002`
 
-## Recommended Synology GUI sequence
-
-On DSM, open the reverse proxy interface and create a rule roughly like:
-
-1. choose your domain or subdomain as the source host
-2. set source to HTTPS on 443
-3. set destination to HTTP on `127.0.0.1:3002`
-4. attach the correct certificate for the public hostname
-5. save and test from an external browser
-
-The exact DSM menu label can vary by DSM build and package naming, but on recent DSM 7.x systems it is typically under the login/application portal area.
-
-## Why the loopback bind is correct
-
-Because the container is published as `127.0.0.1:3002:3002`, clients on your LAN or the public internet cannot hit `:3002` directly. Traffic reaches the app only through Synology's own reverse proxy or from an SSH session on the NAS. That is a good default security boundary.
+That matches the intended loopback-only compose binding and keeps the container off the public interface.
 
 ---
 
-## 8. Ongoing update workflow
-
-## Recommended update workflow
-
-1. pull the latest repo on the laptop
-2. build a new image on the laptop
-3. export and transfer it to the NAS
-4. back up the NAS data directory
-5. load the new image
-6. restart the service
-7. smoke test the public site and `/studio`
-
-### Laptop side
-
-```bash
-cd /path/to/woodsmith && git pull --ff-only origin master && docker buildx build --platform linux/amd64 -t woodsmith:prod --load . && mkdir -p releases && docker save woodsmith:prod | gzip > releases/woodsmith-prod-$(date +%F-%H%M%S).tar.gz && scp releases/woodsmith-prod-*.tar.gz root@GDRIVE:/volume2/docker_ssd/woodsmith/releases/
-```
-
-### NAS backup before restart
-
-```bash
-mkdir -p /volume2/docker_ssd/woodsmith/backups && cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml stop woodsmith && tar -czf backups/woodsmith-backup-$(date +%F-%H%M%S).tar.gz site/data .env docker-compose.synology.yml && docker compose -f docker-compose.synology.yml start woodsmith
-```
-
-### NAS deploy the new image
-
-```bash
-gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMSS.tar.gz | docker load && cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml up -d --force-recreate
-```
-
-### Quick verification after deploy
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps && docker compose -f docker-compose.synology.yml logs --tail=100 woodsmith
-```
-
----
-
-## 9. NAS-native build workflow if you must build on the NAS
-
-This is the simpler but less optimal path.
-
-## 9.1 Before using it, fix the build-context problem
-
-At minimum, add `pics/` to `.dockerignore`. I also recommend excluding `.codex/` and the large source font-pack folder if they are not needed in the image build context.
-
-## Suggested additions to `.dockerignore`
-
-```text
-pics
-.codex
-ITC_New_Rennie_Mackintosh_Complete_Family_Pack
-```
-
-## 9.2 Use the checked-in build compose only if you really want on-NAS builds
-
-If you want the original repo behavior, restore the checked-in `docker-compose.synology.yml` and run:
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml build --no-cache woodsmith && docker compose -f docker-compose.synology.yml up -d
-```
-
-## When this path makes sense
-
-- small emergency rebuilds
-- quick verification after a tiny repo edit made directly on the NAS
-- situations where image transfer from the laptop is temporarily inconvenient
-
-## When it does not
-
-- major dependency updates
-- repeated rebuild iterations
-- anything involving large media-heavy project roots without a strict `.dockerignore`
-
----
-
-## 10. Day-2 maintenance over SSH
-
-## View container state
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps
-```
-
-## Follow logs
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml logs -f woodsmith
-```
-
-## Restart only the app
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml restart woodsmith
-```
-
-## Recreate the app without touching data
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml up -d --force-recreate woodsmith
-```
-
-## Stop the app cleanly
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml stop woodsmith
-```
-
-## Remove the container but keep the image and mounted data
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml rm -sf woodsmith
-```
-
----
-
-## 11. Backup and restore
-
-Because the app uses SQLite with WAL mode, the simplest safe backup is:
-
-1. stop the container briefly
-2. archive `site/data/`
-3. start the container again
-
-## Manual backup
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml stop woodsmith && tar -czf backups/woodsmith-data-$(date +%F-%H%M%S).tar.gz site/data .env docker-compose.synology.yml && docker compose -f docker-compose.synology.yml start woodsmith
-```
-
-## Manual restore
-
-```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml stop woodsmith && tar -xzf backups/woodsmith-data-YYYY-MM-DD-HHMMSS.tar.gz && docker compose -f docker-compose.synology.yml up -d woodsmith
-```
-
-## What must be backed up
-
-At minimum:
-
-- `site/data/woodsmith.sqlite`
-- `site/data/woodsmith.sqlite-wal`
-- `site/data/woodsmith.sqlite-shm`
-- `.env`
-- `docker-compose.synology.yml`
-
-Also make sure your `pics/` library is backed up by your normal NAS backup strategy, because the app depends on those files being present.
-
----
-
-## 12. Security notes you should not ignore
-
-## 12.1 Change the defaults before public launch
-
-The code has a fallback studio password and fallback session secret. Do not leave them active. Always set real values in `.env`.
-
-## 12.2 Treat buyer dossier URLs as semi-secret
-
-The buyer dossier page shows the buyer's contact information and allows timeline posting from that page. In the current implementation, whoever has the dossier link can see the buyer email on the page itself.
-
-Operational implication:
-
-- do not treat dossier links as broadly shareable public marketing pages
-- send them only to the buyer or trusted collaborators
-- do not post them publicly
-
-## 12.3 Understand which fields are public
-
-On a request page visible to the buyer:
-
-- `status` is public
-- `adminStage` is public
-- `publicNotes` is public
-- timeline messages marked `public` are public
-
-Only `internalNotes` and timeline messages marked `private` stay private.
-
-So write `adminStage` as buyer-safe language, not as an internal-only scratch field.
-
----
-
-## 13. Operational conventions that will keep the site sane
-
-## Recommended status vocabulary
-
-Because `open dossiers` only closes on `Delivered` or `Closed`, use a short controlled vocabulary like this:
-
-- `Brief received`
-- `Quoted`
-- `Awaiting deposit`
-- `Scheduled`
-- `In progress`
-- `Ready for delivery`
-- `Delivered`
-- `Closed`
-
-## Recommended stage vocabulary
-
-Because stage is buyer-visible, keep it precise but friendly:
-
-- `Reviewing brief`
-- `Preparing quote`
-- `Awaiting approval`
-- `Awaiting deposit`
-- `Queued for build`
-- `Building`
-- `Finishing`
-- `Delivery planning`
-- `Completed`
-- `Archived`
-
-## Good division of labor for fields
-
-- **Status**: broad headline state for the buyer
-- **Stage**: finer buyer-safe operational detail
-- **Public note**: persistent note the buyer should always see right now
-- **Internal note**: private working note for the studio only
-- **Timeline message**: dated event or message, public or private depending on visibility
-
----
-
-## 14. Troubleshooting
-
-## The container starts but images 404
-
-Check that the mount exists and that the files are actually under `/volume2/docker_ssd/woodsmith/pics`. The app resolves media from `/app/pics`, not from inside the DB.
-
-## `/studio/login` warns that the fallback password is active
-
-Your `.env` is missing `STUDIO_PASSWORD`, or compose is not loading `.env` from the project directory.
-
-## The site works on `127.0.0.1:3002` but not publicly
-
-That usually means the reverse proxy or certificate rule is wrong, not the container. Re-check the public hostname, certificate attachment, and `127.0.0.1:3002` destination.
-
-## Open dossier count looks wrong
-
-Check the exact `status` string. Only `Delivered` and `Closed` are treated as closed by the current code.
-
-## Build on NAS is extremely slow
-
-That is expected if the build context still includes `pics/`. Either exclude it in `.dockerignore` or stop building on the NAS and switch to the image-transfer workflow.
-
----
-
-## 15. The shortest stable production sequence
-
-If you want the minimum reliable path from zero to running:
-
-1. create `.env`
-2. replace compose with the image-based runtime compose shown above
-3. build `woodsmith:prod` on the laptop as `linux/amd64`
-4. `docker save | gzip`
-5. `scp` the archive to `/volume2/docker_ssd/woodsmith/releases/`
-6. `docker load` on the NAS
-7. `docker compose up -d`
-8. create a Synology reverse proxy rule to `127.0.0.1:3002`
-9. log into `/studio/login`
-10. back up `site/data/` before every upgrade
-
----
-
-## 16. Audited source files behind this guide
-
-Repo files checked directly:
-
-- `package.json`
-- `Dockerfile`
-- `docker-compose.synology.yml`
-- `.dockerignore`
-- `.gitignore`
-- `site/package.json`
-- `site/next.config.ts`
-- `site/lib/auth.ts`
-- `site/lib/db.ts`
-- `site/lib/actions.ts`
-- `site/lib/content.ts`
-- `site/components/forms.tsx`
-- `site/components/site-chrome.tsx`
-- `site/app/media/[...slug]/route.ts`
-- `site/app/studio/login/page.tsx`
-- `site/app/studio/page.tsx`
-- `site/app/studio/request/[reference]/page.tsx`
-- `site/app/requests/[reference]/page.tsx`
-
-Additional uploaded grounding used:
-
-- `Synology_NAS_DS923+_hardware_specs_01302026.md`
-- `woodsmith_DeepWiki_Merged_03222026.md`
+## 14. Final routine for every update
+
+Use this exact sequence for all future updates:
+
+1. `cd /mnt/woodsmith`
+2. optionally clean `node_modules`, `site/node_modules`, and `site/.next` from the shared tree if you want to reclaim space
+3. `docker buildx build --platform linux/amd64 -t woodsmith:prod --load .`
+4. optionally run the local smoke test with the cache mount
+5. `docker save woodsmith:prod | gzip > releases/woodsmith-prod-$(date +%F-%H%M%S).tar.gz`
+6. on the NAS, `gunzip -c ... | docker load`
+7. on the NAS, `docker compose -f docker-compose.synology.yml up -d`
+8. run the four NAS verification commands above
+9. trim old release archives
+
+That is the cleanest, fastest, and least fragile steady-state workflow supported by the repo and by your final live runtime evidence fileciteturn37file2 fileciteturn37file4.
