@@ -13,9 +13,14 @@ const MIME_TYPES: Record<string, string> = {
 
 export const runtime = "nodejs";
 
-export async function GET(_request: Request, { params }: { params: Promise<{ slug: string[] }> }) {
+export async function GET(
+  _request: Request,
+  { params }: { params: Promise<{ slug: string[] }> }
+) {
   const { slug } = await params;
-  const mediaRoot = path.resolve(process.cwd(), "..", "pics");
+  const mediaRoot = path.resolve(
+    process.env.MEDIA_ROOT || path.join(process.cwd(), "..", "pics")
+  );
   const filePath = path.resolve(mediaRoot, ...slug);
   const extension = path.extname(filePath).toLowerCase();
 

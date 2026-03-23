@@ -1,10 +1,9 @@
 services:
   woodsmith:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: woodsmith:prod
     container_name: woodsmith
     restart: unless-stopped
+    user: "${PUID}:${PGID}"
     ports:
       - "127.0.0.1:3002:3002"
     environment:
@@ -13,8 +12,9 @@ services:
       PORT: "3002"
       HOSTNAME: "0.0.0.0"
       SELF_HOSTED: "true"
-      STUDIO_PASSWORD: "${STUDIO_PASSWORD:-woodsmith-studio}"
-      SESSION_SECRET: "${SESSION_SECRET:-change-this-before-public}"
+      MEDIA_ROOT: "/app/pics"
+      STUDIO_PASSWORD: "${STUDIO_PASSWORD}"
+      SESSION_SECRET: "${SESSION_SECRET}"
     volumes:
       - /volume2/docker_ssd/woodsmith/site/data:/app/site/data
       - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro
