@@ -1,36 +1,32 @@
 # Woodsmith — DeepWiki (Merged Export)
 
-> Exported from the DeepWiki for `lowestprime/woodsmith` on 2026-03-22.
-
----
+> Exported from the `lowestprime/woodsmith` Devin DeepWiki on 2026-03-22.
 
 ## Table of Contents
 
-1. [Woodsmith — Project Overview](#1-woodsmith--project-overview)
-  [1.1 Getting Started & Local Development](#11-getting-started--local-development)
-  [1.2 Self-Hosted Deployment (Docker & Synology)](#12-self-hosted-deployment-docker--synology)
-2. [Application Architecture](#2-application-architecture)
-  [2.1 Content Model & Static Data](#21-content-model--static-data)
-  [2.2 Database Layer (SQLite)](#22-database-layer-sqlite)
-  [2.3 Server Actions](#23-server-actions)
-  [2.4 Authentication (Studio Session)](#24-authentication-studio-session)
-3. [Public-Facing Pages](#3-public-facing-pages)
-  [3.1 Portfolio & Piece Detail Pages](#31-portfolio--piece-detail-pages)
-  [3.2 Shop (Inventory Reservation)](#32-shop-inventory-reservation)
-  [3.3 Journal](#33-journal)
-  [3.4 Commissions & Buyer Request Dossier](#34-commissions--buyer-request-dossier)
-4. [Studio Dashboard (Admin Interface)](#4-studio-dashboard-admin-interface)
-  [4.1 Studio Login & Session Management](#41-studio-login--session-management)
-  [4.2 Request Management (Studio Controls)](#42-request-management-studio-controls)
-5. [UI Components & Styling](#5-ui-components--styling)
-  [5.1 Site Chrome Components](#51-site-chrome-components)
-  [5.2 Form Components](#52-form-components)
-  [5.3 Design System & Global CSS](#53-design-system--global-css)
-6. [Media Serving & Photo Library](#6-media-serving--photo-library)
-7. [Typography Assets — ITC New Rennie Mackintosh](#7-typography-assets--itc-new-rennie-mackintosh)
-8. [Glossary](#8-glossary)
-
----
+[1. Woodsmith — Project Overview](#1-woodsmith--project-overview)<br>
+&emsp;[1.1 Getting Started & Local Development](#11-getting-started--local-development)<br>
+&emsp;[1.2 Self-Hosted Deployment (Docker & Synology)](#12-self-hosted-deployment-docker--synology)<br>
+[2. Application Architecture](#2-application-architecture)<br>
+&emsp;[2.1 Content Model & Static Data](#21-content-model--static-data)<br>
+&emsp;[2.2 Database Layer (SQLite)](#22-database-layer-sqlite)<br>
+&emsp;[2.3 Server Actions](#23-server-actions)<br>
+&emsp;[2.4 Authentication (Studio Session)](#24-authentication-studio-session)<br>
+[3. Public-Facing Pages](#3-public-facing-pages)<br>
+&emsp;[3.1 Portfolio & Piece Detail Pages](#31-portfolio--piece-detail-pages)<br>
+&emsp;[3.2 Shop (Inventory Reservation)](#32-shop-inventory-reservation)<br>
+&emsp;[3.3 Journal](#33-journal)<br>
+&emsp;[3.4 Commissions & Buyer Request Dossier](#34-commissions--buyer-request-dossier)<br>
+[4. Studio Dashboard (Admin Interface)](#4-studio-dashboard-admin-interface)<br>
+&emsp;[4.1 Studio Login & Session Management](#41-studio-login--session-management)<br>
+&emsp;[4.2 Request Management (Studio Controls)](#42-request-management-studio-controls)<br>
+[5. UI Components & Styling](#5-ui-components--styling)<br>
+&emsp;[5.1 Site Chrome Components](#51-site-chrome-components)<br>
+&emsp;[5.2 Form Components](#52-form-components)<br>
+&emsp;[5.3 Design System & Global CSS](#53-design-system--global-css)<br>
+[6. Media Serving & Photo Library](#6-media-serving--photo-library)<br>
+[7. Typography Assets — ITC New Rennie Mackintosh](#7-typography-assets--itc-new-rennie-mackintosh)<br>
+[8. Glossary](#8-glossary)<br>
 
 # 1. Woodsmith — Project Overview
 
@@ -129,8 +125,6 @@ The codebase is organized into several key subsystems that handle different aspe
 *   **Application Architecture:** Explores the Next.js App Router, including the `RootLayout` and the integration of the custom Mackintosh font.
 *   **Content & Media:** Explains how static content (pieces, posts) is defined in code while high-resolution images are served via a dedicated media API.
 *   **Studio Dashboard:** Describes the administrative interface for managing the request lifecycle and project updates.
-
----
 
 # 1.1 Getting Started & Local Development
 
@@ -271,8 +265,6 @@ The application is configured for `standalone` output. This mode is optimized fo
 - **ESLint**: Uses `next/core-web-vitals` and ignores the `.next`, `node_modules`, and `data` directories.
 - **TypeScript**: Configured with `strict` mode enabled and `ES2022` as the target. It uses `bundler` module resolution to match Next.js requirements.
 
----
-
 # 1.2 Self-Hosted Deployment (Docker & Synology)
 
 <details>
@@ -385,8 +377,6 @@ sequenceDiagram
     Node->>FS: Verify /app/pics access for media serving
     Node-->>Docker: Listening on Port 3002
 ```
-
----
 
 # 2. Application Architecture
 
@@ -511,8 +501,6 @@ sequenceDiagram
 The visual identity is defined in `site/app/globals.css` using CSS Custom Properties for colors (e.g., `--cedar`, `--moss`, `--lacquer`). Components are split between `site-chrome.tsx` (layout/display) and `forms.tsx` (interactive elements).
 *   **Fonts**: Custom "Mackintosh" font family loaded via `next/font/local` in the root layout.
 *   **Styling**: Primarily standard CSS classes with a focus on a "grid" and "shell" layout system.
-
----
 
 # 2.1 Content Model & Static Data
 
@@ -643,8 +631,6 @@ Before being displayed, raw data from `content.ts` often passes through `site/li
 | `toMediaUrl` | `"Furniture/img.jpg"` | `"/media/Furniture/img.jpg"` | Encodes paths for the custom media server. |
 | `sentenceCase` | `"inventory"` | `"Inventory"` | Standardizes casing for status badges. |
 
----
-
 # 2.2 Database Layer (SQLite)
 
 <details>
@@ -761,8 +747,6 @@ To ensure type safety, the module defines `RequestRecord` and `RequestUpdateReco
 | `public_notes` | `publicNotes` | Shared notes visible to buyer. |
 | `internal_notes` | `internalNotes` | Private studio-only notes. |
 
----
-
 # 2.3 Server Actions
 
 <details>
@@ -810,8 +794,6 @@ graph TD
     F --> G["redirect(/requests/[reference])"]
 ```
 
----
-
 ## Public Actions
 
 These actions are accessible to site visitors and do not require an active studio session.
@@ -832,8 +814,6 @@ Allows a customer to post a message to their existing request timeline.
 1.  Verifies the request exists using `findRequestForLookup(reference, email)` to ensure the user has the correct credentials.
 2.  Appends a new record to the `request_updates` table via `appendRequestUpdate`.
 3.  Calls `revalidatePath` to ensure the public dossier reflects the new message immediately.
-
----
 
 ## Studio Actions
 
@@ -869,8 +849,6 @@ sequenceDiagram
     ACT->>UI: redirect with ?saved=1
 ```
 
----
-
 ## Action Summary Table
 
 | Function | File | Kind | Redirect Destination |
@@ -881,8 +859,6 @@ sequenceDiagram
 | `loginStudioAction` | `site/lib/actions.ts` | Auth | `/studio` |
 | `logoutStudioAction` | `site/lib/actions.ts` | Auth | `/` |
 | `updateStudioRequestAction` | `site/lib/actions.ts` | Studio | `/studio/request/[reference]?saved=1` |
-
----
 
 # 2.4 Authentication (Studio Session)
 
@@ -997,8 +973,6 @@ graph TD
 | `SESSION_SECRET` | Recommended | Used as the HMAC key. If missing, a hardcoded fallback is used, which is insecure for production. |
 | `NODE_ENV` | Internal | If set to `"production"`, the session cookie is marked as `secure`. |
 
----
-
 # 3. Public-Facing Pages
 
 <details>
@@ -1102,8 +1076,6 @@ sequenceDiagram
     Action-->>User: Redirects to /requests/[reference]
 ```
 
----
-
 # 3.1 Portfolio & Piece Detail Pages
 
 <details>
@@ -1127,8 +1099,6 @@ The portfolio listing page serves as the entry point for browsing the studio's c
 - **Data Source**: The page consumes the `pieces` array from `site/lib/content.ts`.
 - **Layout**: It utilizes the `Shell` and `PageIntro` components for consistent branding.
 - **Grid Rendering**: Pieces are rendered using the `PieceCard` component within a CSS grid (`piece-grid portfolio-grid`).
-
----
 
 ## Piece Detail Pages (`/portfolio/[slug]`)
 
@@ -1176,8 +1146,6 @@ graph TD
     STATUS -- "if 'commission' or 'archive'" --> CRF
 ```
 
----
-
 ## Availability Logic & PieceStatus
 
 The behavior of the detail page is driven by the `PieceStatus` enum. This determines whether a user is presented with a purchase flow (for finished items) or a commission flow (for patterns or bespoke requests).
@@ -1210,8 +1178,6 @@ sequenceDiagram
     Form-->>User: Display "Inquire about Hallway Bench"
 ```
 
----
-
 ## Key Components
 
 ### PieceGallery
@@ -1220,8 +1186,6 @@ Located in `site/components/site-chrome.tsx`, this component receives the `Piece
 ### Purchase vs. Commission Forms
 - **`PurchaseRequestForm`**: Tailored for inventory. It typically handles a specific "unit" of work and triggers a `purchase` kind request in the database.
 - **`CommissionRequestForm`**: Tailored for custom work. It allows the user to specify details and triggers a `commission` kind request.
-
----
 
 # 3.2 Shop (Inventory Reservation)
 
@@ -1300,8 +1264,6 @@ sequenceDiagram
 
 ### Database Persistence
 The reservation is stored in the `requests` table. The `createRequest` function handles the insertion, generating a unique 4-digit reference number prefixed with "WS-".
-
----
 
 # 3.3 Journal
 
@@ -1410,8 +1372,6 @@ graph LR
 | **Rendering Strategy** | Static Site Generation (SSG) via `generateStaticParams` |
 | **Markdown Engine** | `marked` |
 | **Styling** | `.article-body` and `.journal-listing` classes in `globals.css` |
-
----
 
 # 3.4 Commissions & Buyer Request Dossier
 
@@ -1531,8 +1491,6 @@ graph TD
     Status_P --> DB_Lookup
 ```
 
----
-
 # 4. Studio Dashboard (Admin Interface)
 
 <details>
@@ -1623,8 +1581,6 @@ The `StudioRequestForm` allows the artisan to modify the internal and external s
 
 For details, see [Request Management (Studio Controls)](#42-request-management-studio-controls).
 
----
-
 # 4.1 Studio Login & Session Management
 
 <details>
@@ -1650,8 +1606,6 @@ Woodsmith uses environment variables to manage credentials and session security.
 | `SESSION_SECRET` | A secret key used to generate HMAC signatures for session cookies. | `woodsmith-session-secret` |
 
 The helper function `usingDefaultStudioPassword` checks if `STUDIO_PASSWORD` is defined in the environment. This status is reflected on the login page to alert administrators to set proper credentials before public deployment.
-
----
 
 ## Login Flow & Session Creation
 
@@ -1696,8 +1650,6 @@ sequenceDiagram
     end
 ```
 
----
-
 ## Session Verification
 
 Every protected route and administrative server action must verify the session integrity. This is handled by `hasStudioSession` and enforced by `requireStudioSession`.
@@ -1741,13 +1693,9 @@ flowchart TD
     C -- "Invalid" --> F["redirect(/studio/login)"]
 ```
 
----
-
 ## Logout
 
 The logout process is straightforward. The `logoutStudioAction` server action calls `clearStudioSession`, which instructs the browser to delete the `woodsmith_studio` cookie. After the session is cleared, the user is redirected to the home page.
-
----
 
 # 4.2 Request Management (Studio Controls)
 
@@ -1879,8 +1827,6 @@ sequenceDiagram
     Action-->>Studio: Redirect with ?saved=1
 ```
 
----
-
 # 5. UI Components & Styling
 
 <details>
@@ -1928,8 +1874,6 @@ graph TD
 
 For details on tokens, breakpoints, and layout classes, see **[Design System & Global CSS](#53-design-system--global-css)**.
 
----
-
 ## Site Chrome Components
 
 The "Chrome" refers to the structural and navigational elements that persist across the site, as well as the content-display components used to build pages. These are primarily defined in `site/components/site-chrome.tsx`.
@@ -1943,8 +1887,6 @@ The "Chrome" refers to the structural and navigational elements that persist acr
 | `RequestSummary` | The core display for buyer dossiers | `request`, `updates` |
 
 For a full catalog of these components and their usage, see **[Site Chrome Components](#51-site-chrome-components)**.
-
----
 
 ## Form Components
 
@@ -1977,15 +1919,11 @@ graph LR
 
 For implementation details and validation patterns, see **[Form Components](#52-form-components)**.
 
----
-
 ## Child Pages
 
 *   **[Site Chrome Components](#51-site-chrome-components)**: Deep dive into the visual building blocks of the site.
 *   **[Form Components](#52-form-components)**: Technical details on data entry and server action wiring.
 *   **[Design System & Global CSS](#53-design-system--global-css)**: Documentation of the CSS architecture and typography.
-
----
 
 # 5.1 Site Chrome Components
 
@@ -2034,8 +1972,6 @@ graph TD
     Main --> Gallery
 ```
 
----
-
 ## Layout Primitives
 
 ### Shell
@@ -2049,8 +1985,6 @@ The global navigation bar. It includes the "Woodsmith" brand mark and primary na
 
 ### SiteFooter
 The global footer containing the site's philosophy, a "Piece Ledger" (a list of all piece names joined by slashes), and a brief description of the "Flow" (the inquiry-to-delivery process). It pulls data from `pieceNames` defined in the content library.
-
----
 
 ## Content Presentation
 
@@ -2078,8 +2012,6 @@ The primary image display for individual piece detail pages.
 *   **Implementation**: Iterates through the `piece.images` array and renders them inside `figure` elements.
 *   **Media Handling**: Uses the `toMediaUrl` helper to transform internal paths (e.g., `Furniture/DSC_0051.JPG`) into public `/media/` routes.
 
----
-
 ## Journal Components
 
 ### JournalCard
@@ -2087,8 +2019,6 @@ A compact summary of a journal entry, displaying the formatted date, estimated r
 
 ### JournalRail
 A layout component that renders a horizontal or vertical list of all available `journalPosts` using `JournalCard`.
-
----
 
 ## Request & Dashboard Components
 
@@ -2126,8 +2056,6 @@ The primary view for a specific commission or purchase request. It is used both 
 A tabular view of all requests, used exclusively in the Studio Dashboard.
 *   **Functionality**: Displays a list of `RequestRecord` objects, including the reference number, customer name, piece label, current status, and admin stage.
 *   **Navigation**: Each row contains a "Manage" link pointing to the detail editor at `/studio/request/[reference]`.
-
----
 
 # 5.2 Form Components
 
@@ -2189,8 +2117,6 @@ graph TD
     end
 ```
 
----
-
 ## Public Intake Forms
 
 These forms are accessible to customers and are used to initiate or track requests.
@@ -2218,8 +2144,6 @@ Allows customers to post messages to their specific request timeline.
 *   **Props**: `request` (a `RequestRecord` object).
 *   **Security**: Requires the customer to provide their email alongside the reference number (via `findRequestForLookup`) to prevent unauthorized updates.
 *   **Data Flow**: Appends a new row to `request_updates` with `authorRole: "buyer"` and `visibility: "public"`.
-
----
 
 ## Studio Management Forms
 
@@ -2259,8 +2183,6 @@ sequenceDiagram
     SA->>UI: Redirect with ?saved=1
 ```
 
----
-
 ## Field Validation Patterns
 
 The application uses two helper functions in `site/lib/actions.ts` to process `FormData` consistently:
@@ -2275,8 +2197,6 @@ Forms are styled using a set of global utility classes defined in `site/app/glob
     *   `.two-up`: Two columns.
     *   `.three-up`: Three columns.
 *   `.button-primary` / `.button-secondary`: Standardized action styling.
-
----
 
 # 5.3 Design System & Global CSS
 
@@ -2397,8 +2317,6 @@ The system uses a mobile-first approach with specific overrides for smaller scre
     *   Grids (`.hero-grid`, `.split-section`, `.hero-montage`) collapse to a single column (`1fr`).
     *   Padding is reduced in `.section-pad` and `.hero-section`.
     *   The `.site-header` navigation is adjusted for touch targets.
-
----
 
 # 6. Media Serving & Photo Library
 
@@ -2521,8 +2439,6 @@ When defining a new `Piece`, images are added to the `images` array using the `m
   ],
 }
 ```
-
----
 
 # 7. Typography Assets — ITC New Rennie Mackintosh
 
@@ -2649,8 +2565,6 @@ The use of this font software is governed by the **Monotype Font Software End Us
 *   **Server Use**: Font software may not be installed on internet-accessible servers unless all workstations accessing the server are part of the Licensed Unit.
 *   **No Modifications**: Users may not alter, convert, or create derivative works from the font software.
 
----
-
 # 8. Glossary
 
 <details>
@@ -2687,8 +2601,6 @@ A **Request** is a database record representing a customer's interest in a piece
 ### Studio
 The **Studio** refers to the administrative side of the application. It encompasses the password-protected dashboard used to manage requests and updates.
 *   **Session**: A time-bound, HMAC-signed cookie (`woodsmith_studio`) that authenticates administrative actions.
-
----
 
 ## Technical Mapping: Natural Language to Code
 
@@ -2740,8 +2652,6 @@ graph LR
         F -- "fs.readFile()" --> B["Binary Stream"]
     end
 ```
-
----
 
 ## Technical Abbreviations & Key Classes
 
