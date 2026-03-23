@@ -8,78 +8,60 @@ Deploy `lowestprime/woodsmith` from `/volume2/docker_ssd/woodsmith/` on the Syno
 - Synology Reverse Proxy exposes it over HTTPS
 - SQLite persists in `site/data/woodsmith.sqlite`
 - `pics/` stays outside the image and mounts read-only at runtime
-- updates are easiest to ship from a faster laptop build, then load on the NAS
-- the guide reflects the latest observed behavior, not stale assumptions
+- updates are built on the laptop, transferred to the NAS, then loaded and started there
+- the guide reflects the latest observed runtime evidence
 
 ---
 
-## 1. What is now firmly established
+## 1. Repo facts that matter for deployment
 
-### Repo/runtime facts
+These are directly grounded in the audited repo:
 
-These are the deployment facts that come directly from the audited repo:
-
-- the root `package.json` is only a wrapper; real app work happens under `site/`
+- the real app lives under `site/`
 - production is a Next.js standalone build
-- the Docker image starts `server.js` with `node --experimental-sqlite`
-- the runtime image copies `.next/standalone`, `.next/static`, `public`, and `data`, but **does not copy `pics/` into the image**
-- the media route serves filesystem files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to the working directory
-- the Synology compose file is intended to run an existing image, not rebuild on every deploy
+- the runtime image starts `server.js` with `node --experimental-sqlite`
+- the Dockerfile copies `.next/standalone`, `.next/static`, `public`, and `data` into the runtime image, but **does not copy `pics/`** fileciteturn27file0L1-L1
+- the media route serves files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to `/app/site` fileciteturn36file0L1-L1
 
-### Current environment facts from your latest transcript
-
-Your newest EXTREME transcript changes the operational guidance in several important ways:
-
-1. **The current laptop repo root is `/mnt/woodsmith`, not `/mnt/woodsmith/woodsmith`.**
-   Earlier nested-path guidance is now stale for your current EXTREME setup.
-
-2. **The Docker build path on EXTREME is healthy and fast.**
-   The latest `docker buildx build --platform linux/amd64 -t woodsmith:prod --load .` completed in about 2.3 seconds with a ~588 kB transferred build context, so laptop-side builds remain the best default.
-
-3. **The active local blocker is media, not SQLite.**
-   In the latest bind-mounted run from `/mnt/woodsmith`, the app started successfully and did **not** throw `ERR_SQLITE_ERROR`. That means the earlier SQLite bind-mount failure is no longer the primary live issue on EXTREME.
-
-4. **The named-volume test must not be interpreted as a `pics/` test.**
-   Your second command mounted only `woodsmith_data:/app/site/data` and did **not** mount `pics/` at all. Since the image does not include `pics/`, repeated image failures in that run are expected and do not prove a bad `pics` bind mount.
-
-5. **The remaining unresolved problem is that image requests still fail in the correct bind-mounted test.**
-   That means the guide must focus the next diagnostic step on the media route and runtime mount visibility, not on SQLite.
+That means a correct production deployment must provide `pics/` as a runtime mount and should set `MEDIA_ROOT=/app/pics` explicitly.
 
 ---
 
-## 2. What the current evidence actually proves
+## 2. What the newest EXTREME transcript now proves
+
+Your latest commands materially tighten the diagnosis.
 
 ### Proven
 
-From the latest EXTREME transcript, these statements are safe:
+- `/mnt/woodsmith` is the current EXTREME repo root.
+- `docker buildx build --platform linux/amd64 -t woodsmith:prod --load .` succeeds quickly from that root.
+- the app boots correctly with both mounts present and `MEDIA_ROOT=/app/pics` set.
+- SQLite is **not** the active blocker in the current EXTREME run; the previous `ERR_SQLITE_ERROR` does not appear in the newest log.
+- inside the running container, `MEDIA_ROOT` is correctly set to `/app/pics`.
+- inside the running container, `/app/pics` exists, but `/app/pics/Furniture` and `/app/pics/Cabinets` do **not** exist.
+- inside the running container, `test -r /app/pics/Furniture/DSC_0051.JPG` fails.
 
-- the container image builds correctly
-- the standalone server starts correctly
-- the app can boot with `site/data` bind-mounted from the current `/mnt/woodsmith/site/data`
-- the app can also boot with a Docker named volume for `/app/site/data`
-- image rendering still fails in the run that includes `-v "$(pwd)/pics:/app/pics:ro"`
-- image rendering also fails in the run that omits `pics`, but that second fact is expected and therefore not diagnostic by itself
+### Therefore
 
-### Not yet proven
+The current EXTREME media failure is **not primarily a Next.js route problem** and **not primarily a `MEDIA_ROOT` problem**.
 
-These are **not** yet proven one way or the other:
+The container simply does not see the expected contents of the host `pics/` tree when `/mnt/woodsmith/pics` is bind-mounted into `/app/pics`.
 
-- whether `/app/pics/Furniture/...` is visible inside the container in the current EXTREME setup
-- whether the `/media/...` route is returning `200 image/jpeg` or `404/other`
-- whether the problem is the mount itself, `MEDIA_ROOT` resolution, or `next/image` optimization behavior after the route response comes back
+### What is still not proven
 
-That uncertainty matters, so the deployment guide should stop short of asserting that the `pics` mount is definitely broken until the route is tested directly.
+- the exact reason Docker on EXTREME is surfacing `/app/pics` as an apparently empty top-level directory
+- whether that is caused by the underlying host mount type behind `/mnt/woodsmith`, by local Docker bind-mount behavior, or by some other filesystem translation layer
+
+So the guide should not overclaim the root cause. But it **should** treat EXTREME `/mnt/woodsmith` media validation as unreliable until proven otherwise.
 
 ---
 
-## 3. Correct deployment model
+## 3. Correct production model
 
-### Recommended production strategy
-
-Use this as the default:
+Use this deployment model:
 
 1. keep the live project tree on the NAS at `/volume2/docker_ssd/woodsmith/`
-2. keep `pics/` and `site/data/` on the NAS as bind-mounted runtime assets
+2. keep `pics/` and `site/data/` on the NAS as runtime bind mounts
 3. build `woodsmith:prod` on the laptop
 4. export the image to a tarball
 5. transfer it to `/volume2/docker_ssd/woodsmith/releases/`
@@ -87,16 +69,11 @@ Use this as the default:
 7. start it through `docker compose`
 8. expose it only through Synology Reverse Proxy
 
-Why this remains optimal:
-
-- the laptop build is already fast
-- the NAS should primarily be the runtime host
-- the compose file is already written around an image-first deployment model
-- `pics/` is a runtime asset library, not something that belongs baked into the image
+This remains optimal because laptop builds are fast and the NAS should primarily be the runtime host.
 
 ---
 
-## 4. Required on-NAS ownership and environment
+## 4. Required NAS identity, ownership, and environment
 
 ### Real Synology IDs
 
@@ -114,7 +91,7 @@ PGID=100
 
 ### Required `.env`
 
-Create or maintain `/volume2/docker_ssd/woodsmith/.env` as:
+Maintain `/volume2/docker_ssd/woodsmith/.env` as:
 
 ```dotenv
 PUID=1026
@@ -123,7 +100,7 @@ STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
 
-Generate the secret with:
+Generate the session secret with:
 
 ```bash
 openssl rand -hex 32
@@ -139,7 +116,7 @@ mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/b
 
 ---
 
-## 5. Correct runtime compose file
+## 5. Correct compose file for the NAS
 
 Use this runtime-oriented compose file on the NAS:
 
@@ -166,40 +143,44 @@ services:
       - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro
 ```
 
-Why this is the right production shape:
+Why this is correct:
 
-- `image:` keeps deploys simple and reproducible
-- `user:` maps container writes to the real NAS owner
-- `MEDIA_ROOT=/app/pics` removes ambiguity from local fallback path resolution
-- loopback-only port binding keeps the service private behind Reverse Proxy
+- `image:` supports transfer-and-load deployment
+- `user:` maps runtime writes to the real NAS owner
+- `MEDIA_ROOT=/app/pics` removes path ambiguity
+- loopback-only binding keeps the app private behind Reverse Proxy
 
 ---
 
-## 6. Revised local validation guidance on EXTREME
+## 6. Correct local guidance on EXTREME
 
-This section is where the guide needed the biggest correction.
+This is the section that needed the biggest correction.
 
-### 6.1 Use the real current repo root
+### 6.1 What EXTREME is good for
 
-On EXTREME, your current repo root is now:
+EXTREME is currently reliable for:
 
-```bash
-/mnt/woodsmith
-```
+- code editing
+- git operations
+- building `woodsmith:prod`
+- app boot smoke tests
+- SQLite smoke tests
 
-So all laptop commands should assume that as the working directory.
+### 6.2 What EXTREME is **not yet** reliable for
 
-### 6.2 Build test
+Based on the newest transcript, EXTREME is **not yet a trustworthy media-validation host** when the repo is run from `/mnt/woodsmith` and `pics/` is bind-mounted into Docker.
 
-This remains valid:
+That is because the host path is populated, but the container sees only `/app/pics` and not its expected `Furniture/` and `Cabinets/` subdirectories.
+
+### 6.3 Correct laptop build command
 
 ```bash
 docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
 ```
 
-### 6.3 App + DB smoke test
+### 6.4 Correct local app/DB smoke test
 
-This is the cleanest SQLite smoke test and is still useful:
+Use this to validate app startup and DB behavior only:
 
 ```bash
 docker volume create woodsmith_data >/dev/null && docker run --rm -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -e MEDIA_ROOT=/app/pics -v woodsmith_data:/app/site/data woodsmith:prod
@@ -207,76 +188,60 @@ docker volume create woodsmith_data >/dev/null && docker run --rm -p 3002:3002 -
 
 Interpretation:
 
-- if this boots, the app and DB path are fine
-- if image errors appear here, that is expected because `pics` was not mounted
-- therefore this command validates app startup and DB only, **not media**
+- if this boots, app startup and DB behavior are fine
+- image errors in this command are expected because `pics` was not mounted
 
-### 6.4 Full local runtime test for media
-
-To test media locally, use the command that includes both mounts **and** sets `MEDIA_ROOT` explicitly:
+### 6.5 Correct full local media test on EXTREME
 
 ```bash
 docker run --rm -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -e MEDIA_ROOT=/app/pics -v "$(pwd)/site/data:/app/site/data" -v "$(pwd)/pics:/app/pics:ro" woodsmith:prod
 ```
 
-This is now the only local `docker run` command that should be treated as a real media test.
+Interpretation of the newest run:
 
-### 6.5 The next diagnostic step must be route-first, not page-first
+- the app boots
+- media still fails
+- this is now confirmed to be consistent with container-side file invisibility
 
-The page-level log line:
-
-```text
-The requested resource isn't a valid image for /media/... received null
-```
-
-is not specific enough to tell you whether the problem is:
-
-- missing container-side files
-- wrong `MEDIA_ROOT`
-- route returning `404`
-- route returning a non-image response
-- or `next/image` rejecting an otherwise reachable route
-
-So the next step is to test the route directly.
-
-### 6.6 Correct direct route validation workflow on EXTREME
-
-Start the container in the background:
+### 6.6 Correct background inspection workflow on EXTREME
 
 ```bash
 docker rm -f woodsmith-test >/dev/null 2>&1; docker run -d --name woodsmith-test -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -e MEDIA_ROOT=/app/pics -v "$(pwd)/site/data:/app/site/data" -v "$(pwd)/pics:/app/pics:ro" woodsmith:prod
 ```
 
-Then verify container-side visibility:
+Then inspect inside the container:
 
 ```bash
 docker exec woodsmith-test sh -lc 'id; printf "MEDIA_ROOT=%s\n" "$MEDIA_ROOT"; pwd; ls -ld /app/pics /app/pics/Furniture /app/pics/Cabinets; test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL'
 ```
 
-Then test the route directly:
+Interpretation of your latest result:
+
+- `MEDIA_ROOT=/app/pics` is correct
+- working directory `/app/site` is correct
+- `/app/pics` exists
+- `/app/pics/Furniture` is missing
+- `/app/pics/Cabinets` is missing
+- `IMG_READ_FAIL` confirms the mounted source tree is not actually visible where the app expects it
+
+### 6.7 Correct next step on EXTREME
+
+Do **not** move next to route debugging or `next/image` debugging from this host path.
+
+First do a host-versus-container comparison:
 
 ```bash
-curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+printf 'HOST_PWD=%s\n' "$PWD"; ls -ld "$(pwd)/pics" "$(pwd)/pics/Furniture" "$(pwd)/pics/Cabinets"; test -r "$(pwd)/pics/Furniture/DSC_0051.JPG" && echo HOST_IMG_READ_OK || echo HOST_IMG_READ_FAIL
 ```
 
-Then clean up:
+If the host can read the file but the container still cannot, stop using `/mnt/woodsmith` for authoritative media validation.
 
-```bash
-docker rm -f woodsmith-test
-```
+At that point, use one of these two paths:
 
-### 6.7 How to interpret that route test
+1. copy the repo to a native local Linux filesystem on EXTREME and rerun the same bind-mounted test there
+2. treat the NAS as the authoritative media-validation host and run the media checks there instead
 
-#### Case A: `IMG_READ_FAIL` or missing `/app/pics/Furniture`
-The bind mount is the problem.
-
-#### Case B: `IMG_READ_OK`, but `curl -I` returns `404` or not an image content type
-The route configuration or path resolution is the problem.
-
-#### Case C: `IMG_READ_OK` and `curl -I` returns `200` with `Content-Type: image/jpeg`
-Then the problem is no longer the mount. At that point, the remaining issue is in how `next/image` is handling the route response, and the guide should move to app-code-level image optimization debugging rather than NAS deployment debugging.
-
-That distinction is critical.
+That is the best evidence-aligned guidance now.
 
 ---
 
@@ -314,9 +279,9 @@ cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.ym
 
 ---
 
-## 8. Mandatory NAS preflight checks before declaring success
+## 8. Mandatory NAS verification before declaring success
 
-Run these on the NAS after the first boot.
+Run these on the NAS after boot.
 
 ### 8.1 Confirm runtime identity
 
@@ -332,7 +297,7 @@ Expected: UID `1026`, GID `100`.
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'ls -ld /app/site/data && test -w /app/site/data && echo DATA_WRITE_OK || echo DATA_WRITE_FAIL'
 ```
 
-### 8.3 Confirm media path is visible
+### 8.3 Confirm media tree visibility inside the container
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'printf "MEDIA_ROOT=%s\n" "$MEDIA_ROOT"; ls -ld /app/pics /app/pics/Furniture /app/pics/Cabinets; test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL'
@@ -344,13 +309,16 @@ cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.ym
 curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 ```
 
-Do not stop at “the homepage loaded.” For this app, deployment is not complete until the media route itself returns a valid image response.
+Do not stop at “the homepage loaded.” Deployment is not complete until:
+
+- the container can see the source file
+- the route returns a real image response
 
 ---
 
-## 9. Reverse proxy setup on Synology
+## 9. Reverse proxy on Synology
 
-The container is intentionally bound only to loopback, so Synology Reverse Proxy should forward to:
+The container is intentionally bound only to loopback. Synology Reverse Proxy should forward to:
 
 - destination protocol: `http`
 - destination host: `127.0.0.1`
@@ -364,8 +332,6 @@ Recommended public rule:
 - destination protocol: `http`
 - destination hostname: `127.0.0.1`
 - destination port: `3002`
-
-This is the correct security posture because the app is not directly exposed on the LAN or public network.
 
 ---
 
@@ -392,20 +358,21 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMS
 ### Verification after each update
 
 ```bash
-cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps && docker compose -f docker-compose.synology.yml logs --tail=100 woodsmith && curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps && docker compose -f docker-compose.synology.yml logs --tail=100 woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL' && curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 ```
 
 ---
 
-## 11. What should change in the guide right now
+## 11. Bottom line
 
-The previous guide needed these corrections, and this revision incorporates them:
+The newest transcript changes the deployment guidance in one decisive way:
 
-- remove the stale assumption that EXTREME still uses `/mnt/woodsmith/woodsmith`
-- stop presenting SQLite as the active local blocker, because the latest transcript no longer supports that
-- stop using the named-volume run as evidence of a broken `pics` mount, because that command omitted `pics` entirely
-- make `MEDIA_ROOT=/app/pics` explicit in every local runtime test so local smoke tests match production more closely
-- require a direct `curl -I /media/...` route check before concluding the image path is good or bad
-- treat `next/image` debugging as a later branch only if the route itself proves healthy
+- **do not spend more time debugging Next.js media routing from EXTREME `/mnt/woodsmith` until container-side file visibility is solved first**
 
-That is the tightest, most evidence-aligned deployment guidance based on everything you have now shown.
+Right now, the strongest evidence says:
+
+- laptop builds are good
+- app boot is good
+- SQLite is not the active blocker in the current EXTREME run
+- the current EXTREME `pics` bind mount does not surface the expected media tree into the container
+- the NAS should remain the authoritative production-validation environment
