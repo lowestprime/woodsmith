@@ -353,13 +353,17 @@ From that point on, Docker will stop sending the large `pics/` tree as build con
 
 ### 3. Container Rebuild
 
-Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required. Per Steps 6-10 above:
-
+Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required. Per steps 6-10, first rebuild the container via the following commands on the WSL terminal:
 ```bash
+cd /mnt/woodsmith
 docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
+docker save woodsmith:prod | gzip > releases/woodsmith-prod-$(date +%F-%H%M%S).tar.gz
 ```
 
+Then, deploy the new image via the following commands on the NAS SSH terminal:
 ```bash
+cd /volume2/docker_ssd/woodsmith
+gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docker load
 docker compose -f docker-compose.synology.yml up -d --force-recreate
 ```
 
@@ -372,7 +376,7 @@ docker container prune -f && docker image prune -f && docker builder prune -f
 ```
 
 This command removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
-
+aim
 ## Removal of `pics/` Folder from GitHub Repository
 
 After step 1 and a normal push, `pics/` disappears from the current branch tip on GitHub:
