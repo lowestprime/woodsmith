@@ -333,7 +333,7 @@ The `pics/` folder should remain read-only at runtime and the cache path should 
 
 ### 1. Remove `pics/` from Git Tracking Without Deleting Media Files
 
-Run this from the repository root:
+If not already modified above, run the following command from the repository root:
 
 ```bash
 git rm -r --cached pics && printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .gitignore && git add .gitignore && git commit -m "Stop tracking runtime media directory"
@@ -343,7 +343,7 @@ This selectively removes `pics/` from the Git index only. It does **not** delete
 
 ### 2. Remove `pics/` from Future Docker Build Contexts
 
-Run:
+If not already modified above, run:
 
 ```bash
 grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .dockerignore
@@ -353,10 +353,14 @@ From that point on, Docker will stop sending the large `pics/` tree as build con
 
 ### 3. Container Rebuild
 
-Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required:
+Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required. Per Steps 6-10 above:
 
 ```bash
-docker buildx build --platform linux/amd64 -t woodsmith:prod --load . && docker compose -f docker-compose.synology.yml up -d --force-recreate
+docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
+```
+
+```bash
+docker compose -f docker-compose.synology.yml up -d --force-recreate
 ```
 
 ### 4. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
