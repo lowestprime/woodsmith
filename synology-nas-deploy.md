@@ -4,56 +4,43 @@
 
 Deploy `lowestprime/woodsmith` from `/volume2/docker_ssd/woodsmith/` on the Synology DS923+ so that:
 
-- the app runs only on `127.0.0.1:3002`
-- Synology Reverse Proxy publishes it over HTTPS
-- SQLite persists in `site/data/woodsmith.sqlite`
-- `pics/` stays outside the image and mounts read-only
-- Next.js image-cache writes succeed without `EACCES` errors
-- updates are built quickly from WSL, transferred cleanly to the NAS Docker daemon, and rolled out predictably
-- the repository stays tidy and disk usage stays under control
+1. the app runs only on `127.0.0.1:3002`
+2. Synology Reverse Proxy publishes it over HTTPS
+3. SQLite persists in `site/data/woodsmith.sqlite`
+4. `pics/` stays outside the image and mounts read-only
+5. Next.js image-cache writes succeed without `EACCES` errors
+6. updates are built quickly from WSL, transferred cleanly to the NAS Docker daemon, and rolled out predictably
+7. the repository stays tidy and disk usage stays under control
 
-This final guide replaces the earlier drafts and keeps only the current production workflow. It is grounded in the live repo behavior, the final NAS runtime evidence, the WSL CIFS-mount clarification, and the latest container logs. The remaining runtime issue in the latest logs is the Next.js image-cache write failure at `/app/site/.next/cache` fileciteturn37file0. The final guide below fixes that directly by giving the cache its own writable runtime mount.
+## 1. Deployment Facts
 
----
+1. the real app lives under `site/`, while the root `package.json` is only a wrapper that proxies commands into `site/`
+2. production is a Next.js standalone build (`output: "standalone"`)
+3. the production image starts `server.js` with `node --experimental-sqlite`
+4. the Dockerfile copies `.next/standalone`, `.next/static`, `public`, and `data` into the runtime image, but does **not** copy `pics/`
+5. the media route serves files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to `/app/site`
+6. the production compose model is image-based, loopback-bound on `127.0.0.1:3002`, runs as the NAS user IDs, and sets `MEDIA_ROOT=/app/pics`
+7. the image is loaded on the NAS and started through `docker compose`
+8. the container runs as `uid=1026 gid=100(users)`
+9. `/app/site/data` is writable
+10. `/app/pics/Furniture` and `/app/pics/Cabinets` are present and readable
+11. `curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG` returns `HTTP/1.1 200 OK`
 
-## 1. What matters from the actual app
-
-The repo facts that control deployment are stable:
-
-- the real app lives under `site/`, while the root `package.json` is only a wrapper that proxies commands into `site/` fileciteturn26file0L1-L1
-- production is a Next.js standalone build (`output: "standalone"`) fileciteturn30file0L1-L1
-- the production image starts `server.js` with `node --experimental-sqlite` fileciteturn27file0L1-L1
-- the Dockerfile copies `.next/standalone`, `.next/static`, `public`, and `data` into the runtime image, but does **not** copy `pics/` fileciteturn27file0L1-L1
-- the media route serves files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to `/app/site` fileciteturn36file0L1-L1
-- the production compose model is image-based, loopback-bound on `127.0.0.1:3002`, runs as the NAS user IDs, and sets `MEDIA_ROOT=/app/pics` fileciteturn37file3
-
-The final NAS runtime evidence shows the correct steady state:
-
-- the image is loaded on the NAS and started through `docker compose`
-- the container runs as `uid=1026 gid=100(users)`
-- `/app/site/data` is writable
-- `/app/pics/Furniture` and `/app/pics/Cabinets` are present and readable
-- `curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG` returns `HTTP/1.1 200 OK` fileciteturn37file2
-
----
-
-## 2. The one authoritative deployment model
+## 2. Deployment Model
 
 Use this model every time:
 
 1. Keep the canonical project tree on the NAS at `/volume2/docker_ssd/woodsmith/`.
-2. Mount that same NAS tree into WSL at `/mnt/woodsmith` using the CIFS command you provided, so the source tree is identical in both places in normal operation fileciteturn37file1.
+2. Mount this NAS tree into WSL at `/mnt/woodsmith` using the following CIFS command: `sudo mount -t cifs //192.168.1.126/docker_ssd/woodsmith /mnt/woodsmith -o username=Cooper,uid=1000,gid=1000,file_mode=0777,dir_mode=0777,mfsymlinks,nobrl`, so the source tree is identical in both places in normal operation.
 3. Build `woodsmith:prod` from WSL.
 4. Export the finished image to a compressed tarball inside `releases/`.
 5. Load that tarball into the NAS Docker daemon.
 6. Start or refresh the service on the NAS with `docker compose`.
 7. Expose it only through Synology Reverse Proxy.
 
-Important clarification: because `/mnt/woodsmith` is a CIFS mount to the NAS project directory, the **files** in the working tree are shared between WSL and the NAS. But the **Docker image itself** is not automatically present in the NAS Docker daemon just because it was built from that mounted path. Your own successful NAS rollout still required `docker load` from a tarball before `docker compose up -d` fileciteturn37file2. So export/import remains part of the final workflow.
+Important clarification: because `/mnt/woodsmith` is a CIFS mount to the NAS project directory, the **files** in the working tree are shared between WSL and the NAS. But the **Docker image itself** is not automatically present in the NAS Docker daemon just because it was built from that mounted path.
 
----
-
-## 3. Final on-disk layout
+## 3. Final On-Disk Layout
 
 Use this final layout on the NAS:
 
@@ -76,19 +63,17 @@ Use this final layout on the NAS:
 
 Purpose of each runtime path:
 
-- `pics/`: master media library mounted read-only into the container
-- `site/data/`: persistent SQLite storage
-- `cache/next-image/`: writable Next.js image optimization cache; this is the permanent fix for the `mkdir '/app/site/.next/cache'` permission error seen in the live logs fileciteturn37file0
-- `releases/`: compressed image archives used for deploys and rollbacks
-- `backups/`: DB and config backups
+1. `pics/`: master media library mounted read-only into the container
+2. `site/data/`: persistent SQLite storage
+3. `cache/next-image/`: writable Next.js image optimization cache; this is the permanent fix for the `mkdir '/app/site/.next/cache'` permission error seen in the live logs
+4. `releases/`: compressed image archives used for deploys and rollbacks
+5. `backups/`: DB and config backups
 
 Create the runtime directories once on the NAS:
 
 ```bash
 mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache/next-image /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chown -R Cooper:users /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chmod -R 770 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups
 ```
-
----
 
 ## 4. Final `.env`
 
@@ -101,15 +86,13 @@ STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
 
-These IDs match the live NAS user mapping already verified in the SSH terminal output, where the running container is expected to use `uid=1026` and `gid=100(users)` fileciteturn37file2.
+These IDs match the live NAS user mapping already verified in the SSH terminal output, where the running container is expected to use `uid=1026` and `gid=100(users)`.
 
 Generate the session secret with:
 
 ```bash
 openssl rand -hex 32
 ```
-
----
 
 ## 5. Final `docker-compose.synology.yml`
 
@@ -139,64 +122,15 @@ services:
       - /volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache
 ```
 
-Why this is the final correct version:
+### Rationale
 
-- `image:` keeps the NAS runtime-only and avoids repeated on-NAS builds
-- `user:` matches the real NAS identity already verified in production fileciteturn37file2
-- `MEDIA_ROOT=/app/pics` matches the filesystem-backed media route design fileciteturn36file0L1-L1
-- the new cache mount gives Next.js a writable destination for optimized images, eliminating the `EACCES` cache error from the container logs fileciteturn37file0
-- loopback-only binding preserves the intended reverse-proxy-only exposure model
+1. `image:` keeps the NAS runtime-only and avoids repeated on-NAS builds
+2. `user:` matches the real NAS identity already verified in production
+3. `MEDIA_ROOT=/app/pics` matches the filesystem-backed media route design
+4. the new cache mount gives Next.js a writable destination for optimized images, eliminating the `EACCES` cache error from the container logs
+5. loopback-only binding preserves the intended reverse-proxy-only exposure model
 
-No additional code change is required for the cache fix if this writable cache mount is present and owned by `Cooper:users`.
-
----
-
-## 6. Keep the repo lean before and after builds
-
-The source tree visible from WSL and the NAS is the same CIFS-backed project tree fileciteturn37file1. To keep it tidy and small:
-
-### Safe to remove from the working tree
-
-These are not required for the production image build and can be removed from the shared project tree whenever you want to reclaim space:
-
-```bash
-cd /mnt/woodsmith && rm -rf node_modules site/node_modules site/.next
-```
-
-Why this is safe:
-
-- the Docker build installs dependencies inside the build stage with `npm ci` and does not rely on host `node_modules` fileciteturn27file0L1-L1
-- the build context excludes `node_modules`, `site/node_modules`, and `site/.next`, so keeping them in the shared tree only consumes disk and makes the repository messier, not faster, for Docker builds fileciteturn20file0L1-L1
-
-### Release archive hygiene
-
-Keep only a small number of release archives on the NAS. This keeps rollback available without letting `releases/` grow forever:
-
-```bash
-cd /volume2/docker_ssd/woodsmith/releases && ls -1t woodsmith-prod-*.tar.gz | tail -n +4 | xargs -r rm -f
-```
-
-That keeps the three newest image archives.
-
-### Optional local Docker cleanup after a successful export
-
-If the laptop does not need to keep the image loaded locally after export:
-
-```bash
-docker image rm woodsmith:prod || true
-```
-
-And to reclaim builder cache opportunistically:
-
-```bash
-docker builder prune -f
-```
-
-Use that only if you actually want the space back; it can slow the next build slightly by removing cached layers.
-
----
-
-## 7. Build from WSL
+## 6. WSL Image Build
 
 From WSL, work directly inside the mounted NAS project root:
 
@@ -210,25 +144,19 @@ Build for the NAS architecture:
 docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
 ```
 
-This remains the preferred build path because the app image compiles quickly from WSL while the NAS is better used as the runtime host. The DS923+ hardware profile is relatively modest for repeated compile-heavy Next.js builds, while your successful deployment flow already demonstrates the laptop-build → NAS-load model fileciteturn37file2.
+## 7. Local WSL Smoke Test (Optional)
 
----
-
-## 8. Optional local smoke test from WSL
-
-A local smoke test is still useful before you export the image:
+The following local smoke test may be useful to perform before exporting the image:
 
 ```bash
 docker run --rm -p 3002:3002 -e STUDIO_PASSWORD=test-pass -e SESSION_SECRET=test-secret -e MEDIA_ROOT=/app/pics -v "$(pwd)/site/data:/app/site/data" -v "$(pwd)/pics:/app/pics:ro" -v "$(pwd)/cache/next-image:/app/site/.next/cache" woodsmith:prod
 ```
 
-Because `/mnt/woodsmith` is the live CIFS-backed NAS tree, this validates against the same source files and runtime data paths you intend to use in production fileciteturn37file1. The image cache mount is included here too so the local smoke test mirrors the final production container behavior and does not recreate the cache permission error.
+Because `/mnt/woodsmith` is the live CIFS-backed NAS tree, this validates against the same source files and runtime data paths used in production. The image cache mount is included here too so the local smoke test mirrors the final production container behavior and does not recreate the cache permission error.
 
 Stop the test container with `Ctrl+C` when finished.
 
----
-
-## 9. Export the image to the NAS release directory
+## 8. NAS Image Export
 
 Still from `/mnt/woodsmith`, export the finished image directly into the shared NAS `releases/` directory:
 
@@ -238,9 +166,7 @@ mkdir -p releases && docker save woodsmith:prod | gzip > releases/woodsmith-prod
 
 Because `releases/` is inside the CIFS-mounted NAS project tree, this writes the archive straight into `/volume2/docker_ssd/woodsmith/releases/`.
 
----
-
-## 10. Load the image on the NAS
+## 9. NAS Image Loading
 
 On the NAS SSH terminal:
 
@@ -248,13 +174,9 @@ On the NAS SSH terminal:
 gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docker load
 ```
 
-Your live NAS transcript already shows this exact pattern working and loading `woodsmith:prod` successfully before the compose deployment fileciteturn37file2.
+To load a specific image archive when multiple exist in `releases/`, replace the glob with its exact filename in the above command.
 
-If multiple archives exist and you want to load a specific one, use its exact filename instead of the glob.
-
----
-
-## 11. Deploy or update the service on the NAS
+## 10. NAS Deployment and Updating
 
 From the NAS project root:
 
@@ -262,78 +184,70 @@ From the NAS project root:
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml up -d
 ```
 
-This is the single command to use both for first deploy and routine refreshes after loading a newer `woodsmith:prod` image.
+This command is used for both first deploy and routine refreshes after loading future `woodsmith:prod` images.
 
----
-
-## 12. Verify the live NAS container
+## 11. NAS Container Verification
 
 Run these final checks on the NAS after every deploy:
 
-### Confirm runtime identity
+### Runtime Identity Confirmation
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'id'
 ```
 
-Expected shape: `uid=1026 gid=100(users)` as already verified in the successful NAS runtime evidence fileciteturn37file2.
+Expected shape: `uid=1026 gid=100(users)` as already verified in the successful NAS runtime evidence.
 
-### Confirm DB path is writable
+### DB Path Write Test
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'ls -ld /app/site/data && test -w /app/site/data && echo DATA_WRITE_OK || echo DATA_WRITE_FAIL'
 ```
 
-### Confirm media path is readable
+### Media Path Read Test
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'printf "MEDIA_ROOT=%s\n" "$MEDIA_ROOT"; ls -ld /app/pics /app/pics/Furniture /app/pics/Cabinets; test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL'
 ```
 
-### Confirm the media route returns the actual image
+### Media Route Image Test
 
 ```bash
 curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 ```
 
-Your current NAS output already shows the final good state for all of these checks, including `DATA_WRITE_OK`, `IMG_READ_OK`, and `HTTP/1.1 200 OK` for the direct media request fileciteturn37file2.
-
-### Confirm the cache error is gone
+### Cache Test
 
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml logs --tail=200 woodsmith
 ```
 
-After the cache mount is added, the recurring `Failed to write image to cache ... mkdir '/app/site/.next/cache'` messages seen in the latest container logs should no longer appear fileciteturn37file0.
+Once the cache mount has been added, the docker container logs should not contain any `Failed to write image to cache ... mkdir '/app/site/.next/cache'` messages.
 
----
-
-## 13. Synology Reverse Proxy
+## 12. Synology Reverse Proxy
 
 Expose the site only through Synology Reverse Proxy.
 
 Use this target:
 
-- destination protocol: `http`
-- destination host: `127.0.0.1`
-- destination port: `3002`
+1. destination protocol: `http`
+2. destination host: `127.0.0.1`
+3. destination port: `3002`
 
 Recommended source:
 
-- source protocol: `https`
-- source host: your chosen site domain or subdomain
-- source port: `443`
+1. source protocol: `https`
+2. source host: chosen site domain or subdomain
+3. source port: `443`
 
 That matches the intended loopback-only compose binding and keeps the container off the public interface.
 
----
+## 13. Update Routine
 
-## 14. Final routine for every update
-
-Use this exact sequence for all future updates:
+Follow this sequence for all future updates:
 
 1. `cd /mnt/woodsmith`
-2. optionally clean `node_modules`, `site/node_modules`, and `site/.next` from the shared tree if you want to reclaim space
+2. optionally clean `node_modules`, `site/node_modules`, and `site/.next` from the shared tree to reclaim space
 3. `docker buildx build --platform linux/amd64 -t woodsmith:prod --load .`
 4. optionally run the local smoke test with the cache mount
 5. `docker save woodsmith:prod | gzip > releases/woodsmith-prod-$(date +%F-%H%M%S).tar.gz`
@@ -342,4 +256,172 @@ Use this exact sequence for all future updates:
 8. run the four NAS verification commands above
 9. trim old release archives
 
-That is the cleanest, fastest, and least fragile steady-state workflow supported by the repo and by your final live runtime evidence fileciteturn37file2 fileciteturn37file4.
+## 14. Repository Maintenance and Storage Reclamation
+
+The source tree visible from WSL and the NAS is the same CIFS-backed project tree. To keep it tidy and small:
+
+### Safe Working Tree Removals
+
+These are not required for the production image build and can be removed from the shared project tree to reclaim space if desired:
+
+```bash
+cd /mnt/woodsmith && rm -rf node_modules site/node_modules site/.next
+```
+
+Why this is safe:
+
+1. the Docker build installs dependencies inside the build stage with `npm ci` and does not rely on host `node_modules`
+2. the build context excludes `node_modules`, `site/node_modules`, and `site/.next`, so keeping them in the shared tree only consumes disk and makes the repository messier, not faster, for Docker builds
+
+### Release Archive Hygiene
+
+Keep only a small number of release archives on the NAS. This keeps rollback available without letting `releases/` grow forever:
+
+```bash
+cd /volume2/docker_ssd/woodsmith/releases && ls -1t woodsmith-prod-*.tar.gz | tail -n +4 | xargs -r rm -f
+```
+
+That keeps the three newest image archives.
+
+### Post-Export Local Docker Cleanup (Optional)
+
+If the laptop does not need to keep the image loaded locally after export:
+
+```bash
+docker image rm woodsmith:prod || true
+```
+
+And to reclaim builder cache opportunistically:
+
+```bash
+docker builder prune -f
+```
+
+Only use if the space must be reclaimed, as it can slow the next build slightly by removing cached layers.
+
+## 15. Docker Image and GitHub Repository Media Exclusion
+
+Adding `pics/` to `.dockerignore` and `.gitignore` both files is safe for this project because the running site reads media from the **runtime-mounted** `/app/pics` path, not from files copied into the image. The compose file mounts `/volume2/docker_ssd/woodsmith/pics:/app/pics:ro`, the media route reads from `process.env.MEDIA_ROOT` or `../pics`, and the Dockerfile does **not** copy `pics/` into the production image at all. Thus excluding the `pics/` folder from the GitHub Repository and Docker Container reduces size **without** disrupting media reads. Image-cache writes are **not** affected either, because the cache is located in `/app/site/.next/cache`, which is separate from `/app/pics`.
+
+### Exclusion Additions for `.dockerignore` and `.gitignore`
+
+```gitignore
+# Runtime-only media mounted from NAS
+pics/
+```
+
+### Runtime Conditions
+
+Do **not** change the runtime pattern within `docker-compose.synology.yml`:
+
+```yaml
+environment:
+  MEDIA_ROOT: "/app/pics"
+volumes:
+  - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro
+```
+
+Keep the writable cache mount separate from `pics/`, e.g.,
+
+```yaml
+  - /volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache
+```
+
+The `pics/` folder should remain read-only at runtime and the cache path should remain writable.
+
+## One-time Cleanup from Media-Inclusive State
+
+### 1. Remove `pics/` from Git Tracking Without Deleting Media Files
+
+Run this from the repository root:
+
+```bash
+git rm -r --cached pics && printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .gitignore && git add .gitignore && git commit -m "Stop tracking runtime media directory"
+```
+
+This selectively removes `pics/` from the Git index only. It does **not** delete any media files from `/volume2/docker_ssd/woodsmith/pics`.
+
+### 2. Remove `pics/` from Future Docker Build Contexts
+
+Run:
+
+```bash
+grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .dockerignore
+```
+
+From that point on, Docker will stop sending the large `pics/` tree as build context, which reduces build-context transfer size and keeps builds minimal.
+
+### 3. Container Rebuild
+
+Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required:
+
+```bash
+docker buildx build --platform linux/amd64 -t woodsmith:prod --load . && docker compose -f docker-compose.synology.yml up -d --force-recreate
+```
+
+### 4. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
+
+Use this conservative cleanup:
+
+```bash
+docker container prune -f && docker image prune -f && docker builder prune -f
+```
+
+This command removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
+
+## Removal of `pics/` Folder from GitHub Repository
+
+After step 1 and a normal push, `pics/` disappears from the current branch tip on GitHub:
+
+```bash
+git push origin main
+```
+
+This command effectively cleans up the **current** remote repository contents.
+
+## Remove Old `pics/` Blobs from GitHub History
+
+Removing `pics/` from the current tree does **not** shrink the remote repository history if those files were committed earlier. In order to  purge historic media blobs and comprehensively reduce the remote GitHub repository size, the repository history must be rewritten as follows:
+
+```bash
+git filter-repo --path pics --invert-paths
+```
+
+The rewritten history must then be force-pushed as follows:
+
+```bash
+git push --force --all && git push --force --tags
+```
+
+Anyone else using the repository must re-clone or hard-reset afterward.
+
+## Changes and Preservations
+
+This ignore-file cleanup **achieves** the following:
+
+* reduce Git repository size going forward
+* reduce Docker build-context size
+* keep production images smaller and cleaner
+* prevent accidental re-commit of large media directories
+
+It **does not**:
+
+* remove or block runtime media reads from `/app/pics`
+* affect `MEDIA_ROOT=/app/pics`
+* affect the site’s writable `.next/cache`
+* delete the actual NAS media files unless you explicitly remove them from `pics/`
+
+## Minimal Post-Cleanup Verification
+
+Run the following command post-redeployment to confirm that media reads and cache writes continue to function normally:
+
+```bash
+docker exec woodsmith sh -lc 'printf "MEDIA_ROOT=%s\n" "$MEDIA_ROOT"; test -r /app/pics/Furniture/DSC_0051.JPG && echo MEDIA_OK || echo MEDIA_FAIL; test -w /app/site/.next/cache && echo CACHE_OK || echo CACHE_FAIL'
+```
+
+### Expected Result
+
+* `MEDIA_OK`
+* `CACHE_OK`
+
+This confirms the ignore-file cleanup did not disrupt media or cache write access.

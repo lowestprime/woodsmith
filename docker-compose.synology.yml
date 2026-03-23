@@ -18,3 +18,4 @@ services:
     volumes:
       - /volume2/docker_ssd/woodsmith/site/data:/app/site/data
       - /volume2/docker_ssd/woodsmith/pics:/app/pics:ro
+      - /volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache
