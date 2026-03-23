@@ -11,8 +11,8 @@ site/coverage
 .env
 .env.local
 .env.*.local
-# Runtime-only media mounted from NAS
-pics/
 #recycle
 @eaDir
 **/@eaDir
+# Runtime-only media mounted from NAS
+pics/
