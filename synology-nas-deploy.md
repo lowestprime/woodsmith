@@ -331,7 +331,7 @@ The `pics/` folder should remain read-only at runtime and the cache path should 
 
 ## One-time Cleanup from Media-Inclusive State
 
-### 1. Remove `pics/` from Git Tracking Without Deleting Media Files
+### A. Remove `pics/` from Git Tracking Without Deleting Media Files
 
 If not already modified above, run the following command from the repository root:
 
@@ -341,7 +341,7 @@ git rm -r --cached pics && printf '\n# Runtime-only media mounted from NAS\npics
 
 This selectively removes `pics/` from the Git index only. It does **not** delete any media files from `/volume2/docker_ssd/woodsmith/pics`.
 
-### 2. Remove `pics/` from Future Docker Build Contexts
+### B. Remove `pics/` from Future Docker Build Contexts
 
 If not already modified above, run:
 
@@ -351,9 +351,9 @@ grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media mounted from N
 
 From that point on, Docker will stop sending the large `pics/` tree as build context, which reduces build-context transfer size and keeps builds minimal.
 
-### 3. Container Rebuild
+### C. Container Rebuild
 
-Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required. Per steps 6-10, first rebuild the container via the following commands on the WSL terminal:
+Because modifications to `.dockerignore` do not apply until subsequent builds, a clean rebuild cycle is required. Per steps [6. WSL Image Build](https://github.com/lowestprime/woodsmith/blob/master/synology-nas-deploy.md#6-wsl-image-build) – [10. NAS Deployment and Updating](https://github.com/lowestprime/woodsmith/blob/master/synology-nas-deploy.md#10-nas-deployment-and-updating), first rebuild the container via the following commands on the WSL terminal:
 ```bash
 cd /mnt/woodsmith
 docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
@@ -367,7 +367,7 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docke
 docker compose -f docker-compose.synology.yml up -d --force-recreate
 ```
 
-### 4. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
+### D. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
 
 Use this conservative cleanup:
 
@@ -379,7 +379,7 @@ This command removes stopped containers, dangling images, and unused builder cac
 aim
 ## Removal of `pics/` Folder from GitHub Repository
 
-After step 1 and a normal push, `pics/` disappears from the current branch tip on GitHub:
+After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip on GitHub:
 
 ```bash
 git push origin main
