@@ -368,17 +368,9 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docke
 docker compose -f docker-compose.synology.yml up -d --force-recreate
 ```
 
-### D. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
-
-Run the following conservative cleanup from `/mnt/woodsmith` on the WSL terminal:
-
-```bash
-docker container prune -f && docker image prune -f && docker builder prune -f
-```
-
 This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
 
-## Removal of Already-Tracked `pics/` and `cache/` from GitHub Repository
+### D. Removal of Currently-Tracked `pics/` and `cache/` from GitHub Repository
 
 After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip of the GitHub repository upon issuance of the following terminal commands on the NAS SSH terminal
 
@@ -388,24 +380,38 @@ git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerigno
 
 This command effectively cleans up the **current** remote repository contents.
 
-## Removal of Historic `pics/` and `cache/` Blobs from GitHub History
+### E. Removal of Historic `pics/` and `cache/` Blobs from GitHub History
 
-If `pics/` or `cache/` were committed in earlier history, removing them from the current tree does **not** shrink the remote repository history. To purge both from Git history completely:
+If `pics/` or `cache/` were committed in earlier history, removing them from the current tree does **not** shrink the remote repository history. In the current Codex App PowerShell environment, `git filter-repo` is **not installed**, as shown by `git: 'filter-repo' is not a git command`. Install it first, then run the history rewrite.
 
-```bash
+### Install `git-filter-repo` in the current environment
+
+```powershell
+py -m pip install --user git-filter-repo
+````
+
+OR
+
+```powershell
+python -m pip install --user git-filter-repo
+```
+
+Then rewrite history to remove both directories completely:
+
+```powershell
 git filter-repo --path pics --path cache --invert-paths
 ```
 
-Then force-push the rewritten history:
+Because this repository currently uses the `master` branch, force-push the rewritten history as follows:
 
-```bash
-git push --force --all && git push --force --tags
+```powershell
+git push --force origin master
+git push --force --tags
 ```
 
 Anyone else using the repository must then re-clone or hard-reset.
 
-
-## One-Time Cleanup of Existing Runtime Cache Files on the NAS
+### F. One-Time Cleanup of Existing Runtime Cache Files on the NAS
 
 The optimized image cache currently lives on the NAS under `cache/next-image/images`, not inside the immutable application image, because the compose file mounts `/volume2/docker_ssd/woodsmith/cache/next-image` to `/app/site/.next/cache` . To safely clear stale cached images and let Next.js regenerate them on demand, stop the site, remove only the cache contents, keep the cache directory itself, and bring the site back up:
 
@@ -415,7 +421,7 @@ docker compose -f docker-compose.synology.yml down && find /volume2/docker_ssd/w
 
 This clears only the generated image cache. It does **not** touch original media in `pics/`.
 
-## Optional Cleanup of Local Docker Leftovers
+### D. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
 
 To remove stopped containers, dangling images, and unused builder cache without touching live NAS media or the mounted runtime cache directory:
 
