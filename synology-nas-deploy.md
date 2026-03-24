@@ -69,10 +69,10 @@ Purpose of each runtime path:
 4. `releases/`: compressed image archives used for deploys and rollbacks
 5. `backups/`: DB and config backups
 
-Create the runtime directories once on the NAS:
+Create the runtime directories once on the NAS SSH terminal:
 
 ```bash
-mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache/next-image /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chown -R Cooper:users /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups && chmod -R 770 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups
+mkdir -p /volume2/docker_ssd/woodsmith/{site/data,cache/next-image,releases,backups} && chown -R Cooper:users /volume2/docker_ssd/woodsmith && chmod -R 770 /volume2/docker_ssd/woodsmith/{site/data,cache,releases,backups}
 ```
 
 ## 4. Final `.env`
@@ -306,8 +306,9 @@ Adding `pics/` to `.dockerignore` and `.gitignore` both files is safe for this p
 ### Exclusion Additions for `.dockerignore` and `.gitignore`
 
 ```gitignore
-# Runtime-only media mounted from NAS
+# Runtime-only media and image cache mounted from NAS
 pics/
+cache/
 ```
 
 ### Runtime Conditions
@@ -333,23 +334,23 @@ The `pics/` folder should remain read-only at runtime and the cache path should 
 
 ### A. Remove `pics/` from Git Tracking Without Deleting Media Files
 
-If not already modified above, run the following command from the repository root:
+If `.gitignore` was not already manually modified, committed and pushed, run the following command from the repository root on the WSL terminal:
 
 ```bash
-git rm -r --cached pics && printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .gitignore && git add .gitignore && git commit -m "Stop tracking runtime media directory"
+printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .gitignore
 ```
 
 This selectively removes `pics/` from the Git index only. It does **not** delete any media files from `/volume2/docker_ssd/woodsmith/pics`.
 
 ### B. Remove `pics/` from Future Docker Build Contexts
 
-If not already modified above, run:
+If `.dockerignore` was not already manually modified, committed and pushed, run the following command from the repository root on the WSL terminal:
 
 ```bash
 grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .dockerignore
 ```
 
-From that point on, Docker will stop sending the large `pics/` tree as build context, which reduces build-context transfer size and keeps builds minimal.
+From this point on, Docker will stop sending the large `pics/` tree as build context, which reduces build-context transfer size and keeps builds minimal.
 
 ### C. Container Rebuild
 
@@ -377,12 +378,12 @@ docker container prune -f && docker image prune -f && docker builder prune -f
 
 This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
 
-## Removal of `pics/` Folder from GitHub Repository
+## One-Time Removal of Already-Tracked `pics/` and `cache/` from GitHub Repository
 
-After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip on GitHub after issuing the following terminal command or pushing via Codex's GitHub Push button.
+After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip of the GitHub repository upon issuance of the following terminal commands on the NAS SSH terminal
 
 ```bash
-git push origin main
+git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerignore && git commit -m "Stop tracking runtime media and image cache" && git push origin main
 ```
 
 This command effectively cleans up the **current** remote repository contents.

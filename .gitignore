@@ -34,10 +34,8 @@ site/data/*.sqlite
 site/data/*.sqlite-shm
 site/data/*.sqlite-wal
 
-# Runtime-only media mounted from NAS
+# Runtime-only media and image cache mounted from NAS
 pics/
-
-# Cached media
 cache/
 
 # Secrets
