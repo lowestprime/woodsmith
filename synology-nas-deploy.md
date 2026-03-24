@@ -369,17 +369,17 @@ docker compose -f docker-compose.synology.yml up -d --force-recreate
 
 ### D. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
 
-Use this conservative cleanup:
+Run the following conservative cleanup from `/mnt/woodsmith` on the WSL terminal:
 
 ```bash
 docker container prune -f && docker image prune -f && docker builder prune -f
 ```
 
-This command removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
-aim
+This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
+
 ## Removal of `pics/` Folder from GitHub Repository
 
-After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip on GitHub:
+After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip on GitHub after issuing the following terminal command or pushing via Codex's GitHub Push button.
 
 ```bash
 git push origin main

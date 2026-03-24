@@ -37,6 +37,9 @@ site/data/*.sqlite-wal
 # Runtime-only media mounted from NAS
 pics/
 
+# Cached media
+cache/
+
 # Secrets
 .env
 .env.*
