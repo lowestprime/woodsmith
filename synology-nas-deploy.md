@@ -405,7 +405,7 @@ $p = "C:\Users\Cooper\AppData\Roaming\Python\Python313\Scripts"; [Environment]::
 #### Then rewrite history to remove both directories completely:
 
 ```powershell
-git filter-repo --path pics --path cache --invert-paths
+git filter-repo --path pics --path cache --invert-paths --force
 ```
 
 Because this repository currently uses the `master` branch, force-push the rewritten history as follows:
