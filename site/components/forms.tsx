@@ -1,210 +1,204 @@
-import { commissionOptions, type Piece } from "@/lib/content";
-import type { RequestRecord } from "@/lib/db";
+import { CommissionVisualizerFields } from "@/components/visualizer";
 import {
-  loginStudioAction,
-  logoutStudioAction,
-  submitBuyerUpdate,
-  submitCommissionRequest,
-  submitPurchaseRequest,
-  updateStudioRequestAction
+  forgotPasswordAction,
+  loginAction,
+  resetPasswordAction,
+  signupAction,
+  studioLoginAction,
+  submitCommissionAction,
+  submitProjectReplyAction,
+  submitReviewAction,
+  updateProfileAction
 } from "@/lib/actions";
+import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
 
-export function CommissionRequestForm({
-  pieceLabel,
-  pieceSlug,
-  className = ""
-}: {
-  pieceLabel?: string;
-  pieceSlug?: string;
-  className?: string;
+export function CommissionRequestForm({ commissionTypes, bandwidthLeadTimeDays, bandwidthPercent, queueCount, piece }: {
+  commissionTypes: CommissionTypeRecord[];
+  bandwidthLeadTimeDays: number;
+  bandwidthPercent: number;
+  queueCount: number;
+  piece?: PieceRecord | null;
 }) {
   return (
-    <form action={submitCommissionRequest} className={`request-form ${className}`.trim()}>
-      <div className="field-grid two-up">
-        <label>
-          <span>Project type</span>
-          <select defaultValue={pieceLabel || commissionOptions[0]} name="pieceLabel" required>
-            {commissionOptions.map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
+    <form action={submitCommissionAction} className="request-form commission-form-shell">
+      <div className="field-grid two-up compact-grid">
         <label>
           <span>Your name</span>
-          <input name="customerName" placeholder="Full name" required type="text" />
+          <input name="customerName" required type="text" />
         </label>
-      </div>
-      <div className="field-grid two-up">
         <label>
           <span>Email</span>
-          <input name="email" placeholder="you@example.com" required type="email" />
-        </label>
-        <label>
-          <span>Phone</span>
-          <input name="phone" placeholder="Optional" type="text" />
+          <input name="email" required type="email" />
         </label>
       </div>
-      <div className="field-grid three-up">
+      <div className="field-grid three-up compact-grid">
         <label>
-          <span>Location</span>
-          <input name="city" placeholder="City / region" type="text" />
+          <span>Phone</span>
+          <input name="phone" type="text" />
+        </label>
+        <label>
+          <span>City / region</span>
+          <input name="city" type="text" />
         </label>
         <label>
           <span>Budget</span>
-          <input name="budget" placeholder="Range or target" type="text" />
-        </label>
-        <label>
-          <span>Timing</span>
-          <input name="timeline" placeholder="Needed by / flexible" type="text" />
+          <input name="budgetCents" placeholder="1200" type="number" />
         </label>
       </div>
-      <div className="field-grid two-up">
-        <label>
-          <span>Materials / finish</span>
-          <input name="materials" placeholder="Preferred woods, stone, finish tone" type="text" />
-        </label>
-        <label>
-          <span>Dimensions / room notes</span>
-          <input name="dimensions" placeholder="Known dimensions or room constraints" type="text" />
-        </label>
-      </div>
-      <label>
-        <span>Project brief</span>
-        <textarea name="message" placeholder="How the piece will be used, where it will live, and what matters most." required rows={6} />
-      </label>
-      <input name="pieceSlug" type="hidden" value={pieceSlug || ""} />
-      <button className="button-primary" type="submit">Start Commission</button>
+      <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
+      <CommissionVisualizerFields
+        bandwidthLeadTimeDays={bandwidthLeadTimeDays}
+        bandwidthPercent={bandwidthPercent}
+        commissionTypes={commissionTypes.map((type) => ({
+          slug: type.slug,
+          label: type.label,
+          description: type.description,
+          materialOptions: type.materialOptions,
+          defaultDimensions: type.defaultDimensions
+        }))}
+        queueCount={queueCount}
+      />
+      <button className="button-primary full-width" type="submit">Submit commission brief</button>
     </form>
   );
 }
 
-export function PurchaseRequestForm({ piece, className = "" }: { piece: Piece; className?: string }) {
+export function LoginForm({ redirectTo = "/account/profile", studio = false, email = "" }: { redirectTo?: string; studio?: boolean; email?: string }) {
   return (
-    <form action={submitPurchaseRequest} className={`request-form ${className}`.trim()}>
-      <div className="field-grid two-up">
-        <label>
-          <span>Piece</span>
-          <input defaultValue={piece.name} name="pieceLabel" readOnly type="text" />
-        </label>
-        <label>
-          <span>Your name</span>
-          <input name="customerName" placeholder="Full name" required type="text" />
-        </label>
-      </div>
-      <div className="field-grid two-up">
-        <label>
-          <span>Email</span>
-          <input name="email" placeholder="you@example.com" required type="email" />
-        </label>
-        <label>
-          <span>Phone</span>
-          <input name="phone" placeholder="Optional" type="text" />
-        </label>
-      </div>
-      <div className="field-grid three-up">
-        <label>
-          <span>Location</span>
-          <input name="city" placeholder="City / region" type="text" />
-        </label>
-        <label>
-          <span>Budget</span>
-          <input name="budget" placeholder="Useful if you want a variation" type="text" />
-        </label>
-        <label>
-          <span>Timing</span>
-          <input name="timeline" placeholder="When you would want delivery" type="text" />
-        </label>
-      </div>
+    <form action={studio ? studioLoginAction : loginAction} className="request-form">
+      <input name="redirectTo" type="hidden" value={redirectTo} />
       <label>
-        <span>Reservation note</span>
-        <textarea name="message" placeholder="Tell the studio whether you want the current piece, a finish adjustment, or shipping information." required rows={5} />
+        <span>Email</span>
+        <input defaultValue={email} name="email" required type="email" />
       </label>
+      <label>
+        <span>Password</span>
+        <input name="password" required type="password" />
+      </label>
+      <button className="button-primary" type="submit">{studio ? "Enter studio" : "Log in"}</button>
+    </form>
+  );
+}
+
+export function SignupForm() {
+  return (
+    <form action={signupAction} className="request-form">
+      <label>
+        <span>Name</span>
+        <input name="displayName" required type="text" />
+      </label>
+      <label>
+        <span>Email</span>
+        <input name="email" required type="email" />
+      </label>
+      <label>
+        <span>Password</span>
+        <input name="password" required type="password" />
+      </label>
+      <button className="button-primary" type="submit">Create account</button>
+    </form>
+  );
+}
+
+export function ForgotPasswordForm() {
+  return (
+    <form action={forgotPasswordAction} className="request-form compact-form">
+      <label>
+        <span>Email</span>
+        <input name="email" required type="email" />
+      </label>
+      <button className="button-secondary" type="submit">Send reset link</button>
+    </form>
+  );
+}
+
+export function ResetPasswordForm({ token }: { token: string }) {
+  return (
+    <form action={resetPasswordAction} className="request-form compact-form">
+      <input name="token" type="hidden" value={token} />
+      <label>
+        <span>New password</span>
+        <input name="password" required type="password" />
+      </label>
+      <button className="button-primary" type="submit">Reset password</button>
+    </form>
+  );
+}
+
+export function ProfileForm({ user }: { user: UserRecord }) {
+  return (
+    <form action={updateProfileAction} className="request-form">
+      <label>
+        <span>Name</span>
+        <input defaultValue={user.displayName} name="displayName" required type="text" />
+      </label>
+      <label>
+        <span>Headline</span>
+        <input defaultValue={user.headline} name="headline" type="text" />
+      </label>
+      <label>
+        <span>Bio</span>
+        <textarea defaultValue={user.bio} name="bio" rows={5} />
+      </label>
+      <label>
+        <span>Links JSON</span>
+        <textarea defaultValue={JSON.stringify(user.links, null, 2)} name="linksJson" rows={5} />
+      </label>
+      <label>
+        <span>Profile picture</span>
+        <input name="avatar" type="file" />
+      </label>
+      <button className="button-primary" type="submit">Save profile</button>
+    </form>
+  );
+}
+
+export function ProjectReplyForm({ project }: { project: ProjectRecord }) {
+  return (
+    <form action={submitProjectReplyAction} className="request-form compact-form">
+      <input name="reference" type="hidden" value={project.reference} />
+      <label>
+        <span>Email</span>
+        <input defaultValue={project.guestEmail} name="email" required type="email" />
+      </label>
+      <label>
+        <span>Reply</span>
+        <textarea name="body" required rows={4} />
+      </label>
+      <button className="button-secondary" type="submit">Post update</button>
+    </form>
+  );
+}
+
+export function ReviewForm({ piece }: { piece: PieceRecord }) {
+  return (
+    <form action={submitReviewAction} className="request-form compact-form">
       <input name="pieceSlug" type="hidden" value={piece.slug} />
-      <input name="materials" type="hidden" value="" />
-      <input name="dimensions" type="hidden" value="" />
-      <button className="button-primary" type="submit">Reserve This Piece</button>
-    </form>
-  );
-}
-
-export function BuyerUpdateForm({ request }: { request: RequestRecord }) {
-  return (
-    <form action={submitBuyerUpdate} className="request-form compact-form">
-      <div className="field-grid two-up">
+      <div className="field-grid two-up compact-grid">
         <label>
-          <span>Reference</span>
-          <input defaultValue={request.reference} name="reference" readOnly type="text" />
+          <span>Your name</span>
+          <input name="reviewerName" required type="text" />
         </label>
         <label>
           <span>Email</span>
-          <input defaultValue={request.email} name="email" required type="email" />
+          <input name="email" type="email" />
+        </label>
+      </div>
+      <div className="field-grid two-up compact-grid">
+        <label>
+          <span>Title</span>
+          <input name="title" required type="text" />
+        </label>
+        <label>
+          <span>Rating</span>
+          <input defaultValue={5} max={5} min={1} name="rating" required type="number" />
         </label>
       </div>
       <label>
-        <span>Add a follow-up</span>
-        <textarea name="body" placeholder="Share revisions, delivery questions, or room measurements here." required rows={4} />
+        <span>Review</span>
+        <textarea name="body" required rows={4} />
       </label>
-      <button className="button-secondary" type="submit">Post Update</button>
-    </form>
-  );
-}
-
-export function StudioLoginForm() {
-  return (
-    <form action={loginStudioAction} className="request-form studio-login">
-      <label>
-        <span>Studio password</span>
-        <input name="password" placeholder="Enter password" required type="password" />
-      </label>
-      <button className="button-primary" type="submit">Enter Studio</button>
-    </form>
-  );
-}
-
-export function StudioToolbar() {
-  return (
-    <form action={logoutStudioAction}>
-      <button className="button-secondary" type="submit">Log Out</button>
-    </form>
-  );
-}
-
-export function StudioRequestForm({ request }: { request: RequestRecord }) {
-  return (
-    <form action={updateStudioRequestAction} className="request-form studio-detail-form">
-      <input name="reference" type="hidden" value={request.reference} />
-      <div className="field-grid two-up">
-        <label>
-          <span>Status</span>
-          <input defaultValue={request.status} name="status" required type="text" />
-        </label>
-        <label>
-          <span>Stage</span>
-          <input defaultValue={request.adminStage} name="adminStage" required type="text" />
-        </label>
-      </div>
-      <label>
-        <span>Public note</span>
-        <textarea defaultValue={request.publicNotes} name="publicNotes" rows={4} />
-      </label>
-      <label>
-        <span>Internal note</span>
-        <textarea defaultValue={request.internalNotes} name="internalNotes" rows={4} />
-      </label>
-      <div className="field-grid two-up">
-        <label>
-          <span>Timeline message</span>
-          <textarea name="studioMessage" placeholder="Optional update to append to the project timeline." rows={4} />
-        </label>
-        <label>
-          <span>Visibility</span>
-          <select defaultValue="public" name="messageVisibility">
-            <option value="public">Public to buyer</option>
-            <option value="private">Studio only</option>
-          </select>
-        </label>
-      </div>
-      <button className="button-primary" type="submit">Save Request</button>
+      <button className="button-secondary" type="submit">Submit review</button>
     </form>
   );
 }

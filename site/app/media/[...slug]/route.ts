@@ -1,6 +1,6 @@
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+import { createReadStream } from "node:fs";
 import { NextResponse } from "next/server";
+import { detectMediaKind, resolveMediaPath } from "@/lib/media";
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -8,37 +8,25 @@ const MIME_TYPES: Record<string, string> = {
   ".png": "image/png",
   ".webp": "image/webp",
   ".gif": "image/gif",
-  ".mp4": "video/mp4"
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+  ".mp4": "video/mp4",
+  ".mov": "video/quicktime",
+  ".webm": "video/webm"
 };
 
-export const runtime = "nodejs";
-
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ slug: string[] }> }
-) {
+export async function GET(_: Request, { params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = await params;
-  const mediaRoot = path.resolve(
-    process.env.MEDIA_ROOT || path.join(process.cwd(), "..", "pics")
-  );
-  const filePath = path.resolve(mediaRoot, ...slug);
-  const extension = path.extname(filePath).toLowerCase();
+  const relativePath = slug.join("/");
+  const absolutePath = resolveMediaPath(relativePath);
+  const extension = absolutePath.slice(absolutePath.lastIndexOf(".")).toLowerCase();
+  const kind = detectMediaKind(relativePath);
 
-  if (!filePath.startsWith(mediaRoot) || !MIME_TYPES[extension]) {
-    return new NextResponse("Not found", { status: 404 });
-  }
-
-  try {
-    const file = await readFile(filePath);
-
-    return new NextResponse(file, {
-      status: 200,
-      headers: {
-        "Content-Type": MIME_TYPES[extension],
-        "Cache-Control": "public, max-age=31536000, immutable"
-      }
-    });
-  } catch {
-    return new NextResponse("Not found", { status: 404 });
-  }
+  const stream = createReadStream(absolutePath);
+  return new NextResponse(stream as never, {
+    headers: {
+      "Content-Type": MIME_TYPES[extension] || (kind === "video" ? "application/octet-stream" : "image/jpeg"),
+      "Cache-Control": "public, max-age=31536000, immutable"
+    }
+  });
 }

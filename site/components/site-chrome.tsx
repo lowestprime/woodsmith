@@ -1,51 +1,77 @@
 import type { ReactNode } from "react";
-import Image from "next/image";
 import Link from "next/link";
-import { journalPosts, pieceNames, type JournalPost, type Piece } from "@/lib/content";
-import { formatDate, toMediaUrl } from "@/lib/format";
-import type { RequestRecord, RequestUpdateRecord } from "@/lib/db";
+import { cookies } from "next/headers";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { formatDate, formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { getCurrentUser } from "@/lib/auth";
+import { getBandwidthSnapshot, getSiteSettings, listCartItems, type PageRecord, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
+import { logoutAction } from "@/lib/actions";
 
 export function Shell({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`shell ${className}`.trim()}>{children}</div>;
 }
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  const site = getSiteSettings();
+  const user = await getCurrentUser();
+  const cookieStore = await cookies();
+  const cartToken = cookieStore.get("beaman-cart")?.value;
+  const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
+
   return (
     <header className="site-header">
       <Shell className="header-inner">
-        <Link className="brand" href="/">
-          <span className="brand-mark">Woodsmith</span>
-          <span className="brand-subtitle">portfolio, journal, shop, commissions</span>
+        <Link className="brand-lockup" href="/">
+          <span className="brand-mark">{site.brandName}</span>
+          <span className="brand-subtitle">{site.brandTagline}</span>
         </Link>
-        <nav className="site-nav" aria-label="Primary">
-          <Link href="/portfolio">Portfolio</Link>
-          <Link href="/shop">Shop</Link>
-          <Link href="/journal">Journal</Link>
-          <Link href="/commissions">Commissions</Link>
-          <Link href="/studio/login">Studio</Link>
+        <nav aria-label="Primary" className="site-nav">
+          {site.navigation.map((item) => (
+            <Link href={item.href} key={item.href}>{item.label}</Link>
+          ))}
+          <Link href="/shop/cart">Cart {cartCount > 0 ? `(${cartCount})` : ""}</Link>
+          {user ? (
+            <>
+              <Link href={user.role === "admin" ? "/studio" : "/account/profile"}>{user.role === "admin" ? "Studio" : "Account"}</Link>
+              <form action={logoutAction}><button className="text-button" type="submit">Log Out</button></form>
+            </>
+          ) : (
+            <Link href="/account/login">Account</Link>
+          )}
         </nav>
+        <ThemeToggle />
       </Shell>
     </header>
   );
 }
 
 export function SiteFooter() {
+  const site = getSiteSettings();
   return (
     <footer className="site-footer">
       <Shell className="footer-grid">
         <div>
-          <p className="footer-title">Woodsmith</p>
+          <p className="footer-title">{site.brandName}</p>
+          <p className="footer-copy">{site.siteAnnouncement}</p>
+        </div>
+        <div>
+          <p className="footer-title">Studio contact</p>
           <p className="footer-copy">
-            Self-hosted on your own hardware so the portfolio, inquiry history, and journal stay under your control.
+            {site.builderName} · <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>
+          </p>
+          <p className="footer-copy footer-small">
+            Site design and development: {site.developerName} · <a href={`mailto:${site.developerEmail}`}>{site.developerEmail}</a>
           </p>
         </div>
         <div>
-          <p className="footer-title">Piece Ledger</p>
-          <p className="footer-copy footer-ledger">{pieceNames.join(" / ")}</p>
-        </div>
-        <div>
-          <p className="footer-title">Flow</p>
-          <p className="footer-copy">Inquiry, quote, build updates, and delivery planning all live in one place.</p>
+          <p className="footer-title">Links</p>
+          <div className="footer-links">
+            {site.socialLinks.filter((item) => item.url).map((item) => (
+              <a href={item.url} key={item.label} rel="noreferrer" target="_blank">{item.label}</a>
+            ))}
+            <a href={site.repoUrl} rel="noreferrer" target="_blank">GitHub repository</a>
+            <Link href="/care-and-warranty">Care &amp; warranty</Link>
+          </div>
         </div>
       </Shell>
     </footer>
@@ -73,203 +99,104 @@ export function SectionHeading({ eyebrow, title, copy }: { eyebrow: string; titl
 }
 
 export function DividerBand() {
+  const site = getSiteSettings();
   return (
-    <div className="divider-band" aria-label="Signature piece list">
-      {pieceNames.map((name) => (
+    <div aria-label="Piece divider list" className="divider-band">
+      {site.pieceDividerNames.map((name) => (
         <span key={name}>{name}</span>
       ))}
     </div>
   );
 }
 
-export function PieceCard({ piece }: { piece: Piece }) {
+export function PieceCard({ piece }: { piece: PieceRecord }) {
+  const firstImage = piece.mediaPaths[0];
   return (
     <article className="piece-card">
       <Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>
-        <div className="piece-card-media">
-          <Image
-            alt={piece.name}
-            className="piece-image"
-            fill
-            sizes="(max-width: 900px) 100vw, 33vw"
-            src={toMediaUrl(piece.images[0])}
-          />
-        </div>
+        {firstImage ? <img alt={piece.title} className="piece-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
         <div className="piece-card-body">
           <div className="piece-card-meta">
             <span>{piece.category}</span>
-            <span className={`status-badge status-${piece.status}`}>{piece.availabilityLabel}</span>
+            <span>{piece.availabilityLabel}</span>
           </div>
-          <h3>{piece.name}</h3>
+          <h3>{piece.title}</h3>
           <p>{piece.summary}</p>
+          <div className="piece-card-footer">
+            <span>{piece.priceCents == null ? formatLeadTime(piece.leadTimeDays) : formatMoney(piece.priceCents)}</span>
+            <span>{piece.status === "inventory" ? `${piece.inventoryCount} available` : formatLeadTime(piece.leadTimeDays)}</span>
+          </div>
         </div>
       </Link>
     </article>
   );
 }
 
-export function FeatureStack({ pieces }: { pieces: Piece[] }) {
-  return (
-    <div className="feature-stack">
-      {pieces.map((piece, index) => (
-        <Link className="feature-card" href={`/portfolio/${piece.slug}`} key={piece.slug}>
-          <div className="feature-index">0{index + 1}</div>
-          <div className="feature-copy">
-            <p className="eyebrow">{piece.category}</p>
-            <h3>{piece.name}</h3>
-            <p>{piece.story}</p>
-          </div>
-          <div className="feature-media">
-            <Image alt={piece.name} fill sizes="(max-width: 900px) 100vw, 28vw" src={toMediaUrl(piece.images[0])} />
-          </div>
-        </Link>
-      ))}
-    </div>
-  );
-}
-
-export function PieceGallery({ piece }: { piece: Piece }) {
-  return (
-    <div className="piece-gallery">
-      {piece.images.map((image, index) => (
-        <figure className="piece-gallery-item" key={`${piece.slug}-${image}`}>
-          <div className="piece-gallery-frame">
-            <Image
-              alt={`${piece.name} view ${index + 1}`}
-              fill
-              sizes="(max-width: 900px) 100vw, 50vw"
-              src={toMediaUrl(image)}
-            />
-          </div>
-        </figure>
-      ))}
-    </div>
-  );
-}
-
-export function JournalCard({ post }: { post: JournalPost }) {
+export function PostCard({ post }: { post: PostRecord }) {
   return (
     <article className="journal-card">
       <div className="journal-meta">
-        <span>{formatDate(post.date)}</span>
-        <span>{post.readTime}</span>
+        <span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span>
+        {post.sourceUrl ? <span>Web highlight</span> : null}
       </div>
-      <h3>
-        <Link href={`/journal/${post.slug}`}>{post.title}</Link>
-      </h3>
+      <h3><Link href={`/journal/${post.slug}`}>{post.title}</Link></h3>
       <p>{post.excerpt}</p>
     </article>
   );
 }
 
-export function JournalRail() {
+export function StatusBand() {
+  const bandwidth = getBandwidthSnapshot();
   return (
-    <div className="journal-rail">
-      {journalPosts.map((post) => (
-        <JournalCard key={post.slug} post={post} />
-      ))}
-    </div>
-  );
-}
-
-export function RequestSummary({ request, updates, privateView = false }: {
-  request: RequestRecord;
-  updates: RequestUpdateRecord[];
-  privateView?: boolean;
-}) {
-  return (
-    <section className="request-summary">
-      <div className="request-summary-head">
-        <div>
-          <p className="eyebrow">Reference {request.reference}</p>
-          <h1>{request.pieceLabel}</h1>
-          <p className="lede">{request.kind === "commission" ? "Commission dossier" : "Reservation dossier"}</p>
-        </div>
-        <div className="request-status-card">
-          <span className="status-pill">{request.status}</span>
-          <p>{request.adminStage}</p>
-        </div>
+    <section className="status-band">
+      <div>
+        <p className="eyebrow">Current bandwidth</p>
+        <h2>{bandwidth.bandwidthPercent}% capacity</h2>
+        <p>Lead time running about {formatLeadTime(bandwidth.leadTimeDays)} with {bandwidth.activeProjects} active project{bandwidth.activeProjects === 1 ? "" : "s"} in the queue.</p>
       </div>
-
-      <div className="request-grid">
-        <div className="request-panel">
-          <h2>Project brief</h2>
-          <dl className="detail-list">
-            <div><dt>Client</dt><dd>{request.customerName}</dd></div>
-            <div><dt>Email</dt><dd>{request.email}</dd></div>
-            {request.phone ? <div><dt>Phone</dt><dd>{request.phone}</dd></div> : null}
-            {request.city ? <div><dt>Location</dt><dd>{request.city}</dd></div> : null}
-            {request.budget ? <div><dt>Budget</dt><dd>{request.budget}</dd></div> : null}
-            {request.timeline ? <div><dt>Timeline</dt><dd>{request.timeline}</dd></div> : null}
-            {request.materials ? <div><dt>Materials</dt><dd>{request.materials}</dd></div> : null}
-            {request.dimensions ? <div><dt>Dimensions</dt><dd>{request.dimensions}</dd></div> : null}
-          </dl>
-          <div className="request-message-block">
-            <h3>Original note</h3>
-            <p>{request.message}</p>
-          </div>
-          {request.publicNotes ? (
-            <div className="request-message-block accent-block">
-              <h3>Studio note</h3>
-              <p>{request.publicNotes}</p>
-            </div>
-          ) : null}
-          {privateView && request.internalNotes ? (
-            <div className="request-message-block muted-block">
-              <h3>Internal note</h3>
-              <p>{request.internalNotes}</p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="request-panel">
-          <h2>Timeline</h2>
-          <ol className="update-list">
-            {updates.map((update) => (
-              <li key={update.id} className={`update-item ${update.authorRole}`}>
-                <div>
-                  <p className="update-author">{update.authorRole === "studio" ? "Studio" : "Buyer"}</p>
-                  <p className="update-date">{formatDate(update.createdAt)}</p>
-                </div>
-                <p>{update.body}</p>
-              </li>
-            ))}
-          </ol>
+      <div className="status-bar-wrap">
+        <div className="status-bar"><span style={{ width: `${bandwidth.bandwidthPercent}%` }} /></div>
+        <div className="status-stats">
+          <span>{bandwidth.activeProjects} in progress</span>
+          <span>{bandwidth.shippedCount} shipped</span>
         </div>
       </div>
     </section>
   );
 }
 
-export function DashboardTable({ requests }: { requests: RequestRecord[] }) {
+export function ShareLinks({ title, url }: { title: string; url: string }) {
+  const encodedUrl = encodeURIComponent(url);
+  const encodedTitle = encodeURIComponent(title);
   return (
-    <div className="dashboard-table-wrap">
-      <table className="dashboard-table">
-        <thead>
-          <tr>
-            <th>Reference</th>
-            <th>Type</th>
-            <th>Piece</th>
-            <th>Client</th>
-            <th>Status</th>
-            <th>Updated</th>
-          </tr>
-        </thead>
-        <tbody>
-          {requests.map((request) => (
-            <tr key={request.reference}>
-              <td>
-                <Link href={`/studio/request/${request.reference}`}>{request.reference}</Link>
-              </td>
-              <td>{request.kind}</td>
-              <td>{request.pieceLabel}</td>
-              <td>{request.customerName}</td>
-              <td>{request.status}</td>
-              <td>{formatDate(request.updatedAt)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="share-links">
+      <a href={`mailto:?subject=${encodedTitle}&body=${encodedUrl}`}>Email</a>
+      <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`} rel="noreferrer" target="_blank">Facebook</a>
+      <a href={`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`} rel="noreferrer" target="_blank">X</a>
+      <a href={`https://pinterest.com/pin/create/button/?url=${encodedUrl}&description=${encodedTitle}`} rel="noreferrer" target="_blank">Pinterest</a>
     </div>
   );
+}
+
+export function ProjectOverviewCard({ project }: { project: ProjectRecord }) {
+  return (
+    <article className="project-card">
+      <div>
+        <p className="eyebrow">{project.reference}</p>
+        <h3>{project.pieceSlug || project.commissionTypeSlug || "Custom project"}</h3>
+      </div>
+      <div className="project-card-status">
+        <span>{project.status}</span>
+        <p>{project.stage}</p>
+      </div>
+    </article>
+  );
+}
+
+export function PageGrid({ children }: { children: ReactNode }) {
+  return <div className="page-grid">{children}</div>;
+}
+
+export function PageSection({ children, className = "" }: { children: ReactNode; className?: string }) {
+  return <section className={`page-section ${className}`.trim()}>{children}</section>;
 }
