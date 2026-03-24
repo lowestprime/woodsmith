@@ -378,7 +378,7 @@ docker container prune -f && docker image prune -f && docker builder prune -f
 
 This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
 
-## One-Time Removal of Already-Tracked `pics/` and `cache/` from GitHub Repository
+## Removal of Already-Tracked `pics/` and `cache/` from GitHub Repository
 
 After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip of the GitHub repository upon issuance of the following terminal commands on the NAS SSH terminal
 
@@ -388,21 +388,40 @@ git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerigno
 
 This command effectively cleans up the **current** remote repository contents.
 
-## Remove Old `pics/` Blobs from GitHub History
+## Removal of Historic `pics/` and `cache/` Blobs from GitHub History
 
-Removing `pics/` from the current tree does **not** shrink the remote repository history if those files were committed earlier. In order to  purge historic media blobs and comprehensively reduce the remote GitHub repository size, the repository history must be rewritten as follows:
+If `pics/` or `cache/` were committed in earlier history, removing them from the current tree does **not** shrink the remote repository history. To purge both from Git history completely:
 
 ```bash
-git filter-repo --path pics --invert-paths
+git filter-repo --path pics --path cache --invert-paths
 ```
 
-The rewritten history must then be force-pushed as follows:
+Then force-push the rewritten history:
 
 ```bash
 git push --force --all && git push --force --tags
 ```
 
-Anyone else using the repository must re-clone or hard-reset afterward.
+Anyone else using the repository must then re-clone or hard-reset.
+
+
+## One-Time Cleanup of Existing Runtime Cache Files on the NAS
+
+The optimized image cache currently lives on the NAS under `cache/next-image/images`, not inside the immutable application image, because the compose file mounts `/volume2/docker_ssd/woodsmith/cache/next-image` to `/app/site/.next/cache` . To safely clear stale cached images and let Next.js regenerate them on demand, stop the site, remove only the cache contents, keep the cache directory itself, and bring the site back up:
+
+```bash
+docker compose -f docker-compose.synology.yml down && find /volume2/docker_ssd/woodsmith/cache/next-image -mindepth 1 -maxdepth 1 -exec rm -rf {} + && mkdir -p /volume2/docker_ssd/woodsmith/cache/next-image && chown -R 1026:100 /volume2/docker_ssd/woodsmith/cache && chmod -R u+rwX,g+rwX /volume2/docker_ssd/woodsmith/cache && gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docker load && docker compose -f docker-compose.synology.yml up -d --force-recreate
+```
+
+This clears only the generated image cache. It does **not** touch original media in `pics/`.
+
+## Optional Cleanup of Local Docker Leftovers
+
+To remove stopped containers, dangling images, and unused builder cache without touching live NAS media or the mounted runtime cache directory:
+
+```bash
+docker container prune -f && docker image prune -f && docker builder prune -f
+```
 
 ## Changes and Preservations
 
