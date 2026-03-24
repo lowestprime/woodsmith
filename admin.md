@@ -4,8 +4,6 @@ This guide is for the owner or studio operator using the private browser dashboa
 
 It explains exactly how to log in, manage requests, communicate with buyers, and use the current feature set safely.
 
----
-
 ## 1. How to log in
 
 1. Open your live site in the browser.
@@ -16,8 +14,6 @@ It explains exactly how to log in, manage requests, communicate with buyers, and
 If the password is correct, you are redirected into `/studio`.
 
 If the password is wrong, the page shows an error.
-
----
 
 ## 2. What you see on the dashboard
 
@@ -32,8 +28,6 @@ Below that, it shows a table of all requests. Each row links into that request's
 
 Think of the dashboard as your inbox plus workload summary.
 
----
-
 ## 3. How to open a request
 
 1. Log into `/studio`.
@@ -42,8 +36,6 @@ Think of the dashboard as your inbox plus workload summary.
 4. You will land on `/studio/request/REFERENCE`.
 
 That page is the full management screen for that one buyer.
-
----
 
 ## 4. What is on a request page
 
@@ -66,8 +58,6 @@ This shows:
 ## B. Studio controls
 
 This is the editable form where you manage the request.
-
----
 
 ## 5. What each control does
 
@@ -155,8 +145,6 @@ If you are not comfortable with the buyer seeing it, choose **Studio only**.
 
 This saves the request fields and appends the timeline message if you entered one.
 
----
-
 ## 6. The safest way to update a request
 
 A good habit is:
@@ -170,8 +158,6 @@ A good habit is:
 7. click **Save Request**
 
 This keeps the dossier readable instead of cluttered.
-
----
 
 ## 7. What the buyer sees
 
@@ -190,8 +176,6 @@ The buyer does **not** see:
 
 - internal notes
 - private studio timeline updates
-
----
 
 ## 8. Recommended operating rules
 
@@ -243,8 +227,6 @@ Good use:
 - internal cost reminders
 - supplier follow-up notes
 - your own to-do list for that job
-
----
 
 ## 9. A clean workflow for common situations
 
@@ -310,8 +292,6 @@ Recommended action:
 
 This matters because the dashboard only stops counting a dossier as open when status becomes `Delivered` or `Closed`.
 
----
-
 ## 10. How to use the system for real sales work
 
 Woodsmith is best used like this:
@@ -334,8 +314,6 @@ Examples of useful private timeline messages:
 - `Buyer asked for alternate second quote; hold until Friday.`
 - `Shop time blocked next Tuesday for milling.`
 
----
-
 ## 11. What not to expect from the current admin
 
 This admin is not a full e-commerce back office.
@@ -351,8 +329,6 @@ You cannot currently use it to:
 - edit journal content from the browser
 
 It is a dossier-and-communication admin, not a full retail ERP or Shopify replacement.
-
----
 
 ## 12. Privacy and sharing guidance
 
@@ -382,8 +358,6 @@ Best practice:
 - only share it with true admins
 - change it if someone should no longer have access
 
----
-
 ## 13. Troubleshooting for the owner
 
 ## I cannot log in
@@ -411,8 +385,6 @@ Make sure completed projects use status exactly `Delivered` or `Closed`.
 ## I need to add a new piece to the portfolio
 
 That is not currently a browser-admin task. It requires SSH/file or developer work.
-
----
 
 ## 14. The simplest good habit set
 
