@@ -330,7 +330,7 @@ Keep the writable cache mount separate from `pics/`, e.g.,
 
 The `pics/` folder should remain read-only at runtime and the cache path should remain writable.
 
-## One-time Cleanup from Media-Inclusive State
+## 16. One-time Cleanup from Media-and-Cache-Inclusive State
 
 ### A. Remove `pics/` from Git Tracking Without Deleting Media Files
 
@@ -384,7 +384,7 @@ This command effectively cleans up the **current** remote repository contents.
 
 If `pics/` or `cache/` were committed in earlier history, removing them from the current tree does **not** shrink the remote repository history. In the current Codex App PowerShell environment, `git filter-repo` is **not installed**, as shown by `git: 'filter-repo' is not a git command`. Install it first, then run the history rewrite.
 
-### Install `git-filter-repo` in the current environment
+#### Install `git-filter-repo` in the current environment
 
 ```powershell
 py -m pip install --user git-filter-repo
@@ -399,7 +399,7 @@ python -m pip install --user git-filter-repo
 Then rewrite history to remove both directories completely:
 
 ```powershell
-git filter-repo --path pics --path cache --invert-paths
+git-filter-repo --path pics --path cache --invert-paths
 ```
 
 Because this repository currently uses the `master` branch, force-push the rewritten history as follows:
@@ -421,7 +421,7 @@ docker compose -f docker-compose.synology.yml down && find /volume2/docker_ssd/w
 
 This clears only the generated image cache. It does **not** touch original media in `pics/`.
 
-### D. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
+### G. Removal of Stale or Stopped Woodsmith Containers and Dangling Build Leftovers
 
 To remove stopped containers, dangling images, and unused builder cache without touching live NAS media or the mounted runtime cache directory:
 
@@ -429,7 +429,7 @@ To remove stopped containers, dangling images, and unused builder cache without 
 docker container prune -f && docker image prune -f && docker builder prune -f
 ```
 
-## Changes and Preservations
+## 17. Changes and Preservations
 
 This ignore-file cleanup **achieves** the following:
 
@@ -445,7 +445,7 @@ It **does not**:
 * affect the site’s writable `.next/cache`
 * delete the actual NAS media files unless you explicitly remove them from `pics/`
 
-## Minimal Post-Cleanup Verification
+## 18. Minimal Post-Cleanup Verification
 
 Run the following command post-redeployment to confirm that media reads and cache writes continue to function normally:
 
