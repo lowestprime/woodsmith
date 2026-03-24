@@ -396,10 +396,16 @@ OR
 python -m pip install --user git-filter-repo
 ```
 
-Then rewrite history to remove both directories completely:
+Permanently add the `git-filter-repo` comprising directory to PATH
 
 ```powershell
-git-filter-repo --path pics --path cache --invert-paths
+$p = "C:\Users\Cooper\AppData\Roaming\Python\Python313\Scripts"; [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$p", "User"); $env:PATH += ";$p"
+```
+
+#### Then rewrite history to remove both directories completely:
+
+```powershell
+git filter-repo --path pics --path cache --invert-paths
 ```
 
 Because this repository currently uses the `master` branch, force-push the rewritten history as follows:
