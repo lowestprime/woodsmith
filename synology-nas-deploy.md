@@ -383,7 +383,7 @@ This removes stopped containers, dangling images, and unused builder cache. It d
 After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip of the GitHub repository upon issuance of the following terminal commands on the NAS SSH terminal
 
 ```bash
-git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerignore && git commit -m "Stop tracking runtime media and image cache" && git push origin main
+git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerignore && git commit -m "Stop tracking runtime media and image cache" && git push -u origin master
 ```
 
 This command effectively cleans up the **current** remote repository contents.
