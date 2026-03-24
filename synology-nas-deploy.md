@@ -330,24 +330,24 @@ Keep the writable cache mount separate from `pics/`, e.g.,
 
 The `pics/` folder should remain read-only at runtime and the cache path should remain writable.
 
-## 16. One-time Cleanup from Media-and-Cache-Inclusive State
+## 16. One-time Cleanup from `media`-`cache`-`releases`-Inclusive State
 
-### A. Remove `pics/` from Git Tracking Without Deleting Media Files
+### A. Remove `pics/`, `cache/`, and `releases/` from Git Tracking Without Deleting Media Files
 
 If `.gitignore` was not already manually modified, committed and pushed, run the following command from the repository root on the WSL terminal:
 
 ```bash
-printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .gitignore
+printf '\n# Runtime-only media, image cache, and releases\npics/\ncache/\nreleases/\n' >> .gitignore
 ```
 
-This selectively removes `pics/` from the Git index only. It does **not** delete any media files from `/volume2/docker_ssd/woodsmith/pics`.
+This selectively removes `pics/`, `cache/`, and `releases/` from the Git index only. It does **not** delete any media files from `/volume2/docker_ssd/woodsmith/pics`.
 
-### B. Remove `pics/` from Future Docker Build Contexts
+### B. Remove `pics/`, `cache/`, and `releases/` from Future Docker Build Contexts
 
 If `.dockerignore` was not already manually modified, committed and pushed, run the following command from the repository root on the WSL terminal:
 
 ```bash
-grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media mounted from NAS\npics/\n' >> .dockerignore
+grep -qxF 'pics/' .dockerignore || printf '\n# Runtime-only media, image cache, and releases\npics/\ncache/\nreleases/\n' >> .dockerignore
 ```
 
 From this point on, Docker will stop sending the large `pics/` tree as build context, which reduces build-context transfer size and keeps builds minimal.
@@ -368,19 +368,17 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-*.tar.gz | docke
 docker compose -f docker-compose.synology.yml up -d --force-recreate
 ```
 
-This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
-
-### D. Removal of Currently-Tracked `pics/` and `cache/` from GitHub Repository
+### D. Removal of Currently-Tracked `pics/`, `cache/`, and `releases` from GitHub Repository
 
 After step A and a normal push, the `pics/` folder and its contents will disappear from the current branch tip of the GitHub repository upon issuance of the following terminal commands on the NAS SSH terminal
 
 ```bash
-git rm -r --cached --ignore-unmatch pics cache && git add .gitignore .dockerignore && git commit -m "Stop tracking runtime media and image cache" && git push -u origin master
+git rm -r --cached --ignore-unmatch pics cache releases && git add .gitignore .dockerignore && git commit -m "Stop tracking runtime media, image cache, and releases" && git push -u origin master
 ```
 
 This command effectively cleans up the **current** remote repository contents.
 
-### E. Removal of Historic `pics/` and `cache/` Blobs from GitHub History
+### E. Removal of `pics/`, `cache/`, and `releases/` Blobs from GitHub History
 
 If `pics/` or `cache/` were committed in earlier history, removing them from the current tree does **not** shrink the remote repository history. In the current Codex App PowerShell environment, `git filter-repo` is **not installed**, as shown by `git: 'filter-repo' is not a git command`. Install it first, then run the history rewrite.
 
@@ -402,10 +400,10 @@ Permanently add the `git-filter-repo` comprising directory to PATH
 $p = "C:\Users\Cooper\AppData\Roaming\Python\Python313\Scripts"; [Environment]::SetEnvironmentVariable("Path", [Environment]::GetEnvironmentVariable("Path", "User") + ";$p", "User"); $env:PATH += ";$p"
 ```
 
-#### Then rewrite history to remove both directories completely:
+#### Then rewrite history to remove the `pics/`, `cache/`, and `releases/` directories completely:
 
 ```powershell
-git filter-repo --path pics --path cache --invert-paths --force
+git filter-repo --path pics --path cache --path releases --invert-paths --force
 ```
 
 Because this repository currently uses the `master` branch and `git filter-repo --force` will remove the `origin` on purpose, the remote must first be re-added, prior to force-pushing the rewritten history to `master` as follows:
@@ -440,6 +438,8 @@ To remove stopped containers, dangling images, and unused builder cache without 
 ```bash
 docker container prune -f && docker image prune -f && docker builder prune -f
 ```
+
+This removes stopped containers, dangling images, and unused builder cache. It does **not** modify the live `pics/` directory on the NAS.
 
 ## 17. Changes and Preservations
 
