@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Shokunin Studio | Commission Your Masterpiece</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,200..800&amp;family=Work+Sans:wght@300;400;500;600&amp;family=Inter:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-surface": "#32302c",
+              "inverse-on-surface": "#f5f0e9",
+              "on-secondary-container": "#736153",
+              "inverse-primary": "#e8bf9d",
+              "on-secondary-fixed": "#26190e",
+              "background": "#fef9f2",
+              "surface-container-highest": "#e7e2db",
+              "on-tertiary-fixed-variant": "#4c463e",
+              "on-background": "#1d1c17",
+              "surface-tint": "#78583c",
+              "surface-variant": "#e7e2db",
+              "outline-variant": "#d3c4b9",
+              "on-surface": "#1d1c17",
+              "secondary-fixed-dim": "#dac2b1",
+              "on-primary": "#ffffff",
+              "error-container": "#ffdad6",
+              "surface": "#fef9f2",
+              "primary-container": "#8d6b4e",
+              "surface-container": "#f2ede6",
+              "on-tertiary-container": "#fff7f1",
+              "on-tertiary": "#ffffff",
+              "tertiary-container": "#797168",
+              "on-primary-container": "#fff6f2",
+              "surface-dim": "#ded9d3",
+              "on-surface-variant": "#4f453d",
+              "on-error": "#ffffff",
+              "primary-fixed-dim": "#e8bf9d",
+              "on-primary-fixed-variant": "#5d4127",
+              "error": "#ba1a1a",
+              "tertiary-fixed": "#ece1d6",
+              "on-tertiary-fixed": "#201b15",
+              "primary": "#725338",
+              "on-error-container": "#93000a",
+              "tertiary-fixed-dim": "#cfc5bb",
+              "secondary": "#6d5b4d",
+              "on-secondary": "#ffffff",
+              "on-secondary-fixed-variant": "#544437",
+              "secondary-fixed": "#f7decc",
+              "tertiary": "#605851",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#fef9f2",
+              "on-primary-fixed": "#2c1602",
+              "outline": "#81756c",
+              "primary-fixed": "#ffdcc1",
+              "surface-container-low": "#f8f3ec",
+              "surface-container-high": "#ece7e1",
+              "secondary-container": "#f7decc"
+            },
+            fontFamily: {
+              "headline": ["Newsreader", "serif"],
+              "body": ["Work Sans", "sans-serif"],
+              "label": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+        .mackintosh-header {
+            font-family: 'Newsreader', serif;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body class="bg-background text-on-background font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#fef9f2]/85 dark:bg-[#1d1c17]/85 backdrop-blur-md flex justify-between items-center px-8 py-6 max-w-none mx-auto">
+<div class="text-2xl font-light tracking-[0.2em] text-[#1d1c17] dark:text-[#fef9f2]">SHOKUNIN</div>
+<div class="hidden md:flex gap-12">
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Workshop</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Ledger</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#725338] dark:text-[#d7ccc8] border-b border-[#725338] pb-1 hover:opacity-100 transition-opacity duration-300" href="#">Commission</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Notes</a>
+</div>
+<div class="flex items-center gap-6">
+<button class="text-[#725338] dark:text-[#d7ccc8] active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+</button>
+<button class="text-[#725338] dark:text-[#d7ccc8] active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+</button>
+</div>
+</nav>
+<!-- Main Content Shell -->
+<main class="pt-32 pb-24 px-6 md:px-12 lg:px-24 max-w-7xl mx-auto">
+<!-- Header Section: Asymmetric & Minimalist -->
+<header class="mb-24 flex flex-col md:flex-row items-baseline gap-8">
+<h1 class="text-6xl md:text-8xl mackintosh-header leading-tight max-w-2xl text-primary">
+                A Dialogue in Wood.
+            </h1>
+<div class="max-w-xs">
+<p class="text-sm tracking-widest uppercase font-label text-on-surface-variant mb-4">Phase: Discovery</p>
+<p class="text-secondary leading-relaxed font-light">Each piece begins with an intention. Tell us about the space you are looking to fill and the legacy you wish to leave behind.</p>
+</div>
+</header>
+<!-- The Commission Flow: Stages -->
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-16">
+<!-- Left: Sequential Navigation (Progress) -->
+<aside class="lg:col-span-3 space-y-12">
+<nav class="sticky top-40 flex flex-col gap-8">
+<div class="group flex items-center gap-4">
+<span class="w-8 h-8 rounded-full border border-primary flex items-center justify-center text-primary font-label text-xs">01</span>
+<span class="text-primary font-medium tracking-wide">Intent</span>
+</div>
+<div class="group flex items-center gap-4 opacity-30">
+<span class="w-8 h-8 rounded-full border border-outline flex items-center justify-center text-on-surface-variant font-label text-xs">02</span>
+<span class="text-on-surface-variant font-medium tracking-wide">Materiality</span>
+</div>
+<div class="group flex items-center gap-4 opacity-30">
+<span class="w-8 h-8 rounded-full border border-outline flex items-center justify-center text-on-surface-variant font-label text-xs">03</span>
+<span class="text-on-surface-variant font-medium tracking-wide">Dimensions</span>
+</div>
+</nav>
+</aside>
+<!-- Right: Content Canvas -->
+<section class="lg:col-span-9 space-y-24">
+<!-- Stage 1: Intent -->
+<div class="space-y-12 animate-in fade-in slide-in-from-bottom-4 duration-1000">
+<div class="space-y-4">
+<h2 class="text-4xl mackintosh-header text-on-surface">What shall we build?</h2>
+<p class="text-on-surface-variant font-light text-lg">Choose a foundation for our collaboration.</p>
+</div>
+<!-- Bento Grid Selection -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+<button class="group p-8 bg-surface-container-low text-left transition-all duration-500 hover:bg-surface-container-highest flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="table_restaurant">table_restaurant</span>
+<div>
+<h3 class="font-headline italic text-xl mb-2">Communal Table</h3>
+<p class="text-xs font-label uppercase tracking-widest opacity-60">Dining, Work, Gathering</p>
+</div>
+</button>
+<button class="group p-8 bg-surface-container-low text-left transition-all duration-500 hover:bg-surface-container-highest flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="chair">chair</span>
+<div>
+<h3 class="font-headline italic text-xl mb-2">Seating Archetype</h3>
+<p class="text-xs font-label uppercase tracking-widest opacity-60">Chair, Bench, Stool</p>
+</div>
+</button>
+<button class="group p-8 bg-surface-container-low text-left transition-all duration-500 hover:bg-surface-container-highest flex flex-col justify-between aspect-square">
+<span class="material-symbols-outlined text-3xl text-primary" data-icon="shelves">shelves</span>
+<div>
+<h3 class="font-headline italic text-xl mb-2">Architectural Vessel</h3>
+<p class="text-xs font-label uppercase tracking-widest opacity-60">Cabinetry, Storage, Display</p>
+</div>
+</button>
+</div>
+<div class="max-w-xl">
+<label class="block text-xs font-label uppercase tracking-widest text-on-surface-variant mb-4">Personal Brief</label>
+<textarea class="w-full bg-transparent border-none border-b border-outline-variant/30 focus:ring-0 focus:border-primary text-xl font-light placeholder:text-outline-variant/50 px-0" placeholder="Describe the atmosphere of the room..." rows="4"></textarea>
+</div>
+</div>
+<!-- Section Divider (Tonal Shift) -->
+<div class="h-px w-full bg-surface-container-highest"></div>
+<!-- Materiality Preview (Inspiration Card) -->
+<div class="relative w-full h-[500px] overflow-hidden group">
+<img class="w-full h-full object-cover grayscale-[20%] group-hover:scale-105 transition-transform duration-[2s]" data-alt="close-up of raw dark walnut wood slabs with natural live edges and visible rich grain patterns in a sun-drenched artisan studio" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCZui_iDSEuOWunVhsNrNiw1q00ZlzYbAlWRPrRMZ3M-0bj_6-GS285W18sll9pxa7SltLdsdt0pwPvHBEYs-ECUOYV-eoLShJ7O-LGj4T9BIF-VJdzgRPczOmp8YuQWPtjxxLjn05p097zI---BMQX-GBDWToDgpKbylcmM58FbGTedYRf7f-oePYFI0VfxoTQZkuj0ITUCosFfdNiDH6IiCb2UCQA6xsD3DbXTTs2-91-HPKubMZ67C_mWnNpa8YLTcja6WO-L2Wk"/>
+<div class="absolute inset-0 bg-gradient-to-t from-on-surface/60 to-transparent flex items-end p-12">
+<div class="max-w-md">
+<h3 class="text-3xl mackintosh-header text-surface mb-4">The Material Spirit</h3>
+<p class="text-surface/80 leading-relaxed font-light">We source timber that has seen at least eighty winters. The wood tells us what it wants to become; we simply listen.</p>
+</div>
+</div>
+</div>
+<!-- Action Button -->
+<div class="flex justify-between items-center pt-12">
+<button class="px-8 py-4 text-primary font-label tracking-widest uppercase text-sm border border-outline-variant/20 hover:bg-surface-container-low transition-colors">
+                        Save Draft
+                    </button>
+<button class="px-12 py-4 bg-gradient-to-br from-primary to-primary-container text-on-primary font-label tracking-widest uppercase text-sm shadow-xl active:scale-95 transition-transform">
+                        Begin Materiality Selection
+                    </button>
+</div>
+</section>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 mt-24 bg-[#f8f3ec] dark:bg-[#1d1c17] flex flex-col md:flex-row justify-between items-center gap-8 border-t border-[#1d1c17]/5">
+<div class="flex flex-col gap-2">
+<p class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#725338] dark:text-[#d7ccc8]">© 2024 Shokunin Studio. Built to last generations.</p>
+</div>
+<div class="flex gap-8">
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Philosophy</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Sustainability</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Shipping</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Contact</a>
+</div>
+</footer>
+</body></html>

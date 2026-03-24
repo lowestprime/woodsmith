@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,200..800;1,6..72,200..800&amp;family=Work+Sans:wght@100..900&amp;family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "inverse-surface": "#32302c",
+              "inverse-on-surface": "#f5f0e9",
+              "on-secondary-container": "#736153",
+              "inverse-primary": "#e8bf9d",
+              "on-secondary-fixed": "#26190e",
+              "background": "#fef9f2",
+              "surface-container-highest": "#e7e2db",
+              "on-tertiary-fixed-variant": "#4c463e",
+              "on-background": "#1d1c17",
+              "surface-tint": "#78583c",
+              "surface-variant": "#e7e2db",
+              "outline-variant": "#d3c4b9",
+              "on-surface": "#1d1c17",
+              "secondary-fixed-dim": "#dac2b1",
+              "on-primary": "#ffffff",
+              "error-container": "#ffdad6",
+              "surface": "#fef9f2",
+              "primary-container": "#8d6b4e",
+              "surface-container": "#f2ede6",
+              "on-tertiary-container": "#fff7f1",
+              "on-tertiary": "#ffffff",
+              "tertiary-container": "#797168",
+              "on-primary-container": "#fff6f2",
+              "surface-dim": "#ded9d3",
+              "on-surface-variant": "#4f453d",
+              "on-error": "#ffffff",
+              "primary-fixed-dim": "#e8bf9d",
+              "on-primary-fixed-variant": "#5d4127",
+              "error": "#ba1a1a",
+              "tertiary-fixed": "#ece1d6",
+              "on-tertiary-fixed": "#201b15",
+              "primary": "#725338",
+              "on-error-container": "#93000a",
+              "tertiary-fixed-dim": "#cfc5bb",
+              "secondary": "#6d5b4d",
+              "on-secondary": "#ffffff",
+              "on-secondary-fixed-variant": "#544437",
+              "secondary-fixed": "#f7decc",
+              "tertiary": "#605851",
+              "surface-container-lowest": "#ffffff",
+              "surface-bright": "#fef9f2",
+              "on-primary-fixed": "#2c1602",
+              "outline": "#81756c",
+              "primary-fixed": "#ffdcc1",
+              "surface-container-low": "#f8f3ec",
+              "surface-container-high": "#ece7e1",
+              "secondary-container": "#f7decc"
+            },
+            fontFamily: {
+              "headline": ["Newsreader"],
+              "body": ["Work Sans"],
+              "label": ["Inter"]
+            },
+            borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .techou-texture {
+            background-image: radial-gradient(#d3c4b9 0.5px, transparent 0.5px);
+            background-size: 24px 24px;
+        }
+        /* Custom Mackintosh emulation via Newsreader styling as fallback */
+        .mackintosh-style {
+            font-family: 'Newsreader', serif;
+            font-style: italic;
+            letter-spacing: -0.02em;
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-secondary-container">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 bg-[#fef9f2]/85 backdrop-blur-md flex justify-between items-center px-8 py-6 max-w-none mx-auto">
+<div class="text-2xl font-light tracking-[0.2em] text-[#1d1c17]">SHOKUNIN</div>
+<div class="hidden md:flex items-center space-x-12">
+<a class="text-[#6d5b4d] opacity-70 font-['Newsreader'] italic tracking-wide hover:opacity-100 transition-opacity duration-300" href="#">Workshop</a>
+<a class="text-[#6d5b4d] opacity-70 font-['Newsreader'] italic tracking-wide hover:opacity-100 transition-opacity duration-300" href="#">Ledger</a>
+<a class="text-[#6d5b4d] opacity-70 font-['Newsreader'] italic tracking-wide hover:opacity-100 transition-opacity duration-300" href="#">Commission</a>
+<a class="text-[#725338] border-b border-[#725338] pb-1 font-['Newsreader'] italic tracking-wide transition-opacity duration-300" href="#">Notes</a>
+</div>
+<div class="flex items-center space-x-6 text-[#725338]">
+<span class="material-symbols-outlined cursor-pointer hover:opacity-70 transition-opacity">shopping_cart</span>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-70 transition-opacity">person</span>
+</div>
+</nav>
+<!-- Main Content Canvas -->
+<main class="pt-32 pb-24 px-6 md:px-12 lg:px-24 max-w-7xl mx-auto">
+<!-- Journal Header -->
+<header class="mb-24 flex flex-col md:flex-row items-baseline gap-4">
+<h1 class="text-7xl md:text-9xl mackintosh-style text-primary leading-none">Field Notes</h1>
+<p class="font-label text-xs tracking-[0.3em] uppercase text-outline opacity-60">Volume IV / MMXXIV</p>
+</header>
+<!-- Journal Entry: Feature -->
+<article class="grid grid-cols-1 lg:grid-cols-12 gap-12 mb-40 items-start">
+<div class="lg:col-span-7">
+<div class="aspect-[4/5] bg-surface-container-low overflow-hidden relative group">
+<img class="w-full h-full object-cover mix-blend-multiply opacity-90 group-hover:scale-105 transition-transform duration-700" data-alt="Macro photography of a master woodworker's hand using a Japanese pull saw on a piece of light-grained hinoki cypress in a sun-drenched workshop." src="https://lh3.googleusercontent.com/aida-public/AB6AXuC3HcEtNOD7oh1yxUZeWFxkZx_h-EqSt6lHnbivgrxAxxwETyHbjbi6PWWw2f8sFGXSSqAQ4pxog_xs0GFnRH9_Zm-Zo5imKH7cCvvpJe00hnvzK-FnVRumopQqW-CbtK6l8xmKSiInwmco-f_iVFbH8Zmi_uRSIPNB8Qr9zVu_gyjMJ8OlFemWuXu4aoVbq-_NXgnjsjusVhBmh0eiy5Z2mxhEQ_DXiy1LqtCHcbetYBEa2D1HXI65yoTODw1OX23clj_WKtvixlC_"/>
+<div class="absolute inset-0 border-[24px] border-surface pointer-events-none"></div>
+</div>
+</div>
+<div class="lg:col-span-5 pt-8 lg:pt-24 lg:pl-12">
+<span class="font-label text-xs tracking-widest text-secondary uppercase mb-6 block">The Philosophy</span>
+<h2 class="text-4xl md:text-5xl mackintosh-style leading-tight mb-8">The Silent Dialogue of Grain</h2>
+<p class="font-headline text-lg italic text-on-surface-variant leading-relaxed mb-8">
+                    "When the blade meets the wood, it is not an act of conquest, but a conversation. We do not impose our will; we reveal what has been waiting for three centuries."
+                </p>
+<div class="flex items-center gap-4">
+<div class="w-12 h-[1px] bg-outline-variant"></div>
+<a class="font-label text-xs tracking-widest uppercase hover:text-primary transition-colors" href="#">Read the entry</a>
+</div>
+</div>
+</article>
+<!-- Bento Grid: Fragments & Observations -->
+<section class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-40">
+<!-- Sketch Card -->
+<div class="md:col-span-1 bg-surface-container-low p-8 flex flex-col justify-between">
+<div>
+<span class="font-label text-[10px] tracking-widest text-outline uppercase mb-12 block">Observation 042</span>
+<h3 class="text-2xl mackintosh-style mb-4">The Curvature of Hinoki</h3>
+<p class="font-headline text-base italic leading-relaxed text-on-surface-variant">Notes on the elasticity of heartwood during the rainy season in Nagano.</p>
+</div>
+<div class="mt-12 aspect-square bg-surface border border-outline-variant/20 overflow-hidden">
+<img class="w-full h-full object-cover grayscale contrast-125 opacity-40" data-alt="A charcoal-style minimalist sketch of a traditional Japanese joinery joint on textured paper, focused and artistic." src="https://lh3.googleusercontent.com/aida-public/AB6AXuCsC5y8oUXrl1WyDFy3tfthi3HS242qs8xdccD1i7FkMY5KGKTsR0KZKn5tEmUl3TWBS1WlBVRMeDNqSQiCJA5xDqwBpEt84peJiJ02ghh3cqtQJ_hp82uEfJZzHkeoZadTP9EDSu30c_2XU1MZjguhcFg8b6ED8Ye5Ks3S7iJQdpAhwptJB4O5cROgKbKQROGytd1BTms4vc9GksE8Jn33sMJL5HXrGlia6ApL_cNbK2EQJotHVGd5ETaM32Bn9hn_eoEGyQt9tuM0"/>
+</div>
+</div>
+<!-- Long Form Card -->
+<div class="md:col-span-2 bg-surface-container-highest p-12 relative overflow-hidden flex flex-col justify-end min-h-[500px]">
+<div class="absolute top-0 right-0 p-12 techou-texture w-32 h-32 opacity-20"></div>
+<div class="relative z-10 max-w-lg">
+<span class="font-label text-[10px] tracking-widest text-secondary uppercase mb-6 block">Material Selection</span>
+<h3 class="text-4xl mackintosh-style mb-6">Finding the Soul in Salvaged Walnut</h3>
+<p class="font-headline text-lg italic leading-relaxed text-on-surface-variant mb-8">
+                        Our journey to the northern forests in search of trees that have fallen naturally. A study in patience and the beauty of imperfection.
+                    </p>
+<button class="bg-primary text-on-primary px-8 py-3 text-xs tracking-widest uppercase rounded-sm hover:opacity-90 transition-all active:scale-95">Open Journal</button>
+</div>
+</div>
+</section>
+<!-- Traditional Techou Layout Section -->
+<section class="border-t border-outline-variant/10 pt-24">
+<div class="flex flex-col md:flex-row gap-24">
+<div class="w-full md:w-1/3">
+<div class="sticky top-32">
+<h4 class="font-label text-xs tracking-[0.4em] uppercase text-outline mb-12">Archives</h4>
+<ul class="space-y-8">
+<li>
+<span class="font-label text-[10px] text-primary/50 block mb-1">June 2024</span>
+<a class="text-xl mackintosh-style hover:text-primary transition-colors" href="#">The Breath of the Workshop</a>
+</li>
+<li>
+<span class="font-label text-[10px] text-primary/50 block mb-1">May 2024</span>
+<a class="text-xl mackintosh-style hover:text-primary transition-colors" href="#">Notes on Indigo Dyeing Wood</a>
+</li>
+<li>
+<span class="font-label text-[10px] text-primary/50 block mb-1">April 2024</span>
+<a class="text-xl mackintosh-style hover:text-primary transition-colors" href="#">Ma: The Space Between Chisel Strokes</a>
+</li>
+</ul>
+</div>
+</div>
+<div class="w-full md:w-2/3 space-y-32">
+<!-- Entry 1 -->
+<article class="group">
+<div class="mb-8 flex items-center justify-between border-b border-outline-variant/20 pb-4">
+<span class="font-label text-xs uppercase tracking-widest text-outline">Ref. 2024.06.12</span>
+<span class="font-label text-xs uppercase tracking-widest text-outline italic">Workshop Logs</span>
+</div>
+<h2 class="text-5xl mackintosh-style mb-10 group-hover:translate-x-2 transition-transform duration-500">The Anatomy of a Dovetail</h2>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12 mb-10">
+<p class="font-headline italic text-lg leading-relaxed text-on-surface-variant">
+                                Precision is often mistaken for perfection. In the Shokunin tradition, precision is the manifestation of respect. Each cut is a promise kept to the material.
+                            </p>
+<img class="aspect-square object-cover grayscale sepia-[.2] opacity-80 border border-outline-variant/30 p-2" data-alt="Close-up of high-quality woodworking tools, chisels, and wood shavings on a workbench, natural side-lighting, warm tones." src="https://lh3.googleusercontent.com/aida-public/AB6AXuAdMrcRdUfejjZFrstIXRSjnRbxHiPTCIx7y2QPdtQooVsWf2ZZOBgMPmL_EOeJZPSCYbl3LYzHyK7Vi5C9SD9BTfcdapVlxXvwpkcfqum4wZ0AsdzrgucGjLl_9rAVRFObZgArPTQVcxyTm3NMHX1GpOM06roI5089o7poTm3G-E59lhq5OrnKrQDpHzpdp6kRbM90WyK1_1P98rAyrVoI-DQD9QEY9NgYlxO-Rtvh7eY6db60cCQJGOlESRqbI2fT40B4GVL3qF94"/>
+</div>
+<p class="font-headline italic text-lg leading-relaxed text-on-surface-variant mb-12">
+                            To create a joint that lasts for three centuries, one must think in centuries. We consider the expansion of the wood, the humidity of the region it will reside in, and the hands that will touch it decades from now.
+                        </p>
+</article>
+<!-- Entry 2 -->
+<article class="group">
+<div class="mb-8 flex items-center justify-between border-b border-outline-variant/20 pb-4">
+<span class="font-label text-xs uppercase tracking-widest text-outline">Ref. 2024.05.28</span>
+<span class="font-label text-xs uppercase tracking-widest text-outline italic">Craft Series</span>
+</div>
+<h2 class="text-5xl mackintosh-style mb-10 group-hover:translate-x-2 transition-transform duration-500">Water and Stone: Sharpening</h2>
+<div class="flex flex-col md:flex-row gap-12 mb-10">
+<div class="w-full md:w-1/2 aspect-[3/4] overflow-hidden">
+<img class="w-full h-full object-cover mix-blend-multiply opacity-90 transition-transform duration-700" data-alt="An artisan sharpening a steel blade on a whetstone, water droplets visible, moody dark workshop setting." src="https://lh3.googleusercontent.com/aida-public/AB6AXuDUeZBryc_JN1u6LuEHTAfDUT9zvWGjpspLDiyNryI3IygtLmLyh6wS150BBv0je1vwkgqADCwlTUko44m4Wu8qldJiPzPstk6raMjjCk51csaSQyO4LWL_StD0zz3TQIBO25-WOiRrcAr4IX95kKJQ1l0h2iRxXZWasCbfYe1EmX00eSiAHlFqcEaEiktLdlSk5ThZ0NASmhr_1YC3PKPm-fiA-CwSjdHx5NWGIJABcCvWDuCAPrdO5kojjIB6Tpub-kZz98N-qRmV"/>
+</div>
+<div class="w-full md:w-1/2 flex flex-col justify-center">
+<p class="font-headline italic text-lg leading-relaxed text-on-surface-variant mb-6">
+                                    The sound of steel on whetstone is the rhythm of the workshop morning. It is a meditative state where the senses are tuned to the microscopic burr at the edge.
+                                </p>
+<p class="font-headline italic text-lg leading-relaxed text-on-surface-variant">
+                                    Without a sharp tool, the wood is crushed, not cut. We begin every project by paying homage to our stones.
+                                </p>
+</div>
+</div>
+</article>
+</div>
+</div>
+</section>
+<!-- Newsletter / Invitation -->
+<section class="mt-40 p-16 md:p-32 bg-surface-container-low text-center flex flex-col items-center">
+<span class="font-label text-xs tracking-[0.5em] uppercase text-secondary mb-12">Stay in the Grain</span>
+<h2 class="text-4xl md:text-6xl mackintosh-style mb-12 max-w-2xl">Receive our seasonal reflections on craft and philosophy.</h2>
+<div class="w-full max-w-md border-b border-on-surface/20 flex items-center pb-2">
+<input class="bg-transparent border-none focus:ring-0 w-full font-headline italic text-lg placeholder:text-outline/50" placeholder="Your essence (Email)" type="email"/>
+<button class="font-label text-xs tracking-widest uppercase text-primary ml-4 hover:opacity-70 transition-opacity">Inscribe</button>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 mt-24 bg-[#f8f3ec] flex flex-col md:flex-row justify-between items-center gap-8 border-t border-[#1d1c17]/5">
+<div class="flex flex-col items-center md:items-start gap-2">
+<p class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#725338]">© 2024 Shokunin Studio. Built to last generations.</p>
+</div>
+<div class="flex gap-12">
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Philosophy</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Sustainability</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Shipping</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Contact</a>
+</div>
+</footer>
+</body></html>

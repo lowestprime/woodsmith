@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Shop Talk | Beaman Woodworks</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: Epilogue (proxy for Mackintosh) and Work Sans -->
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;700&amp;family=Work+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#e1c299",
+              "on-primary": "#402d10",
+              "background": "#000000",
+              "surface": "#000000",
+              "surface-container-low": "#131313",
+              "surface-container-high": "#1b1b1b",
+              "surface-container-highest": "#2a2a2a",
+              "surface-container-lowest": "#000000",
+              "on-surface": "#e2e2e2",
+              "on-surface-variant": "#d4c3b9",
+              "outline": "#9d8e84",
+              "outline-variant": "#50443d",
+            },
+            fontFamily: {
+              "headline": ["Epilogue", "serif"],
+              "body": ["Work Sans", "sans-serif"],
+              "label": ["Work Sans", "sans-serif"],
+              "mackintosh": ["Epilogue", "serif"] 
+            },
+            borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .font-mackintosh {
+            font-family: 'Epilogue', serif;
+            font-weight: 300;
+            letter-spacing: -0.02em;
+            text-transform: none;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-nav {
+            background: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(24px);
+        }
+        .wood-grain-gradient {
+            background: linear-gradient(45deg, #725338 0%, #a88c67 100%);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface antialiased selection:bg-primary selection:text-on-primary font-body">
+<!-- Top Navigation Bar - Matching SCREEN_26 -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-12 py-6 w-full glass-nav bg-gradient-to-b from-black to-transparent">
+<div class="text-2xl font-mackintosh text-primary">
+        Beaman Woodworks
+    </div>
+<div class="hidden md:flex items-center space-x-12">
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Workshop</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Ledger</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Commission</a>
+<a class="text-primary border-b-2 border-primary pb-1 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Notes</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">About</a>
+</div>
+<div class="flex items-center space-x-6 text-primary">
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span></button>
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span></button>
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="person">person</span></button>
+</div>
+</nav>
+<main class="max-w-7xl mx-auto px-6 md:px-12 pt-32">
+<!-- Hero Section -->
+<header class="mb-32">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12 items-end">
+<div class="md:col-span-7">
+<span class="font-label text-[10px] uppercase tracking-[0.3em] text-primary mb-6 block">Vol. IV — No. 12</span>
+<h1 class="font-mackintosh text-8xl md:text-[10rem] text-primary leading-[0.85] tracking-tight">Shop Talk</h1>
+<p class="font-body text-lg text-on-surface-variant mt-10 max-w-md leading-relaxed">
+                    Observations on craft, the slow nature of wood, and the quiet rhythm of the workshop.
+                </p>
+</div>
+<div class="md:col-span-5 flex justify-end">
+<div class="w-full aspect-[4/5] bg-surface-container-low overflow-hidden group border border-outline-variant/10">
+<img alt="Workshop sunlight" class="w-full h-full object-cover grayscale transition-transform duration-1000 group-hover:scale-105" data-alt="Soft morning sunlight streaming through a dusty woodworking shop window, illuminating hand tools on a wooden workbench with wood shavings" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBkNPrW8ghLlSrz0Wf1Qsw7Ev21YdW2J3faXI_q6zpCABYJxw5-e9C4AaGKy0yXeN--xF6-2OfwCY2Tgx6CGIk-augIiA8RO3oaK6E-tRRvrGpdRKndstxQe72C1iunUwtbHMBp9QcR7CVNm-e3BNd1e8wJwIHYYkYlBvLkNp-2TPpmRaAMdJKd5z4sFlkNZsl8JKXcnOIucwu_O5IZaneIQgUK-OmkKeX_G-gJQL4pIA7gUitz9F9GMNTz_AdpzQzIvmSzn0WRg2mx"/>
+</div>
+</div>
+</div>
+</header>
+<!-- Journal Entries Section -->
+<section class="mb-48">
+<div class="flex items-baseline justify-between mb-24">
+<h2 class="font-mackintosh text-5xl text-primary">Journal Entries</h2>
+<div class="h-px flex-grow mx-12 bg-outline-variant/20"></div>
+<span class="font-label text-[10px] uppercase tracking-[0.4em] text-on-surface-variant">The Archive</span>
+</div>
+<div class="space-y-48">
+<!-- Entry 1 -->
+<article class="grid grid-cols-1 md:grid-cols-12 gap-16 group">
+<div class="md:col-span-5 order-2 md:order-1 flex flex-col justify-center">
+<div class="mb-6">
+<span class="font-label text-[10px] uppercase tracking-widest text-primary border border-primary/20 px-3 py-1">Black Walnut</span>
+</div>
+<h3 class="font-mackintosh text-4xl md:text-5xl mb-8 group-hover:text-primary transition-colors cursor-pointer leading-tight text-on-surface">The Patience of Air Drying</h3>
+<p class="font-body text-on-surface-variant leading-relaxed mb-10 text-lg">
+                        There is a distinct lack of haste required when seasoning walnut. We speak of one year per inch of thickness, but the wood often demands more. It is a dialogue between the internal moisture and the ambient air of the valley.
+                    </p>
+<div>
+<a class="font-label text-[11px] font-medium uppercase tracking-[0.2em] border-b border-primary/30 pb-1 text-primary hover:border-primary transition-all" href="#">Read Full Entry</a>
+</div>
+</div>
+<div class="md:col-span-7 order-1 md:order-2">
+<div class="aspect-[16/10] bg-surface-container-low overflow-hidden border border-outline-variant/10">
+<img alt="Seasoning wood" class="w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-1000 grayscale opacity-80 group-hover:grayscale-0 group-hover:opacity-100" data-alt="Stacked slabs of raw walnut timber with live edges, drying in a dimly lit barn with dust motes dancing in light beams" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD9hTRO5lmuuiryCbN3jYO3mwMTK06UCUbyw6QAeLocr0Vh0bBQhz7UFBXk7aSgVV5n_q1pZRwc3AaKHtgVHZOZ3sZWXDWqOi4VI4-ZJAYlipnptPCJii8KXCmZouZSE-ZrqEsj-jQmjLRDvKFidgFi3BNCJ0puW8olSVVfciHdkZggP5V8UlQm3wa9_SOM3nUk3a20LVshELlMJ3oskbW2-SlbiNSzWSi40GjgkNg1ciGRpbPmar-xK5YFe4CgRJ8H4oOxq3bu3K54"/>
+</div>
+</div>
+</article>
+<!-- Entry 2 -->
+<article class="grid grid-cols-1 md:grid-cols-12 gap-16 group">
+<div class="md:col-span-7">
+<div class="aspect-[16/10] bg-surface-container-low overflow-hidden border border-outline-variant/10">
+<img alt="Sharpening tools" class="w-full h-full object-cover grayscale transition-all duration-1000 group-hover:grayscale-0 group-hover:scale-105" data-alt="Close-up of a Japanese water stone and a sharp wood chisel with water droplets and metal slurry on a dark surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAFNQyF2eI5FOCB8GnMEZ2m-K19fcf_eA_1QsQVnbYBg51EcRmkqypECzH-s4XYrh684f5Ecni1SlfmSk-u6O1rWpx7VQmGgRSJaTmUsyvwzuMUiUwvuIKJgBvVxxZRb-T9ryUjQvlXyOCK78DPewHpz9VtoFjXs4tUKB2yVjLLwPDBOqoYgHNmSDmnadoalwhZIAb4OXimMNKGVxwkxwpxHVAEUVyIWnfUiPbVram_5BaiJZvC18Hai_VVYETIVu0_h7-9EiWQ4Wqf"/>
+</div>
+</div>
+<div class="md:col-span-5 flex flex-col justify-center">
+<div class="mb-6">
+<span class="font-label text-[10px] uppercase tracking-widest text-primary border border-primary/20 px-3 py-1">Ritual</span>
+</div>
+<h3 class="font-mackintosh text-4xl md:text-5xl mb-8 group-hover:text-primary transition-colors cursor-pointer leading-tight text-on-surface">The Morning Sharpening</h3>
+<p class="font-body text-on-surface-variant leading-relaxed mb-10 text-lg">
+                        The sound of steel on waterstone is the first note of the day. It is a meditative preparation, ensuring that the tool becomes an extension of the hand's intent, rather than a resistance to it.
+                    </p>
+<div>
+<a class="font-label text-[11px] font-medium uppercase tracking-[0.2em] border-b border-primary/30 pb-1 text-primary hover:border-primary transition-all" href="#">Read Full Entry</a>
+</div>
+</div>
+</article>
+</div>
+</section>
+<!-- Material Reflections Section -->
+<section class="mb-48 py-32 bg-surface-container-low -mx-6 md:-mx-12 px-6 md:px-12">
+<div class="max-w-7xl mx-auto">
+<h2 class="font-mackintosh text-5xl text-primary mb-20 text-center italic">Material Reflections</h2>
+<div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+<div class="md:col-span-2 md:row-span-2 p-12 bg-black border border-outline-variant/10 group flex flex-col justify-between">
+<div>
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Species Focus</span>
+<h4 class="font-mackintosh text-4xl mt-6 mb-8 text-on-surface">Hinoki (Japanese Cypress)</h4>
+<p class="font-body text-on-surface-variant leading-relaxed">
+                            Noted for its citrus scent and incredible resistance to rot. Working with Hinoki is a tactile experience in softness and structural integrity.
+                        </p>
+</div>
+<div class="mt-16 aspect-[4/3] bg-surface-container-highest overflow-hidden">
+<img alt="Hinoki texture" class="w-full h-full object-cover grayscale brightness-75 group-hover:scale-110 group-hover:brightness-100 transition-all duration-1000" data-alt="Macro detail of light-colored Hinoki wood grain with visible soft rings and a smooth planed finish" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDhD8uxcpkJ4LEua6XTl12VPYuzVmdgF2hygw3eHCO7lpqegvIzxtEF608AUQ1iyqfIy_niP9mH5i6sq7aJzK_T-paHPiJBECQEl9b4reb5CEtWH5aj8d6gyjlHTG6sZAhqobypEFZexk6_avbwR3OShG15NZt7fMsz2CFwZX9pq-GbyfnUW707CT0sSEWXMlIdqP5Svoi7dxM4_Uu7BtEA2yZpAioj0OfLGaoF9IGRekA9YV7ezQ4Q4tBsdf6V09haI-4wJ0ac63PD"/>
+</div>
+</div>
+<div class="p-10 bg-black border border-outline-variant/10 flex flex-col items-center justify-center text-center group">
+<span class="material-symbols-outlined text-4xl text-primary mb-6 transition-transform group-hover:scale-110" data-icon="opacity">opacity</span>
+<h5 class="font-label text-[11px] font-bold uppercase tracking-[0.2em] mb-4 text-primary">Tung Oil</h5>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">Deep saturation for heritage furniture.</p>
+</div>
+<div class="p-10 bg-black border border-outline-variant/10 flex flex-col justify-center">
+<h5 class="font-mackintosh text-3xl mb-4 italic text-primary">Grain Direction</h5>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">Reading the board before the first cut avoids the tragedy of tear-out.</p>
+</div>
+<div class="md:col-span-2 p-12 bg-surface-container-highest text-on-surface flex flex-col md:flex-row gap-10 items-center">
+<div class="flex-1">
+<h4 class="font-mackintosh text-4xl mb-6 text-primary">The Dovetail</h4>
+<p class="font-body text-sm text-on-surface-variant leading-relaxed">A mechanical marriage that requires no fasteners, only precision and trust in the wood's movement.</p>
+</div>
+<div class="w-32 h-32 bg-black/40 rounded-full flex items-center justify-center border border-primary/20 shrink-0">
+<span class="material-symbols-outlined text-5xl text-primary" data-icon="architecture">architecture</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- External Highlights -->
+<section class="mb-48 max-w-4xl mx-auto">
+<div class="text-center mb-24">
+<h2 class="font-mackintosh text-5xl text-primary mb-4 italic">Highlights from the Web</h2>
+<p class="font-label text-[10px] text-on-surface-variant tracking-[0.3em] uppercase">Curated external readings and media</p>
+</div>
+<div class="space-y-20 border-l border-outline-variant/20 pl-12 md:pl-20">
+<!-- Link 1 -->
+<div class="relative group cursor-pointer">
+<div class="absolute -left-[54px] md:-left-[86px] top-2 w-3 h-3 bg-primary ring-[12px] ring-black transition-all group-hover:scale-125"></div>
+<div class="flex flex-col md:flex-row md:items-start gap-10">
+<div class="flex-1">
+<h4 class="font-mackintosh text-2xl text-on-surface group-hover:text-primary transition-colors">
+<span class="text-outline/50 mr-2">01.</span> The Soul of a Tree — George Nakashima
+                        </h4>
+<p class="font-body text-on-surface-variant mt-4 leading-relaxed">A foundational text for anyone seeking the spirit within the timber.</p>
+</div>
+<div class="w-28 h-28 bg-surface-container overflow-hidden shrink-0 border border-outline-variant/10">
+<img alt="Book cover" class="w-full h-full object-cover grayscale opacity-40 group-hover:opacity-100 group-hover:grayscale-0 transition-all duration-700" data-alt="Artistic cover of a book about woodworking sitting on a minimalist wooden chair in a sunlit gallery" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCb6UzUzeCWz0xuS375hrhZfyGheKODSzxA97sKNQe680xJp-bdUbRP4KF057WyXr7zYZlSC5LY-hebKqoJMK1Z4QYQ4LYTkNmvuzgtMvn1BlMnur72mBRbmtN2DY6vxoMS8Tg0KdIojs5cFXEm2gerDM-UkSVirYOUxilkB46HImHviIIPgDXZNxgwLsWYP9o4z9eVvBAE9C5DfibBjphWfULjjF2aHOVhLghNZ5FKDppHVM3QJb6GJYhQEy-EyLgFVhwTCBGNTyZj"/>
+</div>
+</div>
+</div>
+<!-- Link 2 -->
+<div class="relative group cursor-pointer">
+<div class="absolute -left-[54px] md:-left-[86px] top-2 w-3 h-3 bg-outline-variant/30 ring-[12px] ring-black transition-all group-hover:scale-125 group-hover:bg-primary"></div>
+<div class="flex flex-col md:flex-row md:items-start gap-10">
+<div class="flex-1">
+<h4 class="font-mackintosh text-2xl text-on-surface group-hover:text-primary transition-colors">
+<span class="text-outline/50 mr-2">02.</span> Modernism &amp; Joinery — Danish Furniture Design
+                        </h4>
+<p class="font-body text-on-surface-variant mt-4 leading-relaxed">Exploring the intersection of industrial production and artisan hand-finishing.</p>
+</div>
+<div class="w-28 h-28 bg-surface-container overflow-hidden shrink-0 border border-outline-variant/10">
+<img alt="Danish chair" class="w-full h-full object-cover grayscale opacity-40 group-hover:opacity-100 group-hover:grayscale-0 transition-all duration-700" data-alt="Iconic mid-century modern wooden chair with a paper cord seat against a clean white wall" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDtai_4YlJjHbpXWKJllxr7DpoGhX8bOCYzCQB2ZsrOYXP1i0GnzHrdn2XbniGbdMaw_nVZZhrgiwv6JDyUb4ozfwJvvIDKz4Nbyw9bxsZjUaUjvwiojjIwcHg8kZ2IuKwrOU5dVSAzVu8Cc-Py2PUaQxat-unjAZ5hHKKgbZi96pRQoJ8qrnv07xvg-BebBBXhxdYS0260R2MJWG2o-8bV8PjRej9qyMTWBlSxGOSTZNwH9CUozsqYL9fc5Q12isynVHHFLUG3a7KM"/>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Subscription Section -->
+<section class="py-32 text-center border-t border-outline-variant/10 max-w-3xl mx-auto">
+<h3 class="font-mackintosh text-6xl mb-10 italic text-primary">Join the Workshop</h3>
+<p class="font-body text-on-surface-variant text-lg mb-12 leading-relaxed max-w-md mx-auto">
+            Receive occasional dispatches on wood, design, and the slow life.
+        </p>
+<form class="flex flex-col sm:flex-row gap-4 max-w-lg mx-auto">
+<input class="flex-1 bg-surface-container-low border-0 border-b border-outline focus:border-primary focus:ring-0 font-body text-sm px-6 py-5 outline-none placeholder:text-outline/50 text-on-surface" placeholder="Your email address" type="email"/>
+<button class="bg-primary text-on-primary px-10 py-5 font-label text-[11px] font-bold uppercase tracking-[0.2em] hover:brightness-110 transition-all" type="submit">Subscribe</button>
+</form>
+</section>
+</main>
+<!-- Footer - Matching SCREEN_26 -->
+<footer class="w-full bg-[#0e0e0e] grid grid-cols-1 md:grid-cols-2 gap-8 px-12 py-16 w-full mt-24">
+<div class="space-y-8">
+<div class="font-mackintosh text-2xl text-primary">Beaman Woodworks</div>
+<p class="font-body text-sm text-on-surface-variant max-w-sm leading-relaxed">
+            A collaborative venture between a builder's hands and a developer's mind. Crafting permanence in a digital age.
+        </p>
+<div class="flex space-x-8 text-[0.6875rem] uppercase tracking-widest font-label">
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Instagram</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">GitHub</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Contact</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Privacy</a>
+</div>
+</div>
+<div class="flex flex-col justify-between md:items-end">
+<div class="space-y-4 md:text-right">
+<div>
+<span class="font-label uppercase tracking-[0.2em] text-[0.5rem] text-primary block">Master Builder</span>
+<span class="font-mackintosh text-xl text-on-surface">William Beaman</span>
+</div>
+<div>
+<span class="font-label uppercase tracking-[0.2em] text-[0.5rem] text-primary block">Developer</span>
+<span class="font-mackintosh text-xl text-on-surface">Cooper Beaman</span>
+</div>
+</div>
+<p class="text-[0.6875rem] uppercase tracking-widest text-on-surface-variant mt-12">
+            © Beaman Woodworks. Cooper Beaman (Developer) &amp; William Beaman (Master Builder).
+        </p>
+</div>
+</footer>
+</body></html>

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@1,6..72,200..800&amp;family=Work+Sans:wght@300;400;500;600&amp;family=Inter:wght@400;500&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        /* Mapping 'ITC New Rennie Mackintosh' vibe to Newsreader Italic with specific tracking */
+        .font-mackintosh {
+            font-family: 'Newsreader', serif;
+            font-style: italic;
+            font-weight: 300;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .wood-grain-gradient {
+            background: linear-gradient(45deg, #725338 0%, #8d6b4e 100%);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "inverse-surface": "#32302c",
+                "inverse-on-surface": "#f5f0e9",
+                "on-secondary-container": "#736153",
+                "inverse-primary": "#e8bf9d",
+                "on-secondary-fixed": "#26190e",
+                "background": "#fef9f2",
+                "surface-container-highest": "#e7e2db",
+                "on-tertiary-fixed-variant": "#4c463e",
+                "on-background": "#1d1c17",
+                "surface-tint": "#78583c",
+                "surface-variant": "#e7e2db",
+                "outline-variant": "#d3c4b9",
+                "on-surface": "#1d1c17",
+                "secondary-fixed-dim": "#dac2b1",
+                "on-primary": "#ffffff",
+                "error-container": "#ffdad6",
+                "surface": "#fef9f2",
+                "primary-container": "#8d6b4e",
+                "surface-container": "#f2ede6",
+                "on-tertiary-container": "#fff7f1",
+                "on-tertiary": "#ffffff",
+                "tertiary-container": "#797168",
+                "on-primary-container": "#fff6f2",
+                "surface-dim": "#ded9d3",
+                "on-surface-variant": "#4f453d",
+                "on-error": "#ffffff",
+                "primary-fixed-dim": "#e8bf9d",
+                "on-primary-fixed-variant": "#5d4127",
+                "error": "#ba1a1a",
+                "tertiary-fixed": "#ece1d6",
+                "on-tertiary-fixed": "#201b15",
+                "primary": "#725338",
+                "on-error-container": "#93000a",
+                "tertiary-fixed-dim": "#cfc5bb",
+                "secondary": "#6d5b4d",
+                "on-secondary": "#ffffff",
+                "on-secondary-fixed-variant": "#544437",
+                "secondary-fixed": "#f7decc",
+                "tertiary": "#605851",
+                "surface-container-lowest": "#ffffff",
+                "surface-bright": "#fef9f2",
+                "on-primary-fixed": "#2c1602",
+                "outline": "#81756c",
+                "primary-fixed": "#ffdcc1",
+                "surface-container-low": "#f8f3ec",
+                "surface-container-high": "#ece7e1",
+                "secondary-container": "#f7decc"
+              },
+              fontFamily: {
+                "headline": ["Newsreader"],
+                "body": ["Work Sans"],
+                "label": ["Inter"]
+              },
+              borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary-fixed selection:text-on-primary-fixed">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 bg-[#fef9f2]/85 dark:bg-[#1d1c17]/85 backdrop-blur-md flex justify-between items-center px-8 py-6 max-w-none mx-auto">
+<div class="text-2xl font-light tracking-[0.2em] text-[#1d1c17] dark:text-[#fef9f2]">SHOKUNIN</div>
+<div class="hidden md:flex items-center gap-12">
+<a class="font-['Newsreader'] italic tracking-wide text-[#725338] dark:text-[#d7ccc8] border-b border-[#725338] pb-1 hover:opacity-100 transition-opacity duration-300" href="#">Workshop</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Ledger</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Commission</a>
+<a class="font-['Newsreader'] italic tracking-wide text-[#6d5b4d] dark:text-[#e7e2db] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Notes</a>
+</div>
+<div class="flex items-center gap-6 text-[#725338]">
+<button class="material-symbols-outlined hover:scale-95 duration-200" data-icon="shopping_cart">shopping_cart</button>
+<button class="material-symbols-outlined hover:scale-95 duration-200" data-icon="person">person</button>
+</div>
+</nav>
+<main class="pt-32">
+<!-- Hero: Shokunin Philosophy -->
+<section class="px-8 md:px-24 mb-32">
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12 items-start">
+<div class="md:col-span-7">
+<h1 class="font-headline italic text-7xl md:text-9xl text-on-surface leading-[0.85] tracking-tight mb-12">
+                        The soul of the tool is the hand of the master.
+                    </h1>
+<div class="max-w-md">
+<p class="text-lg text-on-surface-variant leading-relaxed mb-8">
+                            Komorebi Woodworks is a sanctuary of traditional joinery and contemporary silence. We do not manufacture; we listen to the grain.
+                        </p>
+<button class="wood-grain-gradient text-on-primary px-8 py-4 rounded-sm font-label text-sm tracking-widest uppercase hover:opacity-90 transition-all flex items-center gap-4 group">
+                            Explore the Ledger
+                            <span class="material-symbols-outlined text-sm group-hover:translate-x-1 transition-transform" data-icon="arrow_forward">arrow_forward</span>
+</button>
+</div>
+</div>
+<div class="md:col-span-5 relative mt-12 md:mt-0">
+<div class="aspect-[3/4] bg-surface-container-low overflow-hidden">
+<img class="w-full h-full object-cover grayscale-[0.2] contrast-125" data-alt="Close up of a wooden joint being precision carved with a sharp Japanese chisel by an artisan hand, soft natural workshop light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDBGYoSp8AikzW54GILZH7M1VoBiJboG3PYSZWD4gKA9MO6OTDiXcOyO4HO_usht2fS5g3nGLPi3NR8ETd7F20T74SUDZ1ayLmQz7oZgpAYi2GFVUZn4xYDvXPTCZIR16nGJkbbh1McXpIKDW3mWdZXMT8mljZIf-RePYDHL8dCm8t2QSDvisFSFViddH_UZcKH-6cZoM1trlVzKoWb5t5h7Zn_T1o44ZabJ2sQgBIVYbv7URcwYQpk_urIft-lVbsE6jVTKETZ7lAJ"/>
+</div>
+<div class="absolute -bottom-6 -left-6 bg-surface p-8 hidden md:block max-w-[200px]">
+<p class="font-label text-[10px] uppercase tracking-[0.3em] text-outline mb-4">Current Project</p>
+<p class="font-headline italic text-xl">The Winter Tansu</p>
+</div>
+</div>
+</div>
+</section>
+<!-- Featured Masterworks: Asymmetric Gallery -->
+<section class="bg-surface-container-low py-32 px-8 md:px-24 overflow-hidden">
+<div class="mb-24 flex flex-col md:flex-row justify-between items-baseline gap-8">
+<h2 class="font-headline italic text-5xl text-primary">Featured Masterworks</h2>
+<div class="h-px flex-grow bg-outline-variant/20 mx-12 hidden md:block"></div>
+<p class="font-label text-xs tracking-widest uppercase opacity-60">Selection 001—004</p>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-16 items-end">
+<!-- Piece 01 -->
+<div class="space-y-6 group cursor-pointer">
+<div class="aspect-[4/5] bg-surface overflow-hidden transition-all duration-700 group-hover:shadow-[0px_12px_32px_rgba(29,28,23,0.06)]">
+<img class="w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-700" data-alt="Minimalist solid walnut dining table with visible butterfly joints, standing in a brightly lit studio with white walls" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAvQBzUIeOB7X-61jEbroJoiucVTxrEPygLxeEtT0petNSIAPJeZrP3AkRi--gF-2pwqRkq91r6TgDAWm4XESbowUG-MqzHBl10h134BgSMYaVh4c71TRoG8M9iWVCA-p2Nz6yfGiW3LxV6Xat-KmshI4415lAyXt25wN2Wz0ivg9IM8O_gGIGgTp6I3dO_bmmaOqQoopt0eJk_GMJAO2CtuwIJLuxNk7HMngdPLdrr7ZHVKx7025kY0q7TtN7eml9WvduIthpnmtvW"/>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label text-[10px] uppercase tracking-widest text-outline">Black Walnut</p>
+<h3 class="font-headline italic text-2xl mt-1">The Monolith Table</h3>
+</div>
+<span class="font-label text-sm opacity-40">2023</span>
+</div>
+</div>
+<!-- Piece 02 (Asymmetric shift) -->
+<div class="space-y-6 group cursor-pointer lg:pb-24">
+<div class="aspect-square bg-surface overflow-hidden transition-all duration-700 group-hover:shadow-[0px_12px_32px_rgba(29,28,23,0.06)]">
+<img class="w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-700" data-alt="Close up of fine wood joinery detail showing the interlocking teeth of a dovetail joint in light-colored oak" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2awS9IyxMUtdGElXH_5PZKWgUpTi2b0i6xt5o_RDe-1EgWzs1gy0pYx8gjakMI0yjmLAcshRFYO0ojDuA0Vbauy-Ck7U7oB6gL2ShTszAfApr6Ug996IbPoU6Ca-HKahFPEXiDCuxHi0z96eM9sXDVWR5m5HkL3rl8ptdnT332O1_G9fJyXNuDq6aoORzHBMdUICszW3jDRz_vDVtxN2cSR7dqROfBLHniNMLk2eZx_SO_Sd7Et6oa7NlZia4VDqvEU5w0NHoSlsP"/>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label text-[10px] uppercase tracking-widest text-outline">White Oak</p>
+<h3 class="font-headline italic text-2xl mt-1">Dovetail Study No. 4</h3>
+</div>
+<span class="font-label text-sm opacity-40">2024</span>
+</div>
+</div>
+<!-- Piece 03 -->
+<div class="space-y-6 group cursor-pointer">
+<div class="aspect-[3/4] bg-surface overflow-hidden transition-all duration-700 group-hover:shadow-[0px_12px_32px_rgba(29,28,23,0.06)]">
+<img class="w-full h-full object-cover scale-105 group-hover:scale-100 transition-transform duration-700" data-alt="Sleek mid-century modern wooden chair with curved backrest, spotlighted in a dark moody environment" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBpQ1SeOM37BrdOOlai19YmPrD4HDKLc1TCjiZN4rQoYbIYINVmvTaLNDO7pSl3J_WVf32e2G13akJV5-FFhYnbxuvNlPUUYrd_UvQ79VG-3UrsHae46eizrZKt_0PgpK4W9JjEGYEOZNo5gKdEKRgbapkjJrJlxEGoNvJDN9dDlYGaaO7vb5aRoE3guzYA6HAuaXQDYDS7KX7GP4C8BZUgqM24n8Jw_QrLFPwNQlcxAgSfrCfK-QYU7c-dIpu2ZUpTQox48ttbr7PM"/>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<p class="font-label text-[10px] uppercase tracking-widest text-outline">Cherry Wood</p>
+<h3 class="font-headline italic text-2xl mt-1">Sora Occasional Chair</h3>
+</div>
+<span class="font-label text-sm opacity-40">2022</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Field Notes Snippet -->
+<section class="px-8 md:px-24 py-32">
+<div class="max-w-4xl mx-auto border-l border-outline-variant/30 pl-12 md:pl-24 py-12">
+<span class="font-label text-xs tracking-widest uppercase text-primary mb-8 block">Field Notes — April 2024</span>
+<h2 class="font-headline italic text-4xl md:text-6xl text-on-surface leading-snug mb-12">
+                    "Wood is not a static medium. It is a slow-motion liquid, responding to the breath of the seasons."
+                </h2>
+<div class="flex items-center gap-6">
+<div class="w-12 h-px bg-on-surface"></div>
+<a class="font-label text-xs tracking-[0.2em] uppercase hover:text-primary transition-colors" href="#">Read the full essay</a>
+</div>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-24">
+<div class="p-8 bg-surface-container hover:bg-surface-container-high transition-colors">
+<p class="font-label text-[10px] uppercase tracking-widest text-outline mb-4">Tech Specs</p>
+<h4 class="font-headline italic text-xl mb-4">The Kanna Plane</h4>
+<p class="text-sm leading-relaxed text-on-surface-variant">An investigation into the ritual of sharpening and the physics of the perfect shaving.</p>
+</div>
+<div class="p-8 bg-surface-container hover:bg-surface-container-high transition-colors">
+<p class="font-label text-[10px] uppercase tracking-widest text-outline mb-4">Process</p>
+<h4 class="font-headline italic text-xl mb-4">Seasoning Timber</h4>
+<p class="text-sm leading-relaxed text-on-surface-variant">Why we wait three years for the moisture content to reach the golden 8 percent.</p>
+</div>
+<div class="p-8 bg-surface-container hover:bg-surface-container-high transition-colors">
+<p class="font-label text-[10px] uppercase tracking-widest text-outline mb-4">Philosophy</p>
+<h4 class="font-headline italic text-xl mb-4">Ma: The Void</h4>
+<p class="text-sm leading-relaxed text-on-surface-variant">The importance of the space between the joints in traditional Japanese architecture.</p>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 mt-24 bg-[#f8f3ec] dark:bg-[#1d1c17] flex flex-col md:flex-row justify-between items-center gap-8 border-t border-[#1d1c17]/5">
+<div class="flex flex-col items-center md:items-start gap-4">
+<p class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#725338] dark:text-[#d7ccc8]">© 2024 Shokunin Studio. Built to last generations.</p>
+</div>
+<div class="flex gap-8">
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Philosophy</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Sustainability</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Shipping</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] dark:text-[#e7e2db] hover:text-[#725338] transition-colors duration-300" href="#">Contact</a>
+</div>
+</footer>
+</body></html>

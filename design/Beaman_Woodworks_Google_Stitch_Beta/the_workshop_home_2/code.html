@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Beaman Woodworks | The Workshop</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts: ITC New Rennie Mackintosh (simulated via similar high-end tall serif) and Work Sans -->
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@300;400;700&amp;family=Work+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-fixed": "#feddb3",
+              "secondary-fixed-dim": "#c6c7c2",
+              "secondary": "#c6c7c2",
+              "secondary-container": "#484a46",
+              "on-tertiary-fixed": "#1c1b1b",
+              "on-tertiary-container": "#2a2a2a",
+              "outline": "#9d8e84",
+              "secondary-fixed": "#e3e3de",
+              "surface-tint": "#e1c299",
+              "on-surface-variant": "#d4c3b9",
+              "tertiary-fixed-dim": "#c8c6c5",
+              "on-error-container": "#ffdad6",
+              "background": "#131313",
+              "surface-dim": "#131313",
+              "tertiary-container": "#929090",
+              "inverse-surface": "#e2e2e2",
+              "surface-bright": "#393939",
+              "inverse-primary": "#725a39",
+              "primary": "#e1c299",
+              "on-primary-container": "#382609",
+              "on-background": "#e2e2e2",
+              "error-container": "#93000a",
+              "surface-container-high": "#2a2a2a",
+              "inverse-on-surface": "#303030",
+              "on-secondary-fixed-variant": "#454744",
+              "on-secondary": "#2f312e",
+              "on-surface": "#e2e2e2",
+              "surface-container-low": "#1b1b1b",
+              "primary-fixed-dim": "#e1c299",
+              "surface-variant": "#353535",
+              "surface-container-highest": "#353535",
+              "primary-container": "#a88c67",
+              "surface": "#131313",
+              "on-tertiary": "#313030",
+              "error": "#ffb4ab",
+              "tertiary-fixed": "#e5e2e1",
+              "surface-container-lowest": "#0e0e0e",
+              "tertiary": "#c8c6c5",
+              "surface-container": "#1f1f1f",
+              "on-secondary-container": "#b8b9b4",
+              "outline-variant": "#50443d",
+              "on-primary-fixed-variant": "#584324",
+              "on-secondary-fixed": "#1a1c19",
+              "on-tertiary-fixed-variant": "#474746",
+              "on-primary-fixed": "#281801",
+              "on-primary": "#402d10",
+              "on-error": "#690005"
+            },
+            fontFamily: {
+              "headline": ["Epilogue", "serif"],
+              "body": ["Work Sans", "sans-serif"],
+              "label": ["Work Sans", "sans-serif"],
+              "mackintosh": ["Epilogue", "serif"] 
+            },
+            borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        /* Emulating ITC New Rennie Mackintosh visual characteristics: Tall, thin, geometric serif */
+        .font-mackintosh {
+            font-family: 'Epilogue', serif;
+            font-weight: 300;
+            letter-spacing: -0.02em;
+            text-transform: none;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        .glass-nav {
+            background: rgba(19, 19, 19, 0.6);
+            backdrop-filter: blur(24px);
+        }
+    </style>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-12 py-6 w-full glass-nav bg-gradient-to-b from-[#131313] to-transparent">
+<div class="text-2xl font-mackintosh text-primary">
+            Beaman Woodworks
+        </div>
+<div class="hidden md:flex items-center space-x-12">
+<a class="text-primary border-b-2 border-primary pb-1 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Workshop</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Ledger</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Commission</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">Notes</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors duration-300 font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem]" href="#">About</a>
+</div>
+<div class="flex items-center space-x-6 text-primary">
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="dark_mode">dark_mode</span></button>
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span></button>
+<button class="hover:opacity-80 transition-opacity"><span class="material-symbols-outlined" data-icon="person">person</span></button>
+</div>
+</nav>
+<main class="pt-32">
+<!-- Hero Section -->
+<section class="px-12 mb-32">
+<div class="relative grid grid-cols-12 gap-0">
+<div class="col-span-12 md:col-span-7 z-10 pt-20">
+<h1 class="text-8xl md:text-[10rem] font-mackintosh text-primary leading-none mb-8">
+                        The Workshop
+                    </h1>
+<div class="max-w-md">
+<p class="text-on-surface-variant text-lg font-light leading-relaxed mb-12">
+                            Where traditional Japanese joinery meets the raw spirit of American timber. Every piece is a dialogue between the tool and the grain.
+                        </p>
+<div class="flex items-center space-x-8">
+<button class="bg-primary text-on-primary px-8 py-4 font-label uppercase tracking-widest text-[0.6875rem] transition-all hover:bg-primary-container active:scale-95">
+                                View Collection
+                            </button>
+<div class="flex items-center space-x-3">
+<span class="w-3 h-3 bg-emerald-500 animate-pulse"></span>
+<span class="font-label uppercase tracking-widest text-[0.6875rem] text-on-surface-variant">Studio Status: Taking Commissions</span>
+</div>
+</div>
+</div>
+</div>
+<div class="col-span-12 md:col-span-5 relative mt-12 md:mt-0">
+<div class="aspect-[3/4] bg-surface-container-low overflow-hidden">
+<img alt="Artisan workshop view" class="w-full h-full object-cover grayscale contrast-125 opacity-80" data-alt="Close-up of a master woodworker's hand using a Japanese block plane on a raw oak board with wood shavings" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCQmKZiF0pHcYGeLZiUbC77_JEm58NmlyBvd3YI8Cj3nXbcrgqAaGZ6DEIv1qHr-knPLisajmSkmxQrTwdtO2MMmlKZ0sBsf06pjPDI9wFz0MG0U0bVM3CAbWCQWt8a98Iyh832hLb64cYZBCmVc1bryCYGCIC5kqjex5HII_sn0qsnm4j4g9O7OTNEjfZzt8iQ-Qszk7hfnRabvXCyICafmH1sXGxwCbXCM_bcILfERs07_pZkAQX8uYHB8wey16XGsTKZRHoh9Rph"/>
+</div>
+<!-- Overlapping decorative element -->
+<div class="absolute -bottom-12 -left-24 hidden md:block w-64 h-64 bg-surface-container-highest p-8">
+<span class="text-primary font-mackintosh text-6xl">01</span>
+<p class="font-label uppercase tracking-[0.2em] text-[0.5rem] mt-4 text-on-surface-variant leading-tight">
+                            William Beaman<br/>Master Builder
+                        </p>
+</div>
+</div>
+</div>
+</section>
+<!-- Philosophy Quote Section -->
+<section class="bg-surface-container-lowest py-32 px-12 mb-32">
+<div class="max-w-5xl mx-auto text-center">
+<span class="font-label uppercase tracking-[0.3em] text-[0.6875rem] text-primary mb-12 block">Philosophy</span>
+<blockquote class="text-4xl md:text-6xl font-mackintosh text-on-surface leading-tight italic">
+                    "Wood is not a static medium. It breathes, moves, and remembers the forest. Our role is to listen to its story before we pick up the chisel."
+                </blockquote>
+</div>
+</section>
+<!-- Featured Masterworks: Bento Grid -->
+<section class="px-12 mb-32">
+<div class="flex justify-between items-end mb-16">
+<div>
+<span class="font-label uppercase tracking-[0.3em] text-[0.6875rem] text-primary block mb-2">Portfolio</span>
+<h2 class="text-5xl font-mackintosh text-on-surface">Featured Masterworks</h2>
+</div>
+<a class="font-mackintosh text-xl text-primary border-b-2 border-primary pb-1 hover:opacity-80 transition-opacity" href="#">See all pieces</a>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<!-- Large Card -->
+<div class="md:col-span-2 group">
+<div class="relative overflow-hidden aspect-video bg-surface-container-low mb-4">
+<img alt="Handmade table" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="A minimalist low Japanese coffee table with exposed dovetail joints made from dark walnut wood in a bright studio" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAp25Nhc43izV49H3GX2AMrNiZ0xRTw5k-hchAgdGD_YpiY-1WHN_KWlJENFnHktC89c0OzKffCrAIc-8KkHjMiIN_9XAg3albxL4reTyVoN11108lS31e7uazkXHcWzRVkpBiwPnjUx57LMKwYjDPEzdS4Uj4m2js24IdnjOk85Rkz7ZY-haxg-_Eq4h6uCpOocL8LpovJtT-kT7iIJ0seR1maO3y8DjksFSW-Ld5jHC1uRh0cAkVISvb_KLykagrnXRYkbqT4H_DA"/>
+<div class="absolute bottom-6 left-6 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+<span class="bg-primary text-on-primary px-4 py-2 font-label text-[0.6rem] tracking-widest uppercase">Signature Piece</span>
+</div>
+</div>
+<h3 class="text-2xl font-mackintosh text-primary">The Kuro Table</h3>
+<p class="font-label uppercase tracking-widest text-[0.6rem] text-on-surface-variant">White Oak &amp; Walnut | 2024</p>
+</div>
+<!-- Tall Card -->
+<div class="group">
+<div class="relative overflow-hidden aspect-[3/4] bg-surface-container-low mb-4">
+<img alt="Wood joinery detail" class="w-full h-full object-cover grayscale transition-transform duration-700 group-hover:scale-105" data-alt="Extreme close-up of a complex wooden joinery detail showing the precision and texture of the wood grain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_A46eXAKBR7FGc9z1fkZF82l0AfcoBSoIU55F_kDdqRnvFi-5qeUl70RSqu94RuUvoiF7tDPcNI7vgFV2e4xRWD04wTD4DnVEFMRicFK6emVUq8GKolQUffhEojd4qpn1PA0jICOMdRQRDGIHIpVt8bJ-mlh1RzIyaWSD3ei1FC5fEiOtFs2vEedjxLNQ7wWuC0HyKvoNfUwoz4k8n5RyMgfgKofSDXAK-uldH3-LqIqGyfhg9FaRTRTPJkrqbGhwHvrLgHc4p810"/>
+</div>
+<h3 class="text-2xl font-mackintosh text-primary">Joinery Study No. 12</h3>
+<p class="font-label uppercase tracking-widest text-[0.6rem] text-on-surface-variant">Sculptural Object</p>
+</div>
+<!-- Small Cards -->
+<div class="group">
+<div class="relative overflow-hidden aspect-square bg-surface-container-low mb-4">
+<img alt="Handmade chair" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="An elegant handcrafted wooden chair with thin vertical slats and a natural finish standing against a dark wall" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDwuL71_idjw_XMQPx3FYMq1kQRJJ7-klFCSwSz4qJClVa6n2UrUzU0AzMjcQR5T9BhsMnJLslSNphzRJx30uD4Z3jxfx5YR5qpC16ZaLpMMtQusAn8yij7dQEpB7aQL58VQyqvV2v9xfdTAc5DkgqKIqxK7aHxt7QMhZhqP74Tw5Z9hk-DO0T5WKrmhfOXJA8NKtrlAhXb3uC8mKmHwfec8eMF_kJFr4ooupwSHeD5AzMNdRkqljNjehftmq1AA160486kM7bBUwUH"/>
+</div>
+<h3 class="text-2xl font-mackintosh text-primary">The Shoji Lounge</h3>
+<p class="font-label uppercase tracking-widest text-[0.6rem] text-on-surface-variant">Cherry Wood</p>
+</div>
+<div class="md:col-span-2 group">
+<div class="relative overflow-hidden aspect-[21/9] bg-surface-container-low mb-4">
+<img alt="Workshop tools" class="w-full h-full object-cover opacity-60 grayscale transition-transform duration-700 group-hover:scale-105" data-alt="A wide panoramic shot of a clean woodworking workshop with hand tools arranged neatly on a pegboard" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB9FbborJXejlaWh0DI3LpRIHwS4hFhGowjTlc7zLnkBY72TZhwiJsk3CMXz6urp2f-_PA9MYGCzllTulsbLLAfhFfEvQkbsr8M3oQFePYn8whB0HQbvz4wbQe6aCSjyrjEg2PPa1bA8H78izGp1Vw_MWmfwdqqI8JAXZRlzxOLiG3p1MwI6qGihU7YDKfi1YQGYKXp6X8N-6yL8SUs75Jqo7vQ64HUDz-2C1u5JMYs0IatuRjUvXsqSsQatm1r3h_2MhQVt4C2qGXx"/>
+<div class="absolute inset-0 flex items-center justify-center">
+<h4 class="text-4xl font-mackintosh text-on-surface tracking-tighter">The Studio Process</h4>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Status / Bandwidth Indicator -->
+<section class="px-12 mb-32">
+<div class="bg-surface-container-low p-16 flex flex-col md:flex-row justify-between items-center">
+<div class="mb-8 md:mb-0 text-center md:text-left">
+<h2 class="text-5xl font-mackintosh text-primary mb-4">Current Bandwidth</h2>
+<p class="text-on-surface-variant font-body">Estimated lead time for custom commissions: 14—18 weeks.</p>
+</div>
+<div class="flex flex-col items-center">
+<div class="w-48 h-1 bg-surface-variant mb-6 overflow-hidden">
+<div class="w-3/4 h-full bg-primary"></div>
+</div>
+<span class="font-label uppercase tracking-widest text-[0.6875rem] text-primary">75% Capacity Reached</span>
+<button class="mt-8 border border-outline px-10 py-4 font-label uppercase tracking-widest text-[0.6875rem] hover:bg-surface-container-highest transition-colors">
+                        Reserve a Slot
+                    </button>
+</div>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full bg-[#0e0e0e] grid grid-cols-1 md:grid-cols-2 gap-8 px-12 py-16 w-full mt-24">
+<div class="space-y-8">
+<div class="font-mackintosh text-2xl text-primary">Beaman Woodworks</div>
+<p class="font-body text-sm text-on-surface-variant max-w-sm leading-relaxed">
+                A collaborative venture between a builder's hands and a developer's mind. Crafting permanence in a digital age.
+            </p>
+<div class="flex space-x-8 text-[0.6875rem] uppercase tracking-widest font-label">
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Instagram</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">GitHub</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Contact</a>
+<a class="text-on-surface-variant hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Privacy</a>
+</div>
+</div>
+<div class="flex flex-col justify-between md:items-end">
+<div class="space-y-4 md:text-right">
+<div>
+<span class="font-label uppercase tracking-[0.2em] text-[0.5rem] text-primary block">Master Builder</span>
+<span class="font-mackintosh text-xl text-on-surface">William Beaman</span>
+</div>
+<div>
+<span class="font-label uppercase tracking-[0.2em] text-[0.5rem] text-primary block">Developer</span>
+<span class="font-mackintosh text-xl text-on-surface">Cooper Beaman</span>
+</div>
+</div>
+<p class="text-[0.6875rem] uppercase tracking-widest text-on-surface-variant mt-12">
+                © Beaman Woodworks. Cooper Beaman (Developer) &amp; William Beaman (Master Builder).
+            </p>
+</div>
+</footer>
+</body></html>

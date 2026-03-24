@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700&amp;family=Work+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        @font-face {
+            font-family: 'ITC New Rennie Mackintosh';
+            src: url('https://fonts.cdnfonts.com/css/itc-new-rennie-mackintosh') format('woff2'); /* Fallback to a similar high-end tall serif if CDN is unavailable */
+        }
+        /* Custom Font Fallback for the prompt requirements */
+        .font-mackintosh {
+            font-family: 'ITC New Rennie Mackintosh', 'Epilogue', serif;
+            letter-spacing: 0.05em;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0e0e0e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #353535;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary-container": "#484a46",
+                        "on-primary-fixed-variant": "#584324",
+                        "secondary": "#c6c7c2",
+                        "surface-bright": "#393939",
+                        "surface-tint": "#e1c299",
+                        "surface-container-low": "#1b1b1b",
+                        "on-tertiary": "#313030",
+                        "primary-fixed": "#feddb3",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#929090",
+                        "on-tertiary-container": "#2a2a2a",
+                        "on-secondary-container": "#b8b9b4",
+                        "surface-container-highest": "#353535",
+                        "tertiary": "#c8c6c5",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "inverse-surface": "#e2e2e2",
+                        "on-background": "#e2e2e2",
+                        "inverse-primary": "#725a39",
+                        "secondary-fixed": "#e3e3de",
+                        "secondary-fixed-dim": "#c6c7c2",
+                        "on-tertiary-fixed-variant": "#474746",
+                        "on-surface-variant": "#d4c3b9",
+                        "primary": "#e1c299",
+                        "on-secondary-fixed": "#1a1c19",
+                        "error-container": "#93000a",
+                        "background": "#131313",
+                        "primary-fixed-dim": "#e1c299",
+                        "on-primary-fixed": "#281801",
+                        "on-surface": "#e2e2e2",
+                        "surface-variant": "#353535",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-primary-container": "#382609",
+                        "tertiary-fixed-dim": "#c8c6c5",
+                        "on-primary": "#402d10",
+                        "surface-container": "#1f1f1f",
+                        "primary-container": "#a88c67",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#50443d",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#e5e2e1",
+                        "inverse-on-surface": "#303030",
+                        "surface": "#131313",
+                        "on-tertiary-fixed": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#454744",
+                        "outline": "#9d8e84",
+                        "on-secondary": "#2f312e"
+                    },
+                    fontFamily: {
+                        "headline": ["Epilogue", "sans-serif"],
+                        "body": ["Work Sans", "sans-serif"],
+                        "label": ["Work Sans", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body overflow-hidden h-screen flex flex-col">
+<!-- TopAppBar -->
+<header class="flex justify-between items-center w-full px-8 h-20 sticky top-0 z-50 bg-[#131313]/60 backdrop-blur-xl no-border">
+<div class="flex items-center gap-6">
+<span class="text-3xl font-mackintosh text-primary tracking-widest uppercase">Beaman Woodworks</span>
+<div class="hidden md:flex gap-8 ml-12">
+<a class="text-[#d4c3b9] hover:text-[#e1c299] font-label text-[10px] uppercase tracking-[0.1em] transition-all duration-200" href="#">Portfolio</a>
+<a class="text-[#d4c3b9] hover:text-[#e1c299] font-label text-[10px] uppercase tracking-[0.1em] transition-all duration-200" href="#">About</a>
+<a class="text-[#d4c3b9] hover:text-[#e1c299] font-label text-[10px] uppercase tracking-[0.1em] transition-all duration-200" href="#">Process</a>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="hidden lg:flex items-center bg-surface-container-low px-4 py-2">
+<span class="material-symbols-outlined text-outline text-sm mr-2">search</span>
+<input class="bg-transparent border-none focus:ring-0 text-xs font-label uppercase tracking-widest w-48 text-on-surface-variant" placeholder="Search Archives..." type="text"/>
+</div>
+<div class="flex gap-4">
+<button class="material-symbols-outlined text-primary cursor-pointer transition-all duration-200 hover:opacity-80">notifications</button>
+<button class="material-symbols-outlined text-primary cursor-pointer transition-all duration-200 hover:opacity-80">account_circle</button>
+</div>
+</div>
+</header>
+<main class="flex-1 flex overflow-hidden relative">
+<!-- Left Panel: Material Selections -->
+<aside class="w-80 bg-surface-container-low flex flex-col z-20 border-r border-outline-variant/10">
+<div class="p-8 space-y-12 overflow-y-auto h-full">
+<!-- Header -->
+<section>
+<h1 class="font-mackintosh text-3xl text-primary leading-none uppercase mb-2">3D Visualizer</h1>
+<p class="font-label text-[10px] uppercase tracking-[0.2em] text-on-surface-variant">Configuring: Dovetail Credenza</p>
+</section>
+<!-- Materials Selection -->
+<section class="space-y-6">
+<h2 class="font-label text-xs uppercase tracking-[0.15em] text-primary border-b border-outline-variant/20 pb-2">Material Selection</h2>
+<div class="grid grid-cols-1 gap-4">
+<button class="flex items-center gap-4 group p-3 bg-surface-container-high border-l-4 border-primary transition-all">
+<div class="w-12 h-12 bg-cover bg-center" data-alt="Close up texture of premium white oak wood grain with light natural finish" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAbKRRTpKYFVlmvws9yQSy77xgO4Xgma6pxWn6S4jqG_Vxcrd6VeszqyJaa_v7AHKESySdcQbCRIsWCf_Ej9Px4AGKi0AjBk_6S3CEw7lKOBwsJ9qxuRZFL-KjtoJTMErN5RoGaQ2rQ4omDNM9QOPjASkFvK1BgWQta3T1_MlJOLrH_8oI59A4FSFzL4OB0ehX6H2mjd_wLzrvUfc2wYl1cT6jwgBHsNsg_BuUchKC-o0Do5k_gZXJn7PKPbnJ9QqYHy23fIwV2Z-31')"></div>
+<div class="text-left">
+<p class="font-label text-[11px] uppercase tracking-widest text-primary">White Oak</p>
+<p class="text-[9px] text-on-surface-variant uppercase tracking-tighter">Sustainably Sourced</p>
+</div>
+</button>
+<button class="flex items-center gap-4 group p-3 hover:bg-surface-container-high transition-all">
+<div class="w-12 h-12 bg-cover bg-center opacity-60 group-hover:opacity-100" data-alt="Rich dark chocolate walnut wood grain texture showing swirling patterns" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuCyZHZFEQUm3hKv758xD-kv7RntQbGMZ_oWgo_KJY5rV1Z4dCqs_pWlKutqvWmnKlIBGnatbXBnGMCqSHJ4KjPwSSoLuVAByTrw1h1HT45uOt5mmUd8BVHSnCFPRFulhJTz1oQg-HM3IlkI6h8hEVX0n9GMAakdIdnk0OFmihUirVcScj4L7dk6I9qZOCaKD1ua7JFJV-rJPJQ7tiuTNwhRzUJbOjZ1mNvrKxYmMSZGb7pl7uBgzFahSFTrx2O4xf1fCFdU7h5r_sPr')"></div>
+<div class="text-left">
+<p class="font-label text-[11px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary">American Walnut</p>
+<p class="text-[9px] text-on-surface-variant/50 uppercase tracking-tighter">Deep Grain Profile</p>
+</div>
+</button>
+<button class="flex items-center gap-4 group p-3 hover:bg-surface-container-high transition-all">
+<div class="w-12 h-12 bg-cover bg-center opacity-60 group-hover:opacity-100" data-alt="Warm cherry wood texture with reddish undertones and smooth finish" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDZs5KiTrFAS3fwFFde4sj38M-n4LzBgtSjVVFeZ48yCWrSACNnrxzurMAKK0OkhtoYPEHdpYabsE5ttEUw8jMMaWdvMvVLv8wpnTzGQbSV7HwY8BXkBu7cXJSgVqAvFMlginEkdrXXxuXlbJx-Yw4FbQ4jKR4UHgJVd_FfQMVY1gmQweiS39XoAXv__eZe_fy7FISSF8AFAN9gkeXAFc1RbcqmMfbsRUnVjLR6suNWEIJB3QArJMBDIPAIXg8kGaMeH-xF6J7cRr-o')"></div>
+<div class="text-left">
+<p class="font-label text-[11px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary">Black Cherry</p>
+<p class="text-[9px] text-on-surface-variant/50 uppercase tracking-tighter">Warm Patina</p>
+</div>
+</button>
+<button class="flex items-center gap-4 group p-3 hover:bg-surface-container-high transition-all">
+<div class="w-12 h-12 bg-cover bg-center opacity-60 group-hover:opacity-100" data-alt="Ebonized ash wood with charred black texture and visible heavy grain" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuC8YMPRswNhHk5JI8lQyVN_7UyaAuvHQdfr5TuZKldebK7Ya2Be4F03YRA_3NrUlSlKrBlhdKDkyCcSY_7bw2-CI3zs0uUnz2WGDibAxO9gT_WzcNS-3THy1ol0un4OUeEVgYbyVhGO-7J6WiNKH3WpHj0gMICeaK3WF9hM7msIHGgu5BotAjWCbMgCWI4ujBbgbdJeUQRQkOziVzz0evWLHfowdCnjs0nperIUMNTE8yObHvnIm23VsVMmamn-BBl33Ty5bNf8fK--')"></div>
+<div class="text-left">
+<p class="font-label text-[11px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary">Ebonized Ash</p>
+<p class="text-[9px] text-on-surface-variant/50 uppercase tracking-tighter">Shou Sugi Ban Inspired</p>
+</div>
+</button>
+</div>
+</section>
+<!-- Joinery Options -->
+<section class="space-y-6">
+<h2 class="font-label text-xs uppercase tracking-[0.15em] text-primary border-b border-outline-variant/20 pb-2">Joinery Details</h2>
+<div class="space-y-4">
+<label class="flex items-center justify-between group cursor-pointer">
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary transition-colors">Exposed Dovetail</span>
+<div class="w-4 h-4 border border-primary flex items-center justify-center">
+<div class="w-2 h-2 bg-primary"></div>
+</div>
+</label>
+<label class="flex items-center justify-between group cursor-pointer opacity-50">
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary transition-colors">Mortise &amp; Tenon</span>
+<div class="w-4 h-4 border border-outline-variant flex items-center justify-center"></div>
+</label>
+<label class="flex items-center justify-between group cursor-pointer opacity-50">
+<span class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant group-hover:text-primary transition-colors">Japanese Miter</span>
+<div class="w-4 h-4 border border-outline-variant flex items-center justify-center"></div>
+</label>
+</div>
+</section>
+</div>
+</aside>
+<!-- Main Visualizer Area -->
+<div class="flex-1 relative bg-surface-container-lowest overflow-hidden group">
+<!-- 3D Environment Placeholder -->
+<div class="absolute inset-0 flex items-center justify-center">
+<div class="w-full h-full relative">
+<!-- The "3D Render" simulated by high quality image -->
+<img class="w-full h-full object-cover opacity-80 mix-blend-lighten" data-alt="Photorealistic 3D render of a minimalist wooden credenza made of white oak in a dark moody studio with dramatic spotlighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAAp2rk6eBbdJO-PGCqEVxhRfd91_FhEIDSg6_dSiVe_N43oTdK-UYNL_qrpqub2y-LO8sdcV66cUYlfUU0eWLuPshmbfq-Z90HksW3G-lorhQvRLxHL4Qcd8jfDrzSrgDFiqQZbM1yxrfCFLWDFjkrJKFyY8BsYBqYReBJWmtdOALcO0Z5fpLlr_KATz3LaB0YEbnad_rvpaPwxd2OeT-A7F4o-zYghBc40EHBfPzBxp2LJqIpYeierTFPe2sXpKa-GcSGGZZRqTSx"/>
+<!-- HUD Overlay -->
+<div class="absolute inset-0 pointer-events-none p-12 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="bg-surface-container-lowest/40 backdrop-blur-md p-6 border border-outline-variant/10">
+<p class="font-label text-[10px] uppercase tracking-[0.3em] text-primary mb-1">Perspective</p>
+<p class="font-mackintosh text-2xl">Master Suite 01</p>
+</div>
+<div class="flex flex-col gap-4 pointer-events-auto">
+<button class="w-12 h-12 bg-surface-container-high/60 backdrop-blur-sm flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined">zoom_in</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-high/60 backdrop-blur-sm flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined">zoom_out</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-high/60 backdrop-blur-sm flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined">3d_rotation</span>
+</button>
+<button class="w-12 h-12 bg-surface-container-high/60 backdrop-blur-sm flex items-center justify-center hover:bg-primary hover:text-on-primary transition-all">
+<span class="material-symbols-outlined">fullscreen</span>
+</button>
+</div>
+</div>
+<div class="flex items-end justify-between">
+<div class="space-y-2">
+<div class="flex items-center gap-4">
+<span class="font-label text-[9px] uppercase tracking-widest text-on-surface-variant">0.0m</span>
+<div class="w-64 h-[1px] bg-gradient-to-r from-primary to-transparent relative">
+<div class="absolute right-0 top-1/2 -translate-y-1/2 w-1 h-3 bg-primary"></div>
+</div>
+<span class="font-label text-[9px] uppercase tracking-widest text-on-surface-variant">2.4m</span>
+</div>
+<p class="font-label text-[8px] uppercase tracking-[0.2em] text-outline">Precise Digital Joinery Scaling Enabled</p>
+</div>
+<div class="bg-surface-container-lowest/40 backdrop-blur-md px-6 py-4 flex gap-8 border border-outline-variant/10">
+<div>
+<p class="font-label text-[8px] uppercase tracking-widest text-outline">Rendering</p>
+<p class="font-label text-[10px] uppercase tracking-widest text-primary">Ultra-Real</p>
+</div>
+<div>
+<p class="font-label text-[8px] uppercase tracking-widest text-outline">Light Source</p>
+<p class="font-label text-[10px] uppercase tracking-widest text-primary">4500K Studio</p>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Right Panel: Spec Breakdown (Subtle) -->
+<aside class="w-16 bg-surface-container-low flex flex-col items-center py-8 gap-10 border-l border-outline-variant/10">
+<button class="material-symbols-outlined text-primary hover:opacity-100 opacity-40 transition-opacity" title="Dimensions">square_foot</button>
+<button class="material-symbols-outlined text-primary hover:opacity-100 opacity-40 transition-opacity" title="Hardware">settings_suggest</button>
+<button class="material-symbols-outlined text-primary hover:opacity-100 opacity-40 transition-opacity" title="Finishes">format_paint</button>
+<div class="mt-auto">
+<button class="material-symbols-outlined text-outline hover:text-primary transition-colors">help</button>
+</div>
+</aside>
+</main>
+<!-- Bottom Panel: Cost Estimator -->
+<footer class="h-32 bg-surface-container-lowest border-t border-outline-variant/10 flex items-center px-12 justify-between z-30">
+<div class="flex gap-16">
+<div class="flex flex-col justify-center">
+<span class="font-label text-[9px] uppercase tracking-[0.3em] text-outline mb-1">Material Base</span>
+<span class="font-body text-xl font-medium">$1,450.00</span>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-label text-[9px] uppercase tracking-[0.3em] text-outline mb-1">Artisan Labor</span>
+<span class="font-body text-xl font-medium">$2,800.00</span>
+</div>
+<div class="flex flex-col justify-center">
+<span class="font-label text-[9px] uppercase tracking-[0.3em] text-outline mb-1">Studio Markup</span>
+<span class="font-body text-xl font-medium">$850.00</span>
+</div>
+<div class="h-12 w-[1px] bg-outline-variant/30 self-center"></div>
+<div class="flex flex-col justify-center">
+<span class="font-label text-[9px] uppercase tracking-[0.4em] text-primary mb-1">Estimated Total</span>
+<span class="font-mackintosh text-4xl text-primary">$5,100.00</span>
+</div>
+</div>
+<div class="flex items-center gap-8">
+<div class="text-right">
+<p class="font-label text-[10px] uppercase tracking-widest text-on-surface-variant">Est. Completion</p>
+<p class="font-body text-sm font-semibold italic text-secondary">October 2024</p>
+</div>
+<button class="bg-primary text-on-primary px-10 py-5 font-mackintosh text-xl uppercase tracking-widest hover:bg-primary-container transition-all active:scale-95">
+                Submit Commission
+            </button>
+</div>
+</footer>
+<!-- SideNav (Hidden but required by JSON for app context) -->
+<nav class="fixed left-0 top-0 h-full flex flex-col z-40 w-64 bg-[#131313] hidden group-hover:flex md:hidden transition-all duration-500 -translate-x-full">
+<!-- Not rendered as per Filter rules for Task-Focused visualizer screen, but kept logic for shell structure -->
+</nav>
+</body></html>

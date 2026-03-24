@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300;1,400&amp;family=Work+Sans:wght@300;400;500;600&amp;family=Inter:wght@400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+    /* Mapping ITC New Rennie Mackintosh to Newsreader as a high-quality web fallback with similar character */
+    .font-mackintosh {
+      font-family: 'Newsreader', serif;
+      font-weight: 300;
+      letter-spacing: -0.02em;
+    }
+    .material-symbols-outlined {
+      font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+    }
+    .wood-sheen {
+      background: linear-gradient(45deg, var(--tw-gradient-from) 0%, var(--tw-gradient-to) 100%);
+    }
+    body {
+      background-color: #fef9f2;
+      color: #1d1c17;
+      font-family: 'Work Sans', sans-serif;
+    }
+  </style>
+<script id="tailwind-config">
+    tailwind.config = {
+      darkMode: "class",
+      theme: {
+        extend: {
+          colors: {
+            "inverse-surface": "#32302c",
+            "inverse-on-surface": "#f5f0e9",
+            "on-secondary-container": "#736153",
+            "inverse-primary": "#e8bf9d",
+            "on-secondary-fixed": "#26190e",
+            "background": "#fef9f2",
+            "surface-container-highest": "#e7e2db",
+            "on-tertiary-fixed-variant": "#4c463e",
+            "on-background": "#1d1c17",
+            "surface-tint": "#78583c",
+            "surface-variant": "#e7e2db",
+            "outline-variant": "#d3c4b9",
+            "on-surface": "#1d1c17",
+            "secondary-fixed-dim": "#dac2b1",
+            "on-primary": "#ffffff",
+            "error-container": "#ffdad6",
+            "surface": "#fef9f2",
+            "primary-container": "#8d6b4e",
+            "surface-container": "#f2ede6",
+            "on-tertiary-container": "#fff7f1",
+            "on-tertiary": "#ffffff",
+            "tertiary-container": "#797168",
+            "on-primary-container": "#fff6f2",
+            "surface-dim": "#ded9d3",
+            "on-surface-variant": "#4f453d",
+            "on-error": "#ffffff",
+            "primary-fixed-dim": "#e8bf9d",
+            "on-primary-fixed-variant": "#5d4127",
+            "error": "#ba1a1a",
+            "tertiary-fixed": "#ece1d6",
+            "on-tertiary-fixed": "#201b15",
+            "primary": "#725338",
+            "on-error-container": "#93000a",
+            "tertiary-fixed-dim": "#cfc5bb",
+            "secondary": "#6d5b4d",
+            "on-secondary": "#ffffff",
+            "on-secondary-fixed-variant": "#544437",
+            "secondary-fixed": "#f7decc",
+            "tertiary": "#605851",
+            "surface-container-lowest": "#ffffff",
+            "surface-bright": "#fef9f2",
+            "on-primary-fixed": "#2c1602",
+            "outline": "#81756c",
+            "primary-fixed": "#ffdcc1",
+            "surface-container-low": "#f8f3ec",
+            "surface-container-high": "#ece7e1",
+            "secondary-container": "#f7decc"
+          },
+          fontFamily: {
+            "headline": ["Newsreader"],
+            "body": ["Work Sans"],
+            "label": ["Inter"]
+          },
+          borderRadius: {"DEFAULT": "0.125rem", "lg": "0.25rem", "xl": "0.5rem", "full": "0.75rem"},
+        },
+      },
+    }
+  </script>
+</head>
+<body class="bg-surface text-on-surface">
+<!-- TopNavBar Navigation Shell -->
+<nav class="fixed top-0 w-full z-50 bg-[#fef9f2]/85 backdrop-blur-md flex justify-between items-center px-8 py-6 max-w-none mx-auto">
+<div class="text-2xl font-light tracking-[0.2em] text-[#1d1c17] uppercase">SHOKUNIN</div>
+<div class="hidden md:flex items-center gap-12 font-['Newsreader'] italic tracking-wide">
+<a class="text-[#6d5b4d] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Workshop</a>
+<a class="text-[#725338] border-b border-[#725338] pb-1 hover:opacity-100 transition-opacity duration-300" href="#">Ledger</a>
+<a class="text-[#6d5b4d] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Commission</a>
+<a class="text-[#6d5b4d] opacity-70 hover:opacity-100 transition-opacity duration-300" href="#">Notes</a>
+</div>
+<div class="flex items-center gap-6 text-[#725338]">
+<button class="transition-transform active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="shopping_cart">shopping_cart</span>
+</button>
+<button class="transition-transform active:scale-95 duration-200">
+<span class="material-symbols-outlined" data-icon="person">person</span>
+</button>
+</div>
+</nav>
+<main class="pt-32 px-6 md:px-12 lg:px-24">
+<!-- Hero / Intro -->
+<section class="max-w-7xl mx-auto mb-24 flex flex-col md:flex-row items-end justify-between">
+<div class="max-w-2xl">
+<h1 class="text-6xl md:text-8xl font-mackintosh text-on-surface mb-8 leading-tight">The Piece Ledger</h1>
+<p class="text-body-lg text-on-surface-variant font-light max-w-md leading-relaxed">
+          A physical record of finite creations. Each entry represents a singular journey from raw timber to refined utility.
+        </p>
+</div>
+<div class="hidden md:block pb-4">
+<span class="text-label-sm tracking-[0.3em] uppercase text-outline">Stock: Limited Volume III</span>
+</div>
+</section>
+<!-- Ledger Grid -->
+<section class="max-w-7xl mx-auto">
+<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-y-24 lg:gap-x-16">
+<!-- Ledger Entry 01 - Large Featured -->
+<article class="lg:col-span-7 flex flex-col group">
+<div class="overflow-hidden bg-surface-container-low aspect-[4/5] mb-8 relative">
+<img alt="Hand-carved wooden stool" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Close-up of a hand-carved minimalist wooden stool with visible dovetail joinery in warm oak wood, soft morning light hitting the grain" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAtR21hmgZFRL6ATevZNCs5E7gdwiq4uzS_L7qu425Gu02i-n5QqtMbg72K1cSKF_whXLEvRGUkR-f4i5E9irk7Tu61PV6d3iitIM0BuIJW5Z-NG-61cPPZBM3kzfXPnWIQWr4uG2XV5twWZw95mxgZnyMkJmJsmsB4u7hpkr5MaA5X_OdjsotEjYh5Z3mJzGHEea7n5L8EBZOY_H0hQMsHvGMz9s6FUM-RUcXGtmEdJW6KbWDw__GtmyEh1m4W6dWVeqqEisJYEubD"/>
+<div class="absolute top-6 left-6 bg-on-surface text-surface text-[10px] tracking-[0.2em] px-3 py-1 uppercase">Entry No. 402</div>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h2 class="text-3xl font-mackintosh text-on-surface mb-2">Asahikawa Low Stool</h2>
+<div class="flex gap-3 mb-6">
+<span class="bg-secondary-container text-on-secondary-container text-[10px] px-3 py-1 rounded-full uppercase tracking-tighter">White Oak</span>
+<span class="bg-secondary-container text-on-secondary-container text-[10px] px-3 py-1 rounded-full uppercase tracking-tighter">Oil Finish</span>
+</div>
+</div>
+<div class="text-right">
+<span class="block text-xl font-light mb-4">¥84,000</span>
+<button class="bg-primary text-on-primary text-[11px] font-medium uppercase tracking-widest px-8 py-3 rounded-sm wood-sheen from-primary to-primary-container hover:opacity-90 transition-all duration-300">
+                Claim Piece
+              </button>
+</div>
+</div>
+</article>
+<!-- Ledger Entry 02 - Smaller Secondary -->
+<article class="lg:col-span-5 flex flex-col pt-0 lg:pt-32 group">
+<div class="overflow-hidden bg-surface-container-low aspect-square mb-8 relative">
+<img alt="Wooden valet tray" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Exquisite small walnut wood valet tray with rounded edges on a clean washi paper background, high contrast lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCiBm5jMtUAlWQ9r9lAMHvBrooXGXWkgDgWCdYAS3Q659cEtxp1wkwpdWzFK9Z5j_HjsUhi7aTBuuI7BZv8q2P8P5slRYGdmizRNyfLqHhO1AU138IbuvBTqe5ImdaqE0YaUP-wWZdDOdXwlx7kwlUBqDTIFlQWi3FvDjSwoe4xbmoVle3yK35zrUQOl_CykeegZ4JADELC-dD4JmXkVF81L0xdwZV_zod-k7V6jCRUMTCND6j9y0l8KgSeoGk1bmuXCNtTNRTNDL9A"/>
+<div class="absolute top-6 left-6 bg-on-surface text-surface text-[10px] tracking-[0.2em] px-3 py-1 uppercase">Entry No. 398</div>
+</div>
+<div class="flex flex-col">
+<h2 class="text-2xl font-mackintosh text-on-surface mb-2">Walnut Valet Tray</h2>
+<div class="flex gap-3 mb-6">
+<span class="bg-secondary-container text-on-secondary-container text-[10px] px-3 py-1 rounded-full uppercase tracking-tighter">Black Walnut</span>
+</div>
+<div class="flex justify-between items-center border-t border-outline-variant/20 pt-6">
+<span class="text-lg font-light">¥22,500</span>
+<button class="text-primary text-[11px] font-medium uppercase tracking-widest px-0 py-3 border-b border-primary/20 hover:border-primary transition-all duration-300">
+                Claim Piece
+              </button>
+</div>
+</div>
+</article>
+<!-- Ledger Entry 03 - Centered Wide -->
+<article class="lg:col-start-3 lg:col-span-8 flex flex-col group">
+<div class="overflow-hidden bg-surface-container-low aspect-[16/9] mb-8 relative">
+<img alt="Floating wood shelf" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Long minimalist floating shelf made of light ash wood, showcasing seamless blind miter joinery against a neutral textured wall" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDpiltuj50oGei3Jn2_MMXz9Um5KmpZDNtVR5wucEBRt8kUA5D1Y6hFKZtHZIyLgci9WGXugkAtq7yUrAPwzB6EIu6ruS43Fn15ZxI2Of4XDq33Oe9e5qAHJbslH6C6JQfUiC-CnPkpz7Ln-Wk-I3FlRhJ2-gAtd0a7CSdXQgpb1yQKIQs_bXmNbBq0EyLVUSHg-OBRYvgBfu46vGGUHhI2IApY4eWROi_BR9aw8XF_RGDn7HIj5axqqMzeLoRzj44mvvGCCPYv0vom"/>
+<div class="absolute top-6 left-6 bg-on-surface text-surface text-[10px] tracking-[0.2em] px-3 py-1 uppercase">Entry No. 411</div>
+</div>
+<div class="flex flex-col md:flex-row justify-between items-start md:items-center">
+<div class="mb-6 md:mb-0">
+<h2 class="text-4xl font-mackintosh text-on-surface mb-2">Kyoto Floating Mantle</h2>
+<p class="text-body-sm text-on-surface-variant max-w-sm">A study in horizontal balance and hidden structural integrity.</p>
+</div>
+<div class="flex items-center gap-12">
+<div class="text-right">
+<span class="block text-[10px] uppercase tracking-widest text-outline mb-1">Exchange</span>
+<span class="text-2xl font-light">¥142,000</span>
+</div>
+<button class="bg-primary text-on-primary text-[11px] font-medium uppercase tracking-widest px-10 py-4 rounded-sm wood-sheen from-primary to-primary-container hover:opacity-90 transition-all duration-300 shadow-sm">
+                Claim Piece
+              </button>
+</div>
+</div>
+</article>
+<!-- Ledger Entry 04 - Vertical Detail -->
+<article class="lg:col-span-5 flex flex-col group">
+<div class="overflow-hidden bg-surface-container-low aspect-[3/4] mb-8 relative">
+<img alt="Wood joinery detail" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Macro photography of a complex three-way miter joint in cherry wood, extremely shallow depth of field, warm natural tones" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBFYIxVU5kOm-JBj4pgmrGjh3AAWPszyw_JOTAsLMWZSOcX972WzbvNcaQnEk3MIOo5t0nNNkqRsMso7EiV4f6tn2cgnfMTIvbe3W7FMUr6MdQwLoXpRYpeuaGTr3pneveMVrd61D5jGEZXDUy2A024A7dLYXyncc2ZwpuJQSun_GqZsrR641lLheANo0tHuVpLFfoL532ZPwqf-gcChMUIktXnglX4nT19QsFW3vmWcQ2isnhfKJmUVm3edXHjFldy-9nToXQN_VXC"/>
+<div class="absolute bottom-6 right-6 bg-surface/90 backdrop-blur px-4 py-2 text-[10px] tracking-[0.2em] uppercase">Structural Detail</div>
+</div>
+<h2 class="text-2xl font-mackintosh text-on-surface mb-4">Miter Study No. 12</h2>
+<div class="flex justify-between items-center bg-surface-container-low p-6 rounded-sm">
+<span class="text-label-sm font-medium">¥18,000 <span class="text-outline font-light ml-2">/ Collector Edition</span></span>
+<button class="material-symbols-outlined text-primary" data-icon="arrow_right_alt">arrow_right_alt</button>
+</div>
+</article>
+<!-- Ledger Entry 05 - Minimal Side -->
+<article class="lg:col-span-7 flex flex-col lg:pt-48 group">
+<div class="overflow-hidden bg-surface-container-low aspect-[4/3] mb-8 relative">
+<img alt="Bedside wood lamp" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" data-alt="Architectural table lamp with a square wooden base and a soft paper shade, warm glowing light in a dark room" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBIexk-Kwr2XEVRtQ7vqa6xR-uTolpQfTAhgUv1Z-VPACwFGlwZ8fu071ELaLBAb5KwVBkKGu92nAsgoDNBMuj2AZ757Al5PNGzi8i2gpkSJrVbgkCXAGtqSpgJSyqDcLtHplcask2PXwZM0TPF7f7yN5wDY3sYGBZ7Kz1VZbYG8u2KGYZWJLMvlSggoMnEZxrVyy13_brt97iSwXhwfo-jFqZM1wYvJszDhvWRx6ebpHBHjKkY84-JX4JUWr4h5dHPtcPUDMCrOeFe"/>
+<div class="absolute top-6 left-6 bg-on-surface text-surface text-[10px] tracking-[0.2em] px-3 py-1 uppercase">Entry No. 405</div>
+</div>
+<div class="grid grid-cols-2 gap-8">
+<div>
+<h2 class="text-3xl font-mackintosh text-on-surface mb-4">Andon Light Box</h2>
+<div class="text-on-surface-variant font-label text-sm uppercase tracking-widest space-y-2">
+<p>Species: Hinoki Cypress</p>
+<p>Diffuser: Kozo Paper</p>
+</div>
+</div>
+<div class="flex flex-col items-end justify-between">
+<span class="text-xl font-light tracking-widest">¥56,000</span>
+<button class="bg-primary text-on-primary text-[11px] font-medium uppercase tracking-widest px-8 py-3 rounded-sm wood-sheen from-primary to-primary-container">
+                Claim Piece
+              </button>
+</div>
+</div>
+</article>
+</div>
+</section>
+<!-- Philosphy Break -->
+<section class="mt-48 mb-48 text-center max-w-3xl mx-auto">
+<h3 class="font-mackintosh text-4xl italic text-secondary mb-8">"Tools are an extension of the hand; the furniture is an extension of the soul."</h3>
+<div class="w-12 h-px bg-outline-variant mx-auto mb-8"></div>
+<p class="text-label-sm tracking-[0.4em] uppercase text-outline">Since 1984</p>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 mt-24 bg-[#f8f3ec] flex flex-col md:flex-row justify-between items-center gap-8 border-t border-[#1d1c17]/5">
+<div class="flex flex-col gap-2 text-center md:text-left">
+<p class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#725338]">© 2024 Shokunin Studio. Built to last generations.</p>
+</div>
+<div class="flex gap-10">
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Philosophy</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Sustainability</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Shipping</a>
+<a class="font-['Work_Sans'] text-xs tracking-widest uppercase text-[#6d5b4d] hover:text-[#725338] transition-colors duration-300" href="#">Contact</a>
+</div>
+</footer>
+</body></html>

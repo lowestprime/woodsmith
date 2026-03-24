@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&amp;family=Epilogue:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        @font-face {
+            font-family: 'ITC_New_Rennie_Mackintosh';
+            src: url('https://fonts.cdnfonts.com/css/itc-new-rennie-mackintosh') format('woff2'); /* Fallback to a high-end serif if restricted */
+        }
+        /* Using a reliable tall serif fallback for the requested brand font in this simulation */
+        .font-mackintosh { 
+            font-family: 'Epilogue', sans-serif; 
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 300;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #131313; }
+        ::-webkit-scrollbar-thumb { background: #353535; }
+    </style>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary-fixed": "#feddb3",
+              "secondary-fixed-dim": "#c6c7c2",
+              "secondary": "#c6c7c2",
+              "secondary-container": "#484a46",
+              "on-tertiary-fixed": "#1c1b1b",
+              "on-tertiary-container": "#2a2a2a",
+              "outline": "#9d8e84",
+              "secondary-fixed": "#e3e3de",
+              "surface-tint": "#e1c299",
+              "on-surface-variant": "#d4c3b9",
+              "tertiary-fixed-dim": "#c8c6c5",
+              "on-error-container": "#ffdad6",
+              "background": "#131313",
+              "surface-dim": "#131313",
+              "tertiary-container": "#929090",
+              "inverse-surface": "#e2e2e2",
+              "surface-bright": "#393939",
+              "inverse-primary": "#725a39",
+              "primary": "#e1c299",
+              "on-primary-container": "#382609",
+              "on-background": "#e2e2e2",
+              "error-container": "#93000a",
+              "surface-container-high": "#2a2a2a",
+              "inverse-on-surface": "#303030",
+              "on-secondary-fixed-variant": "#454744",
+              "on-secondary": "#2f312e",
+              "on-surface": "#e2e2e2",
+              "surface-container-low": "#1b1b1b",
+              "primary-fixed-dim": "#e1c299",
+              "surface-variant": "#353535",
+              "surface-container-highest": "#353535",
+              "primary-container": "#a88c67",
+              "surface": "#131313",
+              "on-tertiary": "#313030",
+              "error": "#ffb4ab",
+              "tertiary-fixed": "#e5e2e1",
+              "surface-container-lowest": "#0e0e0e",
+              "tertiary": "#c8c6c5",
+              "surface-container": "#1f1f1f",
+              "on-secondary-container": "#b8b9b4",
+              "outline-variant": "#50443d",
+              "on-primary-fixed-variant": "#584324",
+              "on-secondary-fixed": "#1a1c19",
+              "on-tertiary-fixed-variant": "#474746",
+              "on-primary-fixed": "#281801",
+              "on-primary": "#402d10",
+              "on-error": "#690005"
+            },
+            fontFamily: {
+              "headline": ["Epilogue", "sans-serif"],
+              "body": ["Work Sans", "sans-serif"],
+              "label": ["Work Sans", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+</head>
+<body class="bg-background text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-12 py-6 w-full bg-[#131313]/60 backdrop-blur-xl no-line bg-gradient-to-b from-[#131313] to-transparent">
+<div class="text-2xl font-normal text-[#e1c299] font-mackintosh">Beaman Woodworks</div>
+<div class="hidden md:flex space-x-12">
+<a class="font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-[#e1c299] border-b-2 border-[#e1c299] pb-1" href="#">Workshop</a>
+<a class="font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-[#d4c3b9] hover:text-[#e1c299] transition-colors duration-300" href="#">Ledger</a>
+<a class="font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-[#d4c3b9] hover:text-[#e1c299] transition-colors duration-300" href="#">Commission</a>
+<a class="font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-[#d4c3b9] hover:text-[#e1c299] transition-colors duration-300" href="#">Notes</a>
+<a class="font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-[#d4c3b9] hover:text-[#e1c299] transition-colors duration-300" href="#">About</a>
+</div>
+<div class="flex items-center space-x-6 text-[#e1c299]">
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity" data-icon="dark_mode">dark_mode</span>
+<div class="relative group cursor-pointer">
+<span class="material-symbols-outlined hover:opacity-80 transition-opacity" data-icon="shopping_cart">shopping_cart</span>
+<span class="absolute -top-2 -right-2 bg-primary text-on-primary text-[10px] px-1 font-bold">02</span>
+</div>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity" data-icon="person">person</span>
+</div>
+</nav>
+<main class="pt-32 px-6 md:px-12 max-w-screen-2xl mx-auto">
+<!-- Hero Header -->
+<header class="mb-24 flex flex-col md:flex-row md:items-end justify-between border-b border-outline-variant/20 pb-12">
+<div class="max-w-2xl">
+<span class="text-primary font-label text-[0.6875rem] uppercase tracking-[0.2em] mb-4 block">Archive &amp; Marketplace</span>
+<h1 class="text-6xl md:text-8xl font-mackintosh text-on-surface leading-tight">The Piece Ledger</h1>
+<p class="mt-8 text-on-surface-variant text-lg max-w-md">Each artifact is a singular dialogue between the grain and the chisel. Our Ledger tracks every specimen from initial slab to final polish.</p>
+</div>
+<div class="mt-12 md:mt-0 flex flex-col items-end">
+<span class="text-on-surface-variant font-label text-[0.6875rem] uppercase mb-2">Current Collection</span>
+<span class="text-primary font-mackintosh text-2xl">Volume IV: The Nara Series</span>
+</div>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-16">
+<!-- Left Column: The Gallery (Tactile Grid) -->
+<div class="lg:col-span-8 space-y-32">
+<!-- Collection: Volume IV -->
+<section>
+<div class="flex items-baseline justify-between mb-12">
+<h2 class="font-mackintosh text-3xl text-primary">Volume IV</h2>
+<span class="font-label text-[0.6875rem] tracking-widest text-on-surface-variant uppercase">04 Specimen Available</span>
+</div>
+<div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-16">
+<!-- Product Item 1 -->
+<div class="group cursor-crosshair">
+<div class="aspect-[4/5] bg-surface-container-low overflow-hidden relative mb-6">
+<img alt="Asahikawa Low Stool" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="Minimalist Japanese style low wooden stool with visible joinery on a dark concrete floor with dramatic lighting" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDciBGKDlzCO7raXrEdVJYTgtxw6hmDRuWui36aj0vXLmSzyPAbVY4HIo3CPH7ItVIh6sE4unHrhaUsZfMTkYfTONcLPmCb4cqXPfWuKuo7bp08V2aJMPjKoqAXDwI4LQfKvyNAGKPgvG0s3YiNgkYpScD9LjdKX1EKcteh9X8vWoTBAFiwE3ofvRG9SL6YaV9bNsk7fMcN2gmSFOMCyDA7jxdYhjdYNoIc84sUXGBNyLgTgB3cD8Du-s0R3qMU-G91kSGGzGY5f6ef"/>
+<div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-4xl" data-icon="zoom_in">zoom_in</span>
+</div>
+<div class="absolute bottom-4 right-4 bg-primary px-4 py-2 text-on-primary font-label text-[0.6875rem] tracking-tighter uppercase opacity-0 group-hover:opacity-100 transition-opacity">
+                                    In Stock
+                                </div>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-mackintosh text-xl text-on-surface mb-1">Asahikawa Low Stool</h3>
+<p class="text-on-surface-variant font-label text-[0.6875rem] uppercase">White Oak / Natural Oil Finish</p>
+</div>
+<div class="text-right">
+<span class="block text-primary font-body font-semibold mb-3">$840.00</span>
+<button class="bg-primary text-on-primary px-4 py-2 font-label text-[0.6875rem] uppercase tracking-widest hover:bg-primary-container transition-colors">
+                                        Add to Ledger
+                                    </button>
+</div>
+</div>
+</div>
+<!-- Product Item 2 -->
+<div class="group cursor-crosshair translate-y-12">
+<div class="aspect-[4/5] bg-surface-container-low overflow-hidden relative mb-6">
+<img alt="Walnut Valet Tray" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="Handcrafted dark walnut wooden valet tray showing rich grain textures on a dark moody surface" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDr31knGbgwpMkMOefi1L1Sj-fWeowgVd7NwuAiiHs_-BczKYrE9y4fT-3wrJl7_oOH4dYLBz3DizHXOgD1JmugZYpafj1Luz2T2q_CLdA80yOPKuB7YJFSmJnxTDSDgTE1-BmoAU_xIffPUFM20dbC7hVmzF-dLqHRMks4LaKpAmnVeSiBCMS0M58FN7Z89GtqY1LO-D9CKV_sr3GfA8TujC82yJHiZlT1hf4DUAIp5H6a2awfC6kAEVpGgsDC9MgoL7DColTtlss4"/>
+<div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-4xl" data-icon="zoom_in">zoom_in</span>
+</div>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-mackintosh text-xl text-on-surface mb-1">Walnut Valet Tray</h3>
+<p class="text-on-surface-variant font-label text-[0.6875rem] uppercase">Black Walnut / Hand-chiseled</p>
+</div>
+<div class="text-right">
+<span class="block text-primary font-body font-semibold mb-3">$215.00</span>
+<button class="bg-primary text-on-primary px-4 py-2 font-label text-[0.6875rem] uppercase tracking-widest hover:bg-primary-container transition-colors">
+                                        Add to Ledger
+                                    </button>
+</div>
+</div>
+</div>
+<!-- Product Item 3 -->
+<div class="group cursor-crosshair">
+<div class="aspect-[4/5] bg-surface-container-low overflow-hidden relative mb-6">
+<img alt="Tusk Tenon Bench" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="A long wooden bench with traditional tusk tenon joinery details against a dark architectural background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA3ykh_tZa7CsjscXkqCHUS1IN8ZAsfcbT_5AS8xrmq_kTcDuQfHujh3UEFEVqUdToYtwbhUoR1wOxx8BJ0G4srnm8KOeflI-x3iK79sZQwpVWIw7v2HB2LreoK6HkKBZj47X79tbsP6txeO9tKE02zPsAVYrQid_j4FJ9jSSJw_p-rPAQaHj7RxWNkd_gjKjWepyyv_iT4RNypj4oPQNKGCp7EEIe8umZkJGFvQhn2cXfu-7HtxvvXH0BdT_So9rXOuDynCX_gUKWY"/>
+<div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-4xl" data-icon="zoom_in">zoom_in</span>
+</div>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-mackintosh text-xl text-on-surface mb-1">Tusk Tenon Bench</h3>
+<p class="text-on-surface-variant font-label text-[0.6875rem] uppercase">Reclaimed Cherry / Exposed Wedge</p>
+</div>
+<div class="text-right">
+<span class="block text-primary font-body font-semibold mb-3">$1,450.00</span>
+<button class="bg-primary text-on-primary px-4 py-2 font-label text-[0.6875rem] uppercase tracking-widest hover:bg-primary-container transition-colors">
+                                        Add to Ledger
+                                    </button>
+</div>
+</div>
+</div>
+<!-- Product Item 4 -->
+<div class="group cursor-crosshair translate-y-12">
+<div class="aspect-[4/5] bg-surface-container-low overflow-hidden relative mb-6">
+<img alt="Ebonized Ash Vessel" class="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" data-alt="Turned wooden bowl with a deep black ebonized finish showing subtle grain highlights in soft morning light" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBVvGtbbgjoSyzrllGZ_d0Ic3fGzVo6mvmRjfXVlseMIyiyW-EyO1rvXxilxwvNOEioeI4M_BPoO8Ckem47_UNK8NixdLZjPH0joEKiJR4bD02LuwBjauLeTbsrA319ACWMOVacUPkKBUIxV8KiBLowZusi9Rk0yPMn5_T79sIwnVomsEgmlu03ZkuBjUMRraTDvTf4zP0at_Y12sWv6pfd8fnfigqhswyskQ-Zgjb8EruXW1xdHilQ48i_WSAJBaG9mrPbOEspRD39"/>
+<div class="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-4xl" data-icon="zoom_in">zoom_in</span>
+</div>
+</div>
+<div class="flex justify-between items-start">
+<div>
+<h3 class="font-mackintosh text-xl text-on-surface mb-1">Ebonized Ash Vessel</h3>
+<p class="text-on-surface-variant font-label text-[0.6875rem] uppercase">Blackened Ash / Beeswax Polish</p>
+</div>
+<div class="text-right">
+<span class="block text-primary font-body font-semibold mb-3">$380.00</span>
+<button class="bg-primary text-on-primary px-4 py-2 font-label text-[0.6875rem] uppercase tracking-widest hover:bg-primary-container transition-colors">
+                                        Add to Ledger
+                                    </button>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Secondary Banner: The Craft -->
+<section class="bg-surface-container-low p-12 md:p-24 relative overflow-hidden">
+<div class="relative z-10 max-w-lg">
+<h2 class="font-mackintosh text-4xl text-on-surface mb-6">Built to Outlive</h2>
+<p class="text-on-surface-variant leading-relaxed">We do not believe in the ephemeral. Every piece in our ledger is guaranteed for the lifetime of the builder. If a joint fails, we return to the bench.</p>
+<a class="inline-block mt-8 border-b-2 border-primary text-primary font-mackintosh py-1" href="#">View Studio Philosophy</a>
+</div>
+<div class="absolute right-0 top-0 h-full w-1/3 opacity-20 hidden md:block">
+<img alt="Workshop Tools" class="w-full h-full object-cover grayscale" data-alt="Artistic close-up of traditional woodworking hand tools including a block plane and chisel on a bed of wood shavings" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAC-f9UzrEHVSajSpxtX6nyz50swtLe4jhyfnrJ1hhjvxFM916J9EC8WHTlWN8eqE8J7m8MZSnTRtUFcvz8t8mbAV26GOmaAHv5uGJX5yXm5yUOJvcrk_lG6YVSVtOFqnx1l8QXTCII5gFmuKpz9A6BK-CcrJz8g-DhrV5lszujnWL1mzuLhzxvwBKvypV1z4t8QpcswJZxQlxEru2S9XAaEvNtKO-IHNWlOR_DD2ra-WaRfezcXzcN0Udcd1sB1YHge2WuRdajiK88"/>
+</div>
+</section>
+</div>
+<!-- Right Column: Infrastructure (Cart & Ledger) -->
+<aside class="lg:col-span-4">
+<div class="sticky top-32 space-y-8">
+<!-- Secure Ledger Summary (Cart) -->
+<div class="bg-surface-container-high p-8 shadow-[20px_0_40px_rgba(0,0,0,0.4)]">
+<div class="flex items-center justify-between mb-8 pb-4 border-b border-outline-variant/30">
+<h2 class="font-mackintosh text-2xl text-primary">Your Ledger</h2>
+<span class="font-label text-[0.6875rem] text-on-surface-variant">02 ITEMS</span>
+</div>
+<div class="space-y-6 mb-12">
+<!-- Cart Item 1 -->
+<div class="flex gap-4">
+<div class="w-20 h-20 bg-surface flex-shrink-0">
+<img alt="Stool Thumbnail" class="w-full h-full object-cover" data-alt="Small thumbnail of a wooden stool on dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAzTH4n7uqPpFlL7ahpTtXDju_6MSETJV9v9iljhsE8pxCHPpcu-4zlUWqzM7P6lWamAIVOGZtlxu7-1vodQIJFWtxuZjTYk5Veg52VL9diu1VZ6B5D2b4eReXxJyuvrV0yghsurCx2-Sn83G7z6zg7WFG9irbYQRyHT5E74lBOlCS7pYm3sxuighBPo0htRz7P4M8QTJB3-cCr34U4jDznv_dtn49bE6f3n5UWMiFLmBRHvggc6PkdM7mDXns4nl-CPMcPtSJMqcG0"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between">
+<h4 class="font-body font-medium text-sm">Asahikawa Low Stool</h4>
+<span class="text-sm font-semibold">$840</span>
+</div>
+<p class="text-[10px] text-on-surface-variant uppercase mt-1">Nara Series / White Oak</p>
+<button class="text-[10px] text-error uppercase mt-2 hover:underline">Remove</button>
+</div>
+</div>
+<!-- Cart Item 2 -->
+<div class="flex gap-4">
+<div class="w-20 h-20 bg-surface flex-shrink-0">
+<img alt="Tray Thumbnail" class="w-full h-full object-cover" data-alt="Small thumbnail of a walnut tray on dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC47Hm9bIblsKFUJ__gIqV-93fXYd9O3i6aPkmfr5PL3GeS-U4vQuhiS_iXJU-F81ZNZWJriqbSR_clV-KRJFAGj_e3NNVmZ2K9yrpNGUlL8gck81GGT2HKO1BoiquW3URyzo0J9eW4D261iNTUwVEVBrp51Bd4A1xYMAm2sgphoHc1Ig_SYQAJC3Xnk10HpEEfOzBYkDIX2eBRzX5v1pwPSLSQTCWBw9RPXhotVb65SmF3i5ePuDAGJl9-y0_6Q9363tMiRFY7vU8s"/>
+</div>
+<div class="flex-grow">
+<div class="flex justify-between">
+<h4 class="font-body font-medium text-sm">Walnut Valet Tray</h4>
+<span class="text-sm font-semibold">$215</span>
+</div>
+<p class="text-[10px] text-on-surface-variant uppercase mt-1">Nara Series / Walnut</p>
+<button class="text-[10px] text-error uppercase mt-2 hover:underline">Remove</button>
+</div>
+</div>
+</div>
+<!-- Financials -->
+<div class="space-y-4 border-t border-outline-variant/30 pt-8">
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant font-label uppercase">Subtotal</span>
+<span class="text-on-surface font-semibold">$1,055.00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant font-label uppercase">Shipping &amp; Handling</span>
+<span class="text-on-surface font-semibold">$45.00</span>
+</div>
+<div class="flex justify-between text-sm">
+<span class="text-on-surface-variant font-label uppercase">Estimated Tax</span>
+<span class="text-on-surface font-semibold">$84.40</span>
+</div>
+<div class="pt-4 mt-4">
+<div class="relative">
+<input class="w-full bg-surface border-b border-outline focus:border-primary focus:ring-0 text-[0.6875rem] font-label p-3 uppercase tracking-widest placeholder:text-outline/50" placeholder="COUPON CODE" type="text"/>
+<button class="absolute right-0 top-1/2 -translate-y-1/2 text-primary font-label text-[10px] uppercase pr-3 hover:underline">Apply</button>
+</div>
+</div>
+<div class="flex justify-between items-end pt-8 mb-8">
+<span class="font-mackintosh text-xl text-on-surface">Final Total</span>
+<span class="font-mackintosh text-3xl text-primary">$1,184.40</span>
+</div>
+<button class="w-full bg-primary text-on-primary py-5 font-label text-[0.75rem] uppercase tracking-[0.2em] font-bold hover:brightness-110 transition-all flex items-center justify-center gap-3">
+<span class="material-symbols-outlined" data-icon="lock" style="font-variation-settings: 'FILL' 1;">lock</span>
+                                Secure Checkout
+                            </button>
+<p class="text-center text-[9px] text-on-surface-variant uppercase tracking-widest mt-4">Encrypted Piece-to-Owner Transaction</p>
+</div>
+</div>
+<!-- Volume Navigation (Filter) -->
+<div class="bg-surface-container-low p-8">
+<h3 class="font-mackintosh text-lg text-on-surface mb-6">Browse Collections</h3>
+<ul class="space-y-4">
+<li><a class="text-primary font-label text-[0.6875rem] flex justify-between items-center group" href="#"><span>Volume IV: Nara</span> <span class="opacity-40 group-hover:opacity-100">04</span></a></li>
+<li><a class="text-on-surface-variant font-label text-[0.6875rem] flex justify-between items-center group hover:text-on-surface transition-colors" href="#"><span>Volume III: Drift</span> <span class="opacity-40 group-hover:opacity-100">00 SOLD</span></a></li>
+<li><a class="text-on-surface-variant font-label text-[0.6875rem] flex justify-between items-center group hover:text-on-surface transition-colors" href="#"><span>Volume II: Ember</span> <span class="opacity-40 group-hover:opacity-100">00 SOLD</span></a></li>
+<li><a class="text-on-surface-variant font-label text-[0.6875rem] flex justify-between items-center group hover:text-on-surface transition-colors" href="#"><span>Archives</span> <span class="opacity-40 group-hover:opacity-100">12</span></a></li>
+</ul>
+</div>
+</div>
+</aside>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full border-t-0 bg-[#0e0e0e] grid grid-cols-1 md:grid-cols-2 gap-8 px-12 py-16 w-full mt-24 tonal shift from surface to surface-container-lowest">
+<div>
+<div class="font-['ITC_New_Rennie_Mackintosh'] text-lg text-[#e1c299] mb-4">Beaman Woodworks</div>
+<p class="font-['Work_Sans'] text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] max-w-sm">
+                © Beaman Woodworks. Cooper Beaman (Developer) &amp; William Beaman (Master Builder).
+            </p>
+</div>
+<div class="flex flex-col md:items-end gap-6">
+<div class="flex gap-12">
+<a class="font-['Work_Sans'] text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-[#e1c299] transition-colors underline-offset-4 hover:underline" href="#">Instagram</a>
+<a class="font-['Work_Sans'] text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-[#e1c299] transition-colors underline-offset-4 hover:underline" href="#">GitHub</a>
+<a class="font-['Work_Sans'] text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-[#e1c299] transition-colors underline-offset-4 hover:underline" href="#">Contact</a>
+<a class="font-['Work_Sans'] text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-[#e1c299] transition-colors underline-offset-4 hover:underline" href="#">Privacy</a>
+</div>
+<div class="text-[0.6875rem] text-on-surface-variant/40 tracking-[0.3em] uppercase">Built for Permanence</div>
+</div>
+</footer>
+</body></html>

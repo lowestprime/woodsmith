@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Beaman Woodworks | Admin Console</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700&amp;family=Work+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        @font-face {
+            font-family: 'ITC New Rennie Mackintosh';
+            src: url('https://fonts.cdnfonts.com/s/16215/itcrenniemackintosh-std-light.woff') format('woff');
+        }
+        
+        .font-mackintosh {
+            font-family: 'ITC New Rennie Mackintosh', sans-serif;
+        }
+
+        body {
+            font-family: 'Work Sans', sans-serif;
+            background-color: #131313;
+            color: #e2e2e2;
+        }
+
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 4px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0e0e0e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #353535;
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary-container": "#484a46",
+                        "on-primary-fixed-variant": "#584324",
+                        "secondary": "#c6c7c2",
+                        "surface-bright": "#393939",
+                        "surface-tint": "#e1c299",
+                        "surface-container-low": "#1b1b1b",
+                        "on-tertiary": "#313030",
+                        "primary-fixed": "#feddb3",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#929090",
+                        "on-tertiary-container": "#2a2a2a",
+                        "on-secondary-container": "#b8b9b4",
+                        "surface-container-highest": "#353535",
+                        "tertiary": "#c8c6c5",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "inverse-surface": "#e2e2e2",
+                        "on-background": "#e2e2e2",
+                        "inverse-primary": "#725a39",
+                        "secondary-fixed": "#e3e3de",
+                        "secondary-fixed-dim": "#c6c7c2",
+                        "on-tertiary-fixed-variant": "#474746",
+                        "on-surface-variant": "#d4c3b9",
+                        "primary": "#e1c299",
+                        "on-secondary-fixed": "#1a1c19",
+                        "error-container": "#93000a",
+                        "background": "#131313",
+                        "primary-fixed-dim": "#e1c299",
+                        "on-primary-fixed": "#281801",
+                        "on-surface": "#e2e2e2",
+                        "surface-variant": "#353535",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-primary-container": "#382609",
+                        "tertiary-fixed-dim": "#c8c6c5",
+                        "on-primary": "#402d10",
+                        "surface-container": "#1f1f1f",
+                        "primary-container": "#a88c67",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#50443d",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#e5e2e1",
+                        "inverse-on-surface": "#303030",
+                        "surface": "#131313",
+                        "on-tertiary-fixed": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#454744",
+                        "outline": "#9d8e84",
+                        "on-secondary": "#2f312e"
+                    },
+                    fontFamily: {
+                        "headline": ["Epilogue"],
+                        "body": ["Work Sans"],
+                        "label": ["Work Sans"]
+                    },
+                    borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-background text-on-surface overflow-x-hidden selection:bg-primary selection:text-on-primary">
+<!-- Shared SideNavBar -->
+<aside class="fixed left-0 top-0 h-full flex flex-col z-40 bg-[#131313] h-screen w-64 border-r-0">
+<div class="p-8 flex flex-col gap-1">
+<span class="text-2xl font-['ITC_New_Rennie_Mackintosh'] text-[#e1c299] uppercase tracking-widest">Beaman Woodworks</span>
+<span class="font-['Work_Sans'] text-[10px] uppercase tracking-[0.2em] text-on-surface-variant opacity-60">The Digital Joiner</span>
+</div>
+<nav class="flex-1 mt-4 space-y-1">
+<!-- Active Tab: Dashboard -->
+<a class="flex items-center gap-4 text-[#e1c299] border-l-4 border-[#e1c299] bg-[#1b1b1b] pl-4 py-3 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="dashboard">dashboard</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Dashboard</span>
+</a>
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all hover:bg-[#1b1b1b] hover:text-[#e1c299] transition-colors duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="handyman">handyman</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Projects</span>
+</a>
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all hover:bg-[#1b1b1b] hover:text-[#e1c299] transition-colors duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="inventory_2">inventory_2</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Inventory</span>
+</a>
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all hover:bg-[#1b1b1b] hover:text-[#e1c299] transition-colors duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="payments">payments</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Sales</span>
+</a>
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all hover:bg-[#1b1b1b] hover:text-[#e1c299] transition-colors duration-300" href="#">
+<span class="material-symbols-outlined" data-icon="monitoring">monitoring</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Analytics</span>
+</a>
+</nav>
+<div class="px-6 mb-8">
+<button class="w-full bg-primary text-on-primary py-4 font-['Work_Sans'] text-xs uppercase tracking-widest hover:bg-primary-container transition-colors active:scale-95">
+                New Project
+            </button>
+</div>
+<div class="border-t border-surface-variant/20 py-4 mb-4">
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="settings">settings</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Settings</span>
+</a>
+<a class="flex items-center gap-4 text-[#d4c3b9] opacity-70 hover:opacity-100 pl-4 py-3 transition-all" href="#">
+<span class="material-symbols-outlined" data-icon="help">help</span>
+<span class="font-['Work_Sans'] text-sm tracking-wide">Support</span>
+</a>
+</div>
+</aside>
+<!-- Main Content Canvas -->
+<main class="ml-64 min-h-screen">
+<!-- Shared TopAppBar -->
+<header class="flex justify-between items-center w-full px-8 h-20 sticky top-0 z-50 bg-[#131313]/60 backdrop-blur-xl">
+<div>
+<h1 class="font-mackintosh text-3xl text-primary tracking-wide">Admin Console</h1>
+</div>
+<div class="flex items-center gap-8">
+<div class="hidden md:flex gap-6 font-['Work_Sans'] font-medium uppercase tracking-[0.1em] text-xs">
+<a class="text-[#d4c3b9] hover:text-[#e1c299] transition-opacity" href="#">Portfolio</a>
+<a class="text-[#d4c3b9] hover:text-[#e1c299] transition-opacity" href="#">About</a>
+<a class="text-[#d4c3b9] hover:text-[#e1c299] transition-opacity" href="#">Process</a>
+</div>
+<div class="flex items-center gap-4 text-primary">
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity" data-icon="account_circle">account_circle</span>
+</div>
+</div>
+</header>
+<div class="p-8 space-y-8 max-w-[1600px] mx-auto">
+<!-- Dashboard Stats Bento Grid -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-8">
+<!-- Bandwidth Tracker -->
+<div class="md:col-span-4 bg-surface-container-low p-8 relative overflow-hidden group">
+<div class="absolute top-0 right-0 w-32 h-32 bg-primary/5 -mr-16 -mt-16 rotate-45"></div>
+<div class="flex justify-between items-start mb-8">
+<div>
+<p class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-on-surface-variant mb-1">Studio Bandwidth</p>
+<h2 class="font-mackintosh text-4xl text-primary">75% Capacity</h2>
+</div>
+<span class="material-symbols-outlined text-primary text-3xl" data-icon="precision_manufacturing">precision_manufacturing</span>
+</div>
+<div class="w-full bg-surface-container-highest h-1 mb-4">
+<div class="bg-primary h-full transition-all duration-1000" style="width: 75%"></div>
+</div>
+<p class="font-['Work_Sans'] text-sm text-on-surface-variant leading-relaxed">
+                        Lead-time currently at <span class="text-primary font-semibold">14 weeks</span>. High-demand for White Oak commissions.
+                    </p>
+</div>
+<!-- Sales Visualization Chart Mock -->
+<div class="md:col-span-8 bg-surface-container-low p-8">
+<div class="flex justify-between items-center mb-10">
+<div>
+<p class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-on-surface-variant mb-1">Monthly Revenue Visualization</p>
+<h2 class="font-mackintosh text-4xl text-primary">$42,850.00 <span class="text-sm font-['Work_Sans'] text-secondary opacity-60">+12.4%</span></h2>
+</div>
+<div class="flex gap-2">
+<button class="bg-surface-container-highest px-4 py-2 text-[10px] font-['Work_Sans'] uppercase tracking-widest">Q3 2024</button>
+<button class="bg-primary text-on-primary px-4 py-2 text-[10px] font-['Work_Sans'] uppercase tracking-widest">Download Report</button>
+</div>
+</div>
+<div class="h-48 w-full flex items-end justify-between gap-4 pb-2 border-b border-outline-variant/20">
+<!-- Chart Bars -->
+<div class="flex-1 bg-surface-container-high hover:bg-primary/40 transition-colors h-[40%] relative group">
+<span class="absolute -top-6 left-1/2 -translate-x-1/2 text-[9px] opacity-0 group-hover:opacity-100 transition-opacity">JAN</span>
+</div>
+<div class="flex-1 bg-surface-container-high hover:bg-primary/40 transition-colors h-[55%]"></div>
+<div class="flex-1 bg-surface-container-high hover:bg-primary/40 transition-colors h-[45%]"></div>
+<div class="flex-1 bg-surface-container-high hover:bg-primary/40 transition-colors h-[75%]"></div>
+<div class="flex-1 bg-surface-container-high hover:bg-primary/40 transition-colors h-[60%]"></div>
+<div class="flex-1 bg-primary/80 h-[90%] relative">
+<span class="absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] font-bold text-primary">CURRENT</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Commission Queue Section -->
+<div class="bg-surface-container-low p-8">
+<div class="flex justify-between items-end mb-8">
+<h2 class="font-mackintosh text-4xl text-primary">Active Commission Queue</h2>
+<span class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-on-surface-variant pb-1">8 Projects in Motion</span>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full font-['Work_Sans'] text-sm">
+<thead class="border-b border-outline-variant/20">
+<tr class="text-left">
+<th class="py-4 font-medium uppercase tracking-widest text-[10px] opacity-60">Project Reference</th>
+<th class="py-4 font-medium uppercase tracking-widest text-[10px] opacity-60">Client</th>
+<th class="py-4 font-medium uppercase tracking-widest text-[10px] opacity-60">Status</th>
+<th class="py-4 font-medium uppercase tracking-widest text-[10px] opacity-60">Timeline</th>
+<th class="py-4 font-medium uppercase tracking-widest text-[10px] opacity-60 text-right">Actions</th>
+</tr>
+</thead>
+<tbody class="divide-y divide-outline-variant/10">
+<!-- Project 1 -->
+<tr class="group hover:bg-[#212121] transition-colors">
+<td class="py-6">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="weekend">weekend</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Live Edge Walnut Bench</p>
+<p class="text-xs text-on-surface-variant">#BW-2024-081</p>
+</div>
+</div>
+</td>
+<td class="py-6 text-on-surface-variant">Elliot Sterling</td>
+<td class="py-6">
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary text-[10px] uppercase tracking-widest border border-primary/20">
+<span class="w-1 h-1 rounded-full bg-primary animate-pulse"></span> Initiation
+                                    </span>
+</td>
+<td class="py-6">
+<p class="text-xs font-medium">Week 2 of 12</p>
+<div class="w-32 bg-surface-container-highest h-1 mt-2">
+<div class="bg-primary h-full w-[15%]"></div>
+</div>
+</td>
+<td class="py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined" data-icon="edit_note">edit_note</span></button>
+</td>
+</tr>
+<!-- Project 2 -->
+<tr class="group hover:bg-[#212121] transition-colors">
+<td class="py-6">
+<div class="flex items-center gap-4">
+<div class="w-12 h-12 bg-surface-container-highest flex items-center justify-center">
+<span class="material-symbols-outlined text-primary" data-icon="dining">dining</span>
+</div>
+<div>
+<p class="font-bold text-on-surface">Shaker Dining Table</p>
+<p class="text-xs text-on-surface-variant">#BW-2024-074</p>
+</div>
+</div>
+</td>
+<td class="py-6 text-on-surface-variant">Aria Vance</td>
+<td class="py-6">
+<span class="inline-flex items-center gap-2 px-3 py-1 bg-secondary-container/20 text-secondary text-[10px] uppercase tracking-widest border border-secondary/20">
+                                        Packaging
+                                    </span>
+</td>
+<td class="py-6">
+<p class="text-xs font-medium">Week 10 of 10</p>
+<div class="w-32 bg-surface-container-highest h-1 mt-2">
+<div class="bg-primary h-full w-[100%]"></div>
+</div>
+</td>
+<td class="py-6 text-right">
+<button class="text-on-surface-variant hover:text-primary transition-colors"><span class="material-symbols-outlined" data-icon="local_shipping">local_shipping</span></button>
+</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<!-- The Piece Ledger: Product Management -->
+<div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+<div class="md:col-span-1 bg-surface-container-low p-8 space-y-6">
+<h3 class="font-mackintosh text-3xl text-primary">The Piece Ledger</h3>
+<p class="font-['Work_Sans'] text-sm text-on-surface-variant leading-relaxed">
+                        Manage your standard catalog. Edits here update the public storefront in real-time.
+                    </p>
+<div class="space-y-4">
+<div class="p-4 bg-surface-container-lowest border-l-2 border-primary group cursor-pointer hover:bg-surface-container-highest transition-colors">
+<p class="font-['Work_Sans'] text-xs uppercase tracking-widest text-primary mb-1">Standard Item</p>
+<p class="font-bold">Dovetail Keepsake Box</p>
+<p class="text-xs text-on-surface-variant mt-2">$245.00 — Stock: 12</p>
+</div>
+<div class="p-4 bg-surface-container-lowest border-l-2 border-transparent hover:border-primary/40 group cursor-pointer hover:bg-surface-container-highest transition-colors">
+<p class="font-['Work_Sans'] text-xs uppercase tracking-widest text-on-surface-variant mb-1">Standard Item</p>
+<p class="font-bold">Floating Walnut Shelf (36")</p>
+<p class="text-xs text-on-surface-variant mt-2">$180.00 — Stock: 42</p>
+</div>
+</div>
+<button class="w-full border border-primary/40 text-primary py-4 text-xs font-['Work_Sans'] uppercase tracking-widest hover:bg-primary/5 transition-colors">
+                        Add New Catalog Item
+                    </button>
+</div>
+<!-- Active Editor Glassmorphism -->
+<div class="md:col-span-2 bg-[#353535]/60 backdrop-blur-2xl p-10 border border-outline-variant/10">
+<div class="flex justify-between items-start mb-10">
+<div>
+<span class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-primary font-bold">Editing Item: #BW-L-004</span>
+<h4 class="font-mackintosh text-4xl text-on-surface mt-2">Hand-Planed Serving Board</h4>
+</div>
+<div class="flex gap-4">
+<button class="text-on-surface-variant hover:text-error transition-colors"><span class="material-symbols-outlined" data-icon="delete">delete</span></button>
+<button class="bg-primary text-on-primary px-6 py-3 text-xs uppercase tracking-widest font-bold">Publish Changes</button>
+</div>
+</div>
+<form class="grid grid-cols-2 gap-8">
+<div class="space-y-6">
+<div class="flex flex-col gap-2">
+<label class="font-['Work_Sans'] text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Product Title</label>
+<input class="bg-transparent border-b border-outline focus:border-primary transition-colors py-2 outline-none font-['Work_Sans']" type="text" value="Hand-Planed Serving Board"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-['Work_Sans'] text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Price (USD)</label>
+<input class="bg-transparent border-b border-outline focus:border-primary transition-colors py-2 outline-none font-['Work_Sans']" type="text" value="125.00"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-['Work_Sans'] text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Wood Species</label>
+<select class="bg-transparent border-b border-outline focus:border-primary transition-colors py-2 outline-none font-['Work_Sans'] appearance-none">
+<option>Black Walnut</option>
+<option>White Oak</option>
+<option>Cherry</option>
+</select>
+</div>
+</div>
+<div class="space-y-6">
+<div class="w-full aspect-video bg-surface-container-lowest relative overflow-hidden group">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Close-up of a beautifully grained dark walnut serving board with artisan hand-planed texture on a dark workshop background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuA7xRum2SjKxhGtHZq7__AuvDkzF17CyCTtIADT7deItV5CFesQ1BcKbzSs7pvspn_RhAfjqm0HmLkbM-a9RaA7u_oVkb_2DtPakCvcr6_gpyz3pBcH6-m_AAUwSmLntJkkbZ30RFUxJYg7glsAKfaux9ObWsT0uizG_pNPiuupLdpbNKEttrVls7kMucAy4lyOfXryIRcG_xNxj71V3gZ0dGRIEVToJmtNLRn6mJf7qRkkpqIYXqZnSow8PVhE1-YBKMw6TuRjyVvW"/>
+<div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/40">
+<button class="bg-on-surface text-surface px-4 py-2 text-[10px] uppercase tracking-widest font-bold">Replace Media</button>
+</div>
+</div>
+<div class="flex flex-col gap-2">
+<label class="font-['Work_Sans'] text-[10px] uppercase tracking-widest font-bold text-on-surface-variant">Description</label>
+<textarea class="bg-transparent border border-outline/20 p-4 focus:border-primary transition-colors outline-none font-['Work_Sans'] text-sm leading-relaxed" rows="3">Artisan serving board finished with hand-rubbed organic tung oil. Featuring chamfered edges and a minimalist hang-hole.</textarea>
+</div>
+</div>
+</form>
+</div>
+</div>
+</div>
+<!-- Shared Footer -->
+<footer class="bg-[#0e0e0e] w-full py-12 px-8 mt-12 border-t border-surface-variant/10">
+<div class="flex flex-col md:flex-row justify-between items-center w-full max-w-7xl mx-auto">
+<div class="mb-8 md:mb-0">
+<span class="font-['ITC_New_Rennie_Mackintosh'] text-[#e1c299] text-xl">BEAMAN WOODWORKS</span>
+</div>
+<div class="flex flex-wrap justify-center gap-8 mb-8 md:mb-0">
+<a class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-[#d4c3b9] opacity-50 hover:opacity-100 transition-opacity" href="#">Privacy Policy</a>
+<a class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-[#d4c3b9] opacity-50 hover:opacity-100 transition-opacity" href="#">Terms of Service</a>
+<a class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-[#d4c3b9] opacity-50 hover:opacity-100 transition-opacity" href="#">Contact</a>
+<a class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-[#d4c3b9] opacity-50 hover:opacity-100 transition-opacity" href="#">Instagram</a>
+</div>
+<div>
+<p class="font-['Work_Sans'] text-[10px] uppercase tracking-widest text-[#d4c3b9] opacity-50">© 2024 BEAMAN WOODWORKS. HANDCRAFTED DIGITAL EXPERIENCES.</p>
+</div>
+</div>
+</footer>
+</main>
+</body></html>

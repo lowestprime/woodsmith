@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Commission Flow &amp; Visualizer | Beaman Woodworks</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;500;600;700&amp;family=Epilogue:wght@400;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>
+        @font-face {
+            font-family: 'ITC New Rennie Mackintosh';
+            src: url('https://fonts.cdnfonts.com/css/itc-new-rennie-mackintosh') format('woff2'); /* Fallback to Epilogue if restricted */
+        }
+        /* Using Epilogue as the closest Google Font proxy for Rennie Mackintosh's verticality if the CDN is blocked */
+        .font-mackintosh { font-family: 'Epilogue', sans-serif; font-weight: 300; letter-spacing: -0.02em; text-transform: none; }
+        
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 300, 'GRAD' 0, 'opsz' 24;
+        }
+        
+        body {
+            background-color: #131313;
+            color: #e2e2e2;
+            font-family: 'Work Sans', sans-serif;
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        .glass-nav {
+            background: rgba(19, 19, 19, 0.6);
+            backdrop-filter: blur(24px);
+        }
+    </style>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              colors: {
+                "primary": "#e1c299",
+                "on-primary": "#402d10",
+                "surface": "#131313",
+                "surface-container-low": "#1b1b1b",
+                "surface-container-high": "#2a2a2a",
+                "surface-container-highest": "#353535",
+                "surface-container-lowest": "#0e0e0e",
+                "on-surface": "#e2e2e2",
+                "on-surface-variant": "#d4c3b9",
+                "outline": "#9d8e84",
+                "outline-variant": "#50443d",
+              },
+              fontFamily: {
+                "headline": ["Epilogue", "sans-serif"],
+                "body": ["Work Sans", "sans-serif"],
+                "label": ["Work Sans", "sans-serif"]
+              },
+              borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+            },
+          },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface selection:bg-primary selection:text-on-primary">
+<!-- Top Navigation Bar -->
+<nav class="fixed top-0 w-full z-50 flex justify-between items-center px-12 py-6 w-full bg-[#131313]/60 backdrop-blur-xl bg-gradient-to-b from-[#131313] to-transparent">
+<div class="text-2xl font-normal text-primary font-mackintosh tracking-tight">Beaman Woodworks</div>
+<div class="hidden md:flex gap-10 items-center">
+<a class="font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-on-surface-variant hover:text-primary transition-colors duration-300" href="#">Workshop</a>
+<a class="font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-on-surface-variant hover:text-primary transition-colors duration-300" href="#">Ledger</a>
+<a class="font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-primary border-b-2 border-primary pb-1" href="#">Commission</a>
+<a class="font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-on-surface-variant hover:text-primary transition-colors duration-300" href="#">Notes</a>
+<a class="font-label font-medium uppercase tracking-[0.1em] text-[0.6875rem] text-on-surface-variant hover:text-primary transition-colors duration-300" href="#">About</a>
+</div>
+<div class="flex gap-6 items-center text-primary">
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity">dark_mode</span>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity">shopping_cart</span>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-opacity">person</span>
+</div>
+</nav>
+<main class="pt-32 px-6 md:px-12 max-w-screen-2xl mx-auto">
+<!-- Header Section -->
+<header class="mb-20">
+<h1 class="text-6xl md:text-8xl font-mackintosh text-primary leading-none mb-6">Commission Flow &amp; Visualizer</h1>
+<div class="flex flex-col md:flex-row md:items-end justify-between gap-8">
+<p class="max-w-xl text-on-surface-variant text-lg">
+                    Every custom piece begins with a dialogue between form and material. Use this interface to define your intent, explore materiality, and visualize the structural essence of your project.
+                </p>
+<!-- Bandwidth Estimator -->
+<div class="bg-surface-container-low p-6 flex flex-col gap-4 min-w-[300px]">
+<div class="flex justify-between items-center">
+<span class="text-[0.6875rem] font-label uppercase tracking-widest text-on-surface-variant">Studio Bandwidth</span>
+<span class="text-[0.6875rem] font-label uppercase tracking-widest text-primary">85% Capacity</span>
+</div>
+<div class="h-[2px] w-full bg-surface-container-highest">
+<div class="h-full bg-primary w-[85%]"></div>
+</div>
+<div class="flex justify-between items-baseline">
+<span class="text-sm font-label text-on-surface-variant">Pieces in Progress: <span class="text-on-surface font-bold">12</span></span>
+<span class="text-sm font-label text-on-surface-variant">Est. Lead Time: <span class="text-on-surface font-bold">14 Weeks</span></span>
+</div>
+</div>
+</div>
+</header>
+<div class="grid grid-cols-1 lg:grid-cols-12 gap-12 items-start">
+<!-- Left Column: Visualizer (Sticky) -->
+<div class="lg:col-span-7 sticky top-32">
+<div class="relative aspect-square bg-surface-container-lowest overflow-hidden group">
+<!-- Placeholder for 3D/Visualizer Canvas -->
+<div class="absolute inset-0 flex items-center justify-center opacity-40">
+<img alt="Technical wood schematic" class="w-full h-full object-cover grayscale mix-blend-overlay" data-alt="Monochrome technical blueprint of a woodworking joint with clean white lines on a deep black background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuC_utVdTvzru26qEAcD_DtiVkXcVYpXn6FQ0KXZTcCcWfKF3Yvmg0YWIlUCAxpjuqP9v3bRtCihhZKQctruzYO3QtMMZ9SXw2taieF2aotY3lh3XG8j1PWU_66q1WbraqeCR81vn40MZRNctt--yVg0jSKFWdYQMJOXJ1Q3Px3bQoQ-R4B3wCZ1HVbLLVEO6OShqIdiqKRS4FNTssBG6j07QsokRYdjugOTDFRJRMNXSQGnmToEINPGzlDdPWSig-V0Bon9fedOSluy"/>
+</div>
+<!-- Simulated Interactive Visualizer Overlay -->
+<div class="absolute inset-0 p-8 flex flex-col justify-between">
+<div class="flex justify-between items-start">
+<div class="bg-surface-container-high/80 backdrop-blur-md p-4">
+<span class="block text-[0.625rem] font-label uppercase tracking-widest text-on-surface-variant mb-1">Perspective</span>
+<span class="text-sm font-medium text-primary">Isometric North-West</span>
+</div>
+<div class="flex flex-col gap-2">
+<button class="w-10 h-10 bg-surface-container-high flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined">zoom_in</span>
+</button>
+<button class="w-10 h-10 bg-surface-container-high flex items-center justify-center text-primary hover:bg-primary hover:text-on-primary transition-colors">
+<span class="material-symbols-outlined">refresh</span>
+</button>
+</div>
+</div>
+<!-- Scale Bar -->
+<div class="w-full flex flex-col gap-2">
+<div class="flex justify-between items-end">
+<div class="flex gap-4 items-center">
+<span class="text-[0.625rem] font-label uppercase text-on-surface-variant">Scale Reference: 1:12</span>
+<div class="h-[1px] w-24 bg-primary relative">
+<div class="absolute left-0 -top-1 h-2 w-[1px] bg-primary"></div>
+<div class="absolute right-0 -top-1 h-2 w-[1px] bg-primary"></div>
+</div>
+</div>
+<span class="text-[0.625rem] font-label uppercase text-on-surface-variant">Real-time Rendering Active</span>
+</div>
+</div>
+</div>
+<!-- Material Texture Preview (Dynamic) -->
+<div class="absolute bottom-12 right-12 w-32 h-32 border-l border-t border-outline-variant p-4 flex flex-col justify-end">
+<span class="text-[0.625rem] font-label uppercase tracking-widest text-on-surface-variant mb-2">Grain Preview</span>
+<div class="w-full h-12 bg-surface-container-highest overflow-hidden">
+<img alt="Oak texture" class="w-full h-full object-cover" data-alt="Close-up of raw quarter-sawn white oak wood grain showing intricate medullary rays and organic patterns" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBxyRcqCkNCEuH1UpRr6-Y729_y1BukyjGaeGzg174WPJtmdw_mgo7cVVh5dZXGeDhjFwOiJwyH--wElCm2dxEhLPNiE0XVV-VY-a0NxNaymR7GHBhR-1voKZ-Dp3z3OLy17SGAVUW8CuMo6-lu6jjCK4Tu0bhL87i7U1BCsKeYPahY5y-_KE6I0wXI1j9Kol42ySTfTx8sMF0P56VrLc6LGNnD0Tnj_ZtZs07ROWPDe51E2ed51_bNfRL6IwIuFjyS0LF1cJLOXRdZ"/>
+</div>
+</div>
+</div>
+<!-- Cost Estimator Table -->
+<div class="mt-8 bg-surface-container-low p-8 border-t-2 border-primary">
+<h3 class="text-xl font-mackintosh text-primary mb-6">Real-Time Estimate</h3>
+<div class="grid grid-cols-2 gap-y-4 text-sm font-label uppercase tracking-wider">
+<div class="text-on-surface-variant">Material Cost (Select Grade)</div>
+<div class="text-right text-on-surface">$1,420.00</div>
+<div class="text-on-surface-variant">Labor (Bench Hours: 42)</div>
+<div class="text-right text-on-surface">$3,150.00</div>
+<div class="text-on-surface-variant">Studio Overhead &amp; Markup</div>
+<div class="text-right text-on-surface">$914.00</div>
+<div class="col-span-2 border-t border-outline-variant my-2 pt-4 flex justify-between items-baseline">
+<span class="text-lg font-bold text-primary">Total Projected Cost</span>
+<span class="text-3xl font-mackintosh text-primary">$5,484.00</span>
+</div>
+</div>
+<p class="mt-4 text-[0.625rem] text-on-surface-variant italic">*Estimates are subject to final material sourcing and design complexity approval.</p>
+</div>
+</div>
+<!-- Right Column: Multi-stage Form -->
+<div class="lg:col-span-5 flex flex-col gap-12">
+<!-- Step 1: Intent -->
+<section class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<span class="text-2xl font-mackintosh text-primary">01</span>
+<h2 class="text-sm font-label uppercase tracking-[0.2em] text-on-surface-variant">Project Intent</h2>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<button class="flex flex-col items-start p-6 bg-surface-container-high border-b-2 border-primary text-primary transition-all">
+<span class="material-symbols-outlined mb-4">architecture</span>
+<span class="font-label uppercase text-xs tracking-widest font-bold">Fixed Furniture</span>
+<span class="text-[0.625rem] mt-1 text-on-surface-variant">Tables, Desks, Credenzas</span>
+</button>
+<button class="flex flex-col items-start p-6 bg-surface-container-low hover:bg-surface-container-high transition-all group">
+<span class="material-symbols-outlined mb-4 group-hover:text-primary">chair</span>
+<span class="font-label uppercase text-xs tracking-widest">Seating &amp; Form</span>
+<span class="text-[0.625rem] mt-1 text-on-surface-variant">Chairs, Stools, Benches</span>
+</button>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-[0.6875rem] font-label uppercase tracking-widest text-on-surface-variant">Project Brief</label>
+<textarea class="bg-transparent border-0 border-b border-outline focus:ring-0 focus:border-primary transition-colors text-on-surface placeholder:text-surface-variant py-4 px-0" placeholder="Describe the soul of the piece..." rows="3"></textarea>
+</div>
+</section>
+<!-- Step 2: Materiality -->
+<section class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<span class="text-2xl font-mackintosh text-primary">02</span>
+<h2 class="text-sm font-label uppercase tracking-[0.2em] text-on-surface-variant">Materiality</h2>
+</div>
+<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-2">
+<label class="text-[0.6875rem] font-label uppercase tracking-widest text-on-surface-variant">Primary Timber Species</label>
+<select class="bg-surface-container-low border-0 border-b border-outline focus:ring-0 focus:border-primary text-on-surface py-4 px-2 uppercase text-xs font-label tracking-widest cursor-pointer">
+<option>White Oak (Rift Sawn)</option>
+<option>Black Walnut (Bookmatched)</option>
+<option>Hard Maple (Select Grade)</option>
+<option>Cherry (Natural Finish)</option>
+</select>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-[0.6875rem] font-label uppercase tracking-widest text-on-surface-variant">Joinery Preference</label>
+<div class="flex flex-wrap gap-3">
+<span class="px-4 py-2 bg-surface-container-high text-primary border border-primary text-[0.625rem] font-label uppercase tracking-widest cursor-pointer">Exposed Dovetail</span>
+<span class="px-4 py-2 bg-surface-container-low text-on-surface-variant border border-outline-variant hover:border-primary hover:text-primary text-[0.625rem] font-label uppercase tracking-widest cursor-pointer transition-colors">Mortise &amp; Tenon</span>
+<span class="px-4 py-2 bg-surface-container-low text-on-surface-variant border border-outline-variant hover:border-primary hover:text-primary text-[0.625rem] font-label uppercase tracking-widest cursor-pointer transition-colors">Half-Lap Joint</span>
+</div>
+</div>
+</div>
+</section>
+<!-- Step 3: Dimensions -->
+<section class="flex flex-col gap-6">
+<div class="flex items-center gap-4">
+<span class="text-2xl font-mackintosh text-primary">03</span>
+<h2 class="text-sm font-label uppercase tracking-[0.2em] text-on-surface-variant">Spatial Dimensions</h2>
+</div>
+<div class="grid grid-cols-3 gap-4">
+<div class="flex flex-col gap-2">
+<label class="text-[0.625rem] font-label uppercase text-on-surface-variant">Width (in)</label>
+<input class="bg-transparent border-0 border-b border-outline focus:ring-0 focus:border-primary text-on-surface py-2 text-center font-bold" type="number" value="72"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-[0.625rem] font-label uppercase text-on-surface-variant">Depth (in)</label>
+<input class="bg-transparent border-0 border-b border-outline focus:ring-0 focus:border-primary text-on-surface py-2 text-center font-bold" type="number" value="36"/>
+</div>
+<div class="flex flex-col gap-2">
+<label class="text-[0.625rem] font-label uppercase text-on-surface-variant">Height (in)</label>
+<input class="bg-transparent border-0 border-b border-outline focus:ring-0 focus:border-primary text-on-surface py-2 text-center font-bold" type="number" value="30"/>
+</div>
+</div>
+</section>
+<!-- Final Actions -->
+<section class="pt-8 flex flex-col gap-6 border-t border-outline-variant">
+<label class="flex items-center gap-4 cursor-pointer group">
+<div class="relative w-5 h-5 border border-primary flex items-center justify-center">
+<input checked="" class="hidden peer" type="checkbox"/>
+<div class="w-3 h-3 bg-primary peer-checked:opacity-100 opacity-0 transition-opacity"></div>
+</div>
+<span class="text-xs font-label uppercase tracking-widest text-on-surface group-hover:text-primary transition-colors">Include Real-time Visualization with Brief</span>
+</label>
+<button class="w-full bg-primary py-6 flex items-center justify-center gap-4 text-on-primary font-label font-bold uppercase tracking-[0.2em] hover:bg-primary/90 transition-colors">
+                        Submit Commission Request
+                        <span class="material-symbols-outlined">send</span>
+</button>
+<p class="text-[0.625rem] text-center text-on-surface-variant tracking-widest uppercase">A non-refundable $500.00 design fee applies upon approval.</p>
+</section>
+</div>
+</div>
+</main>
+<!-- Footer -->
+<footer class="w-full border-t-0 bg-[#0e0e0e] grid grid-cols-1 md:grid-cols-2 gap-8 px-12 py-16 w-full mt-24">
+<div class="flex flex-col gap-6">
+<div class="font-mackintosh text-lg text-primary">Beaman Woodworks</div>
+<p class="font-label text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] max-w-sm leading-relaxed">
+                © Beaman Woodworks. Cooper Beaman (Developer) &amp; William Beaman (Master Builder).
+            </p>
+</div>
+<div class="flex flex-col md:items-end justify-between gap-8">
+<div class="flex gap-8">
+<a class="font-label text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Instagram</a>
+<a class="font-label text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">GitHub</a>
+<a class="font-label text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Contact</a>
+<a class="font-label text-[0.6875rem] uppercase tracking-widest text-[#d4c3b9] hover:text-primary transition-colors underline-offset-4 hover:underline" href="#">Privacy</a>
+</div>
+<div class="text-[0.625rem] text-[#d4c3b9]/40 font-label tracking-[0.3em] uppercase">Built with precision. Handled with care.</div>
+</div>
+</footer>
+<!-- Side Navigation Shell (Hidden on standard view but mapped per JSON) -->
+<div class="hidden lg:flex fixed left-0 top-0 h-full w-20 flex-col py-8 items-center bg-[#1b1b1b] border-r border-outline-variant/10 z-[60] shadow-[20px_0_40px_rgba(0,0,0,0.4)]">
+<div class="mb-12">
+<span class="material-symbols-outlined text-primary text-3xl">architecture</span>
+</div>
+<div class="flex flex-col gap-10">
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer" title="Inventory Control">inventory_2</span>
+<span class="material-symbols-outlined text-primary brightness-110 cursor-pointer" style="font-variation-settings: 'FILL' 1;" title="Commission Queue">architecture</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer" title="Client Ledger">payments</span>
+<span class="material-symbols-outlined text-on-surface-variant hover:text-primary cursor-pointer" title="Workshop Logs">history_edu</span>
+</div>
+<div class="mt-auto flex flex-col gap-8 text-on-surface-variant/60">
+<span class="material-symbols-outlined hover:text-primary cursor-pointer">settings</span>
+<span class="material-symbols-outlined hover:text-primary cursor-pointer">logout</span>
+</div>
+</div>
+</body></html>

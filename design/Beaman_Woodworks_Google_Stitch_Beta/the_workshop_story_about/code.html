@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Epilogue:wght@400;700&amp;family=Work+Sans:wght@300;400;500;600&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<style>@font-face {
+    font-family: "ITC New Rennie Mackintosh";
+    src: url(https://fonts.cdnfonts.com/s/16219/itc-new-rennie-mackintosh-std-light.woff) format("woff")
+    }
+.font-mackintosh {
+    font-family: "ITC New Rennie Mackintosh", sans-serif
+    }
+/* Custom Wood Texture Overlay */
+.wood-grain-overlay {
+    background-image: url(https://lh3.googleusercontent.com/aida-public/AB6AXuCNy7M2K4p0BMYrl35ZP_6BCLoi3_CwnKwHNEQOgbb5CFnfuMxV29dIR8iZwls7FRcxUWxdacXAdNffDSbbnRW81VzTeWHXu7xixvYadOMWvYGDLt-qRDb7THqKWra-9hkKLf7fVnLxL5G-nxK11DxElNg0fzbpnQCu4ZylNHDu6OwMIL0u7hwUF7UL50FPYJL66ngMB139lx61Vf1YPL6wAhdxxFbTwbm8VnyWyE6SQQ6jPS95OOT99IxMgooDqRuPS4yZ-Gx72HSn);
+    opacity: 0.03
+    }
+/* Chisel Link Animation Simulation via CSS */
+.chisel-link::after {
+    content: "";
+    display: block;
+    width: 0;
+    height: 2px;
+    background: #e1c299;
+    transition: width 0.3s
+    }
+.chisel-link:hover::after {
+    width: 100%
+    }</style>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "secondary-container": "#484a46",
+                        "on-primary-fixed-variant": "#584324",
+                        "secondary": "#c6c7c2",
+                        "surface-bright": "#393939",
+                        "surface-tint": "#e1c299",
+                        "surface-container-low": "#1b1b1b",
+                        "on-tertiary": "#313030",
+                        "primary-fixed": "#feddb3",
+                        "surface-dim": "#131313",
+                        "tertiary-container": "#929090",
+                        "on-tertiary-container": "#2a2a2a",
+                        "on-secondary-container": "#b8b9b4",
+                        "surface-container-highest": "#353535",
+                        "tertiary": "#c8c6c5",
+                        "on-error": "#690005",
+                        "error": "#ffb4ab",
+                        "inverse-surface": "#e2e2e2",
+                        "on-background": "#e2e2e2",
+                        "inverse-primary": "#725a39",
+                        "secondary-fixed": "#e3e3de",
+                        "secondary-fixed-dim": "#c6c7c2",
+                        "on-tertiary-fixed-variant": "#474746",
+                        "on-surface-variant": "#d4c3b9",
+                        "primary": "#e1c299",
+                        "on-secondary-fixed": "#1a1c19",
+                        "error-container": "#93000a",
+                        "background": "#131313",
+                        "primary-fixed-dim": "#e1c299",
+                        "on-primary-fixed": "#281801",
+                        "on-surface": "#e2e2e2",
+                        "surface-variant": "#353535",
+                        "surface-container-lowest": "#0e0e0e",
+                        "on-primary-container": "#382609",
+                        "tertiary-fixed-dim": "#c8c6c5",
+                        "on-primary": "#402d10",
+                        "surface-container": "#1f1f1f",
+                        "primary-container": "#a88c67",
+                        "surface-container-high": "#2a2a2a",
+                        "outline-variant": "#50443d",
+                        "on-error-container": "#ffdad6",
+                        "tertiary-fixed": "#e5e2e1",
+                        "inverse-on-surface": "#303030",
+                        "surface": "#131313",
+                        "on-tertiary-fixed": "#1c1b1b",
+                        "on-secondary-fixed-variant": "#454744",
+                        "outline": "#9d8e84",
+                        "on-secondary": "#2f312e"
+                    },
+                    fontFamily: {
+                        "headline": ["Epilogue"],
+                        "body": ["Work Sans"],
+                        "label": ["Work Sans"]
+                    },
+                    borderRadius: { "DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+</head>
+<body class="bg-surface text-on-surface font-body selection:bg-primary selection:text-on-primary">
+<!-- TopAppBar -->
+<nav class="flex justify-between items-center w-full px-8 h-20 sticky top-0 z-50 bg-[#131313]/60 backdrop-blur-xl">
+<div class="flex items-center gap-4">
+<span class="font-mackintosh text-3xl text-primary tracking-widest uppercase">Beaman Woodworks</span>
+</div>
+<div class="hidden md:flex items-center gap-12">
+<a class="font-label text-on-surface-variant hover:text-primary uppercase tracking-[0.1em] text-xs transition-opacity" href="#">Portfolio</a>
+<a class="font-label text-primary border-b-2 border-primary pb-1 uppercase tracking-[0.1em] text-xs" href="#">About</a>
+<a class="font-label text-on-surface-variant hover:text-primary uppercase tracking-[0.1em] text-xs transition-opacity" href="#">Process</a>
+</div>
+<div class="flex items-center gap-6 text-primary">
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-all duration-200" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined cursor-pointer hover:opacity-80 transition-all duration-200" data-icon="account_circle">account_circle</span>
+</div>
+</nav>
+<main class="relative">
+<!-- Wood Grain Texture Overlay (Global) -->
+<div class="fixed inset-0 pointer-events-none wood-grain-overlay z-0"></div>
+<!-- Hero Section: Philosophy -->
+<section class="relative z-10 min-h-[716px] flex flex-col justify-center px-8 md:px-24 py-20 border-b-0">
+<div class="max-w-4xl">
+<span class="font-label text-primary uppercase tracking-[0.2em] text-xs mb-6 block">Our Philosophy</span>
+<h1 class="font-mackintosh text-6xl md:text-8xl text-on-surface leading-none mb-12">The Digital <br/><span class="text-primary italic">Joiner</span></h1>
+<p class="font-body text-xl md:text-2xl text-on-surface-variant leading-relaxed max-w-2xl">
+                    We approach software with the same reverence a master carpenter holds for raw timber. Every line of code is a hand-cut joint; every interface, a planed surface. We don't build apps; we craft digital heirlooms.
+                </p>
+</div>
+</section>
+<!-- Profiles Section: Asymmetric Layout -->
+<section class="relative z-10 px-8 md:px-24 py-32 space-y-48">
+<!-- Profile 1: William Beaman -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12 items-center">
+<div class="md:col-span-7 order-2 md:order-1">
+<div class="bg-surface-container-low p-12 relative">
+<span class="font-label text-primary uppercase tracking-[0.1em] text-xs mb-4 block">Founding Artisan</span>
+<h2 class="font-mackintosh text-4xl md:text-6xl text-on-surface mb-8">William Beaman</h2>
+<p class="font-body text-lg text-on-surface-variant mb-8 leading-relaxed">
+                            With three decades at the workbench, William's appreciation for Japanese joinery—specifically the <span class="text-primary italic">Kanawa-tsugi</span>—informs his structural approach to every project. He believes that true beauty lies in the invisible strength of how components meet.
+                        </p>
+<div class="flex gap-6">
+<a class="font-mackintosh text-xl text-primary chisel-link" href="#">View Gallery</a>
+<a class="font-mackintosh text-xl text-primary chisel-link" href="#">Instagram</a>
+</div>
+</div>
+</div>
+<div class="md:col-span-5 order-1 md:order-2">
+<div class="aspect-[4/5] bg-surface-container-highest overflow-hidden">
+<div class="w-full h-full bg-surface-container flex items-center justify-center border border-outline/20">
+<span class="material-symbols-outlined text-outline/30 text-4xl">add_a_photo</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Profile 2: Cooper Beaman -->
+<div class="grid grid-cols-1 md:grid-cols-12 gap-12 items-center">
+<div class="md:col-span-5">
+<div class="aspect-[4/5] bg-surface-container-highest overflow-hidden">
+<div class="w-full h-full bg-surface-container flex items-center justify-center border border-outline/20">
+<span class="material-symbols-outlined text-outline/30 text-4xl">add_a_photo</span>
+</div>
+</div>
+</div>
+<div class="md:col-span-7">
+<div class="bg-surface-container-low p-12 relative border-l-0">
+<span class="font-label text-primary uppercase tracking-[0.1em] text-xs mb-4 block">Systems Architect</span>
+<h2 class="font-mackintosh text-4xl md:text-6xl text-on-surface mb-8">Cooper Beaman</h2>
+<p class="font-body text-lg text-on-surface-variant mb-8 leading-relaxed">
+                            Cooper translates the tactile logic of the workshop into the digital realm. Specializing in high-performance systems and structural integrity, he ensures that Beaman Woodworks' digital presence is as permanent as a dovetail joint.
+                        </p>
+<div class="space-y-4">
+<div class="flex items-center gap-4 text-on-surface">
+<span class="material-symbols-outlined text-primary" data-icon="mail">mail</span>
+<span class="font-body">lowestprime@proton.me</span>
+</div>
+<div class="flex items-center gap-4 text-on-surface">
+<span class="material-symbols-outlined text-primary" data-icon="code">code</span>
+<a class="font-body hover:text-primary transition-colors" href="https://x.gd/woodsmith_git">github.com/woodsmith_git</a>
+</div>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Contact / CTA Section -->
+<section class="relative z-10 px-8 md:px-24 py-32 bg-surface-container-lowest">
+<div class="max-w-4xl mx-auto text-center">
+<h3 class="font-mackintosh text-5xl md:text-7xl text-on-surface mb-12">Start a Commission</h3>
+<form class="space-y-12 text-left">
+<div class="grid grid-cols-1 md:grid-cols-2 gap-12">
+<div class="group">
+<label class="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-2 block group-focus-within:text-primary">Your Name</label>
+<input class="w-full bg-transparent border-b border-outline focus:border-primary focus:ring-0 transition-colors py-2 outline-none text-on-surface" type="text"/>
+</div>
+<div class="group">
+<label class="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-2 block group-focus-within:text-primary">Email Address</label>
+<input class="w-full bg-transparent border-b border-outline focus:border-primary focus:ring-0 transition-colors py-2 outline-none text-on-surface" type="email"/>
+</div>
+</div>
+<div class="group">
+<label class="font-label text-on-surface-variant uppercase tracking-widest text-[10px] mb-2 block group-focus-within:text-primary">Project Inquiry</label>
+<textarea class="w-full bg-transparent border-b border-outline focus:border-primary focus:ring-0 transition-colors py-2 outline-none text-on-surface resize-none" rows="4"></textarea>
+</div>
+<div class="flex justify-center mt-16">
+<button class="bg-primary text-on-primary font-label px-12 py-5 uppercase tracking-widest text-sm hover:bg-primary-container transition-all active:scale-95">
+                            Submit Inquiry
+                        </button>
+</div>
+</form>
+</div>
+</section>
+</main>
+<!-- Footer -->
+<footer class="w-full py-12 px-8 bg-[#0e0e0e] relative z-20">
+<div class="flex flex-col md:flex-row justify-between items-center w-full max-w-7xl mx-auto gap-8">
+<div class="flex flex-col gap-2">
+<span class="font-mackintosh text-2xl text-primary tracking-widest">BEAMAN WOODWORKS</span>
+<p class="font-body text-[10px] text-on-surface-variant uppercase tracking-widest">© 2024 BEAMAN WOODWORKS. HANDCRAFTED DIGITAL EXPERIENCES.</p>
+</div>
+<div class="flex gap-8">
+<a class="font-body text-[10px] text-on-surface-variant uppercase tracking-widest hover:text-primary transition-opacity" href="#">Privacy Policy</a>
+<a class="font-body text-[10px] text-on-surface-variant uppercase tracking-widest hover:text-primary transition-opacity" href="#">Terms of Service</a>
+<a class="font-body text-[10px] text-on-surface-variant uppercase tracking-widest hover:text-primary transition-opacity" href="#">Contact</a>
+<a class="font-body text-[10px] text-on-surface-variant uppercase tracking-widest hover:text-primary transition-opacity flex items-center gap-2" href="#">
+<span class="material-symbols-outlined text-[14px]" data-icon="photo_camera">photo_camera</span>
+                    Instagram
+                </a>
+</div>
+</div>
+</footer>
+</body></html>
