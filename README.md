@@ -11,8 +11,6 @@ It explains:
 
 This is **not** a generic CMS. Woodsmith is a self-hosted portfolio, journal, commission intake, and reservation-tracking system built for a woodworking studio.
 
----
-
 ## 1. What the website is for
 
 Woodsmith combines four jobs in one place:
@@ -31,8 +29,6 @@ The site is especially strong at **inquiry-based sales**:
 
 That makes it excellent for custom work, reservations, quote-based sales, and high-touch projects.
 
----
-
 ## 2. What visitors can do on the public site
 
 Visitors can:
@@ -45,8 +41,6 @@ Visitors can:
 - submit a reservation request for an existing piece
 - revisit their project dossier using the reference link they receive
 - post follow-up updates to their dossier
-
----
 
 ## 3. What you can do yourself from the browser
 
@@ -63,8 +57,6 @@ Once you log into `/studio`, you can:
 - log out securely
 
 This is the part of the system you will use most often.
-
----
 
 ## 4. What you cannot currently change from the browser
 
@@ -86,8 +78,6 @@ In plain language:
 
 - **buyer/project management is browser-based**
 - **site content management is still file/code based**
-
----
 
 ## 5. What kind of sales workflow this site supports
 
@@ -116,8 +106,6 @@ Woodsmith is best understood as an **inquiry-and-dossier commerce system**, not 
 
 If you accept payment elsewhere, use Woodsmith as the communication and status hub, then record the payment milestone in the dossier timeline.
 
----
-
 ## 6. How a project moves through the system
 
 ### For a custom commission
@@ -134,8 +122,6 @@ If you accept payment elsewhere, use Woodsmith as the communication and status h
 2. They submit a reservation note.
 3. The system creates a dossier for that inquiry.
 4. You use the dossier to confirm availability, discuss finish/shipping details, and close the sale.
-
----
 
 ## 7. Your most important pages
 
@@ -157,8 +143,6 @@ If you accept payment elsewhere, use Woodsmith as the communication and status h
 - `/studio` — dashboard
 - `/studio/request/REFERENCE` — request management page
 
----
-
 ## 8. What a dossier is
 
 A dossier is the shared record for one buyer inquiry or reservation.
@@ -176,8 +160,6 @@ Each dossier includes:
 - timeline updates from buyer and studio
 
 Think of it as the single living project page for that conversation.
-
----
 
 ## 9. What the fields mean in practice
 
@@ -249,8 +231,6 @@ When writing a timeline message from the studio, you choose whether it is:
 - **public** — visible to the buyer
 - **private** — visible only in the studio dashboard
 
----
-
 ## 10. Recommended status system for consistency
 
 Use a small, fixed vocabulary so the dashboard stays clean and buyers get predictable wording.
@@ -281,8 +261,6 @@ Use a small, fixed vocabulary so the dashboard stays clean and buyers get predic
 
 Important detail: the dashboard's “Open dossiers” count stops counting a project as open only when status is exactly `Delivered` or `Closed`.
 
----
-
 ## 11. The best daily routine for the owner
 
 A simple reliable routine:
@@ -296,8 +274,6 @@ A simple reliable routine:
 7. mark finished projects as `Delivered` and later `Closed`
 
 This keeps the site useful both for you and for the buyer.
-
----
 
 ## 12. The best way to use Woodsmith for actual sales
 
@@ -320,8 +296,6 @@ A practical sequence looks like this:
 8. when delivery is complete, you set status to `Delivered`
 9. after final wrap-up, you set status to `Closed`
 
----
-
 ## 13. Important limitations and privacy expectations
 
 ### Dossier links should be treated carefully
@@ -343,8 +317,6 @@ Practical rule:
 - only share it with people who should truly manage all requests
 - change it if access needs to be revoked
 
----
-
 ## 14. When you need SSH or developer help
 
 You need SSH or file/code help when you want to:
@@ -358,8 +330,6 @@ You need SSH or file/code help when you want to:
 - add payments or checkout features
 - change the deployment itself
 
----
-
 ## 15. What success looks like
 
 Woodsmith is working well when:
@@ -369,8 +339,6 @@ Woodsmith is working well when:
 - every inquiry becomes a dossier immediately
 - you can manage all buyer conversations from `/studio`
 - buyers always know the current project state without needing scattered email threads
-
----
 
 ## 16. Related file
 
