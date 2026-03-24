@@ -11,8 +11,6 @@ Deploy `lowestprime/woodsmith` from `/volume2/docker_ssd/woodsmith/` on the Syno
 - updates are built on the laptop, transferred to the NAS, then loaded and started there
 - the guide reflects the latest observed runtime evidence
 
----
-
 ## 1. Repo facts that matter for deployment
 
 These are directly grounded in the audited repo:
@@ -24,8 +22,6 @@ These are directly grounded in the audited repo:
 - the media route serves files from `process.env.MEDIA_ROOT` or, if unset, `../pics` relative to `/app/site` fileciteturn36file0L1-L1
 
 That means a correct production deployment must provide `pics/` as a runtime mount and should set `MEDIA_ROOT=/app/pics` explicitly.
-
----
 
 ## 2. What the newest EXTREME transcript now proves
 
@@ -54,8 +50,6 @@ The container simply does not see the expected contents of the host `pics/` tree
 
 So the guide should not overclaim the root cause. But it **should** treat EXTREME `/mnt/woodsmith` media validation as unreliable until proven otherwise.
 
----
-
 ## 3. Correct production model
 
 Use this deployment model:
@@ -70,8 +64,6 @@ Use this deployment model:
 8. expose it only through Synology Reverse Proxy
 
 This remains optimal because laptop builds are fast and the NAS should primarily be the runtime host.
-
----
 
 ## 4. Required NAS identity, ownership, and environment
 
@@ -114,8 +106,6 @@ Run this once on the NAS:
 mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/releases && chown -R Cooper:users /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/releases && chmod 770 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/releases
 ```
 
----
-
 ## 5. Correct compose file for the NAS
 
 Use this runtime-oriented compose file on the NAS:
@@ -149,8 +139,6 @@ Why this is correct:
 - `user:` maps runtime writes to the real NAS owner
 - `MEDIA_ROOT=/app/pics` removes path ambiguity
 - loopback-only binding keeps the app private behind Reverse Proxy
-
----
 
 ## 6. Correct local guidance on EXTREME
 
@@ -243,8 +231,6 @@ At that point, use one of these two paths:
 
 That is the best evidence-aligned guidance now.
 
----
-
 ## 7. First production deployment to the NAS
 
 ### 7.1 Build on the laptop
@@ -276,8 +262,6 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMS
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml up -d
 ```
-
----
 
 ## 8. Mandatory NAS verification before declaring success
 
@@ -314,8 +298,6 @@ Do not stop at “the homepage loaded.” Deployment is not complete until:
 - the container can see the source file
 - the route returns a real image response
 
----
-
 ## 9. Reverse proxy on Synology
 
 The container is intentionally bound only to loopback. Synology Reverse Proxy should forward to:
@@ -332,8 +314,6 @@ Recommended public rule:
 - destination protocol: `http`
 - destination hostname: `127.0.0.1`
 - destination port: `3002`
-
----
 
 ## 10. Update workflow
 
@@ -360,8 +340,6 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMS
 ```bash
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps && docker compose -f docker-compose.synology.yml logs --tail=100 woodsmith && docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'test -r /app/pics/Furniture/DSC_0051.JPG && echo IMG_READ_OK || echo IMG_READ_FAIL' && curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 ```
-
----
 
 ## 11. Bottom line
 

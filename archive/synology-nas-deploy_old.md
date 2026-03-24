@@ -13,8 +13,6 @@ Deploy the `lowestprime/woodsmith` site from `/volume2/docker_ssd/woodsmith/` on
 
 This guide is written against the audited repository behavior, not a guessed generic Next.js setup.
 
----
-
 ## 1. What the repo actually does
 
 These details matter because they determine the safest and least fragile deployment sequence.
@@ -27,8 +25,6 @@ These details matter because they determine the safest and least fragile deploym
 - The checked-in Synology compose file binds only to `127.0.0.1:3002`, which is exactly what you want when Synology's reverse proxy sits in front.
 - Persistent data lives in `site/data`, and the actual database filename in the live repo is `woodsmith.sqlite`.
 - The image library is not stored in the DB or uploaded through the browser; it is served from `/app/pics` via a filesystem-backed media route.
-
----
 
 ## 2. Important design constraints you should know before deploying
 
@@ -74,8 +70,6 @@ Because the compose file builds from the project root, Docker will still package
 
 That is the strongest reason to prefer the laptop-build workflow below.
 
----
-
 ## 3. Recommended deployment strategy
 
 ## Recommendation
@@ -96,8 +90,6 @@ Why this is optimal here:
 - runtime on the NAS remains simple and robust because the container still mounts only persistent data and media
 
 Use NAS-native builds only as a fallback or for quick small tests.
-
----
 
 ## 4. Final on-NAS layout
 
@@ -130,8 +122,6 @@ Create the runtime folders once:
 ```bash
 mkdir -p /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/releases /volume2/docker_ssd/woodsmith/backups
 ```
-
----
 
 ## 5. One-time preparation on the NAS
 
@@ -183,8 +173,6 @@ Why this is better than the checked-in compose file for your NAS:
 - makes rollback trivial by loading and re-tagging an older image
 - keeps secrets in `.env` rather than fallback defaults
 - preserves the deliberate `127.0.0.1:3002:3002` loopback-only exposure
-
----
 
 ## 6. Optimal first deployment: build on laptop, transfer image, run on NAS
 
@@ -262,8 +250,6 @@ You want a successful HTTP response header rather than a connection failure.
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml logs -f woodsmith
 ```
 
----
-
 ## 7. Reverse proxy setup on Synology
 
 The compose file intentionally binds the app only to loopback. So Synology Reverse Proxy should forward to:
@@ -296,8 +282,6 @@ The exact DSM menu label can vary by DSM build and package naming, but on recent
 ## Why the loopback bind is correct
 
 Because the container is published as `127.0.0.1:3002:3002`, clients on your LAN or the public internet cannot hit `:3002` directly. Traffic reaches the app only through Synology's own reverse proxy or from an SSH session on the NAS. That is a good default security boundary.
-
----
 
 ## 8. Ongoing update workflow
 
@@ -335,8 +319,6 @@ gunzip -c /volume2/docker_ssd/woodsmith/releases/woodsmith-prod-YYYY-MM-DD-HHMMS
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml ps && docker compose -f docker-compose.synology.yml logs --tail=100 woodsmith
 ```
 
----
-
 ## 9. NAS-native build workflow if you must build on the NAS
 
 This is the simpler but less optimal path.
@@ -372,8 +354,6 @@ cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.ym
 - major dependency updates
 - repeated rebuild iterations
 - anything involving large media-heavy project roots without a strict `.dockerignore`
-
----
 
 ## 10. Day-2 maintenance over SSH
 
@@ -413,8 +393,6 @@ cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.ym
 cd /volume2/docker_ssd/woodsmith && docker compose -f docker-compose.synology.yml rm -sf woodsmith
 ```
 
----
-
 ## 11. Backup and restore
 
 Because the app uses SQLite with WAL mode, the simplest safe backup is:
@@ -447,8 +425,6 @@ At minimum:
 
 Also make sure your `pics/` library is backed up by your normal NAS backup strategy, because the app depends on those files being present.
 
----
-
 ## 12. Security notes you should not ignore
 
 ## 12.1 Change the defaults before public launch
@@ -477,8 +453,6 @@ On a request page visible to the buyer:
 Only `internalNotes` and timeline messages marked `private` stay private.
 
 So write `adminStage` as buyer-safe language, not as an internal-only scratch field.
-
----
 
 ## 13. Operational conventions that will keep the site sane
 
@@ -518,8 +492,6 @@ Because stage is buyer-visible, keep it precise but friendly:
 - **Internal note**: private working note for the studio only
 - **Timeline message**: dated event or message, public or private depending on visibility
 
----
-
 ## 14. Troubleshooting
 
 ## The container starts but images 404
@@ -542,8 +514,6 @@ Check the exact `status` string. Only `Delivered` and `Closed` are treated as cl
 
 That is expected if the build context still includes `pics/`. Either exclude it in `.dockerignore` or stop building on the NAS and switch to the image-transfer workflow.
 
----
-
 ## 15. The shortest stable production sequence
 
 If you want the minimum reliable path from zero to running:
@@ -558,8 +528,6 @@ If you want the minimum reliable path from zero to running:
 8. create a Synology reverse proxy rule to `127.0.0.1:3002`
 9. log into `/studio/login`
 10. back up `site/data/` before every upgrade
-
----
 
 ## 16. Audited source files behind this guide
 
