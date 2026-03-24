@@ -408,14 +408,20 @@ $p = "C:\Users\Cooper\AppData\Roaming\Python\Python313\Scripts"; [Environment]::
 git filter-repo --path pics --path cache --invert-paths --force
 ```
 
-Because this repository currently uses the `master` branch, force-push the rewritten history as follows:
+Because this repository currently uses the `master` branch and `git filter-repo --force` will remove the `origin` on purpose, the remote must first be re-added, prior to force-pushing the rewritten history to `master` as follows:
 
 ```powershell
-git push --force origin master
+git remote add origin https://github.com/lowestprime/woodsmith.git
+git push --force -u origin master
 git push --force --tags
 ```
+If `git remote add origin ...` says `origin` already exists`, run the following alternative commands instead:
 
-Anyone else using the repository must then re-clone or hard-reset.
+```powershell
+git remote set-url origin https://github.com/lowestprime/woodsmith.git
+git push --force -u origin master
+git push --force --tags
+```
 
 ### F. One-Time Cleanup of Existing Runtime Cache Files on the NAS
 

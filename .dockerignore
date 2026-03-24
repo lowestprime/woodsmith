@@ -14,6 +14,7 @@ site/coverage
 #recycle
 @eaDir
 **/@eaDir
-# Runtime-only media and image cache mounted from NAS
+# Runtime-only media, image cache, and releases
 pics/
 cache/
+releases/

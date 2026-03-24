@@ -34,9 +34,10 @@ site/data/*.sqlite
 site/data/*.sqlite-shm
 site/data/*.sqlite-wal
 
-# Runtime-only media and image cache mounted from NAS
+# Runtime-only media, image cache, and releases
 pics/
 cache/
+releases/
 
 # Secrets
 .env
