@@ -1,76 +1,116 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+import { createSessionRecord, deleteSessionRecord, getSessionRecord, getUserByEmail, getUserById, type UserRecord } from "@/lib/db";
 
-const COOKIE_NAME = "woodsmith_studio";
-const DEFAULT_PASSWORD = "woodsmith-studio";
-const FALLBACK_SECRET = "woodsmith-session-secret";
+const COOKIE_NAME = "beaman_session";
+const DEFAULT_ADMIN_EMAIL = "woodsmithbb@proton.me";
+const PASSWORD_PREFIX = "pbkdf2";
 
-function sign(payload: string) {
-  return createHmac("sha256", process.env.SESSION_SECRET || FALLBACK_SECRET)
-    .update(payload)
-    .digest("hex");
+function hashToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
 }
 
-function safeEquals(a: string, b: string) {
-  const left = Buffer.from(a);
-  const right = Buffer.from(b);
-  if (left.length !== right.length) {
+function safeEquals(left: string, right: string) {
+  const leftBuffer = Buffer.from(left);
+  const rightBuffer = Buffer.from(right);
+  if (leftBuffer.length !== rightBuffer.length) {
     return false;
   }
-  return timingSafeEqual(left, right);
+  return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-export function usingDefaultStudioPassword() {
-  return !process.env.STUDIO_PASSWORD;
+export function createPasswordHash(password: string) {
+  const iterations = 120000;
+  const salt = randomBytes(16).toString("hex");
+  const hash = pbkdf2Sync(password, salt, iterations, 32, "sha256").toString("hex");
+  return `${PASSWORD_PREFIX}$${iterations}$${salt}$${hash}`;
 }
 
-export async function verifyStudioPassword(password: string) {
-  return safeEquals(password, process.env.STUDIO_PASSWORD || DEFAULT_PASSWORD);
+export function verifyPasswordHash(password: string, storedHash: string) {
+  if (!storedHash) {
+    return false;
+  }
+  const [prefix, iterationString, salt, digest] = storedHash.split("$");
+  if (prefix !== PASSWORD_PREFIX || !iterationString || !salt || !digest) {
+    return false;
+  }
+  const candidate = pbkdf2Sync(password, salt, Number(iterationString), 32, "sha256").toString("hex");
+  return safeEquals(candidate, digest);
 }
 
-export async function createStudioSession() {
+export async function verifyLogin(email: string, password: string) {
+  const normalizedEmail = email.toLowerCase();
+  const user = getUserByEmail(normalizedEmail);
+  if (!user) {
+    return null;
+  }
+
+  const envPassword = process.env.STUDIO_PASSWORD;
+  if (normalizedEmail === DEFAULT_ADMIN_EMAIL && envPassword && safeEquals(password, envPassword)) {
+    return user as UserRecord & { passwordHash?: string };
+  }
+
+  if (verifyPasswordHash(password, (user as UserRecord & { passwordHash?: string }).passwordHash ?? "")) {
+    return user as UserRecord & { passwordHash?: string };
+  }
+
+  return null;
+}
+
+export async function createSession(user: UserRecord) {
   const cookieStore = await cookies();
-  const expires = Date.now() + 1000 * 60 * 60 * 24 * 7;
-  const payload = String(expires);
-  const token = `${payload}.${sign(payload)}`;
-
+  const token = randomBytes(32).toString("hex");
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 14).toISOString();
+  createSessionRecord(user.email, tokenHash, expiresAt);
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    path: "/",
-    expires: new Date(expires)
+    expires: new Date(expiresAt),
+    path: "/"
   });
 }
 
-export async function clearStudioSession() {
+export async function clearSession() {
   const cookieStore = await cookies();
+  const token = cookieStore.get(COOKIE_NAME)?.value;
+  if (token) {
+    deleteSessionRecord(hashToken(token));
+  }
   cookieStore.delete(COOKIE_NAME);
 }
 
-export async function hasStudioSession() {
+export async function getCurrentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
-
   if (!token) {
-    return false;
+    return null;
   }
 
-  const [payload, signature] = token.split(".");
-  if (!payload || !signature) {
-    return false;
+  const session = getSessionRecord(hashToken(token));
+  if (!session) {
+    cookieStore.delete(COOKIE_NAME);
+    return null;
   }
 
-  if (!safeEquals(signature, sign(payload))) {
-    return false;
-  }
-
-  return Number(payload) > Date.now();
+  const user = getUserByEmail(session.userEmail) ?? getUserById(session.userEmail);
+  return user ?? null;
 }
 
-export async function requireStudioSession() {
-  if (!(await hasStudioSession())) {
+export async function requireUser() {
+  const user = await getCurrentUser();
+  if (!user) {
+    redirect("/account/login");
+  }
+  return user;
+}
+
+export async function requireAdmin() {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin") {
     redirect("/studio/login");
   }
+  return user;
 }

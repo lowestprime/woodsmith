@@ -1,109 +1,70 @@
-import Image from "next/image";
 import Link from "next/link";
-import { CommissionRequestForm } from "@/components/forms";
-import { DividerBand, FeatureStack, JournalRail, PieceCard, SectionHeading, Shell } from "@/components/site-chrome";
-import { pieces, studioValues } from "@/lib/content";
-import { toMediaUrl } from "@/lib/format";
-
-const featuredPieces = [pieces[0], pieces[4], pieces[2]];
-const reservePieces = pieces.filter((piece) => piece.status === "inventory").slice(0, 3);
+import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell, StatusBand } from "@/components/site-chrome";
+import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
 
 export default function HomePage() {
+  const site = getSiteSettings();
+  const home = getPage("home");
+  const featuredSlugs = new Set<string>([...site.homepageFeaturedPieceSlugs]);
+  const pieces = listPieces().filter((piece) => featuredSlugs.has(piece.slug)).sort((left, right) => left.featuredRank - right.featuredRank);
+  const latestPosts = listPosts().slice(0, 3);
+  const hero = site.homeSections.find((section) => section.key === "hero") as Record<string, unknown> | undefined;
+  const services = site.homeSections.find((section) => section.key === "services") as Record<string, unknown> | undefined;
+
   return (
     <>
-      <section className="hero-section">
-        <Shell className="hero-grid">
-          <div className="hero-copy">
-            <p className="eyebrow">Japanese minimalism / vintage restraint / modern utility</p>
-            <h1>Furniture, cabinetry, and quiet commissioned work from one self-hosted studio.</h1>
-            <p className="lede">
-              Built to showcase finished pieces, publish field notes, reserve current work, and carry custom commissions from first brief to delivery updates without leaving the same site.
-            </p>
-            <div className="hero-actions">
-              <Link className="button-primary" href="/portfolio">View Portfolio</Link>
-              <Link className="button-secondary" href="/commissions">Start a Commission</Link>
-            </div>
-            <div className="value-list">
-              {studioValues.map((value) => (
-                <p key={value}>{value}</p>
-              ))}
-            </div>
-          </div>
-
-          <div className="hero-montage">
-            <div className="hero-montage-main">
-              <Image alt="Hallway bench" fill priority sizes="(max-width: 900px) 100vw, 40vw" src={toMediaUrl(featuredPieces[0].images[0])} />
-            </div>
-            <div className="hero-montage-stack">
-              <div>
-                <Image alt="Pastry table" fill priority sizes="(max-width: 900px) 50vw, 20vw" src={toMediaUrl(featuredPieces[1].images[0])} />
-              </div>
-              <div>
-                <Image alt="Scientist's desk" fill priority sizes="(max-width: 900px) 50vw, 20vw" src={toMediaUrl(featuredPieces[2].images[0])} />
-              </div>
-            </div>
-          </div>
-        </Shell>
-      </section>
-
       <Shell>
-        <DividerBand />
+        <PageSection className="hero-section">
+          <PageIntro
+            eyebrow={String(hero?.eyebrow ?? home?.title ?? site.brandName)}
+            title={String(hero?.title ?? site.brandTagline)}
+            copy={String(hero?.copy ?? home?.intro ?? "")}
+          />
+          <div className="hero-actions">
+            <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
+            <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/commissions")}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Start a commission")}</Link>
+          </div>
+        </PageSection>
       </Shell>
 
-      <section className="section-pad">
-        <Shell>
+      <DividerBand />
+
+      <Shell>
+        <PageSection>
           <SectionHeading
-            eyebrow="Signature work"
-            title="Portfolio pieces anchored in use, proportion, and room presence"
-            copy="The studio language moves between cabinetry, work tables, low seating, and smaller objects. Each piece page carries images, context, and the correct next step: reserve, adapt, or commission."
+            eyebrow="Featured work"
+            title="Current collection and proven build patterns"
+            copy="Verified media stays paired to each public piece page. Inventory items can be reserved directly, and commission pieces route buyers into the visualizer and project brief workflow."
           />
-          <FeatureStack pieces={featuredPieces} />
-        </Shell>
-      </section>
+          <div className="piece-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
+        </PageSection>
 
-      <section className="section-pad warm-panel">
-        <Shell>
+        <StatusBand />
+
+        <PageSection>
           <SectionHeading
-            eyebrow="Available now"
-            title="Reserve existing work without losing the nuance of a direct conversation"
-            copy="Current inventory stays inquiry-based so shipping, finish, and placement decisions can still be handled carefully."
+            eyebrow="Studio services"
+            title={String(services?.title ?? "From available work to room-specific commissions")}
+            copy={String(services?.copy ?? "The public site handles portfolio, shop, blog, and commission intake while the studio dashboard manages content, media, project stages, inventory, invoices, and shipping workflows.")}
           />
-          <div className="piece-grid">
-            {reservePieces.map((piece) => (
-              <PieceCard key={piece.slug} piece={piece} />
-            ))}
+          <div className="service-grid">
+            <article className="service-card"><h3>Portfolio</h3><p>Past work, verified imagery, materials, and dimensional notes.</p></article>
+            <article className="service-card"><h3>Shop</h3><p>Available pieces, cart, coupon handling, tax estimate, and checkout infrastructure.</p></article>
+            <article className="service-card"><h3>Commissions</h3><p>To-scale visualizer, live estimate, buyer uploads, and project tracking.</p></article>
+            <article className="service-card"><h3>Studio CMS</h3><p>Browser-based editing for pages, pieces, posts, media, settings, and queue status.</p></article>
           </div>
-        </Shell>
-      </section>
+        </PageSection>
 
-      <section className="section-pad commission-panel">
-        <Shell className="split-section">
-          <div>
-            <SectionHeading
-              eyebrow="Commission flow"
-              title="Brief, quote, build notes, and delivery status all stay inside the same website"
-              copy="Buyers can open a project, receive a reference number, revisit a live dossier, and post follow-up details as the piece develops."
-            />
-            <ol className="process-list">
-              <li><span>01</span> Submit the brief with room notes, timing, and material preferences.</li>
-              <li><span>02</span> Receive a reference page that becomes the shared project record.</li>
-              <li><span>03</span> Use the studio dashboard to post public milestones or private build notes.</li>
-            </ol>
-          </div>
-          <CommissionRequestForm className="elevated-form" />
-        </Shell>
-      </section>
-
-      <section className="section-pad">
-        <Shell>
+        <PageSection>
           <SectionHeading
             eyebrow="Journal"
-            title="Field notes from the bench"
-            copy="A built-in journal keeps process writing alongside the work itself rather than scattered across a third-party platform."
+            title="Process notes and curated references"
+            copy="Journal posts live beside the work itself, and external highlights remain editable from the studio with markdown previews and linked source material."
           />
-          <JournalRail />
-        </Shell>
-      </section>
+          <div className="journal-rail">{latestPosts.map((post) => <PostCard key={post.slug} post={post} />)}</div>
+        </PageSection>
+      </Shell>
     </>
   );
 }
+

@@ -1,30 +1,15 @@
-import { PageIntro, Shell } from "@/components/site-chrome";
-import { usingDefaultStudioPassword } from "@/lib/auth";
-import { StudioLoginForm } from "@/components/forms";
+import { LoginForm } from "@/components/forms";
+import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
-export default async function StudioLoginPage({
-  searchParams
-}: {
-  searchParams: Promise<{ error?: string }>;
-}) {
-  const { error } = await searchParams;
-
+export default async function StudioLoginPage({ searchParams }: { searchParams: Promise<{ error?: string; email?: string }> }) {
+  const { error, email = "woodsmithbb@proton.me" } = await searchParams;
   return (
-    <section className="section-pad">
-      <Shell className="narrow-panel">
-        <PageIntro
-          eyebrow="Studio"
-          title="Private dashboard login"
-          copy="Use the studio password to review inquiries, post project notes, and keep each commission dossier current."
-        />
-        {usingDefaultStudioPassword() ? (
-          <p className="inline-message warning-message">
-            `STUDIO_PASSWORD` is not set, so the local fallback password is active. Change it before public deployment.
-          </p>
-        ) : null}
-        {error ? <p className="inline-message">The studio password was incorrect.</p> : null}
-        <StudioLoginForm />
-      </Shell>
-    </section>
+    <Shell>
+      <PageSection>
+        <PageIntro eyebrow="Studio" title="Private dashboard login" copy="Use the studio account to manage content, media, inventory, orders, project stages, invoices, and settings from the browser." />
+        {error ? <p className="notice-panel danger">The studio login was not accepted.</p> : null}
+        <LoginForm email={email} redirectTo="/studio" studio />
+      </PageSection>
+    </Shell>
   );
 }

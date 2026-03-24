@@ -1,37 +1,38 @@
-import Image from "next/image";
-import { PurchaseRequestForm } from "@/components/forms";
-import { PageIntro, Shell } from "@/components/site-chrome";
-import { pieces } from "@/lib/content";
-import { toMediaUrl } from "@/lib/format";
-
-const inventory = pieces.filter((piece) => piece.status === "inventory");
+import Link from "next/link";
+import { addToCartAction } from "@/lib/actions";
+import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
+import { getPage, listPieces } from "@/lib/db";
+import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
 
 export default function ShopPage() {
+  const page = getPage("shop");
+  const pieces = listPieces().filter((piece) => piece.status === "inventory");
+
   return (
-    <section className="section-pad">
-      <Shell>
-        <PageIntro
-          eyebrow="Shop"
-          title="Current work and small-batch pieces"
-          copy="Reservations stay personal even when the site is handling the intake. Buyers can flag interest, ask for shipping details, or pivot into a related commission from the same form."
-        />
+    <Shell>
+      <PageSection>
+        <PageIntro eyebrow="The Piece Ledger" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work with cart, checkout, shipping, and invoice support."} />
         <div className="shop-grid">
-          {inventory.map((piece) => (
+          {pieces.map((piece) => (
             <article className="shop-card" key={piece.slug}>
-              <div className="shop-card-media image-frame">
-                <Image alt={piece.name} fill sizes="(max-width: 980px) 100vw, 50vw" src={toMediaUrl(piece.images[0])} />
-              </div>
+              {piece.mediaPaths[0] ? <img alt={piece.title} className="shop-card-image" loading="lazy" src={toMediaUrl(piece.mediaPaths[0])} /> : <div className="piece-card-placeholder">Media under review</div>}
               <div className="shop-card-body">
-                <p className="eyebrow">{piece.category}</p>
-                <h2>{piece.name}</h2>
+                <div className="piece-card-meta"><span>{piece.category}</span><span>{piece.inventoryCount} available</span></div>
+                <h2><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>
                 <p>{piece.summary}</p>
-                <p className="detail-kicker">{piece.leadTime}</p>
-                <PurchaseRequestForm piece={piece} className="inline-form" />
+                <div className="shop-card-price-row">
+                  <strong>{piece.priceCents == null ? formatLeadTime(piece.leadTimeDays) : formatMoney(piece.priceCents)}</strong>
+                  <form action={addToCartAction}>
+                    <input name="pieceSlug" type="hidden" value={piece.slug} />
+                    <input name="quantity" type="hidden" value="1" />
+                    <button className="button-primary" type="submit">Add to cart</button>
+                  </form>
+                </div>
               </div>
             </article>
           ))}
         </div>
-      </Shell>
-    </section>
+      </PageSection>
+    </Shell>
   );
 }
