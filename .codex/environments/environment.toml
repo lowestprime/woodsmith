@@ -34,3 +34,8 @@ command = "npm run build"
 name = "sync"
 icon = "run"
 command = "git pull --rebase"
+
+[[actions]]
+name = "prune branches"
+icon = "trash"
+command = "git fetch --prune; git branch --format '%(refname:short)' --merged | Where-Object { $_ -notmatch '^(master|main)$' } | ForEach-Object { git branch -d $_ }"
