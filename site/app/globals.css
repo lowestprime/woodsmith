@@ -309,14 +309,17 @@ h3 {
 
 .divider-band {
   display: flex;
-  gap: 1rem;
-  overflow: auto;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem clamp(1rem, 2vw, 2rem);
   padding: 1rem clamp(1rem, 3vw, 3rem);
   border-top: 1px solid var(--line);
   border-bottom: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg-soft) 82%, transparent);
   color: var(--accent);
   letter-spacing: 0.08em;
+  text-align: center;
 }
 
 .piece-grid,
