@@ -5,9 +5,14 @@ YOU ABSOLUTELY MUST WORK FOR AS LONG AS NECESSARY UNTIL **EVERY SINGLE** UPGRADE
 
 Beaman Woodworks 3.0 Upgrades, Modifications, and Revisions:
 
-1. Modernize an upgrade the design language of all Form Fields, Toggles, and all other elements to be more rounded,  modern, minimal, and consistent with the theme (yes wood can have sharp, perpendicular edges, but that doesn't mean the website should implement a rectangular, tacky, and sloppy looking design language) with readable, larger more prominent text UI Design of Day / Night mode toggle.
+1. Modernize an upgrade the design language of all form fields, toggles, and all other elements to be more rounded, modern, aesthetically elegant, minimal, and consistent with the theme and purpose of the website (yes wood can have sharp, perpendicular edges, but that doesn't mean the website should implement a rectangular, tacky, and sloppy looking design language) with readable, larger more prominent text UI Design of Day / Night mode toggle.
 2. Convert and upgrade account section button into circular/rounded profile icon when logged in and modern placeholder etc. when 
-3. Optimally Upgrade the Beaman Woodworks icon throughout the website to more intuitively visually reflect the functionality, mission, and principles Beaman Woodworks strives to uphold, according to the most aligned optimal, modern, distinctive, and aesthetically elegant current User Interface, Web-Design principles and best practices, and ensure the corresponding favicon is also added such that all browser tabs accessing Beaman Woodworks domain content (including the NAS-hosted demo website) are updated to visually indicate these specific tabs corresponds to a Beaman Woodworks webpage. The current Favicon does not make any sense and does not visually indicate the brand or purpose of Beaman Woodworks, so it must be replaced (letters and creative use of symbols and japanese modern design elements encouraged).
+3. Optimally Upgrade the Beaman Woodworks icon throughout the website to more intuitively visually reflect the functionality, mission, and principles Beaman Woodworks strives to uphold, according to the most aligned optimal, modern, distinctive, and aesthetically elegant current User Interface, Web-Design principles and best practices, and ensure the corresponding favicon is also added such that all browser tabs accessing Beaman Woodworks domain content (including the NAS-hosted demo website) are updated to visually indicate these specific tabs corresponds to a Beaman Woodworks webpage. The current Favicon does not make any sense and does not visually indicate the brand or purpose of Beaman Woodworks, so it must be replaced (letters and creative use of symbols and Japanese modern design elements encouraged).
+4. Missing close (X) button for zoomed in image preview and missing +/- zoom in controls.
+5. Missing image cropping and editing built-in 
+6. SYNOINDEX_MEDIA_INFO being detected as media in Recent media.
+7. Only showing Recent media not All media.
+8. Color pallet should be more birds eye maple, ebony and white maple inspired.
 
 
 2. Add a black OLED dark night theme and a modern switch / toggle which users can automatically click to persistently set, store, and update to visually reflect the selection of the light/day or new black OLED dark night theme.
