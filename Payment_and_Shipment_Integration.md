@@ -1,4 +1,4 @@
-# Payment & Shipment Integration in Beaman Woodworks
+# Beaman Woodworks Payment and Shipment Integration
 
 The payment and shipment system spans six layers: **database schema**, **site settings (seed configuration)**, **payment/shipping library**, **server actions**, **buyer-facing UI**, and **admin studio dashboard**. Here is how every piece connects, from the moment a buyer browses the shop to the moment a shipping label is created.
 
