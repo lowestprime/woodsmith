@@ -333,7 +333,7 @@ sequenceDiagram
     Cart->>Cart: calculateCheckoutTotals()
     Cart-->>Buyer: Show subtotal, shipping, tax, total
 
-    Buyer->>Cart: Fill email, address, coupon; click "Secure checkout"
+    Buyer->>Cart: Fill email, address, coupon#59; click "Secure checkout"
     Cart->>Action: POST form data
     Action->>DB: createDraftOrder(totals, address)
     Action->>Action: stripeIsConfigured()?
