@@ -12,12 +12,14 @@ export function Shell({ children, className = "" }: { children: ReactNode; class
   return <div className={`shell ${className}`.trim()}>{children}</div>;
 }
 
-function BrandMark() {
+export function BrandMark() {
   return (
     <svg aria-hidden="true" className="brand-emblem" viewBox="0 0 84 84">
-      <rect height="70" rx="24" width="70" x="7" y="7" />
-      <path d="M26 22v40m0-20h32m-12-20v40M22 26h36v32H22z" />
-      <circle cx="60" cy="24" r="4" />
+      <rect height="72" rx="22" width="72" x="6" y="6" />
+      <path d="M22 26h22l-8 16 8 16H22V26Z" />
+      <path d="M62 58H40l8-16-8-16h22v32Z" />
+      <path d="M42 18v48M18 42h48" />
+      <circle cx="42" cy="42" r="3.5" />
     </svg>
   );
 }
@@ -26,8 +28,12 @@ function AccountBadge({ label }: { label: string }) {
   return <span className="account-badge" aria-hidden="true">{label}</span>;
 }
 
-function CategoryIcon({ category }: { category: string }) {
+export function CategoryIcon({ category }: { category: string }) {
   const key = getPiecePortfolioCategory({ category } as Pick<PieceRecord, "category">);
+
+  if (key === "all") {
+    return <span className="category-icon all-icon" aria-hidden="true"><i /><i /><i /></span>;
+  }
 
   if (key === "tables") {
     return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;

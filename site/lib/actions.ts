@@ -44,9 +44,10 @@ import {
   type UserRecord
 } from "@/lib/db";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
-import { persistUploadedMedia, renameMediaAsset, deleteMediaAsset } from "@/lib/media";
+import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMediaAsset, resolveMediaPath } from "@/lib/media";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail } from "@/lib/notifications";
+import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 function requiredField(value: FormDataEntryValue | null, label: string) {
   const text = value?.toString().trim();
   if (!text) {
@@ -351,6 +352,7 @@ export async function submitContactRequestAction(formData: FormData) {
   const requestType = optionalField(formData.get("commissionTypeSlug"));
   const cityRegion = optionalField(formData.get("cityRegion"));
   const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
+  const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
 
   const reference = createProject({
     userEmail: user?.email ?? null,
@@ -373,7 +375,8 @@ export async function submitContactRequestAction(formData: FormData) {
       deliveryMode,
       requestSource: optionalField(formData.get("requestSource")) || "contact-form",
       materialPreference,
-      visualizerOptions
+      visualizerOptions,
+      aiPreviewPath
     },
     visualizationSvg: includeVisualization ? optionalField(formData.get("visualizationSvg")) || null : null,
     includeVisualization,
@@ -381,6 +384,27 @@ export async function submitContactRequestAction(formData: FormData) {
     shippingAddress: cityRegion ? { cityRegion } : {},
     billingAddress: { email: guestEmail }
   });
+
+  if (aiPreviewPath) {
+    const existingPreview = getMedia(aiPreviewPath);
+    if (existingPreview) {
+      saveMediaMetadata({
+        relativePath: aiPreviewPath,
+        altText: existingPreview.altText || `${reference} AI preview`,
+        pieceSlug: existingPreview.pieceSlug,
+        postSlug: existingPreview.postSlug,
+        pageSlug: existingPreview.pageSlug,
+        projectReference: reference,
+        userEmail: guestEmail,
+        focalX: existingPreview.focalX,
+        focalY: existingPreview.focalY,
+        zoom: existingPreview.zoom,
+        reviewed: false,
+        tags: [...new Set([...existingPreview.tags, "project", reference, "ai-preview"])],
+        metadata: { ...existingPreview.metadata, projectReference: reference, attachedToRequestAt: new Date().toISOString() }
+      });
+    }
+  }
 
   const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
   for (const file of files) {
@@ -430,6 +454,7 @@ export async function submitCommissionAction(formData: FormData) {
   const options = parseJsonField<Record<string, unknown>>(formData.get("visualizerOptions"), {});
   const estimatedTotalCents = parseInteger(formData.get("estimatedTotalCents"), 0);
   const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
+  const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
   const reference = createProject({
     userEmail: user?.email ?? null,
     guestName,
@@ -445,13 +470,34 @@ export async function submitCommissionAction(formData: FormData) {
     brief: requiredField(formData.get("brief"), "Project brief"),
     materials,
     dimensions,
-    options,
+    options: { ...options, aiPreviewPath },
     visualizationSvg: optionalField(formData.get("visualizationSvg")) || null,
     includeVisualization: optionalField(formData.get("includeVisualization")) === "1",
     leadTimeDays,
     shippingAddress: {},
     billingAddress: { email: guestEmail }
   });
+
+  if (aiPreviewPath) {
+    const existingPreview = getMedia(aiPreviewPath);
+    if (existingPreview) {
+      saveMediaMetadata({
+        relativePath: aiPreviewPath,
+        altText: existingPreview.altText || `${reference} AI preview`,
+        pieceSlug: existingPreview.pieceSlug,
+        postSlug: existingPreview.postSlug,
+        pageSlug: existingPreview.pageSlug,
+        projectReference: reference,
+        userEmail: guestEmail,
+        focalX: existingPreview.focalX,
+        focalY: existingPreview.focalY,
+        zoom: existingPreview.zoom,
+        reviewed: false,
+        tags: [...new Set([...existingPreview.tags, "project", reference, "ai-preview"])],
+        metadata: { ...existingPreview.metadata, projectReference: reference, attachedToRequestAt: new Date().toISOString() }
+      });
+    }
+  }
 
   const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
   for (const file of files) {
@@ -876,6 +922,111 @@ export async function deleteMediaAction(formData: FormData) {
   redirect("/studio?deleted=media");
 }
 
+export async function assignMediaCandidateAction(formData: FormData) {
+  await requireAdmin();
+  const relativePath = requiredField(formData.get("relativePath"), "Media path");
+  const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
+  const piece = getPiece(pieceSlug);
+  const media = getMedia(relativePath);
+  if (!piece || !media) {
+    redirect("/studio?error=media-assignment");
+  }
+
+  saveMediaMetadata({
+    relativePath,
+    altText: media.altText || piece.title,
+    pieceSlug,
+    postSlug: media.postSlug,
+    pageSlug: media.pageSlug,
+    projectReference: media.projectReference,
+    userEmail: media.userEmail,
+    focalX: media.focalX,
+    focalY: media.focalY,
+    zoom: media.zoom,
+    reviewed: true,
+    tags: [...new Set([...media.tags, pieceSlug, ...piece.tags])],
+    metadata: {
+      ...media.metadata,
+      verifiedPieceSlug: pieceSlug,
+      verifiedAt: new Date().toISOString(),
+      verifiedBy: "woodshop-dashboard"
+    }
+  });
+
+  savePiece({
+    ...piece,
+    mediaPaths: piece.mediaPaths.includes(relativePath) ? piece.mediaPaths : [...piece.mediaPaths, relativePath],
+    metadata: {
+      ...piece.metadata,
+      verifiedMedia: true,
+      mediaReviewRequired: false
+    }
+  });
+
+  revalidatePath("/studio");
+  revalidatePath("/portfolio");
+  revalidatePath(`/portfolio/${pieceSlug}`);
+  redirect(`/studio?assigned=${encodeURIComponent(relativePath)}`);
+}
+
+export async function cleanupMediaBackgroundAction(formData: FormData) {
+  await requireAdmin();
+  const relativePath = requiredField(formData.get("relativePath"), "Media path");
+  const mode = optionalField(formData.get("cleanupMode")) || "soft-matte";
+  const prompt = optionalField(formData.get("cleanupPrompt"));
+  const media = getMedia(relativePath);
+  if (!media) {
+    redirect("/studio?error=media-missing");
+  }
+
+  if (!getAiServiceStatus().backgroundCleanup) {
+    redirect("/studio?error=cleanup-unconfigured");
+  }
+
+  const generated = await createCleanedBackgroundVariant(relativePath, resolveMediaPath(relativePath), prompt);
+  let b64Json = generated.b64Json;
+  if (!b64Json && generated.url) {
+    const response = await fetch(generated.url);
+    if (!response.ok) {
+      redirect("/studio?error=cleanup-download");
+    }
+    b64Json = Buffer.from(await response.arrayBuffer()).toString("base64");
+  }
+  if (!b64Json) {
+    redirect("/studio?error=cleanup-empty");
+  }
+
+  const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
+  const nextPath = persistGeneratedMedia(b64Json, "cleaned-media", stem, ".png");
+  refreshMediaLibrary();
+  saveMediaMetadata({
+    relativePath: nextPath,
+    altText: `${media.altText || media.fileName} cleaned background`,
+    pieceSlug: media.pieceSlug,
+    postSlug: media.postSlug,
+    pageSlug: media.pageSlug,
+    projectReference: media.projectReference,
+    userEmail: media.userEmail,
+    focalX: media.focalX,
+    focalY: media.focalY,
+    zoom: media.zoom,
+    reviewed: false,
+    tags: [...new Set([...media.tags, "cleaned-background", mode])],
+    metadata: {
+      ...media.metadata,
+      cleanupMode: mode,
+      cleanupGeneratedFrom: relativePath,
+      cleanupGeneratedAt: new Date().toISOString(),
+      cleanupProvider: getAiServiceStatus().imageModel
+    }
+  });
+
+  revalidatePath("/studio");
+  revalidatePath("/portfolio");
+  revalidatePath("/shop");
+  redirect(`/studio?cleaned=${encodeURIComponent(nextPath)}`);
+}
+
 export async function saveMediaMetadataAction(formData: FormData) {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
@@ -889,6 +1040,8 @@ export async function saveMediaMetadataAction(formData: FormData) {
     displayOrder: parseInteger(formData.get("displayOrder"), Number(existing?.metadata.displayOrder ?? 0)),
     sourceCredit: optionalField(formData.get("sourceCredit")) || existing?.metadata.sourceCredit || "",
     verifiedPieceSlug: optionalField(formData.get("verifiedPieceSlug")) || existing?.metadata.verifiedPieceSlug || "",
+    cropAspect: optionalField(formData.get("cropAspect")) || existing?.metadata.cropAspect || "free",
+    cropNote: optionalField(formData.get("cropNote")) || existing?.metadata.cropNote || "",
     visualLabels: visualLabels.length > 0 ? visualLabels : Array.isArray(existing?.metadata.visualLabels) ? existing.metadata.visualLabels : []
   };
   saveMediaMetadata(mediaJson

@@ -2,6 +2,8 @@ import { marked } from "marked";
 import {
   createInvoiceAction,
   createShippingLabelAction,
+  assignMediaCandidateAction,
+  cleanupMediaBackgroundAction,
   deleteMediaAction,
   deletePageAction,
   deletePieceAction,
@@ -45,7 +47,9 @@ import {
 } from "@/lib/db";
 import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
 import { buildMediaVerificationQueue } from "@/lib/media-audit";
+import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
+import { MediaCropEditor } from "@/components/media-crop-editor";
 
 function Field({ label, name, defaultValue = "", type = "text", required = false }: { label: string; name: string; defaultValue?: string | number | null; type?: string; required?: boolean }) {
   return <label><span>{label}</span><input defaultValue={defaultValue ?? ""} name={name} required={required} type={type} /></label>;
@@ -137,9 +141,10 @@ function PostEditor({ post }: { post: Omit<PostRecord, "createdAt" | "updatedAt"
 
 function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces: PieceRecord[]; posts: PostRecord[]; pages: PageRecord[] }) {
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.filter((label): label is string => typeof label === "string") : [];
+  const cleanupMode = String(item.metadata.cleanupMode ?? "original");
   return (
     <article className="studio-panel studio-media-card">
-      <div className={`studio-media-preview cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
+      <div className={`studio-media-preview cleanup-${cleanupMode}`}>{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
       <div className="studio-media-body">
         <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p></div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
         <form action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></form>
@@ -157,15 +162,24 @@ function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces
           <Area label="Tags" name="tagsText" defaultValue={item.tags.join(", ")} rows={2} />
           <Area label="Visual search labels" name="visualLabelsText" defaultValue={visualLabels.join(", ")} rows={2} />
           <div className="field-grid three-up compact-grid">
-            <label><span>Cleanup mode</span><select defaultValue={String(item.metadata.cleanupMode ?? "original")} name="cleanupMode"><option value="original">Original</option><option value="soft-matte">Soft matte</option><option value="warm-crop">Warm crop</option><option value="subject-isolate">Subject isolate</option></select></label>
+            <label><span>Cleanup mode</span><select defaultValue={cleanupMode} name="cleanupMode"><option value="original">Original</option><option value="soft-matte">Soft matte</option><option value="warm-crop">Warm crop</option><option value="subject-isolate">Subject isolate</option></select></label>
             <label><span>Photo quality</span><select defaultValue={String(item.metadata.photoQuality ?? "unrated")} name="photoQuality"><option value="unrated">Unrated</option><option value="shop-ready">Shop ready</option><option value="portfolio-ready">Portfolio ready</option><option value="background-distracting">Background distracting</option><option value="needs-reshoot">Needs reshoot</option></select></label>
             <Field label="Display order" name="displayOrder" defaultValue={Number(item.metadata.displayOrder ?? 0)} type="number" />
           </div>
           <div className="field-grid two-up compact-grid"><Field label="Source credit" name="sourceCredit" defaultValue={String(item.metadata.sourceCredit ?? "")} /><Field label="Verified piece slug" name="verifiedPieceSlug" defaultValue={String(item.metadata.verifiedPieceSlug ?? "")} /></div>
-          <div className="field-grid three-up compact-grid"><Field label="Focal X" name="focalX" defaultValue={item.focalX} type="number" /><Field label="Focal Y" name="focalY" defaultValue={item.focalY} type="number" /><Field label="Zoom" name="zoom" defaultValue={item.zoom} type="number" /></div>
+          {item.kind === "image" ? <MediaCropEditor altText={item.altText} cleanupMode={cleanupMode} cropAspect={String(item.metadata.cropAspect ?? "free")} focalX={item.focalX} focalY={item.focalY} relativePath={item.relativePath} zoom={item.zoom} /> : <div className="field-grid three-up compact-grid"><Field label="Focal X" name="focalX" defaultValue={item.focalX} type="number" /><Field label="Focal Y" name="focalY" defaultValue={item.focalY} type="number" /><Field label="Zoom" name="zoom" defaultValue={item.zoom} type="number" /></div>}
+          <Field label="Crop note" name="cropNote" defaultValue={String(item.metadata.cropNote ?? "")} />
           <Check label="Reviewed for public use" name="reviewed" defaultChecked={item.reviewed} />
           <button className="button-primary" type="submit">Save media</button>
         </form>
+        {item.kind === "image" ? (
+          <form action={cleanupMediaBackgroundAction} className="request-form compact-form ai-cleanup-form">
+            <input name="relativePath" type="hidden" value={item.relativePath} />
+            <label><span>AI cleanup mode</span><select defaultValue={cleanupMode === "original" ? "soft-matte" : cleanupMode} name="cleanupMode"><option value="soft-matte">Soft matte</option><option value="warm-crop">Warm crop</option><option value="subject-isolate">Subject isolate</option></select></label>
+            <Area label="Cleanup prompt" name="cleanupPrompt" defaultValue="Remove distracting background clutter while preserving the woodworking piece, joinery, wood color, proportions, and natural shadows." rows={2} />
+            <button className="button-secondary" type="submit">Generate cleaned copy</button>
+          </form>
+        ) : null}
       </div>
     </article>
   );
@@ -237,10 +251,11 @@ function CommissionTypeEditor({ item }: { item: Omit<CommissionTypeRecord, "crea
   );
 }
 
-export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string }> }) {
+export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; error?: string; cleaned?: string; assigned?: string }> }) {
   await requireAdmin();
-  const { media: mediaQuery = "" } = await searchParams;
+  const { media: mediaQuery = "", error = "", cleaned = "", assigned = "" } = await searchParams;
   const settings = getSiteSettings();
+  const aiStatus = getAiServiceStatus();
   const summary = getStudioDashboardSummary();
   const pages = listPages(true);
   const pieces = listPieces(true);
@@ -257,7 +272,10 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Woodshop" title="Beaman Woodworks dashboard" copy="Edit live pages, pieces, process notes, media, orders, and project status without raw JSON panels." />
+        <PageIntro eyebrow="Woodshop" title="Beaman Woodworks dashboard" copy="Edit live pages, pieces, process notes, media, orders, and project status through structured browser forms." />
+        {error ? <p className="notice-panel danger">Dashboard action failed: {error}</p> : null}
+        {cleaned ? <p className="notice-panel">Cleaned media copy created: {cleaned}</p> : null}
+        {assigned ? <p className="notice-panel">Media assigned and marked reviewed: {assigned}</p> : null}
         <div className="admin-summary-grid">
           <article className="studio-panel"><span>{summary.bandwidth.bandwidthPercent}%</span><p>Capacity</p></article>
           <article className="studio-panel"><span>{summary.bandwidth.activeProjects}</span><p>Active projects</p></article>
@@ -303,7 +321,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
             <form action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></form>
             <form action="/studio" className="request-form compact-form"><Field label="Filter media" name="media" defaultValue={mediaQuery} /><button className="button-secondary" type="submit">Filter</button></form>
           </article>
-          <article className="studio-panel"><h3>Media status</h3><p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p><p className="muted-copy">Automatic clustering uses folder and filename/date patterns; manual assignments below take priority.</p></article>
+          <article className="studio-panel"><h3>Media status</h3><p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p><p className="muted-copy">Automatic clustering uses folder and filename/date patterns; manual assignments below take priority.</p><p className="muted-copy">AI cleanup: {aiStatus.backgroundCleanup ? `enabled with ${aiStatus.imageModel}` : "not configured"}. Embedding search: {aiStatus.embeddingSearch ? `enabled with ${aiStatus.embeddingModel}` : "not configured"}.</p></article>
         </div>
         <div className="media-verification-queue">
           <div className="section-heading"><p className="eyebrow">Verification queue</p><h2>Piece photo accuracy</h2><p>Review candidates before assigning photos. Nothing in this section auto-publishes or guesses piece identity.</p></div>
@@ -314,10 +332,14 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
                 <p className="muted-copy">{entry.needsReview ? "Needs media review before public use." : "Candidate matches are available for review."}</p>
                 <div className="project-media-strip">
                   {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
-                    <a href={`/media/${item.relativePath}`} key={item.relativePath} title={`Candidate score ${score}`}>
-                      <img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} />
-                      <span>{score}</span>
-                    </a>
+                    <form action={assignMediaCandidateAction} className="candidate-assignment-form" key={item.relativePath} title={`Candidate score ${score}`}>
+                      <input name="relativePath" type="hidden" value={item.relativePath} />
+                      <input name="pieceSlug" type="hidden" value={entry.piece.slug} />
+                      <button type="submit">
+                        <img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} />
+                        <span>{score}</span>
+                      </button>
+                    </form>
                   )) : <span className="muted-copy">No safe filename/tag candidates found.</span>}
                 </div>
               </article>

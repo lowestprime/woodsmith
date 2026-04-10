@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
+import { CategoryIcon, DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
 import { portfolioCategories, type PortfolioCategoryKey, getPiecePortfolioCategory } from "@/lib/catalog";
 import { getPage, listPieces } from "@/lib/db";
 
@@ -7,7 +7,13 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   const { category } = await searchParams;
   const page = getPage("portfolio");
   const selectedCategory = portfolioCategories.some((item) => item.key === category) ? (category as PortfolioCategoryKey) : "all";
-  const pieces = listPieces().filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece) === selectedCategory);
+  const allPieces = listPieces();
+  const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece) === selectedCategory);
+  const counts = new Map<PortfolioCategoryKey, number>(portfolioCategories.map((item) => [item.key, item.key === "all" ? allPieces.length : 0]));
+  for (const piece of allPieces) {
+    const key = getPiecePortfolioCategory(piece);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
 
   return (
     <>
@@ -26,8 +32,9 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
                   key={item.key}
                   role="tab"
                 >
-                  <span className="portfolio-filter-mark" aria-hidden="true">{item.label.slice(0, 1)}</span>
+                  <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item.key} /></span>
                   <span>{item.label}</span>
+                  <strong>{counts.get(item.key) ?? 0}</strong>
                 </Link>
               );
             })}

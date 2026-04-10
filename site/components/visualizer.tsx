@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, useTransition, type CSSProperties } from "react";
 import { calculateEstimate, defaultVisualizerState, type VisualizerState } from "@/lib/estimator";
 import { formatLeadTime, formatMoney } from "@/lib/format";
 
@@ -134,6 +134,8 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
   const selectedType = useMemo(() => commissionTypes.find((type) => type.slug === selectedSlug) ?? commissionTypes[0], [commissionTypes, selectedSlug]);
   const [state, setState] = useState<VisualizerState>(defaultVisualizerState((commissionTypes[0]?.slug as VisualizerState["kind"]) ?? "hallway-bench"));
   const [rotation, setRotation] = useState(32);
+  const [isGenerating, startGeneration] = useTransition();
+  const [renderedPreview, setRenderedPreview] = useState<{ url: string; relativePath?: string; message: string } | null>(null);
 
   const syncedState = useMemo(() => ({
     ...state,
@@ -156,6 +158,41 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
 
   function update<K extends keyof VisualizerState>(key: K, value: VisualizerState[K]) {
     setState((current) => ({ ...current, [key]: value }));
+  }
+
+  function generatePhotorealisticPreview() {
+    setRenderedPreview({ url: "", message: "Generating preview..." });
+    startGeneration(async () => {
+      const response = await fetch("/api/render-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pieceType: selectedType?.label ?? syncedState.kind,
+          material: syncedState.material,
+          joinery: syncedState.joinery,
+          width: syncedState.width,
+          depth: syncedState.depth,
+          height: syncedState.height,
+          drawers: syncedState.drawers,
+          shelves: syncedState.shelves,
+          notes: syncedState.notes
+        })
+      }).catch(() => null);
+
+      if (!response || !response.ok) {
+        const payload = response ? await response.json().catch(() => ({})) as { error?: string } : {};
+        setRenderedPreview({ url: "", message: payload.error || "Photorealistic rendering is not configured for this deployment." });
+        return;
+      }
+
+      const payload = await response.json() as { mediaUrl?: string; imageUrl?: string; relativePath?: string; model?: string };
+      const url = payload.mediaUrl || payload.imageUrl || "";
+      setRenderedPreview({
+        url,
+        relativePath: payload.relativePath,
+        message: payload.model ? `Generated with ${payload.model}.` : "Generated preview ready."
+      });
+    });
   }
 
   return (
@@ -240,6 +277,13 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
             <div><dt>Labor</dt><dd>{estimate.laborHours} hrs</dd></div>
             <div><dt>Estimated total</dt><dd>{formatMoney(estimate.totalCents)}</dd></div>
           </dl>
+          <div className="ai-render-panel">
+            <button className="button-secondary" disabled={isGenerating} onClick={generatePhotorealisticPreview} type="button">
+              {isGenerating ? "Generating..." : "Generate photorealistic preview"}
+            </button>
+            <p className="muted-copy">{renderedPreview?.message ?? "Optional AI rendering activates only when the deployment has image-model credentials enabled."}</p>
+            {renderedPreview?.url ? <img alt="AI-generated preview for this custom work request" src={renderedPreview.url} /> : null}
+          </div>
           <label className="checkbox-row">
             <input checked={syncedState.includeVisualization} name="includeVisualization" onChange={(event) => update("includeVisualization", event.target.checked)} type="checkbox" value="1" />
             <span>Include this preview with the request</span>
@@ -253,6 +297,7 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
       <input name="dimensionsJson" type="hidden" value={JSON.stringify({ width: syncedState.width, depth: syncedState.depth, height: syncedState.height, unit: "in" })} />
       <input name="visualizerOptions" type="hidden" value={JSON.stringify({ drawers: syncedState.drawers, shelves: syncedState.shelves, rotation, renderer: "procedural-3d-css" })} />
       <input name="visualizationSvg" type="hidden" value={syncedState.includeVisualization ? svg : ""} />
+      <input name="aiPreviewPath" type="hidden" value={syncedState.includeVisualization ? renderedPreview?.relativePath ?? "" : ""} />
     </section>
   );
 }

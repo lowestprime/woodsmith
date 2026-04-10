@@ -17,6 +17,7 @@ Beaman Woodworks is a self-hosted Next.js 16 application with a SQLite-backed co
 - Stripe API for hosted checkout and invoice generation
 - EasyPost API for shipment creation
 - Credential-free procedural 3D preview UI for custom work, with Three.js and React Three Fiber dependencies retained for future rendering work
+- Optional OpenAI Image API and Embeddings API integration, disabled unless `OPENAI_API_KEY` and feature flags are configured server-side
 
 ## Core application areas
 
@@ -42,7 +43,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 
 ### Private Woodshop dashboard
 
-`/studio` remains the private route name, but the product language is Woodshop dashboard. The dashboard exposes structured browser forms rather than visible raw JSON panels for:
+`/studio` remains the private route name, but the product language is Woodshop dashboard. The dashboard exposes structured browser forms for:
 
 - site settings
 - pages
@@ -50,7 +51,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - custom work types
 - users and public profiles
 - process notes
-- media metadata, cleanup controls, visual labels, verification queue, and media file operations
+- media metadata, visual crop controls, optional AI-cleaned copies, visual labels, verification queue, and media file operations
 - projects and timeline updates
 - orders, invoices, shipping labels, and tracking state
 - reviews
@@ -87,6 +88,7 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - filters Synology and OS sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and `._*`
 - stores alt text, clustering, associations, focal data, zoom, cleanup mode, visual labels, source credit, display order, review state, and tags in SQLite
 - can upload, rename, delete, and assign files in the mounted media root
+- can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
 
 Current clustering is heuristic and based on folder, filename, and date-like patterns. The media verification queue suggests candidates but does not assign them automatically. Manual dashboard assignments take priority and are the source of truth for published piece-media identity.
 
@@ -102,13 +104,15 @@ The public custom work route is contact-first. It captures buyer contact details
 
 Custom work type records still store default dimensions, material options, labor hours, and markup settings so the woodshop can maintain estimator context and future richer intake flows.
 
-`site/components/visualizer.tsx` now provides a live 3D CSS/procedural scale preview and still stores an SVG snapshot with submitted project data when the buyer opts in.
+`site/components/visualizer.tsx` now provides a live 3D CSS/procedural scale preview and still stores an SVG snapshot with submitted project data when the buyer opts in. When `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, `/api/render-preview` can generate a photorealistic image preview, persist it under `/app/pics`, and attach it to the project only when the buyer includes the preview.
 
 ## Search
 
 `searchSite()` searches across pieces, process notes, pages, media, and projects. Admin users receive private results including unpublished content, media paths, tags, cluster keys, and project records. Public users see public content only.
 
 The search layer includes synonym expansion for common woodworking terms, material/color cues, cleanup labels, delivery, pickup, custom work, and Mackintosh or Stickley references. The browser-assisted visual search reads a reference image locally, derives color/material cues, and converts them into searchable tags.
+
+The `site/lib/search.ts` wrapper preserves the SQLite keyword/metadata search path and can optionally call OpenAI embeddings for semantic re-ranking when `ENABLE_EMBEDDING_SEARCH=true`. Without credentials, search falls back to local keyword, metadata, and browser-derived visual tags.
 
 ## Theme and UI
 
@@ -128,9 +132,9 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 ## Known caveats
 
 - SQLite support still relies on Node's experimental `node:sqlite` API.
-- The visualizer is a procedural 3D scale preview, not a cloud photorealistic renderer.
+- The visualizer is a procedural 3D scale preview unless optional OpenAI rendering is configured. Generated images are previews, not fabrication drawings.
 - Scientist Desk media is intentionally withheld until the correct images are verified.
-- Cleanup modes and browser-assisted visual search are implemented locally. Cloud photorealistic rendering, segmentation, or embedding services can be added later if credentials are provided.
+- Cleanup modes and browser-assisted visual search are implemented locally. OpenAI-backed rendering, cleaned image copies, and embedding re-ranking are integrated behind feature flags and stay off without credentials.
 - SMTP, Stripe, and EasyPost functionality remain configuration-dependent.
 
 ## Important files
@@ -140,11 +144,13 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/seed.ts`: initial content, settings, and v3 content truth
 - `site/lib/catalog.ts`: portfolio categories, media display rules, and fulfillment labels
 - `site/lib/media.ts`: media scanning, upload, rename, delete, sidecar filtering, and path resolution
+- `site/lib/ai-services.ts`: optional OpenAI image generation, image edit, and embedding helpers with disabled-by-default feature gates
+- `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notifications.ts`: SMTP and notification queue handling
 - `site/components/forms.tsx`: public, account, profile, and custom work forms
 - `site/components/site-chrome.tsx`: header, footer, cards, shared layout pieces, and account badge
-- `site/components/visualizer.tsx`: legacy to-scale SVG visualizer and estimator fields
+- `site/components/visualizer.tsx`: procedural custom-work visualizer, optional AI preview trigger, legacy to-scale SVG snapshot, and estimator fields
 - `site/app/icon.tsx`: generated favicon
 - `site/app/studio/page.tsx`: private Woodshop dashboard
 - `site/app/media/[...slug]/route.ts`: file-backed media serving route

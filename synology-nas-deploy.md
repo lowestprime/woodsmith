@@ -72,6 +72,14 @@ SHIP_FROM_CITY=
 SHIP_FROM_STATE=
 SHIP_FROM_ZIP=
 SHIP_FROM_COUNTRY=US
+OPENAI_API_KEY=
+OPENAI_IMAGE_MODEL=gpt-image-1.5
+OPENAI_IMAGE_SIZE=1024x1024
+OPENAI_IMAGE_QUALITY=high
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+ENABLE_PUBLIC_AI_RENDERING=false
+ENABLE_AI_BACKGROUND_CLEANUP=false
+ENABLE_EMBEDDING_SEARCH=false
 ```
 
 ## Compose file
@@ -83,6 +91,7 @@ SHIP_FROM_COUNTRY=US
 - `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`
 - `/volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache`
 - loopback-only port binding on `127.0.0.1:3002`
+- optional OpenAI feature flags remain disabled unless a server-side API key is provided
 
 The `/app/pics` mount is intentionally read-write. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
 
@@ -185,5 +194,5 @@ A SQLite backup without the matching media tree is no longer sufficient for full
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- The public custom work page is contact-first and includes a credential-free procedural 3D scale preview.
+- The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews, AI cleaned image copies, and embedding re-ranking are optional OpenAI-backed features and remain disabled by default.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

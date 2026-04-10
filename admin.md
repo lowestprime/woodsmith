@@ -46,7 +46,9 @@ The media section operates against the NAS photo library mounted directly to `/a
 - assign media to a piece, process note, page, or project
 - rename files in place
 - edit alt text, tags, focal X/Y, zoom, and reviewed status
+- use the visual crop editor to set focal point, zoom, crop frame, and crop notes through sliders and form controls
 - set cleanup mode, photo quality, source credit, verified piece slug, visual search labels, and display order
+- generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
 - delete files
 - refresh the indexed library
 
@@ -72,7 +74,7 @@ Password resets, project updates, contact requests, and commerce emails queue no
 
 ### Custom work contact
 
-The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional 3D scale preview, and a written brief. It creates a private project record and redirects the buyer to a reference page.
+The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional 3D scale preview, and a written brief. It creates a private project record and redirects the buyer to a reference page. If `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, the visualizer can also generate a photorealistic preview and attach it only when the buyer chooses to include the preview.
 
 ### Shop checkout
 
@@ -89,6 +91,9 @@ These features require server configuration before they work live:
 - SMTP notifications: `SMTP_*`
 - Stripe checkout and invoices: `STRIPE_*`
 - EasyPost labels: `EASYPOST_API_KEY` and `SHIP_FROM_*`
+- AI custom-work previews: `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true`
+- AI cleaned image copies: `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true`
+- Embedding search re-ranking: `OPENAI_API_KEY` and `ENABLE_EMBEDDING_SEARCH=true`
 
 ## Recommended operating routine
 
@@ -117,3 +122,7 @@ Check `EASYPOST_API_KEY`, all `SHIP_FROM_*` values, and the order shipping addre
 ### Media uploads fail on Synology
 
 Check that `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` is mounted directly to `/app/pics:rw` and that the container user has write permission. Do not use `/volume2/docker_ssd/woodsmith/pics` as an intermediate mount point.
+
+### AI preview, cleanup, or embedding search is unavailable
+
+Check `OPENAI_API_KEY` and the specific feature flag for the capability. The dashboard shows whether AI cleanup and embedding search are configured. Public custom-work preview generation intentionally returns a configuration-needed message instead of claiming image-model support when credentials are absent.

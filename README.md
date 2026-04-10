@@ -9,12 +9,13 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 - Shop pages with asking-price language, cart totals, coupon handling, tax estimate, pickup/delivery/shipping labels, and Stripe checkout plumbing
 - Process writing under `/process` and the Shop process section, with markdown content and optional source-credit links for outside references
 - Contact-first custom work requests with attachments, lead-time context, material preferences, project tracking, and an optional live procedural 3D scale preview
+- Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
-- Private Woodshop dashboard for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications without visible raw JSON panels
-- Browser media management for upload, rename, delete, assignment, tags, review state, focal point, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library
+- Private Woodshop dashboard for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
+- Browser media management for upload, rename, delete, assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
-- Semantic-style text search plus browser-assisted visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records
+- Keyword/metadata search plus browser-assisted visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. Optional OpenAI embeddings can re-rank results when enabled.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
 - Programmatic Beaman Woodworks favicon and brand mark
 
@@ -22,10 +23,10 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
-- The public custom work flow is contact-first and now includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots.
+- The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
-- Payment capture, invoice delivery, shipping-label creation, and outbound email require environment configuration before they work live.
+- Payment capture, invoice delivery, shipping-label creation, outbound email, OpenAI image cleanup, photorealistic preview generation, and embedding re-ranking require environment configuration before they work live.
 
 ## Repository layout
 
@@ -80,6 +81,14 @@ Required for optional live services:
 - `SHIP_FROM_STATE`
 - `SHIP_FROM_ZIP`
 - `SHIP_FROM_COUNTRY`
+- `OPENAI_API_KEY`
+- `OPENAI_IMAGE_MODEL`
+- `OPENAI_IMAGE_SIZE`
+- `OPENAI_IMAGE_QUALITY`
+- `OPENAI_EMBEDDING_MODEL`
+- `ENABLE_PUBLIC_AI_RENDERING`
+- `ENABLE_AI_BACKGROUND_CLEANUP`
+- `ENABLE_EMBEDDING_SEARCH`
 
 ## Key routes
 

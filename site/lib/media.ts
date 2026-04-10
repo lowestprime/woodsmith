@@ -172,6 +172,17 @@ export async function persistUploadedMedia(file: File, folder = "Uploads") {
   return relativePath;
 }
 
+export function persistGeneratedMedia(base64Image: string, folder = "generated", baseName = "preview", extension = ".png") {
+  const safeFolder = slugify(folder) || "generated";
+  const safeBase = slugify(baseName) || `generated-${randomUUID().slice(0, 8)}`;
+  const cleanExtension = extension.startsWith(".") ? extension.toLowerCase() : `.${extension.toLowerCase()}`;
+  const relativePath = `${safeFolder}/${safeBase}-${randomUUID().slice(0, 8)}${cleanExtension}`;
+  const absolutePath = resolveMediaPath(relativePath);
+  mkdirSync(path.dirname(absolutePath), { recursive: true });
+  writeFileSync(absolutePath, Buffer.from(base64Image, "base64"));
+  return relativePath;
+}
+
 export function renameMediaAsset(relativePath: string, nextBaseName: string) {
   const currentAbsolutePath = resolveMediaPath(relativePath);
   const parsed = path.parse(currentAbsolutePath);

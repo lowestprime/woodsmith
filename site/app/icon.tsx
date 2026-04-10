@@ -17,8 +17,8 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#090909",
-          color: "#f4e6cb"
+          background: "#050403",
+          color: "#f0dec0"
         }}
       >
         <div
@@ -26,17 +26,19 @@ export default function Icon() {
             width: 54,
             height: 54,
             borderRadius: 18,
-            border: "2px solid #f4e6cb",
+            border: "2px solid #f0dec0",
+            background: "#15110d",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
             position: "relative"
           }}
         >
-          <div style={{ fontSize: 24, letterSpacing: 2 }}>BW</div>
-          <div style={{ position: "absolute", width: 30, height: 2, background: "#f4e6cb", top: 26 }} />
-          <div style={{ position: "absolute", width: 2, height: 28, background: "#f4e6cb", left: 20, top: 13 }} />
-          <div style={{ position: "absolute", width: 2, height: 28, background: "#f4e6cb", right: 20, top: 13 }} />
+          <div style={{ position: "absolute", left: 11, top: 15, width: 17, height: 26, border: "3px solid #f0dec0", borderRight: "0" }} />
+          <div style={{ position: "absolute", right: 11, top: 15, width: 17, height: 26, border: "3px solid #f0dec0", borderLeft: "0" }} />
+          <div style={{ position: "absolute", width: 34, height: 2, background: "#f0dec0", top: 27 }} />
+          <div style={{ position: "absolute", width: 2, height: 38, background: "#f0dec0", left: 26, top: 8 }} />
+          <div style={{ position: "absolute", width: 6, height: 6, borderRadius: 999, background: "#f0dec0", left: 24, top: 24 }} />
         </div>
       </div>
     ),

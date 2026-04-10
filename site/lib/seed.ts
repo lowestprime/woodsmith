@@ -141,7 +141,7 @@ export const siteSettingsSeed = {
       key: "hero",
       eyebrow: "Beaman Woodworks",
       title: "Tables, cabinetry, benches, and smaller household pieces made for steady daily use.",
-      copy: "Review finished work, reserve available pieces, and ask about custom builds from the same self-hosted woodshop site.",
+      copy: "Review finished work, reserve available pieces, and ask about custom builds from the same woodshop site.",
       primaryCta: { label: "View Portfolio", href: "/portfolio" },
       secondaryCta: { label: "Shop Current Work", href: "/shop" }
     },

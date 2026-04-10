@@ -2,13 +2,14 @@ import Link from "next/link";
 import { ProjectReplyForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { getProject, listProjectUpdates } from "@/lib/db";
-import { formatDateTime, formatLeadTime } from "@/lib/format";
+import { formatDateTime, formatLeadTime, toMediaUrl } from "@/lib/format";
 
 export default async function CommissionStatusPage({ searchParams }: { searchParams: Promise<{ reference?: string; email?: string }> }) {
   const { reference = "", email = "" } = await searchParams;
   const project = reference ? getProject(reference) : null;
   const matches = project && email && project.guestEmail.toLowerCase() === email.toLowerCase();
   const updates = matches && project ? listProjectUpdates(project.reference) : [];
+  const aiPreviewPath = project && typeof project.options.aiPreviewPath === "string" && project.options.aiPreviewPath ? project.options.aiPreviewPath : null;
 
   return (
     <Shell>
@@ -36,6 +37,7 @@ export default async function CommissionStatusPage({ searchParams }: { searchPar
             <div className="request-panel">
               <h3>Project brief</h3>
               <p>{project.brief}</p>
+              {project.includeVisualization && aiPreviewPath ? <img alt={`${project.reference} generated custom work preview`} className="request-preview-image" src={toMediaUrl(aiPreviewPath)} /> : null}
               {project.publicNotes ? <p className="notice-panel">{project.publicNotes}</p> : null}
             </div>
             <div className="request-panel">
