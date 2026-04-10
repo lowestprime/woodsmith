@@ -28,6 +28,9 @@
 - Format (if applicable): `No formatter script is currently configured`
 
 ## Project-specific engineering rules
+- **CRITICAL SMB I/O CONSTRAINT:** This repository is mounted over a high-latency SMB network drive. You MUST NEVER run unconstrained recursive directory searches (e.g., `rg --files`, `eza -lhaT`, `Get-ChildItem -Recurse`) from the workspace root. 
+- Always explicitly scope searches to specific, narrow subdirectories (e.g., `rg <term> site/app/` or `Get-ChildItem site/components/`).
+- Exclude heavy directories explicitly in your commands (e.g., `--glob "!node_modules/*" --glob "!.next/*"`).
 - Follow the existing architecture and conventions unless the request requires a justified change.
 - Preserve backwards compatibility for public interfaces unless the task explicitly changes them.
 - Prefer small, coherent diffs over broad speculative refactors.
