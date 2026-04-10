@@ -92,9 +92,14 @@ async function stripeRequest<T = Record<string, unknown>>(resource: string, entr
     body: formEncode(entries)
   });
 
-  const payload = await response.json() as T & { error?: { message?: string } };
+  let payload: T & { error?: { message?: string } };
+  try {
+    payload = await response.json() as T & { error?: { message?: string } };
+  } catch {
+    throw new Error(`Stripe request failed with status ${response.status} (non-JSON response).`);
+  }
   if (!response.ok) {
-    throw new Error(payload.error?.message || "Stripe request failed.");
+    throw new Error(payload.error?.message || `Stripe request failed with status ${response.status}.`);
   }
 
   return payload;
@@ -217,9 +222,14 @@ export async function createEasyPostShippingLabel(input: {
     })
   });
 
-  const payload = await response.json() as { error?: { message?: string } } & Record<string, unknown>;
+  let payload: { error?: { message?: string } } & Record<string, unknown>;
+  try {
+    payload = await response.json() as { error?: { message?: string } } & Record<string, unknown>;
+  } catch {
+    throw new Error(`EasyPost request failed with status ${response.status} (non-JSON response).`);
+  }
   if (!response.ok) {
-    throw new Error(payload.error?.message || "EasyPost request failed.");
+    throw new Error(payload.error?.message || `EasyPost request failed with status ${response.status}.`);
   }
 
   return payload;

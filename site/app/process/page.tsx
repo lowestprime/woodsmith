@@ -1,5 +1,12 @@
+import type { Metadata } from "next";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
 import { getPage, listPosts } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "Process",
+  description: "Behind-the-scenes process notes, build logs, and references from the Beaman Woodworks workshop.",
+  openGraph: { title: "Process | Beaman Woodworks", description: "Workshop process notes and build logs." }
+};
 
 export default function ProcessPage() {
   const page = getPage("process") || getPage("journal");

@@ -45,7 +45,7 @@ import {
   type PostRecord,
   type UserRecord
 } from "@/lib/db";
-import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { formatDateTime, formatMoney, sanitizeHtml, toMediaUrl } from "@/lib/format";
 import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
@@ -134,19 +134,22 @@ function PostEditor({ post }: { post: Omit<PostRecord, "createdAt" | "updatedAt"
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
         <button className="button-primary" type="submit">Save process note</button>
       </form>
-      <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: marked.parse(post.body) }} />
+      <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(post.body) as string) }} />
     </article>
   );
 }
 
 function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces: PieceRecord[]; posts: PostRecord[]; pages: PageRecord[] }) {
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.filter((label): label is string => typeof label === "string") : [];
+  const aiTags = Array.isArray(item.metadata.aiTags) ? item.metadata.aiTags.filter((label): label is string => typeof label === "string") : [];
+  const aiDescription = typeof item.metadata.aiDescription === "string" ? item.metadata.aiDescription : "";
+  const aiAnalyzed = Boolean(item.metadata.aiAnalyzed);
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
   return (
     <article className="studio-panel studio-media-card">
       <div className={`studio-media-preview cleanup-${cleanupMode}`}>{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
       <div className="studio-media-body">
-        <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p></div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
+        <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p>{aiAnalyzed ? <p className="muted-copy">AI: {aiDescription || aiTags.join(", ") || "Analyzed"}</p> : null}</div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
         <form action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></form>
         <form action={saveMediaMetadataAction} className="request-form compact-form">
           <input name="relativePath" type="hidden" value={item.relativePath} />
@@ -251,9 +254,9 @@ function CommissionTypeEditor({ item }: { item: Omit<CommissionTypeRecord, "crea
   );
 }
 
-export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; error?: string; cleaned?: string; assigned?: string }> }) {
+export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; error?: string; cleaned?: string; assigned?: string; project?: string }> }) {
   await requireAdmin();
-  const { media: mediaQuery = "", error = "", cleaned = "", assigned = "" } = await searchParams;
+  const { media: mediaQuery = "", error = "", cleaned = "", assigned = "", project: projectHighlight = "" } = await searchParams;
   const settings = getSiteSettings();
   const aiStatus = getAiServiceStatus();
   const summary = getStudioDashboardSummary();
@@ -321,7 +324,17 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
             <form action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></form>
             <form action="/studio" className="request-form compact-form"><Field label="Filter media" name="media" defaultValue={mediaQuery} /><button className="button-secondary" type="submit">Filter</button></form>
           </article>
-          <article className="studio-panel"><h3>Media status</h3><p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p><p className="muted-copy">Automatic clustering uses folder and filename/date patterns; manual assignments below take priority.</p><p className="muted-copy">AI cleanup: {aiStatus.backgroundCleanup ? `enabled with ${aiStatus.imageModel}` : "not configured"}. Embedding search: {aiStatus.embeddingSearch ? `enabled with ${aiStatus.embeddingModel}` : "not configured"}.</p></article>
+          <article className="studio-panel"><h3>Media status</h3>
+            <p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p>
+            <p className="muted-copy">Automatic clustering uses folder/filename/date patterns and, when enabled, AI vision analysis and embedding similarity. Manual assignments always take priority.</p>
+            <dl className="estimate-list compact-estimate">
+              <div><dt>AI background cleanup</dt><dd>{aiStatus.backgroundCleanup ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
+              <div><dt>Embedding search</dt><dd>{aiStatus.embeddingSearch ? `Enabled (${aiStatus.embeddingModel})` : "Not configured"}</dd></div>
+              <div><dt>AI media analysis</dt><dd>{aiStatus.mediaAnalysis ? `Enabled (${aiStatus.visionModel})` : "Not configured"}</dd></div>
+              <div><dt>Photorealistic rendering</dt><dd>{aiStatus.publicRendering ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
+            </dl>
+            <p className="muted-copy">When AI services are enabled, the analysis endpoint at <code>/api/media-analysis</code> can auto-tag, embed, cluster, and match media to pieces. Trigger a full analysis run from the dashboard or via POST with actions: analyze, embed, cluster, match, or full.</p>
+          </article>
         </div>
         <div className="media-verification-queue">
           <div className="section-heading"><p className="eyebrow">Verification queue</p><h2>Piece photo accuracy</h2><p>Review candidates before assigning photos. Nothing in this section auto-publishes or guesses piece identity.</p></div>
@@ -353,7 +366,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
         <div className="section-heading"><p className="eyebrow">Projects</p><h2>Queue and status</h2><p>Project status, stage, notes, and timeline updates.</p></div>
         <div className="studio-grid two-column-grid">
           {projects.map((project) => (
-            <article className="studio-panel studio-editor-card" key={project.reference}>
+            <article className={`studio-panel studio-editor-card${projectHighlight === project.reference ? " highlight-card" : ""}`} id={`project-${project.reference}`} key={project.reference}>
               <div className="studio-editor-head"><h3>{project.reference}</h3><span>{project.status} · {project.stage}</span></div>
               <div className="project-media-strip">
                 {media.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (

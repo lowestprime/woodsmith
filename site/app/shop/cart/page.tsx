@@ -1,12 +1,14 @@
 import { cookies } from "next/headers";
 import { removeCartItemAction, startCheckoutAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
+import { getDisplayMediaPaths } from "@/lib/catalog";
 import { getPiece, getSiteSettings, listCartItems } from "@/lib/db";
 import { calculateCheckoutTotals } from "@/lib/payments";
 import { formatMoney, toMediaUrl } from "@/lib/format";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
-export default async function CartPage() {
+export default async function CartPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
+  const { error } = await searchParams;
   const cookieStore = await cookies();
   const cartToken = cookieStore.get("beaman-cart")?.value || "";
   const user = await getCurrentUser();
@@ -32,11 +34,12 @@ export default async function CartPage() {
     <Shell>
       <PageSection>
         <PageIntro eyebrow="Cart" title="Your ledger" copy="Review reserved pieces, shipping estimate, taxes, coupon handling, and checkout before payment capture." />
+        {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         <div className="cart-layout">
           <div className="cart-items">
             {lines.length > 0 ? lines.map(({ item, piece }) => (
               <article className="cart-line" key={item.id}>
-                {piece.mediaPaths[0] ? <img alt={piece.title} src={toMediaUrl(piece.mediaPaths[0])} /> : <div className="piece-card-placeholder">No image</div>}
+                {getDisplayMediaPaths(piece)[0] ? <img alt={piece.title} src={toMediaUrl(getDisplayMediaPaths(piece)[0])} /> : <div className="piece-card-placeholder">No image</div>}
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>
@@ -60,6 +63,7 @@ export default async function CartPage() {
               <div><dt>Tax</dt><dd>{formatMoney(totals.taxCents)}</dd></div>
               <div><dt>Total</dt><dd>{formatMoney(totals.totalCents)}</dd></div>
             </dl>
+            <p className="muted-copy">Coupon discounts are applied at checkout.</p>
             <form action={startCheckoutAction} className="request-form compact-form">
               <label>
                 <span>Email</span>

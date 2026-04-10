@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CategoryIcon, DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
 import { portfolioCategories, type PortfolioCategoryKey, getPiecePortfolioCategory } from "@/lib/catalog";
 import { getPage, listPieces } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "Portfolio",
+  description: "Browse handcrafted hardwood benches, tables, cabinets, and more from Beaman Woodworks, with verified photography and build notes.",
+  openGraph: { title: "Portfolio | Beaman Woodworks", description: "Handcrafted hardwood furniture portfolio." }
+};
 
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
   const { category } = await searchParams;
@@ -20,17 +27,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       <Shell>
         <PageSection>
           <PageIntro eyebrow="Portfolio" title={page?.title ?? "Portfolio"} copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."} />
-          <div className="portfolio-filter-row" role="tablist" aria-label="Piece categories">
+          <nav className="portfolio-filter-row" aria-label="Piece categories">
             {portfolioCategories.map((item) => {
               const active = item.key === selectedCategory;
               const href = item.key === "all" ? "/portfolio" : `/portfolio?category=${encodeURIComponent(item.key)}`;
               return (
                 <Link
-                  aria-selected={active}
+                  aria-current={active ? "page" : undefined}
                   className={`portfolio-filter-pill ${active ? "is-active" : ""}`.trim()}
                   href={href}
                   key={item.key}
-                  role="tab"
                 >
                   <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item.key} /></span>
                   <span>{item.label}</span>
@@ -38,7 +44,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
                 </Link>
               );
             })}
-          </div>
+          </nav>
           <div className="piece-grid portfolio-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
         </PageSection>
       </Shell>

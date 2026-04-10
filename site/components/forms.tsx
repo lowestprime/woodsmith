@@ -43,8 +43,8 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
           <input name="cityRegion" type="text" />
         </label>
         <label>
-          <span>Budget</span>
-          <input name="budgetCents" placeholder="1200" type="number" />
+          <span>Budget ($)</span>
+          <input min="0" name="budgetDollars" placeholder="1200" step="1" type="number" />
         </label>
       </div>
       {!piece ? <CustomWorkVisualizer3D bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} queueCount={queueCount} /> : null}
@@ -114,7 +114,11 @@ export function SignupForm() {
       </label>
       <label>
         <span>Password</span>
-        <input name="password" required type="password" />
+        <input minLength={8} name="password" required type="password" />
+      </label>
+      <label>
+        <span>Confirm password</span>
+        <input minLength={8} name="confirmPassword" required type="password" />
       </label>
       <button className="button-primary" type="submit">Create account</button>
     </form>
@@ -139,7 +143,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
       <input name="token" type="hidden" value={token} />
       <label>
         <span>New password</span>
-        <input name="password" required type="password" />
+        <input minLength={8} name="password" required type="password" />
       </label>
       <button className="button-primary" type="submit">Reset password</button>
     </form>

@@ -24,6 +24,14 @@ export default async function CommissionStatusPage({ searchParams }: { searchPar
         </form>
       </PageSection>
 
+      {reference && !matches ? (
+        <PageSection>
+          <div className="notice-panel" role="alert">
+            <p><strong>Project not found.</strong> The reference or email address did not match any project on file. Check for typos or try the email used during your original request.</p>
+          </div>
+        </PageSection>
+      ) : null}
+
       {matches && project ? (
         <PageSection>
           <div className="request-summary-head">

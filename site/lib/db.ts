@@ -525,12 +525,23 @@ function getDatabase() {
       sent_at TEXT
     ) STRICT;
 
+    CREATE TABLE IF NOT EXISTS embedding_cache (
+      key TEXT PRIMARY KEY,
+      kind TEXT NOT NULL,
+      embedding_json TEXT NOT NULL DEFAULT '[]',
+      source_text TEXT NOT NULL DEFAULT '',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
+
     CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
     CREATE INDEX IF NOT EXISTS idx_projects_guest_email ON projects(guest_email);
     CREATE INDEX IF NOT EXISTS idx_projects_user_email ON projects(user_email);
     CREATE INDEX IF NOT EXISTS idx_orders_user_email ON orders(user_email);
     CREATE INDEX IF NOT EXISTS idx_media_piece_slug ON media_items(piece_slug);
     CREATE INDEX IF NOT EXISTS idx_media_project_reference ON media_items(project_reference);
+    CREATE INDEX IF NOT EXISTS idx_embedding_cache_kind ON embedding_cache(kind);
   `);
 
   if (!initialized) {
@@ -1662,32 +1673,51 @@ export function deleteCommissionType(slug: string) {
   db.prepare(`DELETE FROM commission_types WHERE slug = ?`).run(slug);
 }
 
-export function listMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean }) {
+export function listMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean; limit?: number; offset?: number }) {
   const db = getDatabase();
-  const rows = db.prepare(`
+  const clauses: string[] = [];
+  const params: (string | number | null)[] = [];
+
+  if (!options?.includeUnreviewed) {
+    clauses.push("reviewed = 1");
+  }
+  if (options?.pieceSlug) {
+    clauses.push("piece_slug = ?");
+    params.push(options.pieceSlug);
+  }
+  if (options?.postSlug) {
+    clauses.push("post_slug = ?");
+    params.push(options.postSlug);
+  }
+  if (options?.query) {
+    clauses.push("(relative_path LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ?)");
+    const like = `%${options.query}%`;
+    params.push(like, like, like, like, like, like);
+  }
+
+  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  let sql = `
     SELECT relative_path AS relativePath, folder, file_name AS fileName, kind, size_bytes AS sizeBytes, cluster_key AS clusterKey,
            alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
            project_reference AS projectReference, user_email AS userEmail, focal_x AS focalX, focal_y AS focalY,
            zoom, reviewed, tags_json AS tagsJson, metadata_json AS metadataJson,
            created_at AS createdAt, updated_at AS updatedAt
     FROM media_items
+    ${where}
     ORDER BY datetime(updated_at) DESC, relative_path ASC
-  `).all() as Record<string, unknown>[];
+  `;
 
-  return rows
-    .map(mapMedia)
-    .filter((media) => (options?.includeUnreviewed ? true : media.reviewed))
-    .filter((media) => (options?.pieceSlug ? media.pieceSlug === options.pieceSlug : true))
-    .filter((media) => (options?.postSlug ? media.postSlug === options.postSlug : true))
-    .filter((media) => {
-      if (!options?.query) {
-        return true;
-      }
+  if (options?.limit) {
+    sql += ` LIMIT ?`;
+    params.push(options.limit);
+    if (options.offset) {
+      sql += ` OFFSET ?`;
+      params.push(options.offset);
+    }
+  }
 
-      const query = options.query.toLowerCase();
-      const haystack = [media.relativePath, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? "", JSON.stringify(media.metadata)].join(" ").toLowerCase();
-      return haystack.includes(query);
-    });
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(mapMedia);
 }
 
 export function getMedia(relativePath: string) {
@@ -1757,6 +1787,122 @@ export function refreshMediaLibrary() {
   const db = getDatabase();
   syncMediaLibraryIntoDatabase(db);
   return listMedia({ includeUnreviewed: true });
+}
+
+export type EmbeddingCacheEntry = {
+  key: string;
+  kind: string;
+  embedding: number[];
+  sourceText: string;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export function saveEmbeddingCache(input: {
+  key: string;
+  kind: string;
+  embedding: number[];
+  sourceText: string;
+  metadata?: Record<string, unknown>;
+}) {
+  const db = getDatabase();
+  const timestamp = nowIso();
+  db.prepare(`
+    INSERT INTO embedding_cache (key, kind, embedding_json, source_text, metadata_json, created_at, updated_at)
+    VALUES (:key, :kind, :embeddingJson, :sourceText, :metadataJson, :createdAt, :updatedAt)
+    ON CONFLICT(key) DO UPDATE SET
+      kind = excluded.kind,
+      embedding_json = excluded.embedding_json,
+      source_text = excluded.source_text,
+      metadata_json = excluded.metadata_json,
+      updated_at = excluded.updated_at
+  `).run({
+    key: input.key,
+    kind: input.kind,
+    embeddingJson: JSON.stringify(input.embedding),
+    sourceText: input.sourceText,
+    metadataJson: writeJson(input.metadata ?? {}),
+    createdAt: timestamp,
+    updatedAt: timestamp
+  });
+}
+
+export function getEmbeddingCache(key: string): EmbeddingCacheEntry | null {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT key, kind, embedding_json AS embeddingJson, source_text AS sourceText,
+           metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt
+    FROM embedding_cache WHERE key = ? LIMIT 1
+  `).get(key) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    key: String(row.key),
+    kind: String(row.kind),
+    embedding: readJson(row.embeddingJson, []),
+    sourceText: String(row.sourceText ?? ""),
+    metadata: readJson(row.metadataJson, {}),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt)
+  };
+}
+
+export function listEmbeddingsByKind(kind: string): EmbeddingCacheEntry[] {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT key, kind, embedding_json AS embeddingJson, source_text AS sourceText,
+           metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt
+    FROM embedding_cache WHERE kind = ? ORDER BY key ASC
+  `).all(kind) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    key: String(row.key),
+    kind: String(row.kind),
+    embedding: readJson(row.embeddingJson, []),
+    sourceText: String(row.sourceText ?? ""),
+    metadata: readJson(row.metadataJson, {}),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt)
+  }));
+}
+
+export function deleteEmbeddingCache(key: string) {
+  const db = getDatabase();
+  db.prepare(`DELETE FROM embedding_cache WHERE key = ?`).run(key);
+}
+
+export function listMediaWithoutAiTags(): MediaRecord[] {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT relative_path AS relativePath, folder, file_name AS fileName, kind, size_bytes AS sizeBytes,
+           cluster_key AS clusterKey, alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug,
+           page_slug AS pageSlug, project_reference AS projectReference, user_email AS userEmail,
+           focal_x AS focalX, focal_y AS focalY, zoom, reviewed, tags_json AS tagsJson,
+           metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt
+    FROM media_items
+    WHERE kind = 'image'
+      AND json_extract(metadata_json, '$.aiAnalyzed') IS NULL
+    ORDER BY datetime(updated_at) DESC
+    LIMIT 50
+  `).all() as Record<string, unknown>[];
+  return rows.map(mapMedia);
+}
+
+export function markMediaAiAnalyzed(relativePath: string, analysis: Record<string, unknown>) {
+  const db = getDatabase();
+  const existing = getMedia(relativePath);
+  if (!existing) return;
+  const nextMetadata = { ...existing.metadata, aiAnalyzed: true, aiAnalyzedAt: nowIso(), ...analysis };
+  db.prepare(`UPDATE media_items SET metadata_json = ?, updated_at = ? WHERE relative_path = ?`)
+    .run(writeJson(nextMetadata), nowIso(), relativePath);
+}
+
+export function mergeMediaTags(relativePath: string, newTags: string[]) {
+  const db = getDatabase();
+  const existing = getMedia(relativePath);
+  if (!existing) return;
+  const merged = [...new Set([...existing.tags, ...newTags])];
+  db.prepare(`UPDATE media_items SET tags_json = ?, updated_at = ? WHERE relative_path = ?`)
+    .run(writeJson(merged), nowIso(), relativePath);
 }
 function createReference(kind: ProjectKind) {
   const prefix = kind === "commission" ? "CM" : "SH";
@@ -2109,8 +2255,12 @@ export function createDraftOrder(input: { userEmail?: string | null; projectRefe
 
 export function listReviews(pieceSlug?: string) {
   const db = getDatabase();
+  if (pieceSlug) {
+    const rows = db.prepare(`SELECT id, piece_slug AS pieceSlug, user_email AS userEmail, reviewer_name AS reviewerName, rating, title, body, status, created_at AS createdAt, updated_at AS updatedAt FROM reviews WHERE piece_slug = ? ORDER BY datetime(created_at) DESC`).all(pieceSlug) as Record<string, unknown>[];
+    return rows.map(mapReview);
+  }
   const rows = db.prepare(`SELECT id, piece_slug AS pieceSlug, user_email AS userEmail, reviewer_name AS reviewerName, rating, title, body, status, created_at AS createdAt, updated_at AS updatedAt FROM reviews ORDER BY datetime(created_at) DESC`).all() as Record<string, unknown>[];
-  return rows.map(mapReview).filter((review) => (pieceSlug ? review.pieceSlug === pieceSlug : true));
+  return rows.map(mapReview);
 }
 
 export function saveReview(input: Omit<ReviewRecord, "id" | "createdAt" | "updatedAt"> & { id?: string }) {
@@ -2177,12 +2327,13 @@ export function listNotifications() {
 
 export function getBandwidthSnapshot(): BandwidthSnapshot {
   const projects = listProjects(true);
+  const orders = listOrders();
   const activeProjects = projects.filter((project) => !["Delivered", "Closed", "Cancelled"].includes(project.status)).length;
-  const openOrders = listOrders().filter((order) => !["Delivered", "Refunded", "Cancelled"].includes(order.status)).length;
+  const openOrders = orders.filter((order) => !["Delivered", "Refunded", "Cancelled"].includes(order.status)).length;
   const laborWeight = projects.reduce((sum, project) => sum + Number(project.estimator.laborHours ?? 18), 0);
   const leadTimeDays = Math.max(14, Math.min(196, 21 + activeProjects * 8 + Math.round(laborWeight / 18)));
   const bandwidthPercent = Math.max(10, Math.min(98, Math.round((activeProjects * 14 + openOrders * 9 + laborWeight / 4) / 1.8)));
-  const shippedCount = listOrders().filter((order) => order.status === "Shipped").length;
+  const shippedCount = orders.filter((order) => order.status === "Shipped").length;
   return { activeProjects, openOrders, leadTimeDays, bandwidthPercent, inProgressCount: activeProjects, shippedCount };
 }
 

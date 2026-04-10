@@ -15,6 +15,20 @@
   --radius-md: 24px;
   --radius-lg: 34px;
   --radius-pill: 999px;
+
+  --bg: #f7f2e8;
+  --bg-elevated: #fffcf7;
+  --bg-soft: #efe5d7;
+  --bg-card: #e8ddcf;
+  --surface: #f2e8da;
+  --line: rgba(55, 44, 31, 0.12);
+  --text: #1f1912;
+  --muted: #665545;
+  --accent: #4b3a2b;
+  --accent-strong: #24170c;
+  --button: #2d241b;
+  --button-text: #f7f2e8;
+  --danger: #9d2d2d;
 }
 
 html[data-theme="dark"] {
@@ -1229,6 +1243,13 @@ img.cleanup-subject-isolate {
   letter-spacing: 0.08em;
 }
 
+.account-badge-avatar {
+  width: 2.1rem;
+  height: 2.1rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
 .theme-toggle {
   justify-content: flex-end;
   gap: 0.85rem;
@@ -1541,6 +1562,66 @@ img.cleanup-subject-isolate {
   place-items: center;
 }
 
+.shop-grid {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.piece-detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+.meta-grid {
+  display: grid;
+  gap: 0.65rem;
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+}
+
+.meta-grid div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: baseline;
+}
+
+.meta-grid span {
+  color: var(--muted);
+}
+
+.detail-stack {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.detail-bullets {
+  display: grid;
+  gap: 0.5rem;
+  padding-left: 1.2rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.split-section {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: var(--space-8);
+  align-items: start;
+}
+
+@media (max-width: 980px) {
+  .piece-detail-grid,
+  .split-section {
+    grid-template-columns: 1fr;
+  }
+}
+
 .studio-stack {
   display: grid;
   gap: var(--space-6);
@@ -1629,4 +1710,115 @@ img.cleanup-subject-isolate {
   .studio-media-card {
     grid-template-columns: 1fr;
   }
+}
+
+/* --- File and range input styling --- */
+
+input[type="file"] {
+  padding: 0.65rem 1rem;
+  cursor: pointer;
+  font-size: 0.925rem;
+}
+
+input[type="file"]::file-selector-button {
+  background: var(--button);
+  color: var(--button-text);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 0.45rem 1rem;
+  font-family: var(--font-display);
+  font-size: 0.875rem;
+  cursor: pointer;
+  margin-right: 0.75rem;
+}
+
+input[type="file"]::file-selector-button:hover {
+  opacity: 0.85;
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  background: var(--line);
+  border-radius: var(--radius-pill);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 22px;
+  height: 22px;
+  background: var(--button);
+  border-radius: 50%;
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 22px;
+  height: 22px;
+  background: var(--button);
+  border-radius: 50%;
+  border: 2px solid var(--bg-elevated);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+}
+
+/* --- Reduced motion --- */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* --- Notice panel for inline alerts --- */
+
+.notice-panel[role="alert"] {
+  border-left: 3px solid var(--danger);
+  padding: var(--space-4) var(--space-5);
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+}
+
+/* --- Loading skeleton pulse --- */
+
+@keyframes skeleton-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.loading-pulse > * {
+  animation: skeleton-pulse 1.8s ease-in-out infinite;
+}
+
+.loading-pulse > *:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.loading-pulse > *:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+.loading-pulse > *:nth-child(4) {
+  animation-delay: 0.45s;
+}
+
+/* --- Highlight card for deep-linked items --- */
+
+.highlight-card {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  scroll-margin-top: var(--space-8);
 }

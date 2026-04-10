@@ -1,6 +1,13 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell, StatusBand } from "@/components/site-chrome";
 import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "Beaman Woodworks | Handcrafted Hardwood Furniture",
+  description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork by Beaman Woodworks. Browse the portfolio, shop available pieces, or commission something original.",
+  openGraph: { title: "Beaman Woodworks", description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork." }
+};
 
 export default function HomePage() {
   const site = getSiteSettings();

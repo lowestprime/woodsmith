@@ -1,7 +1,14 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { ContactRequestForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getPage, listCommissionTypes } from "@/lib/db";
+
+export const metadata: Metadata = {
+  title: "Custom Work",
+  description: "Commission a custom hardwood piece from Beaman Woodworks. Describe your vision, review a real-time estimate, and start your project.",
+  openGraph: { title: "Custom Work | Beaman Woodworks", description: "Commission custom hardwood furniture." }
+};
 
 export default function CommissionsPage() {
   const page = getPage("commissions");

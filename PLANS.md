@@ -28,11 +28,29 @@
 - Additional CSS for crop controls, assignment cards, AI preview panels, request preview images, and rounded theme toggle polish.
 - Direct NAS media mount, OpenAI feature flags, and final behavior documented in README, admin manual, Synology deployment guide, architecture reference, env example, and Docker Compose.
 
+## What Was Implemented In the 3.0 AI & Audit Enhancement Pass
+
+- **Vision-based image analysis** (`ai-services.ts`): `describeImageContent()` sends images to OpenAI's Vision API and returns structured JSON with piece type, wood species, finish, joinery, photo context, tags, and description.
+- **Batch media analysis** (`ai-services.ts`): `batchDescribeMedia()` processes multiple images sequentially with the Vision API.
+- **Embedding serialization** (`ai-services.ts`): `serializeEmbedding()` / `deserializeEmbedding()` for Float32Array round-tripping to JSON storage.
+- **Enhanced background removal** (`ai-services.ts`): `removeImageBackground()` now explicitly prompts for pure transparent backgrounds.
+- **Persistent embedding cache** (`db.ts`): New `embedding_cache` table with `saveEmbeddingCache`, `getEmbeddingCache`, `listEmbeddingsByKind`, `deleteEmbeddingCache` functions; supports caching both piece-description and media-description embeddings keyed by kind.
+- **AI media metadata** (`db.ts`): `listMediaWithoutAiTags`, `markMediaAiAnalyzed`, `mergeMediaTags` enable tracking which media has been AI-analyzed and surfacing AI-generated tags alongside manual tags.
+- **Embedding-augmented media audit** (`media-audit.ts`): `embeddingScore()` computes cosine similarity between cached piece and media embeddings; `buildMediaVerificationQueue()` now combines heuristic + embedding scores for suggestions. New public functions: `computePieceEmbeddings`, `computeMediaEmbeddings`, `autoAnalyzeUntaggedMedia`, `autoClusterByEmbedding`, `autoPieceToPhotoMatch`.
+- **`/api/media-analysis` route**: POST endpoint accepting actions `analyze`, `embed`, `cluster`, `match`, or `full` to trigger batch AI media intelligence from the dashboard or CLI.
+- **Embedding-cached search** (`search.ts`): `getQueryEmbedding` caches query embeddings; `rerankWithCachedEmbeddings` scores results using stored embeddings; `buildCandidates` includes AI-generated tags and descriptions in searchable text; `searchSite` returns `visualSearchEnabled` status.
+- **Advanced client-side visual search** (`visual-search.tsx`): `describeDominantRegions()` and `analyzeImageAdvanced()` analyze subject vs. background regions for richer client-side tags.
+- **Account badge avatar** (`site-chrome.tsx`, `globals.css`): `AccountBadge` displays the user's avatar image when `avatarPath` is set, with circular styling.
+- **Lightbox navigation and zoom** (`lightbox.tsx`): Previous/next arrows, dynamic zoom percentage display, and item counter.
+- **Studio AI status panel** (`studio/page.tsx`): Dashboard shows enabled/disabled status and model for each AI service (background cleanup, embedding search, media analysis, photorealistic rendering) with guidance on triggering batch analysis.
+- **Layout CSS** (`globals.css`): Added `.shop-grid`, `.piece-detail-grid`, `.meta-grid`, `.detail-stack`, `.detail-bullets`, `.split-section` styles with responsive breakpoints.
+- **Environment config** (`.env.example`): Added `OPENAI_VISION_MODEL` and `ENABLE_AI_MEDIA_ANALYSIS` entries.
+
 ## 44-Item Completion Ledger
 
 | ID | Status | Outcome |
 |----|--------|---------|
-| 1 | BLOCKED / DONE | Full library truth still needs human verification; repo safeguards, review queue, withheld Scientist Desk media, and no-guess rules are implemented. |
+| 1 | DONE / BLOCKED | Full library truth still needs human verification; repo safeguards, review queue, withheld Scientist Desk media, no-guess rules, and AI-powered `autoPieceToPhotoMatch` with embedding+heuristic scoring are implemented. Automatic matching is available via `/api/media-analysis?action=match` when AI services are configured. |
 | 2 | DONE | Portfolio category tabs now include category iconography and counts. |
 | 3 | DONE | Public media display remains selective via per-piece limits and verified/review-marked media rules. |
 | 4 | DONE | Browser media rename, alt text, tags, labels, source credit, display order, crop metadata, and review metadata are supported. |
@@ -40,7 +58,7 @@
 | 6 | DONE / BLOCKED | Photo-quality fields, cleanup modes, crop controls, and optional AI-cleaned copies exist; fully automatic cleanup needs external credentials. |
 | 7 | DONE | User-facing language uses Woodshop/Shop/Process; `/studio` remains the private route name only. |
 | 8 | PARTIAL / BLOCKED | Known requested pieces are represented; unknown raw-library pieces require human inventory/verification before publication. |
-| 9 | DONE / BLOCKED | Non-destructive cleanup metadata and optional AI cleanup are integrated; automatic background removal is credential-dependent. |
+| 9 | DONE / BLOCKED | Non-destructive cleanup metadata and optional AI cleanup are integrated; `removeImageBackground` now explicitly requests transparent backgrounds. Automatic background removal is credential-dependent. |
 | 10 | DONE | Shop/custom-work/process language was simplified and kept consumer-facing. |
 | 11 | DONE | Journal is legacy redirect; Process is surfaced through Shop and public writing. |
 | 12 | DONE | Behind-the-scenes content lives in Process and the Shop process section. |
@@ -56,32 +74,77 @@
 | 22 | DONE | Form fields, buttons, theme toggle, and controls use larger rounded modern styling. |
 | 23 | DONE | Homepage headline/copy has been simplified in seed/settings defaults. |
 | 24 | DONE | Public navigation is simplified to Workshop, Portfolio, Shop, Process, About, Search, Cart, Account. |
-| 25 | DONE | Header account entry is a circular profile badge/placeholder. |
+| 25 | DONE | Header account entry is a circular profile badge/placeholder; displays user avatar image when `avatarPath` is set. |
 | 26 | DONE FOUNDATION | Multi-woodworker-ready users/profiles/reviews/revenue-model settings exist; full marketplace scale-up remains future product work. |
 | 27 | DONE | Brand mark and favicon were replaced with Beaman Woodworks joinery-inspired identity. |
-| 28 | DONE | Lightbox has X close, plus/minus zoom, pan, arrows, and Esc close. |
+| 28 | DONE | Lightbox has X close, plus/minus zoom, dynamic zoom percentage display, pan, previous/next arrows with item counter, and Esc close. |
 | 29 | DONE | Built-in non-destructive crop/focal/zoom editor is integrated; AI cleanup creates separate copies when configured. |
 | 30 | DONE | `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble sidecars are ignored during media indexing. |
 | 31 | DONE | Dashboard media manager lists all indexed media with filtering, not only recent media. |
 | 32 | DONE | Palette is biased toward bird's-eye maple, ebony, and white maple. |
 | 33 | DONE | Project/media preview strips support candidate assignment; media records support ordering, cropping, grouping metadata, and manual correction. |
 | 34 | DONE | Dashboard editing is structured browser forms; visible developer-syntax editing surfaces are removed. |
-| 35 | DONE / BLOCKED | Heuristic clustering and manual correction are implemented; fully accurate automatic ML clustering requires external vision/embedding services plus validation. |
+| 35 | DONE / BLOCKED | Heuristic clustering, embedding-based `autoClusterByEmbedding`, and manual correction are implemented; full pipeline available via `/api/media-analysis?action=cluster`. Accuracy improves with AI vision analysis enabled. |
 | 36 | DONE | Shared UI, buttons, icons, panels, brand mark, and media tools were modernized. |
 | 37 | DONE | Bandwidth/lead-time estimator and material dropdowns are integrated in custom-work flow. |
-| 38 | DONE / BLOCKED | Procedural to-scale visualizer and optional OpenAI image preview are integrated; true always-on photorealistic 3D/LLM rendering requires credentials. |
+| 38 | DONE / BLOCKED | Procedural to-scale visualizer and optional OpenAI `gpt-image-1` photorealistic preview are integrated; true always-on photorealistic 3D/LLM rendering requires credentials and `ENABLE_PUBLIC_AI_RENDERING=true`. |
 | 39 | DONE | New tab favicon and icon route build successfully. |
 | 40 | DONE | Upload, refresh, rename, delete, select, assign, and generated-media write paths use writable `/app/pics`. |
 | 41 | DONE | Full-size image preview has zoom, pan, X, Esc, and keyboard navigation. |
 | 42 | DONE | Signup, login, forgot/reset password, profile editing, profile picture upload, and project listing exist. |
-| 43 | DONE / BLOCKED | Local keyword/metadata/browser visual tag search and optional embedding re-ranking are integrated; true embedding visual search requires configured model services. |
+| 43 | DONE / BLOCKED | Full search pipeline: local keyword/metadata, client-side visual tag analysis, server-side AI-generated tags/descriptions in search candidates, cached embedding re-ranking via `getQueryEmbedding`/`rerankWithCachedEmbeddings`, and `visualSearchByImageTags` bridge. True embedding visual search requires `ENABLE_EMBEDDING_SEARCH=true` and `ENABLE_AI_MEDIA_ANALYSIS=true`. |
 | 44 | DONE | Dates and metadata are shown across pieces, process notes, media, orders, projects, notifications, and search/admin surfaces. |
+
+## What Was Implemented In the Bug Fix & High-Leverage Enhancement Pass
+
+- **Lightbox robustness and a11y** (`lightbox.tsx`): Fixed mod-zero crash when `items` is empty; added `role="dialog"`, `aria-modal="true"`; restored `objectPosition` from focal-point metadata in full-size view; added body scroll lock when lightbox is open; focus management (auto-focus close, restore focus on dismiss).
+- **Commission status error state** (`commissions/status/page.tsx`): Explicit "Project not found" alert when reference+email lookup fails instead of silent blank page.
+- **Cart coupon UX** (`shop/cart/page.tsx`): Added notice that coupon discounts are applied at checkout; added checkout error display via query param.
+- **Theme fallback** (`globals.css`): `:root` now includes default light-theme color variables so the page renders correctly when the `data-theme` cookie is absent.
+- **Reduced motion** (`globals.css`): Added `@media (prefers-reduced-motion: reduce)` that disables smooth scroll, transitions, and animations site-wide.
+- **Form UX** (`forms.tsx`, `actions.ts`):
+  - Budget field renamed from `budgetCents` to `budgetDollars` with "$" label and server-side dollar-to-cents conversion.
+  - Confirm-password field added to signup with `minLength={8}` validation.
+  - Signup action: duplicate-email guard redirects to login with descriptive error; password mismatch and length checks redirect to signup with error.
+  - Checkout action: missing-price items no longer throw unhandled errors; redirect to cart with user-facing error message instead.
+- **File and range input styling** (`globals.css`): `input[type="file"]` and `input[type="range"]` receive themed custom styling matching the design system.
+- **Visualizer notes** (`visualizer.tsx`): Added missing notes `<textarea>` to `CommissionVisualizerFields` so the `notes` field is user-editable.
+- **Login error display** (`account/login/page.tsx`): Error query param now shows the actual error message instead of hardcoded text.
+- **Signup error display** (`account/signup/page.tsx`): New `error` query param support with alert panel.
+- **SQL-optimized media listing** (`db.ts`): `listMedia` now uses SQL `WHERE` clauses for `reviewed`, `piece_slug`, `post_slug`, and `LIKE`-based query filtering instead of loading all rows and filtering in JavaScript. Added `limit` and `offset` parameters for pagination.
+- **Global error boundary** (`error.tsx`): Client-side error boundary with retry and home navigation.
+- **Custom 404 page** (`not-found.tsx`): Branded 404 with portfolio/shop/search navigation.
+- **Loading skeleton** (`loading.tsx`): Animated pulse skeleton for route transitions.
+- **SEO metadata** (`layout.tsx`, portfolio, shop, commissions, process, about pages): Root layout includes `metadataBase`, Open Graph, Twitter card, and robots directives. Key public pages have dedicated `title`, `description`, and `openGraph` metadata. Portfolio `[slug]` uses `generateMetadata` with dynamic piece images.
+- **Web app manifest** (`manifest.ts`): PWA manifest with name, icons, colors, and standalone display mode.
+- **Alert panel styling** (`globals.css`): `.notice-panel[role="alert"]` with danger-colored left border.
+
+## What Was Implemented In the Full Codebase Audit Pass
+
+- **CRITICAL auth fix** (`auth.ts`): `getCurrentUser` was falling back to `getUserById(session.userEmail)` when email lookup failed — but sessions store emails, not IDs, so this fallback always failed silently. Removed the broken fallback; stale sessions now cleanly expire.
+- **Stripe/EasyPost error handling** (`payments.ts`): `stripeRequest` and EasyPost calls unconditionally called `response.json()` on error responses. Non-JSON error responses (502s, 503s, HTML error pages) would throw unhandled parse errors instead of surfacing useful error messages. Wrapped in try/catch with status-code context.
+- **Studio login hardcoded email** (`studio/login/page.tsx`): Default email was hardcoded to `woodsmithbb@proton.me` — operational leak and wrong for multi-user. Changed to empty string.
+- **Studio project deep link** (`studio/page.tsx`, `studio/request/[reference]/page.tsx`): The redirect to `/studio?project=...` was broken because the studio page didn't read the `project` query param. Added `project` to searchParams, `id` attribute on project cards, and CSS highlight for deep-linked projects.
+- **Reset password validation** (`actions.ts`, `forms.tsx`): `resetPasswordAction` had no password length enforcement (signup requires 8+ chars). Added server-side 8-char minimum and `minLength` to the form.
+- **HTML sanitization** (`format.ts`, 4 page files): All `dangerouslySetInnerHTML` usages of `marked.parse()` and stored SVG now pass through `sanitizeHtml()` — strips `<script>`, `<style>`, inline event handlers, `javascript:` URIs, and non-allowlisted tags/attributes. Protects against stored XSS from CMS content or commission SVG data.
+- **getBandwidthSnapshot double query** (`db.ts`): Called `listOrders()` twice (once for open orders, once for shipped count). Consolidated into single call.
+- **listReviews SQL-side filter** (`db.ts`): Previously loaded all reviews then filtered by `pieceSlug` in JS. Now uses SQL `WHERE piece_slug = ?` when a slug is provided.
+- **formatLeadTime falsy-zero** (`format.ts`): `!days` treated `0` as missing. Changed to `days == null || days < 0`.
+- **Visual search error handling** (`visual-search.tsx`): `analyzeFile` had no try/catch around `createImageBitmap`/canvas APIs. Analysis failures now show a user-friendly message instead of crashing.
+- **Media zoom NaN** (`actions.ts`): `Number(formData.get("zoom")?.toString() || 1)` could yield NaN with bad input. Added `|| 1` fallback.
+- **About page empty name tokens** (`about/page.tsx`): `displayName.split(" ").map(part => part[0])` could crash on names with consecutive spaces. Added `.filter(Boolean)`.
+- **Portfolio ARIA** (`portfolio/page.tsx`): Category filter used `role="tablist"`/`role="tab"` on navigation Links — incorrect ARIA pattern. Replaced with `<nav>` and `aria-current="page"`.
+- **Search results prefetching** (`search/page.tsx`): Results used raw `<a>` tags. Switched to `next/link` `<Link>` for client-side navigation and prefetching.
+- **Cart media consistency** (`shop/cart/page.tsx`): Used `piece.mediaPaths[0]` instead of `getDisplayMediaPaths()`, potentially showing unreviewed media. Now uses the same catalog helper as the shop page.
+- **Unused imports removed**: `PageRecord` from `site-chrome.tsx`, `listEmbeddingsByKind` from `search.ts`, `getUserById` from `auth.ts`.
+- **Home page metadata** (`page.tsx`): Added explicit `title`, `description`, and `openGraph` metadata.
+- **Highlight card CSS** (`globals.css`): `.highlight-card` style for deep-linked project cards with accent outline and scroll margin.
 
 ## Validation Completed
 
-- `npm run typecheck`: passed.
-- `npm run lint`: passed with warnings only for intentional file-backed `<img>` usage.
-- `npm run build`: passed after fixing the generated icon route style.
+- `npm run typecheck`: passed (0 errors).
+- `npm run lint`: passed (0 errors, 14 pre-existing `<img>` warnings).
+- `npm run build`: passed. All 31 routes compile and generate successfully.
 - Built server smoke checks on `http://127.0.0.1:3102`:
   - `/`, `/portfolio`, `/portfolio?category=tables`, `/shop`, `/commissions`, `/commissions/status`, `/search?q=pastry`, `/about`, `/studio/login`, `/icon`, `/icon.svg`: 200.
   - `/journal`: 307 redirect.
@@ -89,6 +152,7 @@
 
 ## Remaining Blockers
 
-1. Full photo truth and all undiscovered raw-library piece coverage need human review of the NAS photo library.
-2. Always-on photorealistic rendering, automatic background cleanup, and true embedding/visual search need approved provider credentials, cost limits, and deployment configuration.
+1. Full photo truth and all undiscovered raw-library piece coverage need human review of the NAS photo library. The `autoPieceToPhotoMatch` function and `/api/media-analysis?action=match` endpoint are ready to assist but require human validation of suggestions.
+2. Always-on photorealistic rendering (`ENABLE_PUBLIC_AI_RENDERING`), automatic background cleanup (`ENABLE_AI_BACKGROUND_CLEANUP`), true embedding/visual search (`ENABLE_EMBEDDING_SEARCH`), and AI media analysis (`ENABLE_AI_MEDIA_ANALYSIS`) all need approved provider credentials (`OPENAI_API_KEY`), cost limits, and deployment configuration.
 3. Local persistence still uses Node's experimental `node:sqlite`; public scale-out should migrate to Postgres, LibSQL, or another stable production database.
+4. The `embedding_cache` table is created automatically on first access; no manual migration is needed for new deployments.

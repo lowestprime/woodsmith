@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MediaLightbox } from "@/components/lightbox";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
@@ -5,6 +6,23 @@ import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
 import { PageSection, ShareLinks, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
 import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/format";
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const piece = getPiece(slug);
+  if (!piece) return { title: "Piece not found" };
+  const firstMedia = getDisplayMediaPaths(piece)[0];
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "").replace(/\/$/, "");
+  return {
+    title: piece.title,
+    description: piece.subtitle || piece.summary || `${piece.title} by Beaman Woodworks.`,
+    openGraph: {
+      title: `${piece.title} | Beaman Woodworks`,
+      description: piece.summary || piece.subtitle || "",
+      ...(firstMedia && siteUrl ? { images: [{ url: `${siteUrl}/media/${firstMedia}` }] } : {})
+    }
+  };
+}
 
 export default async function PiecePage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;

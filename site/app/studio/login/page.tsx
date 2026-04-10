@@ -2,7 +2,7 @@ import { LoginForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
 export default async function StudioLoginPage({ searchParams }: { searchParams: Promise<{ error?: string; email?: string }> }) {
-  const { error, email = "woodsmithbb@proton.me" } = await searchParams;
+  const { error, email = "" } = await searchParams;
   return (
     <Shell>
       <PageSection>

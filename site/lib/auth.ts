@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
-import { createSessionRecord, deleteSessionRecord, getSessionRecord, getUserByEmail, getUserById, type UserRecord } from "@/lib/db";
+import { createSessionRecord, deleteSessionRecord, getSessionRecord, getUserByEmail, type UserRecord } from "@/lib/db";
 
 const COOKIE_NAME = "beaman_session";
 const DEFAULT_ADMIN_EMAIL = "woodsmithbb@proton.me";
@@ -95,8 +95,12 @@ export async function getCurrentUser() {
     return null;
   }
 
-  const user = getUserByEmail(session.userEmail) ?? getUserById(session.userEmail);
-  return user ?? null;
+  const user = getUserByEmail(session.userEmail);
+  if (!user) {
+    cookieStore.delete(COOKIE_NAME);
+    return null;
+  }
+  return user;
 }
 
 export async function requireUser() {

@@ -1,9 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { addToCartAction } from "@/lib/actions";
 import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
 import { getPage, listPieces, listPosts } from "@/lib/db";
 import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+
+export const metadata: Metadata = {
+  title: "Shop",
+  description: "Shop available handcrafted hardwood furniture and pieces from Beaman Woodworks. Reserve, review pricing, and check out securely.",
+  openGraph: { title: "Shop | Beaman Woodworks", description: "Available handcrafted hardwood pieces." }
+};
 
 export default function ShopPage() {
   const page = getPage("shop");

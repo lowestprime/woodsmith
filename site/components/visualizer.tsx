@@ -433,6 +433,10 @@ export function CommissionVisualizerFields({ commissionTypes, bandwidthLeadTimeD
             <div><dt>Projected total</dt><dd>{formatMoney(estimate.totalCents)}</dd></div>
             <div><dt>Lead time</dt><dd>{formatLeadTime(estimate.leadTimeDays)}</dd></div>
           </dl>
+          <label>
+            <span>Additional notes</span>
+            <textarea name="notes" onChange={(event) => update("notes", event.target.value)} placeholder="Finish preferences, hardware, special requirements..." rows={3} value={syncedState.notes} />
+          </label>
           <label className="checkbox-row">
             <input checked={syncedState.includeVisualization} name="includeVisualization" onChange={(event) => update("includeVisualization", event.target.checked)} type="checkbox" value="1" />
             <span>Include this live preview with the submitted brief</span>

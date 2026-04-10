@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
-import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PageRecord, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
+import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
 
 export function Shell({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -24,7 +24,10 @@ export function BrandMark() {
   );
 }
 
-function AccountBadge({ label }: { label: string }) {
+function AccountBadge({ label, avatarPath }: { label: string; avatarPath?: string | null }) {
+  if (avatarPath) {
+    return <img alt={label} className="account-badge-avatar" src={toMediaUrl(avatarPath)} />;
+  }
   return <span className="account-badge" aria-hidden="true">{label}</span>;
 }
 
@@ -87,7 +90,7 @@ export async function SiteHeader() {
             <strong>{cartCount}</strong>
           </Link>
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
-            <AccountBadge label={accountLabel} />
+            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} />
           </Link>
           {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
         </nav>

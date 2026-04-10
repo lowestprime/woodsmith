@@ -14,13 +14,32 @@ const mackintosh = localFont({
   ]
 });
 
+const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://beamanwoodworks.com";
+
 export const metadata: Metadata = {
   title: {
     default: "Beaman Woodworks",
     template: "%s | Beaman Woodworks"
   },
-  description: "Self-hosted woodworking portfolio, shop, process notes, project tracking, and buyer contact workflows for Beaman Woodworks.",
-  applicationName: "Beaman Woodworks"
+  description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork by Beaman Woodworks. Browse the portfolio, shop available pieces, or commission something original.",
+  applicationName: "Beaman Woodworks",
+  metadataBase: new URL(siteUrl),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    siteName: "Beaman Woodworks",
+    title: "Beaman Woodworks",
+    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork."
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Beaman Woodworks",
+    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork."
+  },
+  robots: {
+    index: true,
+    follow: true
+  }
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

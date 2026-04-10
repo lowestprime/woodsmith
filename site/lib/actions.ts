@@ -150,7 +150,21 @@ export async function studioLoginAction(formData: FormData) {
 export async function signupAction(formData: FormData) {
   const email = requiredField(formData.get("email"), "Email").toLowerCase();
   const password = requiredField(formData.get("password"), "Password");
+  const confirmPassword = formData.get("confirmPassword");
   const displayName = requiredField(formData.get("displayName"), "Display name");
+
+  if (confirmPassword != null && String(confirmPassword) !== password) {
+    redirect(`/account/signup?error=${encodeURIComponent("Passwords do not match.")}`);
+  }
+
+  if (password.length < 8) {
+    redirect(`/account/signup?error=${encodeURIComponent("Password must be at least 8 characters.")}`);
+  }
+
+  const existing = getUserByEmail(email);
+  if (existing) {
+    redirect(`/account/login?error=${encodeURIComponent("An account with that email already exists. Please log in.")}&email=${encodeURIComponent(email)}`);
+  }
 
   saveUserProfile({
     email,
@@ -199,6 +213,9 @@ export async function forgotPasswordAction(formData: FormData) {
 export async function resetPasswordAction(formData: FormData) {
   const token = requiredField(formData.get("token"), "Reset token");
   const password = requiredField(formData.get("password"), "Password");
+  if (password.length < 8) {
+    redirect(`/account/reset?token=${encodeURIComponent(token)}&error=${encodeURIComponent("Password must be at least 8 characters.")}`);
+  }
   const { getUserByResetToken } = await import("@/lib/db");
   const user = getUserByResetToken(token);
   if (!user) {
@@ -268,19 +285,25 @@ export async function startCheckoutAction(formData: FormData) {
   const site = getSiteSettings();
   const buyerEmail = requiredField(formData.get("email"), "Email").toLowerCase();
   const cartItems = listCartItems(cartToken, user?.email ?? null);
-  const lines = cartItems.map((item) => {
+  const invalidItems: string[] = [];
+  const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
     if (!piece || piece.priceCents == null) {
-      throw new Error(`Missing price for ${item.pieceSlug}`);
+      invalidItems.push(item.pieceSlug);
+      return [];
     }
-    return {
+    return [{
       slug: piece.slug,
       title: piece.title,
       quantity: item.quantity,
       unitAmountCents: piece.priceCents,
       description: piece.subtitle
-    };
+    }];
   });
+
+  if (lines.length === 0) {
+    redirect(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`);
+  }
 
   const totals = calculateCheckoutTotals({
     lines,
@@ -363,7 +386,7 @@ export async function submitContactRequestAction(formData: FormData) {
     kind: "commission",
     status: "Request received",
     stage: "Contact review",
-    budgetCents: parseInteger(formData.get("budgetCents"), 0) || null,
+    budgetCents: (parseInteger(formData.get("budgetDollars"), 0) || parseInteger(formData.get("budgetCents"), 0)) * (formData.get("budgetDollars") ? 100 : 1) || null,
     estimatedTotalCents,
     estimator: visualizerOptions,
     brief: message,
@@ -464,7 +487,7 @@ export async function submitCommissionAction(formData: FormData) {
     kind: "commission",
     status: "Brief received",
     stage: "Review",
-    budgetCents: parseInteger(formData.get("budgetCents"), 0) || null,
+    budgetCents: (parseInteger(formData.get("budgetDollars"), 0) || parseInteger(formData.get("budgetCents"), 0)) * (formData.get("budgetDollars") ? 100 : 1) || null,
     estimatedTotalCents,
     estimator: { laborHours: options.drawers ? 4 + Number(options.drawers) : undefined },
     brief: requiredField(formData.get("brief"), "Project brief"),
@@ -1064,7 +1087,7 @@ export async function saveMediaMetadataAction(formData: FormData) {
         userEmail: optionalField(formData.get("userEmail")) || null,
         focalX: parseInteger(formData.get("focalX"), 50),
         focalY: parseInteger(formData.get("focalY"), 50),
-        zoom: Number(formData.get("zoom")?.toString() || 1),
+        zoom: Number(formData.get("zoom")?.toString() || "1") || 1,
         reviewed: parseBooleanField(formData.get("reviewed")),
         tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
         metadata

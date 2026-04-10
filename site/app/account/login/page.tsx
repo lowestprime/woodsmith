@@ -8,7 +8,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     <Shell>
       <PageSection>
         <PageIntro eyebrow="Account" title="Log in" copy="Use your buyer or dashboard account to review projects, edit your profile, or access private tools." />
-        {error ? <p className="notice-panel danger">The email and password did not match a current account.</p> : null}
+        {error ? <div className="notice-panel" role="alert"><p>{error === "1" ? "The email and password did not match a current account." : error}</p></div> : null}
         <LoginForm email={email} redirectTo={redirectTo} />
         <p className="muted-copy"><Link href="/account/signup">Create an account</Link> · <Link href="/account/forgot">Forgot password</Link></p>
       </PageSection>

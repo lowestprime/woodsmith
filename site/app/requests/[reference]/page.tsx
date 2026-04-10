@@ -4,7 +4,7 @@ import { ProjectReplyForm } from "@/components/forms";
 import { getCurrentUser } from "@/lib/auth";
 import { PageSection, Shell } from "@/components/site-chrome";
 import { getProject, listProjectUpdates } from "@/lib/db";
-import { formatDateTime, formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { formatDateTime, formatLeadTime, formatMoney, sanitizeHtml, toMediaUrl } from "@/lib/format";
 
 export default async function RequestPage({ params, searchParams }: { params: Promise<{ reference: string }>; searchParams: Promise<{ created?: string; updated?: string; error?: string; email?: string }> }) {
   const { reference } = await params;
@@ -68,7 +68,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
           <div className="request-panel">
             <h2>Project brief</h2>
             <p>{project.brief}</p>
-            {project.includeVisualization && project.visualizationSvg ? <div className="visualization-embed" dangerouslySetInnerHTML={{ __html: project.visualizationSvg }} /> : null}
+            {project.includeVisualization && project.visualizationSvg ? <div className="visualization-embed" dangerouslySetInnerHTML={{ __html: sanitizeHtml(project.visualizationSvg) }} /> : null}
             {project.includeVisualization && aiPreviewPath ? <img alt={`${project.reference} generated custom work preview`} className="request-preview-image" src={toMediaUrl(aiPreviewPath)} /> : null}
             <dl className="detail-list">
               <div><dt>Buyer</dt><dd>{project.guestName}</dd></div>
