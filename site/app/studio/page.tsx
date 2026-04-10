@@ -44,6 +44,7 @@ import {
   type UserRecord
 } from "@/lib/db";
 import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
 function Field({ label, name, defaultValue = "", type = "text", required = false }: { label: string; name: string; defaultValue?: string | number | null; type?: string; required?: boolean }) {
@@ -135,9 +136,10 @@ function PostEditor({ post }: { post: Omit<PostRecord, "createdAt" | "updatedAt"
 }
 
 function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces: PieceRecord[]; posts: PostRecord[]; pages: PageRecord[] }) {
+  const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.filter((label): label is string => typeof label === "string") : [];
   return (
     <article className="studio-panel studio-media-card">
-      <div className="studio-media-preview">{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
+      <div className={`studio-media-preview cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
       <div className="studio-media-body">
         <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p></div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
         <form action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></form>
@@ -153,6 +155,13 @@ function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces
             <Field label="Project reference" name="projectReference" defaultValue={item.projectReference ?? ""} />
           </div>
           <Area label="Tags" name="tagsText" defaultValue={item.tags.join(", ")} rows={2} />
+          <Area label="Visual search labels" name="visualLabelsText" defaultValue={visualLabels.join(", ")} rows={2} />
+          <div className="field-grid three-up compact-grid">
+            <label><span>Cleanup mode</span><select defaultValue={String(item.metadata.cleanupMode ?? "original")} name="cleanupMode"><option value="original">Original</option><option value="soft-matte">Soft matte</option><option value="warm-crop">Warm crop</option><option value="subject-isolate">Subject isolate</option></select></label>
+            <label><span>Photo quality</span><select defaultValue={String(item.metadata.photoQuality ?? "unrated")} name="photoQuality"><option value="unrated">Unrated</option><option value="shop-ready">Shop ready</option><option value="portfolio-ready">Portfolio ready</option><option value="background-distracting">Background distracting</option><option value="needs-reshoot">Needs reshoot</option></select></label>
+            <Field label="Display order" name="displayOrder" defaultValue={Number(item.metadata.displayOrder ?? 0)} type="number" />
+          </div>
+          <div className="field-grid two-up compact-grid"><Field label="Source credit" name="sourceCredit" defaultValue={String(item.metadata.sourceCredit ?? "")} /><Field label="Verified piece slug" name="verifiedPieceSlug" defaultValue={String(item.metadata.verifiedPieceSlug ?? "")} /></div>
           <div className="field-grid three-up compact-grid"><Field label="Focal X" name="focalX" defaultValue={item.focalX} type="number" /><Field label="Focal Y" name="focalY" defaultValue={item.focalY} type="number" /><Field label="Zoom" name="zoom" defaultValue={item.zoom} type="number" /></div>
           <Check label="Reviewed for public use" name="reviewed" defaultChecked={item.reviewed} />
           <button className="button-primary" type="submit">Save media</button>
@@ -239,6 +248,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
   const commissionTypes = listCommissionTypes(true);
   const users = listUsers();
   const media = listMedia({ includeUnreviewed: true, query: mediaQuery });
+  const verificationQueue = buildMediaVerificationQueue(pieces, media);
   const projects = listProjects(true).slice(0, 20);
   const orders = listOrders().slice(0, 20);
   const reviews = listReviews().slice(0, 20);
@@ -295,6 +305,25 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           </article>
           <article className="studio-panel"><h3>Media status</h3><p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p><p className="muted-copy">Automatic clustering uses folder and filename/date patterns; manual assignments below take priority.</p></article>
         </div>
+        <div className="media-verification-queue">
+          <div className="section-heading"><p className="eyebrow">Verification queue</p><h2>Piece photo accuracy</h2><p>Review candidates before assigning photos. Nothing in this section auto-publishes or guesses piece identity.</p></div>
+          <div className="studio-grid two-column-grid">
+            {verificationQueue.slice(0, 12).map((entry) => (
+              <article className="studio-panel verification-card" key={entry.piece.slug}>
+                <div className="studio-editor-head"><h3>{entry.piece.title}</h3><span>{entry.assigned.length} assigned</span></div>
+                <p className="muted-copy">{entry.needsReview ? "Needs media review before public use." : "Candidate matches are available for review."}</p>
+                <div className="project-media-strip">
+                  {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
+                    <a href={`/media/${item.relativePath}`} key={item.relativePath} title={`Candidate score ${score}`}>
+                      <img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} />
+                      <span>{score}</span>
+                    </a>
+                  )) : <span className="muted-copy">No safe filename/tag candidates found.</span>}
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
         <div className="studio-stack">{media.map((item) => <MediaEditor key={item.relativePath} item={item} pages={pages} pieces={pieces} posts={posts} />)}</div>
       </PageSection>
 
@@ -304,6 +333,11 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           {projects.map((project) => (
             <article className="studio-panel studio-editor-card" key={project.reference}>
               <div className="studio-editor-head"><h3>{project.reference}</h3><span>{project.status} · {project.stage}</span></div>
+              <div className="project-media-strip">
+                {media.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (
+                  <a href={`/media/${item.relativePath}`} key={item.relativePath}><img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} /></a>
+                ))}
+              </div>
               <form action={saveProjectAction} className="request-form compact-form">
                 <input name="reference" type="hidden" value={project.reference} />
                 <div className="field-grid two-up compact-grid"><Field label="Status" name="status" defaultValue={project.status} /><Field label="Stage" name="stage" defaultValue={project.stage} /></div>

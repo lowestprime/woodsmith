@@ -3,7 +3,7 @@ import { MediaLightbox } from "@/components/lightbox";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
 import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
 import { PageSection, ShareLinks, Shell } from "@/components/site-chrome";
-import { getBandwidthSnapshot, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
+import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
 import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/format";
 
 export default async function PiecePage({ params }: { params: Promise<{ slug: string }> }) {
@@ -16,7 +16,17 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
   const bandwidth = getBandwidthSnapshot();
   const reviews = listReviews(piece.slug).filter((review) => review.status === "published");
-  const mediaItems = getDisplayMediaPaths(piece).map((path) => ({ src: toMediaUrl(path), alt: piece.title }));
+  const mediaItems = getDisplayMediaPaths(piece).map((path) => {
+    const media = getMedia(path);
+    return {
+      src: toMediaUrl(path),
+      alt: media?.altText || piece.title,
+      focalX: media?.focalX,
+      focalY: media?.focalY,
+      zoom: media?.zoom,
+      cleanupMode: typeof media?.metadata.cleanupMode === "string" ? media.metadata.cleanupMode : undefined
+    };
+  });
   const fulfillment = getFulfillmentOptions(piece);
 
   return (

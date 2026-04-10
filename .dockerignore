@@ -14,7 +14,7 @@ site/coverage
 #recycle
 @eaDir
 **/@eaDir
-# Runtime-only media, image cache, and releases
+# Legacy local media placeholders, image cache, and releases
 pics/
 cache/
 releases/

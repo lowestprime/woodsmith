@@ -1685,7 +1685,7 @@ export function listMedia(options?: { query?: string; pieceSlug?: string | null;
       }
 
       const query = options.query.toLowerCase();
-      const haystack = [media.relativePath, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? ""].join(" ").toLowerCase();
+      const haystack = [media.relativePath, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? "", JSON.stringify(media.metadata)].join(" ").toLowerCase();
       return haystack.includes(query);
     });
 }
@@ -2196,6 +2196,11 @@ const SEARCH_SYNONYMS: Record<string, string[]> = {
   process: ["behind the scenes", "reference", "note", "markdown", "journal"],
   photo: ["image", "media", "photography", "visual", "cluster", "focal"],
   maple: ["bird's-eye", "white maple", "hard maple"],
+  ebony: ["black", "dark finish", "dark wood", "phenolic"],
+  light: ["white maple", "maple", "bright", "portfolio-ready"],
+  warm: ["cherry", "oak", "walnut", "warm wood"],
+  background: ["cleanup", "soft matte", "subject isolate", "background distracting", "needs reshoot"],
+  visual: ["image", "photo", "media", "palette", "material cue", "visual labels"],
   custom: ["commission", "built to order", "contact", "request", "quote"]
 };
 

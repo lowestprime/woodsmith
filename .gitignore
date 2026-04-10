@@ -37,7 +37,7 @@ site/data/*.sqlite
 site/data/*.sqlite-shm
 site/data/*.sqlite-wal
 
-# Runtime-only media, image cache, and releases
+# Legacy local media placeholders, image cache, and releases
 pics/
 cache/
 releases/
@@ -45,6 +45,7 @@ releases/
 # Secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 *.tsbuildinfo

@@ -39,17 +39,18 @@ Process notes replace the old Journal surface. The editor supports title, excerp
 
 ### Media library
 
-The media section operates against the shared `pics/` library:
+The media section operates against the NAS photo library mounted directly to `/app/pics`:
 
 - upload files into a selected folder
 - filter all indexed media, not only recent files
 - assign media to a piece, process note, page, or project
 - rename files in place
 - edit alt text, tags, focal X/Y, zoom, and reviewed status
+- set cleanup mode, photo quality, source credit, verified piece slug, visual search labels, and display order
 - delete files
 - refresh the indexed library
 
-Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering.
+Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering. The verification queue suggests candidates from filenames, tags, folders, and metadata but never auto-assigns a piece.
 
 ### Projects
 
@@ -71,7 +72,7 @@ Password resets, project updates, contact requests, and commerce emails queue no
 
 ### Custom work contact
 
-The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, and a written brief. It creates a private project record and redirects the buyer to a reference page.
+The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional 3D scale preview, and a written brief. It creates a private project record and redirects the buyer to a reference page.
 
 ### Shop checkout
 
@@ -115,4 +116,4 @@ Check `EASYPOST_API_KEY`, all `SHIP_FROM_*` values, and the order shipping addre
 
 ### Media uploads fail on Synology
 
-Check that `/volume2/docker_ssd/woodsmith/pics` is mounted to `/app/pics` without `:ro` and that the container user has write permission.
+Check that `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` is mounted directly to `/app/pics:rw` and that the container user has write permission. Do not use `/volume2/docker_ssd/woodsmith/pics` as an intermediate mount point.

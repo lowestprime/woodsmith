@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { calculateEstimate, defaultVisualizerState, type VisualizerState } from "@/lib/estimator";
 import { formatLeadTime, formatMoney } from "@/lib/format";
 
@@ -31,6 +31,16 @@ function clamp(value: number, min: number, max: number) {
 
 function getPalette(material: string) {
   return materialColors[material] ?? materialColors.default;
+}
+
+type VisualizerStyle = CSSProperties & Record<"--piece-w" | "--piece-d" | "--piece-h" | "--top-color" | "--front-color" | "--side-color" | "--accent-color", string>;
+
+function dimensionsForStyle(state: VisualizerState) {
+  return {
+    width: `${clamp(state.width / 6, 4.5, 16)}rem`,
+    depth: `${clamp(state.depth / 5.5, 3.2, 11)}rem`,
+    height: `${clamp(state.height / 7, 2.6, 13)}rem`
+  };
 }
 
 function renderIsometricSvg(state: VisualizerState) {
@@ -113,6 +123,138 @@ function renderIsometricSvg(state: VisualizerState) {
   </svg>`;
 
   return svg.trim();
+}
+
+export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays, queueCount }: {
+  commissionTypes: CommissionTypeOption[];
+  bandwidthLeadTimeDays: number;
+  queueCount: number;
+}) {
+  const [selectedSlug, setSelectedSlug] = useState(commissionTypes[0]?.slug ?? "hallway-bench");
+  const selectedType = useMemo(() => commissionTypes.find((type) => type.slug === selectedSlug) ?? commissionTypes[0], [commissionTypes, selectedSlug]);
+  const [state, setState] = useState<VisualizerState>(defaultVisualizerState((commissionTypes[0]?.slug as VisualizerState["kind"]) ?? "hallway-bench"));
+  const [rotation, setRotation] = useState(32);
+
+  const syncedState = useMemo(() => ({
+    ...state,
+    kind: (selectedType?.slug ?? state.kind) as VisualizerState["kind"]
+  }), [selectedType, state]);
+  const estimate = useMemo(() => calculateEstimate(syncedState, queueCount, bandwidthLeadTimeDays), [bandwidthLeadTimeDays, queueCount, syncedState]);
+  const svg = useMemo(() => renderIsometricSvg(syncedState), [syncedState]);
+  const palette = getPalette(syncedState.material);
+  const sized = dimensionsForStyle(syncedState);
+  const modelStyle: VisualizerStyle = {
+    "--piece-w": sized.width,
+    "--piece-d": sized.depth,
+    "--piece-h": sized.height,
+    "--top-color": palette.top,
+    "--front-color": palette.left,
+    "--side-color": palette.right,
+    "--accent-color": palette.accent,
+    transform: `rotateX(62deg) rotateZ(${rotation}deg)`
+  };
+
+  function update<K extends keyof VisualizerState>(key: K, value: VisualizerState[K]) {
+    setState((current) => ({ ...current, [key]: value }));
+  }
+
+  return (
+    <section className="custom-visualizer-3d" aria-label="Custom work scale preview">
+      <div className="visualizer-panel-heading">
+        <div>
+          <p className="eyebrow">3D preview</p>
+          <h3>Scale the first idea before sending the request</h3>
+        </div>
+        <span>{formatLeadTime(estimate.leadTimeDays)} lead time</span>
+      </div>
+
+      <div className="visualizer-3d-grid">
+        <div className="visualizer-stage-3d">
+          <div className="visualizer-floor-grid" />
+          <div className={`piece-model-3d piece-kind-${syncedState.kind}`} style={modelStyle}>
+            <span className="piece-face piece-top" />
+            <span className="piece-face piece-front" />
+            <span className="piece-face piece-side" />
+            <span className="piece-leg leg-front-left" />
+            <span className="piece-leg leg-front-right" />
+            <span className="piece-leg leg-back-left" />
+            <span className="piece-leg leg-back-right" />
+            {syncedState.drawers > 0 ? <span className="piece-drawer" /> : null}
+            {syncedState.shelves > 0 ? Array.from({ length: Math.min(5, syncedState.shelves) }, (_, index) => <span className="piece-shelf" key={index} style={{ insetBlockStart: `${38 + index * 13}%` }} />) : null}
+          </div>
+          <div className="visualizer-scale-rule"><span>0</span><span>12</span><span>24 in</span></div>
+        </div>
+
+        <div className="visualizer-controls-3d">
+          <label>
+            <span>Piece type</span>
+            <select
+              name="commissionTypeSlug"
+              onChange={(event) => {
+                const nextType = commissionTypes.find((type) => type.slug === event.target.value) ?? commissionTypes[0];
+                setSelectedSlug(nextType.slug);
+                setState((current) => ({
+                  ...current,
+                  kind: nextType.slug as VisualizerState["kind"],
+                  material: nextType.materialOptions[0] ?? current.material,
+                  width: nextType.defaultDimensions.width,
+                  depth: nextType.defaultDimensions.depth,
+                  height: nextType.defaultDimensions.height,
+                  drawers: nextType.slug === "scientists-desk" ? 1 : 0,
+                  shelves: nextType.slug === "pantry-cabinets" ? 4 : nextType.slug === "spice-rack" ? 3 : nextType.slug === "pastry-table" ? 1 : 0
+                }));
+              }}
+              value={selectedType?.slug}
+            >
+              {commissionTypes.map((type) => <option key={type.slug} value={type.slug}>{type.label}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Primary material</span>
+            <select name="materialPreference" onChange={(event) => update("material", event.target.value)} value={syncedState.material}>
+              {(selectedType?.materialOptions ?? [syncedState.material]).map((option) => <option key={option} value={option}>{option}</option>)}
+            </select>
+          </label>
+          <div className="field-grid three-up compact-grid">
+            <label><span>Width</span><input name="width" onChange={(event) => update("width", Number(event.target.value || 0))} type="number" value={syncedState.width} /></label>
+            <label><span>Depth</span><input name="depth" onChange={(event) => update("depth", Number(event.target.value || 0))} type="number" value={syncedState.depth} /></label>
+            <label><span>Height</span><input name="height" onChange={(event) => update("height", Number(event.target.value || 0))} type="number" value={syncedState.height} /></label>
+          </div>
+          <div className="field-grid three-up compact-grid">
+            <label><span>Drawers</span><input name="drawers" min={0} onChange={(event) => update("drawers", Number(event.target.value || 0))} type="number" value={syncedState.drawers} /></label>
+            <label><span>Shelves</span><input name="shelves" min={0} onChange={(event) => update("shelves", Number(event.target.value || 0))} type="number" value={syncedState.shelves} /></label>
+            <label><span>Rotate</span><input max={65} min={-65} onChange={(event) => setRotation(Number(event.target.value || 0))} type="range" value={rotation} /></label>
+          </div>
+          <label>
+            <span>Joinery direction</span>
+            <select name="joinery" onChange={(event) => update("joinery", event.target.value)} value={syncedState.joinery}>
+              <option value="Mortise and tenon">Mortise and tenon</option>
+              <option value="Exposed dovetail">Exposed dovetail</option>
+              <option value="Half-lap">Half-lap</option>
+              <option value="Pinned frame">Pinned frame</option>
+              <option value="Concealed joinery">Concealed joinery</option>
+            </select>
+          </label>
+          <dl className="estimate-list compact-estimate">
+            <div><dt>Materials</dt><dd>{formatMoney(estimate.materialCostCents)}</dd></div>
+            <div><dt>Labor</dt><dd>{estimate.laborHours} hrs</dd></div>
+            <div><dt>Estimated total</dt><dd>{formatMoney(estimate.totalCents)}</dd></div>
+          </dl>
+          <label className="checkbox-row">
+            <input checked={syncedState.includeVisualization} name="includeVisualization" onChange={(event) => update("includeVisualization", event.target.checked)} type="checkbox" value="1" />
+            <span>Include this preview with the request</span>
+          </label>
+        </div>
+      </div>
+
+      <input name="estimatedTotalCents" type="hidden" value={estimate.totalCents} />
+      <input name="leadTimeDays" type="hidden" value={estimate.leadTimeDays} />
+      <input name="materials" type="hidden" value={JSON.stringify([syncedState.material, syncedState.joinery])} />
+      <input name="dimensionsJson" type="hidden" value={JSON.stringify({ width: syncedState.width, depth: syncedState.depth, height: syncedState.height, unit: "in" })} />
+      <input name="visualizerOptions" type="hidden" value={JSON.stringify({ drawers: syncedState.drawers, shelves: syncedState.shelves, rotation, renderer: "procedural-3d-css" })} />
+      <input name="visualizationSvg" type="hidden" value={syncedState.includeVisualization ? svg : ""} />
+    </section>
+  );
 }
 
 export function CommissionVisualizerFields({ commissionTypes, bandwidthLeadTimeDays, bandwidthPercent, queueCount }: {

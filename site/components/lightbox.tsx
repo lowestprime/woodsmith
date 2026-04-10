@@ -6,6 +6,10 @@ type LightboxItem = {
   src: string;
   alt: string;
   kind?: "image" | "video";
+  focalX?: number;
+  focalY?: number;
+  zoom?: number;
+  cleanupMode?: string;
 };
 
 export function MediaLightbox({ items, title, className = "gallery-grid" }: { items: LightboxItem[]; title: string; className?: string }) {
@@ -48,11 +52,11 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
     <>
       <div className={className}>
         {items.map((item, index) => (
-          <button className="media-card" key={`${item.src}-${index}`} onClick={() => openPreview(index)} type="button">
+          <button className={`media-card cleanup-${item.cleanupMode ?? "original"}`} key={`${item.src}-${index}`} onClick={() => openPreview(index)} type="button">
             {item.kind === "video" ? (
               <video className="media-card-image" muted playsInline preload="metadata" src={item.src} />
             ) : (
-              <img alt={item.alt} className="media-card-image" loading="lazy" src={item.src} />
+              <img alt={item.alt} className="media-card-image" loading="lazy" src={item.src} style={{ objectPosition: `${item.focalX ?? 50}% ${item.focalY ?? 50}%`, transform: `scale(${item.zoom ?? 1})` }} />
             )}
           </button>
         ))}
@@ -84,7 +88,7 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
                 alt={activeItem.alt}
                 className="lightbox-media"
                 src={activeItem.src}
-                style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom})` }}
+                style={{ transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom * (activeItem.zoom ?? 1)})` }}
               />
             )}
           </div>

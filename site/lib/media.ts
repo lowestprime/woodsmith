@@ -1,10 +1,11 @@
-import { mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".bmp"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
 const IGNORED_MEDIA_FILE_NAMES = new Set(["synoindex_media_info", ".ds_store", "thumbs.db"]);
+const DEFAULT_MEDIA_ROOT = "/app/pics";
 
 export type MediaKind = "image" | "video" | "other";
 
@@ -21,11 +22,7 @@ export type MediaScanRecord = {
 };
 
 export function getMediaRoot() {
-  if (process.env.MEDIA_ROOT) {
-    return path.resolve(process.env.MEDIA_ROOT);
-  }
-
-  return path.resolve(process.cwd(), "..", "pics");
+  return path.resolve(process.env.MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
 }
 
 export function getMediaUrl(relativePath: string) {
@@ -139,7 +136,10 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
 
 export function scanMediaLibrary() {
   const root = getMediaRoot();
-  mkdirSync(root, { recursive: true });
+  if (!existsSync(root)) {
+    return [];
+  }
+
   const files: MediaScanRecord[] = [];
   walkMedia(root, root, files);
   return files.sort((left, right) => left.relativePath.localeCompare(right.relativePath));
@@ -149,8 +149,9 @@ export function resolveMediaPath(relativePath: string) {
   const root = getMediaRoot();
   const normalized = normalizeRelativePath(relativePath);
   const absolutePath = path.resolve(root, normalized);
+  const rootRelativePath = path.relative(root, absolutePath);
 
-  if (!absolutePath.startsWith(root)) {
+  if (rootRelativePath.startsWith("..") || path.isAbsolute(rootRelativePath)) {
     throw new Error("Media path escapes the configured media root.");
   }
 

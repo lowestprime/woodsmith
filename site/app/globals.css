@@ -556,6 +556,231 @@ h3 {
   min-height: 28rem;
 }
 
+.custom-visualizer-3d {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    radial-gradient(circle at 16% 12%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 32%),
+    linear-gradient(135deg, color-mix(in srgb, var(--bg-elevated) 90%, var(--accent) 10%), var(--bg-soft));
+}
+
+.visualizer-panel-heading,
+.visualizer-3d-grid {
+  display: grid;
+  gap: var(--space-4);
+}
+
+.visualizer-panel-heading {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.visualizer-panel-heading span {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  color: var(--accent);
+  padding: 0.45rem 0.7rem;
+}
+
+.visualizer-3d-grid {
+  grid-template-columns: minmax(0, 1.05fr) minmax(18rem, 0.95fr);
+}
+
+.visualizer-stage-3d {
+  position: relative;
+  min-height: 28rem;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.08), transparent 36%),
+    radial-gradient(circle at 50% 88%, rgba(0, 0, 0, 0.28), transparent 44%),
+    var(--bg-card);
+  perspective: 58rem;
+}
+
+.visualizer-floor-grid {
+  position: absolute;
+  inset: 14% 8% 8%;
+  transform: rotateX(64deg);
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--accent) 18%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--accent) 18%, transparent) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  opacity: 0.55;
+}
+
+.piece-model-3d {
+  position: absolute;
+  left: 50%;
+  top: 47%;
+  width: var(--piece-w);
+  height: var(--piece-d);
+  transform-style: preserve-3d;
+  transition: transform 180ms ease, width 180ms ease, height 180ms ease;
+}
+
+.piece-face,
+.piece-leg,
+.piece-drawer,
+.piece-shelf {
+  position: absolute;
+  display: block;
+  box-shadow: inset 0 0 1.1rem rgba(255, 255, 255, 0.14), 0 1.2rem 2rem rgba(0, 0, 0, 0.22);
+}
+
+.piece-top {
+  inset: 0;
+  background:
+    radial-gradient(circle at 18% 24%, color-mix(in srgb, var(--accent-color) 38%, transparent) 0 0.16rem, transparent 0.18rem),
+    radial-gradient(circle at 58% 68%, color-mix(in srgb, var(--accent-color) 28%, transparent) 0 0.14rem, transparent 0.16rem),
+    linear-gradient(90deg, color-mix(in srgb, var(--top-color) 76%, #fff 24%), var(--top-color));
+  transform: translateZ(var(--piece-h));
+}
+
+.piece-front {
+  inset-inline: 0;
+  inset-block-start: 100%;
+  height: var(--piece-h);
+  background: linear-gradient(180deg, var(--front-color), color-mix(in srgb, var(--front-color) 58%, #000 42%));
+  transform: rotateX(-90deg);
+  transform-origin: top;
+}
+
+.piece-side {
+  inset-block: 0;
+  inset-inline-start: 100%;
+  width: var(--piece-h);
+  background: linear-gradient(180deg, var(--side-color), color-mix(in srgb, var(--side-color) 58%, #000 42%));
+  transform: rotateY(90deg);
+  transform-origin: left;
+}
+
+.piece-leg {
+  width: 0.7rem;
+  height: var(--piece-h);
+  background: var(--accent-color);
+  transform: translateZ(calc(var(--piece-h) / 2)) rotateX(-90deg);
+}
+
+.leg-front-left { left: 8%; top: 92%; }
+.leg-front-right { right: 8%; top: 92%; }
+.leg-back-left { left: 8%; top: 8%; }
+.leg-back-right { right: 8%; top: 8%; }
+
+.piece-kind-pantry-cabinets .piece-leg,
+.piece-kind-spice-rack .piece-leg {
+  display: none;
+}
+
+.piece-drawer {
+  left: 30%;
+  top: 105%;
+  width: 40%;
+  height: 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--accent-color) 78%, #000 22%);
+  background: color-mix(in srgb, var(--front-color) 78%, #000 22%);
+  transform: translateZ(calc(var(--piece-h) * 0.74)) rotateX(-90deg);
+}
+
+.piece-shelf {
+  left: 15%;
+  width: 70%;
+  height: 0.22rem;
+  background: var(--accent-color);
+  transform: translateZ(calc(var(--piece-h) * 0.72)) rotateX(-90deg);
+}
+
+.visualizer-scale-rule {
+  position: absolute;
+  left: 2rem;
+  right: 2rem;
+  bottom: 1.4rem;
+  display: flex;
+  justify-content: space-between;
+  border-top: 2px solid var(--accent);
+  color: var(--accent);
+  padding-top: 0.4rem;
+}
+
+.visualizer-controls-3d,
+.visual-search-assist,
+.media-verification-queue,
+.project-media-strip {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.compact-estimate {
+  border-top: 1px solid var(--line);
+  padding-top: var(--space-3);
+}
+
+.visual-search-assist {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4);
+  background: var(--bg-card);
+}
+
+.project-media-strip {
+  grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+  margin-block: var(--space-3);
+}
+
+.project-media-strip a {
+  position: relative;
+  overflow: hidden;
+  min-height: 4.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-soft);
+}
+
+.project-media-strip img {
+  width: 100%;
+  height: 100%;
+  min-height: 4.75rem;
+  object-fit: cover;
+}
+
+.project-media-strip span {
+  position: absolute;
+  right: 0.3rem;
+  bottom: 0.3rem;
+  border-radius: var(--radius-pill);
+  background: rgba(0, 0, 0, 0.72);
+  color: white;
+  padding: 0.1rem 0.42rem;
+}
+
+.cleanup-soft-matte,
+.cleanup-warm-crop,
+.cleanup-subject-isolate {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 244, 220, 0.24), transparent 45%),
+    linear-gradient(135deg, color-mix(in srgb, var(--bg-soft) 80%, var(--accent) 20%), var(--bg-card));
+}
+
+.cleanup-soft-matte img,
+img.cleanup-soft-matte {
+  filter: saturate(0.96) contrast(1.04);
+}
+
+.cleanup-warm-crop img,
+img.cleanup-warm-crop {
+  filter: saturate(1.08) contrast(1.06) sepia(0.08);
+}
+
+.cleanup-subject-isolate img,
+img.cleanup-subject-isolate {
+  filter: contrast(1.1) saturate(1.04);
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.28);
+}
+
 .estimate-list,
 .detail-list {
   display: grid;

@@ -10,6 +10,7 @@ import {
   updateProfileAction
 } from "@/lib/actions";
 import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
+import { CustomWorkVisualizer3D } from "@/components/visualizer";
 
 export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece }: {
   commissionTypes: CommissionTypeRecord[];
@@ -20,7 +21,7 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
   return (
     <form action={submitContactRequestAction} className="request-form commission-form-shell">
       <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
-      <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} />
+      {piece ? <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} /> : null}
       <input name="requestSource" type="hidden" value={piece ? "piece-page" : "custom-work"} />
       <div className="field-grid two-up compact-grid">
         <label>
@@ -46,25 +47,19 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
           <input name="budgetCents" placeholder="1200" type="number" />
         </label>
       </div>
-      {!piece ? (
-        <label>
-          <span>Piece type</span>
-          <select defaultValue="" name="commissionTypeSlug">
-            <option value="">Not sure yet</option>
-            {commissionTypes.map((type) => <option key={type.slug} value={type.slug}>{type.label}</option>)}
-          </select>
-        </label>
-      ) : null}
+      {!piece ? <CustomWorkVisualizer3D bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} queueCount={queueCount} /> : null}
       <div className="field-grid two-up compact-grid">
-        <label>
-          <span>Material preference</span>
-          <select defaultValue="" name="materialPreference">
-            <option value="">Open to recommendation</option>
-            {commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index).map((option) => (
-              <option key={option} value={option}>{option}</option>
-            ))}
-          </select>
-        </label>
+        {piece ? (
+          <label>
+            <span>Material preference</span>
+            <select defaultValue="" name="materialPreference">
+              <option value="">Open to recommendation</option>
+              {commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index).map((option) => (
+                <option key={option} value={option}>{option}</option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         <label>
           <span>Pickup / delivery</span>
           <select defaultValue="" name="deliveryMode">

@@ -5,7 +5,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
-import { getBandwidthSnapshot, getSiteSettings, listCartItems, type PageRecord, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
+import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PageRecord, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
 
 export function Shell({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -158,10 +158,11 @@ export function DividerBand() {
 export function PieceCard({ piece }: { piece: PieceRecord }) {
   const firstImage = getDisplayMediaPaths(piece)[0];
   const verified = hasVerifiedMedia(piece);
+  const media = firstImage ? getMedia(firstImage) : null;
   return (
     <article className="piece-card">
       <Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>
-        {firstImage ? <img alt={piece.title} className="piece-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
+        {firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}
         <div className="piece-card-body">
           <div className="piece-card-meta">
             <span className="category-meta"><CategoryIcon category={piece.category} />{piece.category}</span>

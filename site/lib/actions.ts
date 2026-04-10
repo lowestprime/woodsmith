@@ -13,6 +13,7 @@ import {
   deletePost,
   deleteReview,
   getOrder,
+  getMedia,
   getPage,
   getPiece,
   getPost,
@@ -341,6 +342,11 @@ export async function submitContactRequestAction(formData: FormData) {
   const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
   const message = requiredField(formData.get("message"), "Project details");
   const materialPreference = optionalField(formData.get("materialPreference"));
+  const materials = parseJsonField<string[]>(formData.get("materials"), materialPreference ? [materialPreference] : []);
+  const dimensions = parseJsonField<{ width: number; depth: number; height: number; unit: string } | null>(formData.get("dimensionsJson"), null);
+  const visualizerOptions = parseJsonField<Record<string, unknown>>(formData.get("visualizerOptions"), {});
+  const estimatedTotalCents = parseOptionalInteger(formData.get("estimatedTotalCents"));
+  const includeVisualization = optionalField(formData.get("includeVisualization")) === "1";
   const deliveryMode = optionalField(formData.get("deliveryMode"));
   const requestType = optionalField(formData.get("commissionTypeSlug"));
   const cityRegion = optionalField(formData.get("cityRegion"));
@@ -356,19 +362,21 @@ export async function submitContactRequestAction(formData: FormData) {
     status: "Request received",
     stage: "Contact review",
     budgetCents: parseInteger(formData.get("budgetCents"), 0) || null,
-    estimatedTotalCents: null,
-    estimator: {},
+    estimatedTotalCents,
+    estimator: visualizerOptions,
     brief: message,
-    materials: materialPreference ? [materialPreference] : [],
-    dimensions: null,
+    materials,
+    dimensions,
     options: {
       phone: optionalField(formData.get("phone")),
       cityRegion,
       deliveryMode,
-      requestSource: optionalField(formData.get("requestSource")) || "contact-form"
+      requestSource: optionalField(formData.get("requestSource")) || "contact-form",
+      materialPreference,
+      visualizerOptions
     },
-    visualizationSvg: null,
-    includeVisualization: false,
+    visualizationSvg: includeVisualization ? optionalField(formData.get("visualizationSvg")) || null : null,
+    includeVisualization,
     leadTimeDays,
     shippingAddress: cityRegion ? { cityRegion } : {},
     billingAddress: { email: guestEmail }
@@ -872,6 +880,17 @@ export async function saveMediaMetadataAction(formData: FormData) {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   const mediaJson = optionalField(formData.get("mediaJson"));
+  const existing = getMedia(relativePath);
+  const visualLabels = parseListField(formData.get("visualLabelsText"));
+  const metadata = {
+    ...(existing?.metadata ?? {}),
+    cleanupMode: optionalField(formData.get("cleanupMode")) || existing?.metadata.cleanupMode || "original",
+    photoQuality: optionalField(formData.get("photoQuality")) || existing?.metadata.photoQuality || "unrated",
+    displayOrder: parseInteger(formData.get("displayOrder"), Number(existing?.metadata.displayOrder ?? 0)),
+    sourceCredit: optionalField(formData.get("sourceCredit")) || existing?.metadata.sourceCredit || "",
+    verifiedPieceSlug: optionalField(formData.get("verifiedPieceSlug")) || existing?.metadata.verifiedPieceSlug || "",
+    visualLabels: visualLabels.length > 0 ? visualLabels : Array.isArray(existing?.metadata.visualLabels) ? existing.metadata.visualLabels : []
+  };
   saveMediaMetadata(mediaJson
     ? parseJsonField(formData.get("mediaJson"), {
         relativePath,
@@ -894,8 +913,8 @@ export async function saveMediaMetadataAction(formData: FormData) {
         focalY: parseInteger(formData.get("focalY"), 50),
         zoom: Number(formData.get("zoom")?.toString() || 1),
         reviewed: parseBooleanField(formData.get("reviewed")),
-        tags: parseListField(formData.get("tagsText")),
-        metadata: {}
+        tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
+        metadata
       });
   revalidatePath("/studio");
   redirect("/studio?saved=media");

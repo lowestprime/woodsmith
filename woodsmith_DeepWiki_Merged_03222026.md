@@ -16,7 +16,7 @@ Beaman Woodworks is a self-hosted Next.js 16 application with a SQLite-backed co
 - Nodemailer for SMTP delivery
 - Stripe API for hosted checkout and invoice generation
 - EasyPost API for shipment creation
-- Three.js and React Three Fiber dependencies retained for future visualization work
+- Credential-free procedural 3D preview UI for custom work, with Three.js and React Three Fiber dependencies retained for future rendering work
 
 ## Core application areas
 
@@ -50,7 +50,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - custom work types
 - users and public profiles
 - process notes
-- media metadata and media file operations
+- media metadata, cleanup controls, visual labels, verification queue, and media file operations
 - projects and timeline updates
 - orders, invoices, shipping labels, and tracking state
 - reviews
@@ -79,16 +79,16 @@ Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, 
 
 ## Media system
 
-The master media library lives outside the app bundle in `pics/`. The application:
+The master media library lives outside the app bundle and outside `docker_ssd`. Production mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics:rw`. The repo-local `pics/` folder is legacy/ignored and is not the source of truth; `MEDIA_ROOT` defaults to `/app/pics` and media scans return an empty library instead of creating a repo-local fallback when the mount is absent. The application:
 
 - indexes that library into `media_items`
 - serves files through `/media/[...slug]`
 - prevents path traversal in the media route
 - filters Synology and OS sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and `._*`
-- stores alt text, clustering, associations, focal data, zoom, review state, and tags in SQLite
+- stores alt text, clustering, associations, focal data, zoom, cleanup mode, visual labels, source credit, display order, review state, and tags in SQLite
 - can upload, rename, delete, and assign files in the mounted media root
 
-Current clustering is heuristic and based on folder, filename, and date-like patterns. Manual dashboard assignments take priority and are the source of truth for published piece-media identity.
+Current clustering is heuristic and based on folder, filename, and date-like patterns. The media verification queue suggests candidates but does not assign them automatically. Manual dashboard assignments take priority and are the source of truth for published piece-media identity.
 
 ## Commerce and operations
 
@@ -98,17 +98,17 @@ Payment capture, invoice delivery, shipping labels, and outbound email degrade s
 
 ## Custom work workflow
 
-The public custom work route is contact-first. It captures buyer contact details, location, budget, project type, material preference, fulfillment preference, attachments, and a written brief. Submission creates a project record, queues notifications, and redirects the buyer to a reference page.
+The public custom work route is contact-first. It captures buyer contact details, location, budget, project type, material preference, fulfillment preference, attachments, optional procedural 3D scale preview data, and a written brief. Submission creates a project record, queues notifications, and redirects the buyer to a reference page.
 
 Custom work type records still store default dimensions, material options, labor hours, and markup settings so the woodshop can maintain estimator context and future richer intake flows.
 
-The older visualizer remains as a to-scale SVG system in `site/components/visualizer.tsx` for stored visualization data. It is not a photorealistic 3D or LLM-rendered system.
+`site/components/visualizer.tsx` now provides a live 3D CSS/procedural scale preview and still stores an SVG snapshot with submitted project data when the buyer opts in.
 
 ## Search
 
 `searchSite()` searches across pieces, process notes, pages, media, and projects. Admin users receive private results including unpublished content, media paths, tags, cluster keys, and project records. Public users see public content only.
 
-The search layer includes synonym expansion for common woodworking terms such as tables, benches, cabinets, process, delivery, pickup, custom work, and Mackintosh or Stickley references. It is semantic-style text search, not image-embedding visual search.
+The search layer includes synonym expansion for common woodworking terms, material/color cues, cleanup labels, delivery, pickup, custom work, and Mackintosh or Stickley references. The browser-assisted visual search reads a reference image locally, derives color/material cues, and converts them into searchable tags.
 
 ## Theme and UI
 
@@ -122,15 +122,15 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - shop-first Process section replacing Journal
 - account button as a rounded profile badge
 - full-size lightbox overlays with zoom, pan, arrows, close button, and `Esc` support
-- private dashboard media preview cards with crop/focal controls
+- private dashboard media preview cards with crop/focal controls, cleanup modes, project media strips, and verification candidates
 - programmatic Beaman Woodworks favicon and header mark
 
 ## Known caveats
 
 - SQLite support still relies on Node's experimental `node:sqlite` API.
-- The visualizer is not a photorealistic 3D renderer.
+- The visualizer is a procedural 3D scale preview, not a cloud photorealistic renderer.
 - Scientist Desk media is intentionally withheld until the correct images are verified.
-- Full automated background cleanup and embedding-based visual search require an image-processing or embedding service not configured in this repository.
+- Cleanup modes and browser-assisted visual search are implemented locally. Cloud photorealistic rendering, segmentation, or embedding services can be added later if credentials are provided.
 - SMTP, Stripe, and EasyPost functionality remain configuration-dependent.
 
 ## Important files

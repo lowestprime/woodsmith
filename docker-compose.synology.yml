@@ -33,5 +33,5 @@ services:
       SHIP_FROM_COUNTRY: "${SHIP_FROM_COUNTRY}"
     volumes:
       - /volume2/docker_ssd/woodsmith/site/data:/app/site/data
-      - /volume2/docker_ssd/woodsmith/pics:/app/pics
+      - /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025:/app/pics:rw
       - /volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache

@@ -1,6 +1,7 @@
 import { getCurrentUser } from "@/lib/auth";
 import { searchSite } from "@/lib/db";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
+import { VisualSearchAssist } from "@/components/visual-search";
 
 export default async function SearchPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
   const { q = "" } = await searchParams;
@@ -12,10 +13,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <PageSection>
         <PageIntro eyebrow="Search" title="Search the site" copy="Search pieces, shop/process notes, pages, and, when signed into the dashboard, private media tags, clusters, and project records." />
         <form action="/search" className="request-form compact-form">
-          <label>
-            <span>Query</span>
-            <input defaultValue={q} name="q" type="search" />
-          </label>
+          <VisualSearchAssist initialQuery={q} isAdmin={user?.role === "admin"} />
           <button className="button-primary" type="submit">Search</button>
         </form>
         <div className="search-results">
