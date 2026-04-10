@@ -1,35 +1,41 @@
 # Beaman Woodworks
 
-Beaman Woodworks is a self-hosted Next.js application for a woodworking studio. It combines a public portfolio, shop, journal, buyer account flow, commission intake, project tracking, media library management, and a private browser-based studio dashboard in one deployment.
+Beaman Woodworks is a self-hosted Next.js application for a woodworking business. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
 ## What is in the app
 
-- Public portfolio pages backed by verified media from `pics/`
-- Shop pages with cart totals, coupon handling, tax estimate, and Stripe checkout plumbing
-- Journal pages with markdown content and optional “Highlights from the Web” source links
-- Commission intake with a live cost estimator and a to-scale SVG visualizer
-- Buyer account pages for signup, login, password reset, profile editing, and project lookup
-- Private studio dashboard for editing pages, pieces, posts, commission types, users, media metadata, projects, orders, reviews, and site settings
+- Public portfolio pages backed only by verified or explicitly review-marked media from `pics/`
+- Portfolio category filtering for tables, benches, stepstools, cabinets, and smaller objects
+- Shop pages with asking-price language, cart totals, coupon handling, tax estimate, pickup/delivery/shipping labels, and Stripe checkout plumbing
+- Process writing under `/process` and the Shop process section, with markdown content and optional source-credit links for outside references
+- Contact-first custom work requests with attachments, lead-time context, material preferences, and project tracking
+- Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
+- Private Woodshop dashboard for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications without visible raw JSON panels
+- Browser media management for upload, rename, delete, assignment, tags, review state, focal point, and zoom metadata against the writable `pics/` library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
-- Full-size image lightbox support with zoom, pan, arrow navigation, and `Esc` close behavior
-- Semantic-style site search across public content and, for admins, private media and project records
+- Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
+- Semantic-style text search across public content and, for admins, private media, tags, clusters, unpublished content, and project records
+- Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
+- Programmatic Beaman Woodworks favicon and brand mark
 
 ## Current production notes
 
-- Persistence uses `node:sqlite`, which still emits Node's experimental warning during build and runtime.
-- The commission visualizer is an interactive, to-scale SVG preview. It is not a photorealistic 3D renderer.
-- Scientist Desk remains published without photos until its media is verified against the actual piece.
-- Payment capture, invoice delivery, shipping-label creation, and outbound email all require environment configuration before they work live.
+- Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
+- `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
+- The public custom work flow is intentionally contact-first. The older to-scale SVG visualizer remains in the codebase for stored project visualization data, but it is not a photorealistic 3D renderer.
+- Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
+- New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
+- Payment capture, invoice delivery, shipping-label creation, and outbound email require environment configuration before they work live.
 
 ## Repository layout
 
 - `site/`: the Next.js application
 - `pics/`: the master media library served by `/media/[...slug]`
-- `design/Beaman_Woodworks_V2_Google_Stitch_Beta/`: design prototypes that informed the Beaman Woodworks 2.0 layout, theme, and studio UX
+- `design/Beaman_Woodworks_V2_Google_Stitch_Beta/`: Beaman Woodworks 2.0 prototypes audited for layout, theme, and dashboard direction
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
 - `docker-compose.synology.yml`: Synology runtime model
 - `synology-nas-deploy.md`: deployment and NAS operations guide
-- `admin.md`: studio-owner browser admin manual
+- `admin.md`: private Woodshop dashboard manual
 - `woodsmith_DeepWiki_Merged_03222026.md`: codebase architecture reference
 
 ## Local development
@@ -84,12 +90,17 @@ Public:
 - `/portfolio/[slug]`
 - `/shop`
 - `/shop/cart`
-- `/journal`
-- `/journal/[slug]`
+- `/process`
+- `/process/[slug]`
 - `/commissions`
 - `/commissions/status`
 - `/about`
 - `/search`
+
+Legacy redirects:
+
+- `/journal`
+- `/journal/[slug]`
 
 Buyer account and request access:
 
@@ -101,14 +112,14 @@ Buyer account and request access:
 - `/account/projects`
 - `/requests/[reference]`
 
-Private studio:
+Private Woodshop:
 
 - `/studio/login`
 - `/studio`
 
 ## Deployment
 
-The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file now mounts `pics/` read-write because the studio dashboard can upload, rename, and delete media directly inside the shared library.
+The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file mounts `pics/` read-write because the Woodshop dashboard can upload, rename, delete, tag, and assign media directly inside the shared library.
 
 Use these docs together:
 

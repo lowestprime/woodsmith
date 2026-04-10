@@ -1,26 +1,27 @@
-import { CommissionVisualizerFields } from "@/components/visualizer";
 import {
   forgotPasswordAction,
   loginAction,
   resetPasswordAction,
   signupAction,
   studioLoginAction,
-  submitCommissionAction,
+  submitContactRequestAction,
   submitProjectReplyAction,
   submitReviewAction,
   updateProfileAction
 } from "@/lib/actions";
 import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
 
-export function CommissionRequestForm({ commissionTypes, bandwidthLeadTimeDays, bandwidthPercent, queueCount, piece }: {
+export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece }: {
   commissionTypes: CommissionTypeRecord[];
   bandwidthLeadTimeDays: number;
-  bandwidthPercent: number;
   queueCount: number;
   piece?: PieceRecord | null;
 }) {
   return (
-    <form action={submitCommissionAction} className="request-form commission-form-shell">
+    <form action={submitContactRequestAction} className="request-form commission-form-shell">
+      <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
+      <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} />
+      <input name="requestSource" type="hidden" value={piece ? "piece-page" : "custom-work"} />
       <div className="field-grid two-up compact-grid">
         <label>
           <span>Your name</span>
@@ -38,27 +39,52 @@ export function CommissionRequestForm({ commissionTypes, bandwidthLeadTimeDays, 
         </label>
         <label>
           <span>City / region</span>
-          <input name="city" type="text" />
+          <input name="cityRegion" type="text" />
         </label>
         <label>
           <span>Budget</span>
           <input name="budgetCents" placeholder="1200" type="number" />
         </label>
       </div>
-      <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
-      <CommissionVisualizerFields
-        bandwidthLeadTimeDays={bandwidthLeadTimeDays}
-        bandwidthPercent={bandwidthPercent}
-        commissionTypes={commissionTypes.map((type) => ({
-          slug: type.slug,
-          label: type.label,
-          description: type.description,
-          materialOptions: type.materialOptions,
-          defaultDimensions: type.defaultDimensions
-        }))}
-        queueCount={queueCount}
-      />
-      <button className="button-primary full-width" type="submit">Submit commission brief</button>
+      {!piece ? (
+        <label>
+          <span>Piece type</span>
+          <select defaultValue="" name="commissionTypeSlug">
+            <option value="">Not sure yet</option>
+            {commissionTypes.map((type) => <option key={type.slug} value={type.slug}>{type.label}</option>)}
+          </select>
+        </label>
+      ) : null}
+      <div className="field-grid two-up compact-grid">
+        <label>
+          <span>Material preference</span>
+          <select defaultValue="" name="materialPreference">
+            <option value="">Open to recommendation</option>
+            {commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index).map((option) => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Pickup / delivery</span>
+          <select defaultValue="" name="deliveryMode">
+            <option value="">Decide during review</option>
+            <option value="pickup">Pickup</option>
+            <option value="local-delivery">Local delivery</option>
+            <option value="shipment">Shipment / freight</option>
+          </select>
+        </label>
+      </div>
+      <label>
+        <span>What should the piece do, where will it live, and what timing should we know?</span>
+        <textarea name="message" required rows={6} />
+      </label>
+      <label>
+        <span>Reference photos or sketches</span>
+        <input multiple name="attachments" type="file" />
+      </label>
+      <p className="muted-copy">Current lead time is about {Math.max(1, Math.round(bandwidthLeadTimeDays / 7))} weeks with {queueCount} active project{queueCount === 1 ? "" : "s"} in progress.</p>
+      <button className="button-primary full-width" type="submit">{piece ? "Ask about this piece" : "Send custom work request"}</button>
     </form>
   );
 }
@@ -75,7 +101,7 @@ export function LoginForm({ redirectTo = "/account/profile", studio = false, ema
         <span>Password</span>
         <input name="password" required type="password" />
       </label>
-      <button className="button-primary" type="submit">{studio ? "Enter studio" : "Log in"}</button>
+      <button className="button-primary" type="submit">{studio ? "Enter dashboard" : "Log in"}</button>
     </form>
   );
 }
@@ -126,6 +152,10 @@ export function ResetPasswordForm({ token }: { token: string }) {
 }
 
 export function ProfileForm({ user }: { user: UserRecord }) {
+  const website = user.links.find((link) => link.label.toLowerCase() === "website")?.url ?? "";
+  const instagram = user.links.find((link) => link.label.toLowerCase() === "instagram")?.url ?? "";
+  const github = user.links.find((link) => link.label.toLowerCase() === "github")?.url ?? "";
+
   return (
     <form action={updateProfileAction} className="request-form">
       <label>
@@ -140,10 +170,12 @@ export function ProfileForm({ user }: { user: UserRecord }) {
         <span>Bio</span>
         <textarea defaultValue={user.bio} name="bio" rows={5} />
       </label>
-      <label>
-        <span>Links JSON</span>
-        <textarea defaultValue={JSON.stringify(user.links, null, 2)} name="linksJson" rows={5} />
-      </label>
+      <div className="field-grid three-up compact-grid">
+        <label><span>Website</span><input defaultValue={website} name="websiteUrl" type="url" /></label>
+        <label><span>Instagram</span><input defaultValue={instagram} name="instagramUrl" type="url" /></label>
+        <label><span>GitHub</span><input defaultValue={github} name="githubUrl" type="url" /></label>
+      </div>
+      <input name="linksJson" type="hidden" value={JSON.stringify(user.links)} />
       <label>
         <span>Profile picture</span>
         <input name="avatar" type="file" />

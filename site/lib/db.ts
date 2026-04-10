@@ -552,6 +552,12 @@ function upsertSetting(db: DatabaseSync, key: string, value: unknown) {
   `).run({ key, value: writeJson(value), updatedAt: nowIso() });
 }
 
+function getSeededVersion(db: DatabaseSync) {
+  const row = db.prepare(`SELECT value FROM settings WHERE key = 'seededVersion' LIMIT 1`).get() as { value?: string } | undefined;
+  const parsed = row?.value ? readJson<{ version?: number }>(row.value, {}) : {};
+  return Number(parsed.version ?? 0);
+}
+
 function getSetting<T>(key: string, fallback: T): T {
   const db = getDatabase();
   const row = db.prepare(`SELECT value FROM settings WHERE key = ? LIMIT 1`).get(key) as { value?: string } | undefined;
@@ -559,10 +565,10 @@ function getSetting<T>(key: string, fallback: T): T {
 }
 
 function seedDefaultContent(db: DatabaseSync) {
-  const seeded = db.prepare(`SELECT value FROM settings WHERE key = 'seededVersion' LIMIT 1`).get() as { value?: string } | undefined;
-  if (!seeded) {
+  const seededVersion = getSeededVersion(db);
+  if (seededVersion === 0) {
     upsertSetting(db, "site", { ...siteSettingsSeed, pieceDividerNames });
-    upsertSetting(db, "seededVersion", { version: 2, updatedAt: nowIso() });
+    upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso() });
   }
 
   for (const profile of seedProfiles) {
@@ -819,6 +825,94 @@ function seedDefaultContent(db: DatabaseSync) {
       createdAt: timestamp,
       updatedAt: timestamp
     });
+  }
+
+  if (seededVersion > 0 && seededVersion < 3) {
+    saveSiteSettings({ ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
+
+    for (const profile of seedProfiles) {
+      saveUserProfile({
+        email: profile.email,
+        role: profile.role,
+        displayName: profile.displayName,
+        headline: profile.headline,
+        bio: profile.bio,
+        avatarPath: profile.avatarPath ?? null,
+        publicProfile: profile.publicProfile,
+        links: profile.links,
+        metadata: profile.metadata
+      });
+    }
+
+    for (const page of seedPages) {
+      savePage({
+        slug: page.slug,
+        title: page.title,
+        navLabel: page.navLabel,
+        status: page.status,
+        intro: page.intro,
+        body: page.body,
+        layout: page.layout,
+        sections: page.sections,
+        heroMediaPath: page.heroMediaPath ?? null
+      });
+    }
+
+    for (const piece of seedPieces) {
+      savePiece({
+        slug: piece.slug,
+        title: piece.title,
+        subtitle: piece.subtitle,
+        category: piece.category,
+        status: piece.status,
+        publicationStatus: piece.publicationStatus,
+        availabilityLabel: piece.availabilityLabel,
+        summary: piece.summary,
+        story: piece.story,
+        details: piece.details,
+        tags: piece.tags,
+        materials: piece.materials,
+        dimensions: piece.dimensions,
+        priceCents: piece.priceCents,
+        inventoryCount: piece.inventoryCount,
+        leadTimeDays: piece.leadTimeDays,
+        mediaPaths: piece.mediaPaths,
+        featuredRank: piece.featuredRank,
+        ownerEmail: "woodsmithbb@proton.me",
+        metadata: piece.metadata
+      });
+    }
+
+    for (const post of seedPosts) {
+      savePost({
+        slug: post.slug,
+        title: post.title,
+        excerpt: post.excerpt,
+        body: post.body,
+        publicationStatus: post.publicationStatus,
+        publishedAt: post.publishedAt,
+        authorEmail: post.authorEmail,
+        coverMediaPath: post.coverMediaPath ?? null,
+        tags: post.tags,
+        sourceUrl: post.sourceUrl ?? null,
+        sourceLabel: post.sourceLabel ?? null
+      });
+    }
+
+    for (const commissionType of seedCommissionTypes) {
+      saveCommissionType({
+        slug: commissionType.slug,
+        label: commissionType.label,
+        description: commissionType.description,
+        baseLaborHours: commissionType.baseLaborHours,
+        baseMarkupPercent: commissionType.baseMarkupPercent,
+        materialOptions: commissionType.materialOptions,
+        defaultDimensions: commissionType.defaultDimensions,
+        active: commissionType.active
+      });
+    }
+
+    upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso() });
   }
 }
 
@@ -1342,8 +1436,8 @@ export function deleteSessionRecord(tokenHash: string) {
 export function listPages(includeDraft = false) {
   const db = getDatabase();
   const query = includeDraft
-    ? `SELECT slug, title, nav_label AS navLabel, status, intro, body, layout, hero_media_path AS heroMediaPath, sections_json AS sectionsJson, created_at AS createdAt, updated_at AS updatedAt FROM pages ORDER BY CASE slug WHEN 'home' THEN 0 WHEN 'portfolio' THEN 1 WHEN 'shop' THEN 2 WHEN 'journal' THEN 3 WHEN 'commissions' THEN 4 WHEN 'about' THEN 5 ELSE 99 END, title ASC`
-    : `SELECT slug, title, nav_label AS navLabel, status, intro, body, layout, hero_media_path AS heroMediaPath, sections_json AS sectionsJson, created_at AS createdAt, updated_at AS updatedAt FROM pages WHERE status = 'published' ORDER BY CASE slug WHEN 'home' THEN 0 WHEN 'portfolio' THEN 1 WHEN 'shop' THEN 2 WHEN 'journal' THEN 3 WHEN 'commissions' THEN 4 WHEN 'about' THEN 5 ELSE 99 END, title ASC`;
+    ? `SELECT slug, title, nav_label AS navLabel, status, intro, body, layout, hero_media_path AS heroMediaPath, sections_json AS sectionsJson, created_at AS createdAt, updated_at AS updatedAt FROM pages ORDER BY CASE slug WHEN 'home' THEN 0 WHEN 'portfolio' THEN 1 WHEN 'shop' THEN 2 WHEN 'process' THEN 3 WHEN 'about' THEN 4 WHEN 'commissions' THEN 5 WHEN 'journal' THEN 6 ELSE 99 END, title ASC`
+    : `SELECT slug, title, nav_label AS navLabel, status, intro, body, layout, hero_media_path AS heroMediaPath, sections_json AS sectionsJson, created_at AS createdAt, updated_at AS updatedAt FROM pages WHERE status = 'published' ORDER BY CASE slug WHEN 'home' THEN 0 WHEN 'portfolio' THEN 1 WHEN 'shop' THEN 2 WHEN 'process' THEN 3 WHEN 'about' THEN 4 WHEN 'commissions' THEN 5 WHEN 'journal' THEN 6 ELSE 99 END, title ASC`;
 
   return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPage);
 }
@@ -2092,6 +2186,36 @@ export function getBandwidthSnapshot(): BandwidthSnapshot {
   return { activeProjects, openOrders, leadTimeDays, bandwidthPercent, inProgressCount: activeProjects, shippedCount };
 }
 
+const SEARCH_SYNONYMS: Record<string, string[]> = {
+  bench: ["seating", "entry", "hallway", "mudroom"],
+  cabinet: ["cabinetry", "casework", "pantry", "storage"],
+  desk: ["writing", "work", "table", "phenolic", "maple"],
+  stool: ["footstool", "stepstool", "small furniture", "low seating"],
+  table: ["dining", "pastry", "end table", "work table", "desk"],
+  shop: ["inventory", "available", "asking price", "checkout", "pickup", "shipping"],
+  process: ["behind the scenes", "reference", "note", "markdown", "journal"],
+  photo: ["image", "media", "photography", "visual", "cluster", "focal"],
+  maple: ["bird's-eye", "white maple", "hard maple"],
+  custom: ["commission", "built to order", "contact", "request", "quote"]
+};
+
+function expandedQueryTerms(query: string) {
+  const normalizedQuery = query.trim().toLowerCase();
+  const tokens = normalizedQuery.split(/\s+/g).filter(Boolean);
+  const expanded = new Set([normalizedQuery, ...tokens]);
+
+  for (const token of tokens) {
+    for (const [term, synonyms] of Object.entries(SEARCH_SYNONYMS)) {
+      if (token === term || synonyms.some((synonym) => synonym.includes(token) || token.includes(synonym))) {
+        expanded.add(term);
+        synonyms.forEach((synonym) => expanded.add(synonym));
+      }
+    }
+  }
+
+  return [...expanded].filter(Boolean);
+}
+
 function scoreMatch(query: string, haystack: string) {
   const normalizedQuery = query.trim().toLowerCase();
   const normalizedHaystack = haystack.toLowerCase();
@@ -2107,22 +2231,27 @@ function scoreMatch(query: string, haystack: string) {
   if (normalizedHaystack.includes(normalizedQuery)) {
     return 45;
   }
-  const tokens = normalizedQuery.split(/\s+/g).filter(Boolean);
-  return tokens.reduce((score, token) => score + (normalizedHaystack.includes(token) ? 18 : 0), 0);
+  return expandedQueryTerms(query).reduce((score, token) => {
+    if (normalizedHaystack.includes(token)) {
+      return score + (token.includes(" ") ? 14 : 18);
+    }
+
+    return score;
+  }, 0);
 }
 
 export function searchSite(query: string, includePrivate = false) {
   const results: SearchResult[] = [];
   for (const piece of listPieces(true)) {
-    const score = scoreMatch(query, [piece.title, piece.subtitle, piece.summary, piece.story, piece.tags.join(" "), piece.materials.join(" ")].join(" "));
+    const score = scoreMatch(query, [piece.title, piece.subtitle, piece.category, piece.summary, piece.story, piece.tags.join(" "), piece.materials.join(" "), JSON.stringify(piece.metadata)].join(" "));
     if (score > 0 && (includePrivate || piece.publicationStatus === "published")) {
       results.push({ id: piece.slug, type: "piece", title: piece.title, href: `/portfolio/${piece.slug}`, summary: piece.summary, score, private: piece.publicationStatus !== "published" });
     }
   }
   for (const post of listPosts(true)) {
-    const score = scoreMatch(query, [post.title, post.excerpt, post.body, post.tags.join(" ")].join(" "));
+    const score = scoreMatch(query, [post.title, post.excerpt, post.body, post.tags.join(" "), post.sourceLabel ?? "", post.sourceUrl ?? ""].join(" "));
     if (score > 0 && (includePrivate || post.publicationStatus === "published")) {
-      results.push({ id: post.slug, type: "post", title: post.title, href: `/journal/${post.slug}`, summary: post.excerpt, score, private: post.publicationStatus !== "published" });
+      results.push({ id: post.slug, type: "post", title: post.title, href: `/process/${post.slug}`, summary: post.excerpt, score, private: post.publicationStatus !== "published" });
     }
   }
   for (const page of listPages(true)) {
@@ -2132,7 +2261,7 @@ export function searchSite(query: string, includePrivate = false) {
     }
   }
   for (const media of listMedia({ includeUnreviewed: true })) {
-    const score = scoreMatch(query, [media.relativePath, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? ""].join(" "));
+    const score = scoreMatch(query, [media.relativePath, media.folder, media.fileName, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? "", media.pageSlug ?? "", JSON.stringify(media.metadata)].join(" "));
     if (score > 0 && includePrivate) {
       results.push({ id: media.relativePath, type: "media", title: media.fileName, href: `/media/${media.relativePath}`, summary: media.altText || media.relativePath, score, private: true });
     }

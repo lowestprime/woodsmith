@@ -19,7 +19,7 @@ export const metadata: Metadata = {
     default: "Beaman Woodworks",
     template: "%s | Beaman Woodworks"
   },
-  description: "Self-hosted woodworking portfolio, shop, journal, project tracking, and commission management for Beaman Woodworks.",
+  description: "Self-hosted woodworking portfolio, shop, process notes, project tracking, and buyer contact workflows for Beaman Woodworks.",
   applicationName: "Beaman Woodworks"
 };
 

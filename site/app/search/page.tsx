@@ -10,7 +10,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Search" title="Search the site" copy="Search pieces, posts, pages, and, when signed into the studio, private media and project records." />
+        <PageIntro eyebrow="Search" title="Search the site" copy="Search pieces, shop/process notes, pages, and, when signed into the dashboard, private media tags, clusters, and project records." />
         <form action="/search" className="request-form compact-form">
           <label>
             <span>Query</span>

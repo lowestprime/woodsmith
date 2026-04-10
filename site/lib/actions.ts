@@ -18,6 +18,7 @@ import {
   getPost,
   getProject,
   getSiteSettings,
+  getUserByEmail,
   listCartItems,
   refreshMediaLibrary,
   removeCartItem,
@@ -38,7 +39,8 @@ import {
   type PageRecord,
   type PieceRecord,
   type PostRecord,
-  type SiteSettings
+  type SiteSettings,
+  type UserRecord
 } from "@/lib/db";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
 import { persistUploadedMedia, renameMediaAsset, deleteMediaAsset } from "@/lib/media";
@@ -72,6 +74,28 @@ function parseJsonField<T>(value: FormDataEntryValue | null, fallback: T): T {
 function parseInteger(value: FormDataEntryValue | null, fallback = 0) {
   const parsed = Number(value?.toString() || fallback);
   return Number.isFinite(parsed) ? Math.round(parsed) : fallback;
+}
+
+function parseOptionalInteger(value: FormDataEntryValue | null) {
+  const text = value?.toString().trim();
+  if (!text) {
+    return null;
+  }
+
+  const parsed = Number(text);
+  return Number.isFinite(parsed) ? Math.round(parsed) : null;
+}
+
+function parseBooleanField(value: FormDataEntryValue | null) {
+  return ["1", "true", "on", "yes"].includes((value?.toString() || "").toLowerCase());
+}
+
+function parseListField(value: FormDataEntryValue | null) {
+  const text = value?.toString() || "";
+  return text
+    .split(/\r?\n|,/g)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 }
 
 async function getCartToken() {
@@ -194,6 +218,12 @@ export async function updateProfileAction(formData: FormData) {
     avatarPath = await persistUploadedMedia(avatar, "profiles");
   }
 
+  const directLinks = [
+    { label: "Website", url: optionalField(formData.get("websiteUrl")) },
+    { label: "Instagram", url: optionalField(formData.get("instagramUrl")) },
+    { label: "GitHub", url: optionalField(formData.get("githubUrl")) }
+  ].filter((entry) => entry.url);
+
   saveUserProfile({
     email: user.email,
     role: user.role,
@@ -202,7 +232,7 @@ export async function updateProfileAction(formData: FormData) {
     bio: optionalField(formData.get("bio")),
     avatarPath,
     publicProfile: user.publicProfile,
-    links: parseJsonField(formData.get("linksJson"), user.links),
+    links: directLinks.length > 0 ? directLinks : parseJsonField(formData.get("linksJson"), user.links),
     metadata: user.metadata
   });
 
@@ -303,6 +333,85 @@ export async function startCheckoutAction(formData: FormData) {
   }
 
   redirect(`/shop/cart?checkout=configuration-needed&order=${encodeURIComponent(orderNumber)}`);
+}
+
+export async function submitContactRequestAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const guestName = requiredField(formData.get("customerName"), "Your name");
+  const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
+  const message = requiredField(formData.get("message"), "Project details");
+  const materialPreference = optionalField(formData.get("materialPreference"));
+  const deliveryMode = optionalField(formData.get("deliveryMode"));
+  const requestType = optionalField(formData.get("commissionTypeSlug"));
+  const cityRegion = optionalField(formData.get("cityRegion"));
+  const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
+
+  const reference = createProject({
+    userEmail: user?.email ?? null,
+    guestName,
+    guestEmail,
+    pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+    commissionTypeSlug: requestType || null,
+    kind: "commission",
+    status: "Request received",
+    stage: "Contact review",
+    budgetCents: parseInteger(formData.get("budgetCents"), 0) || null,
+    estimatedTotalCents: null,
+    estimator: {},
+    brief: message,
+    materials: materialPreference ? [materialPreference] : [],
+    dimensions: null,
+    options: {
+      phone: optionalField(formData.get("phone")),
+      cityRegion,
+      deliveryMode,
+      requestSource: optionalField(formData.get("requestSource")) || "contact-form"
+    },
+    visualizationSvg: null,
+    includeVisualization: false,
+    leadTimeDays,
+    shippingAddress: cityRegion ? { cityRegion } : {},
+    billingAddress: { email: guestEmail }
+  });
+
+  const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  for (const file of files) {
+    const relativePath = await persistUploadedMedia(file, `projects/${reference}`);
+    saveMediaMetadata({
+      relativePath,
+      altText: `${reference} reference image`,
+      projectReference: reference,
+      userEmail: guestEmail,
+      focalX: 50,
+      focalY: 50,
+      zoom: 1,
+      reviewed: true,
+      tags: ["project", reference, "reference"]
+    });
+  }
+
+  appendProjectUpdate({
+    projectReference: reference,
+    authorEmail: guestEmail,
+    authorRole: user ? "buyer-account" : "buyer",
+    visibility: "public",
+    body: message
+  });
+
+  const statusUrl = `${resolveBaseUrl()}/commissions/status?reference=${encodeURIComponent(reference)}&email=${encodeURIComponent(guestEmail)}`;
+  await sendNotificationEmail({
+    category: "contact_request",
+    to: [guestEmail, getSiteSettings().builderEmail],
+    subject: `New Beaman Woodworks request: ${reference}`,
+    text: `Your Beaman Woodworks request reference is ${reference}. Review status at ${statusUrl}.`,
+    html: `<p>Your Beaman Woodworks request reference is <strong>${reference}</strong>.</p><p>Review status at <a href="${statusUrl}">${statusUrl}</a>.</p>`
+  });
+
+  revalidatePath("/about");
+  revalidatePath("/shop");
+  revalidatePath("/portfolio");
+  revalidatePath("/studio");
+  redirect(`/requests/${reference}?created=1&email=${encodeURIComponent(guestEmail)}`);
 }
 export async function submitCommissionAction(formData: FormData) {
   const user = await getCurrentUser();
@@ -406,17 +515,92 @@ export async function submitReviewAction(formData: FormData) {
 
 export async function saveSiteSettingsAction(formData: FormData) {
   await requireAdmin();
-  saveSiteSettings(parseJsonField<SiteSettings>(formData.get("settingsJson"), getSiteSettings()));
+  const existing = getSiteSettings();
+  const settingsJson = optionalField(formData.get("settingsJson"));
+  const input = settingsJson
+    ? parseJsonField<SiteSettings>(formData.get("settingsJson"), existing)
+    : {
+        ...existing,
+        brandName: optionalField(formData.get("brandName")) || existing.brandName,
+        brandTagline: optionalField(formData.get("brandTagline")) || existing.brandTagline,
+        supportEmail: optionalField(formData.get("supportEmail")) || existing.supportEmail,
+        builderEmail: optionalField(formData.get("builderEmail")) || existing.builderEmail,
+        builderName: optionalField(formData.get("builderName")) || existing.builderName,
+        builderHeadline: optionalField(formData.get("builderHeadline")) || existing.builderHeadline,
+        developerName: optionalField(formData.get("developerName")) || existing.developerName,
+        developerEmail: optionalField(formData.get("developerEmail")) || existing.developerEmail,
+        developerHeadline: optionalField(formData.get("developerHeadline")) || existing.developerHeadline,
+        notificationForwardEmail: optionalField(formData.get("notificationForwardEmail")) || existing.notificationForwardEmail,
+        repoUrl: optionalField(formData.get("repoUrl")) || existing.repoUrl,
+        siteAnnouncement: optionalField(formData.get("siteAnnouncement")) || existing.siteAnnouncement,
+        pieceDividerNames: parseListField(formData.get("pieceDividerNames")).length > 0 ? parseListField(formData.get("pieceDividerNames")) : existing.pieceDividerNames,
+        socialLinks: [
+          { label: "Instagram", url: optionalField(formData.get("instagramUrl")) },
+          { label: "Pinterest", url: optionalField(formData.get("pinterestUrl")) },
+          { label: "GitHub", url: optionalField(formData.get("githubUrl")) || existing.repoUrl }
+        ],
+        homeSections: existing.homeSections.map((section) => {
+          if (section.key === "hero") {
+            return {
+              ...section,
+              title: optionalField(formData.get("heroTitle")) || section.title,
+              copy: optionalField(formData.get("heroCopy")) || section.copy
+            };
+          }
+
+          if (section.key === "services") {
+            return {
+              ...section,
+              title: optionalField(formData.get("servicesTitle")) || section.title,
+              copy: optionalField(formData.get("servicesCopy")) || section.copy
+            };
+          }
+
+          if (section.key === "bandwidth") {
+            return {
+              ...section,
+              title: optionalField(formData.get("bandwidthTitle")) || section.title,
+              copy: optionalField(formData.get("bandwidthCopy")) || section.copy
+            };
+          }
+
+          return section;
+        }),
+        email: {
+          ...existing.email,
+          fromName: optionalField(formData.get("emailFromName")) || existing.email.fromName,
+          fromAddress: optionalField(formData.get("emailFromAddress")) || existing.email.fromAddress,
+          replyTo: optionalField(formData.get("emailReplyTo")) || existing.email.replyTo,
+          forwardTo: optionalField(formData.get("emailForwardTo")) || existing.email.forwardTo
+        }
+      };
+  saveSiteSettings(input as SiteSettings);
   revalidatePath("/");
   revalidatePath("/about");
   revalidatePath("/shop");
-  revalidatePath("/journal");
+  revalidatePath("/portfolio");
+  revalidatePath("/process");
   redirect("/studio?saved=settings");
 }
 
 export async function savePageAction(formData: FormData) {
   await requireAdmin();
-  savePage(parseJsonField<PageRecord>(formData.get("pageJson"), getPage(requiredField(formData.get("slug"), "Page slug"))!));
+  const slug = requiredField(formData.get("slug"), "Page slug");
+  const current = getPage(slug);
+  const pageJson = optionalField(formData.get("pageJson"));
+  savePage(pageJson
+    ? parseJsonField<PageRecord>(formData.get("pageJson"), current!)
+    : {
+        slug,
+        title: optionalField(formData.get("title")) || current?.title || slug,
+        navLabel: optionalField(formData.get("navLabel")) || current?.navLabel || slug,
+        status: (optionalField(formData.get("status")) || current?.status || "draft") as PageRecord["status"],
+        intro: optionalField(formData.get("intro")) || current?.intro || "",
+        body: optionalField(formData.get("body")) || current?.body || "",
+        layout: optionalField(formData.get("layout")) || current?.layout || "document",
+        sections: current?.sections || [],
+        heroMediaPath: optionalField(formData.get("heroMediaPath")) || current?.heroMediaPath || null
+      });
   revalidatePath(`/${optionalField(formData.get("slug"))}`);
   redirect("/studio?saved=page");
 }
@@ -430,8 +614,48 @@ export async function deletePageAction(formData: FormData) {
 
 export async function savePieceAction(formData: FormData) {
   await requireAdmin();
-  savePiece(parseJsonField<PieceRecord>(formData.get("pieceJson"), getPiece(requiredField(formData.get("slug"), "Piece slug"))!));
+  const slug = requiredField(formData.get("slug"), "Piece slug");
+  const current = getPiece(slug);
+  const pieceJson = optionalField(formData.get("pieceJson"));
+  savePiece(pieceJson
+    ? parseJsonField<PieceRecord>(formData.get("pieceJson"), current!)
+    : {
+        slug,
+        title: optionalField(formData.get("title")) || current?.title || slug,
+        subtitle: optionalField(formData.get("subtitle")) || current?.subtitle || "",
+        category: optionalField(formData.get("category")) || current?.category || "Tables",
+        status: (optionalField(formData.get("pieceStatus")) || current?.status || "commission") as PieceRecord["status"],
+        publicationStatus: (optionalField(formData.get("publicationStatus")) || current?.publicationStatus || "draft") as PieceRecord["publicationStatus"],
+        availabilityLabel: optionalField(formData.get("availabilityLabel")) || current?.availabilityLabel || "",
+        summary: optionalField(formData.get("summary")) || current?.summary || "",
+        story: optionalField(formData.get("story")) || current?.story || "",
+        details: parseListField(formData.get("detailsText")).length > 0 ? parseListField(formData.get("detailsText")) : current?.details || [],
+        tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : current?.tags || [],
+        materials: parseListField(formData.get("materialsText")).length > 0 ? parseListField(formData.get("materialsText")) : current?.materials || [],
+        dimensions: parseOptionalInteger(formData.get("width")) == null && parseOptionalInteger(formData.get("depth")) == null && parseOptionalInteger(formData.get("height")) == null
+          ? current?.dimensions || null
+          : {
+              width: parseOptionalInteger(formData.get("width")) ?? current?.dimensions?.width ?? 0,
+              depth: parseOptionalInteger(formData.get("depth")) ?? current?.dimensions?.depth ?? 0,
+              height: parseOptionalInteger(formData.get("height")) ?? current?.dimensions?.height ?? 0,
+              unit: "in" as const
+            },
+        priceCents: parseOptionalInteger(formData.get("priceCents")) ?? current?.priceCents ?? null,
+        inventoryCount: parseInteger(formData.get("inventoryCount"), current?.inventoryCount ?? 0),
+        leadTimeDays: parseInteger(formData.get("leadTimeDays"), current?.leadTimeDays ?? 0),
+        mediaPaths: parseListField(formData.get("mediaPathsText")).length > 0 ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
+        featuredRank: parseInteger(formData.get("featuredRank"), current?.featuredRank ?? 99),
+        ownerEmail: optionalField(formData.get("ownerEmail")) || current?.ownerEmail || "woodsmithbb@proton.me",
+        metadata: {
+          ...(current?.metadata || {}),
+          verifiedMedia: parseBooleanField(formData.get("verifiedMedia")),
+          publicMediaLimit: parseInteger(formData.get("publicMediaLimit"), Number(current?.metadata?.publicMediaLimit ?? 4)),
+          fulfillmentOptions: parseListField(formData.get("fulfillmentText")).length > 0 ? parseListField(formData.get("fulfillmentText")) : current?.metadata?.fulfillmentOptions ?? [],
+          mediaReviewRequired: parseBooleanField(formData.get("mediaReviewRequired"))
+        }
+      });
   revalidatePath("/portfolio");
+  revalidatePath("/shop");
   redirect("/studio?saved=piece");
 }
 
@@ -444,37 +668,79 @@ export async function deletePieceAction(formData: FormData) {
 
 export async function savePostAction(formData: FormData) {
   await requireAdmin();
-  savePost(parseJsonField<PostRecord>(formData.get("postJson"), getPost(requiredField(formData.get("slug"), "Post slug"))!));
-  revalidatePath("/journal");
+  const slug = requiredField(formData.get("slug"), "Post slug");
+  const current = getPost(slug);
+  const postJson = optionalField(formData.get("postJson"));
+  savePost(postJson
+    ? parseJsonField<PostRecord>(formData.get("postJson"), current!)
+    : {
+        slug,
+        title: optionalField(formData.get("title")) || current?.title || slug,
+        excerpt: optionalField(formData.get("excerpt")) || current?.excerpt || "",
+        body: optionalField(formData.get("body")) || current?.body || "",
+        publicationStatus: (optionalField(formData.get("publicationStatus")) || current?.publicationStatus || "draft") as PostRecord["publicationStatus"],
+        publishedAt: optionalField(formData.get("publishedAt")) || current?.publishedAt || null,
+        authorEmail: optionalField(formData.get("authorEmail")) || current?.authorEmail || "woodsmithbb@proton.me",
+        coverMediaPath: optionalField(formData.get("coverMediaPath")) || current?.coverMediaPath || null,
+        tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : current?.tags || [],
+        sourceUrl: optionalField(formData.get("sourceUrl")) || current?.sourceUrl || null,
+        sourceLabel: optionalField(formData.get("sourceLabel")) || current?.sourceLabel || null
+      });
+  revalidatePath("/shop");
+  revalidatePath("/process");
   redirect("/studio?saved=post");
 }
 
 export async function deletePostAction(formData: FormData) {
   await requireAdmin();
   deletePost(requiredField(formData.get("slug"), "Post slug"));
-  revalidatePath("/journal");
+  revalidatePath("/shop");
+  revalidatePath("/process");
   redirect("/studio?deleted=post");
 }
 
 export async function saveUserProfileAdminAction(formData: FormData) {
   await requireAdmin();
   const email = requiredField(formData.get("email"), "Email").toLowerCase();
-  const current = await getCurrentUser();
-  saveUserProfile(parseJsonField(formData.get("userJson"), {
-    email,
-    role: "woodworker",
-    displayName: email,
-    headline: "Woodworker",
-    bio: "",
-    avatarPath: null,
-    publicProfile: false,
-    links: [],
-    metadata: {}
-  }));
+  const currentSessionUser = await getCurrentUser();
+  const existing = getUserByEmail(email);
+  const userJson = optionalField(formData.get("userJson"));
+  saveUserProfile(userJson
+    ? parseJsonField(formData.get("userJson"), {
+        email,
+        role: "woodworker",
+        displayName: email,
+        headline: "Woodworker",
+        bio: "",
+        avatarPath: null,
+        publicProfile: false,
+        links: [],
+        metadata: {}
+      })
+    : {
+        email,
+        role: (optionalField(formData.get("role")) || existing?.role || "woodworker") as UserRecord["role"],
+        displayName: optionalField(formData.get("displayName")) || existing?.displayName || email,
+        headline: optionalField(formData.get("headline")) || existing?.headline || "Woodworker",
+        bio: optionalField(formData.get("bio")) || existing?.bio || "",
+        avatarPath: optionalField(formData.get("avatarPath")) || existing?.avatarPath || null,
+        publicProfile: parseBooleanField(formData.get("publicProfile")),
+        links: [
+          { label: "Website", url: optionalField(formData.get("websiteUrl")) },
+          { label: "Instagram", url: optionalField(formData.get("instagramUrl")) },
+          { label: "GitHub", url: optionalField(formData.get("githubUrl")) }
+        ].filter((link) => link.url),
+        metadata: {
+          ...(existing?.metadata || {}),
+          showOnAboutPage: parseBooleanField(formData.get("showOnAboutPage")),
+          woodworker: parseBooleanField(formData.get("woodworkerProfile")),
+          developer: parseBooleanField(formData.get("developerProfile"))
+        }
+      });
   revalidatePath("/");
   revalidatePath("/about");
   revalidatePath("/studio");
-  if (current?.email === email) {
+  if (currentSessionUser?.email === email) {
     revalidatePath("/account/profile");
   }
   redirect(`/studio?saved=user&email=${encodeURIComponent(email)}`);
@@ -482,16 +748,27 @@ export async function saveUserProfileAdminAction(formData: FormData) {
 
 export async function saveReviewAdminAction(formData: FormData) {
   await requireAdmin();
-  const review = parseJsonField(formData.get("reviewJson"), {
-    id: requiredField(formData.get("id"), "Review"),
-    pieceSlug: requiredField(formData.get("pieceSlug"), "Piece"),
-    userEmail: null,
-    reviewerName: "",
-    rating: 5,
-    title: "",
-    body: "",
-    status: "draft" as const
-  });
+  const review = optionalField(formData.get("reviewJson"))
+    ? parseJsonField(formData.get("reviewJson"), {
+        id: requiredField(formData.get("id"), "Review"),
+        pieceSlug: requiredField(formData.get("pieceSlug"), "Piece"),
+        userEmail: null,
+        reviewerName: "",
+        rating: 5,
+        title: "",
+        body: "",
+        status: "draft" as const
+      })
+    : {
+        id: requiredField(formData.get("id"), "Review"),
+        pieceSlug: requiredField(formData.get("pieceSlug"), "Piece"),
+        userEmail: optionalField(formData.get("userEmail")) || null,
+        reviewerName: optionalField(formData.get("reviewerName")),
+        rating: parseInteger(formData.get("rating"), 5),
+        title: optionalField(formData.get("title")),
+        body: optionalField(formData.get("body")),
+        status: (optionalField(formData.get("status")) || "draft") as "draft" | "published" | "archived"
+      };
   saveReview(review);
   revalidatePath("/studio");
   revalidatePath(`/portfolio/${review.pieceSlug}`);
@@ -511,7 +788,25 @@ export async function deleteReviewAdminAction(formData: FormData) {
 }
 export async function saveCommissionTypeAction(formData: FormData) {
   await requireAdmin();
-  saveCommissionType(parseJsonField<CommissionTypeRecord>(formData.get("commissionTypeJson"), { slug: requiredField(formData.get("slug"), "Slug"), label: "", description: "", baseLaborHours: 0, baseMarkupPercent: 0, materialOptions: [], defaultDimensions: { width: 48, depth: 24, height: 30, unit: "in" }, active: true, createdAt: "", updatedAt: "" }));
+  const slug = requiredField(formData.get("slug"), "Slug");
+  const commissionTypeJson = optionalField(formData.get("commissionTypeJson"));
+  saveCommissionType(commissionTypeJson
+    ? parseJsonField<CommissionTypeRecord>(formData.get("commissionTypeJson"), { slug, label: "", description: "", baseLaborHours: 0, baseMarkupPercent: 0, materialOptions: [], defaultDimensions: { width: 48, depth: 24, height: 30, unit: "in" }, active: true, createdAt: "", updatedAt: "" })
+    : {
+        slug,
+        label: optionalField(formData.get("label")) || slug,
+        description: optionalField(formData.get("description")),
+        baseLaborHours: parseInteger(formData.get("baseLaborHours"), 0),
+        baseMarkupPercent: parseInteger(formData.get("baseMarkupPercent"), 0),
+        materialOptions: parseListField(formData.get("materialOptionsText")),
+        defaultDimensions: {
+          width: parseInteger(formData.get("width"), 48),
+          depth: parseInteger(formData.get("depth"), 24),
+          height: parseInteger(formData.get("height"), 30),
+          unit: "in" as const
+        },
+        active: parseBooleanField(formData.get("active"))
+      });
   revalidatePath("/commissions");
   redirect("/studio?saved=commission-type");
 }
@@ -546,11 +841,12 @@ export async function uploadMediaAction(formData: FormData) {
     focalY: 50,
     zoom: 1,
     reviewed: true,
-    tags: parseJsonField<string[]>(formData.get("tagsJson"), [])
+    tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : parseJsonField<string[]>(formData.get("tagsJson"), [])
   });
   revalidatePath("/studio");
   revalidatePath("/portfolio");
-  revalidatePath("/journal");
+  revalidatePath("/shop");
+  revalidatePath("/process");
   redirect(`/studio?uploaded=${encodeURIComponent(relativePath)}`);
 }
 
@@ -574,15 +870,33 @@ export async function deleteMediaAction(formData: FormData) {
 
 export async function saveMediaMetadataAction(formData: FormData) {
   await requireAdmin();
-  saveMediaMetadata(parseJsonField(formData.get("mediaJson"), {
-    relativePath: requiredField(formData.get("relativePath"), "Media path"),
-    altText: "",
-    focalX: 50,
-    focalY: 50,
-    zoom: 1,
-    reviewed: true,
-    tags: []
-  }));
+  const relativePath = requiredField(formData.get("relativePath"), "Media path");
+  const mediaJson = optionalField(formData.get("mediaJson"));
+  saveMediaMetadata(mediaJson
+    ? parseJsonField(formData.get("mediaJson"), {
+        relativePath,
+        altText: "",
+        focalX: 50,
+        focalY: 50,
+        zoom: 1,
+        reviewed: true,
+        tags: []
+      })
+    : {
+        relativePath,
+        altText: optionalField(formData.get("altText")),
+        pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+        postSlug: optionalField(formData.get("postSlug")) || null,
+        pageSlug: optionalField(formData.get("pageSlug")) || null,
+        projectReference: optionalField(formData.get("projectReference")) || null,
+        userEmail: optionalField(formData.get("userEmail")) || null,
+        focalX: parseInteger(formData.get("focalX"), 50),
+        focalY: parseInteger(formData.get("focalY"), 50),
+        zoom: Number(formData.get("zoom")?.toString() || 1),
+        reviewed: parseBooleanField(formData.get("reviewed")),
+        tags: parseListField(formData.get("tagsText")),
+        metadata: {}
+      });
   revalidatePath("/studio");
   redirect("/studio?saved=media");
 }
@@ -597,7 +911,19 @@ export async function refreshMediaLibraryAction() {
 export async function saveProjectAction(formData: FormData) {
   await requireAdmin();
   const reference = requiredField(formData.get("reference"), "Project reference");
-  updateProject(reference, parseJsonField(formData.get("projectJson"), {}));
+  updateProject(reference, optionalField(formData.get("projectJson"))
+    ? parseJsonField(formData.get("projectJson"), {})
+    : {
+        status: optionalField(formData.get("status")),
+        stage: optionalField(formData.get("stage")),
+        pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+        commissionTypeSlug: optionalField(formData.get("commissionTypeSlug")) || null,
+        budgetCents: parseOptionalInteger(formData.get("budgetCents")),
+        estimatedTotalCents: parseOptionalInteger(formData.get("estimatedTotalCents")),
+        leadTimeDays: parseOptionalInteger(formData.get("leadTimeDays")),
+        publicNotes: optionalField(formData.get("publicNotes")),
+        internalNotes: optionalField(formData.get("internalNotes"))
+      });
   if (optionalField(formData.get("timelineBody"))) {
     appendProjectUpdate({
       projectReference: reference,
@@ -629,7 +955,23 @@ export async function saveOrderAction(formData: FormData) {
   if (!current) {
     redirect("/studio?error=order-missing");
   }
-  saveOrder({ ...current, ...parseJsonField<Partial<OrderRecord>>(formData.get("orderJson"), {}), orderNumber: current.orderNumber });
+  const orderJson = optionalField(formData.get("orderJson"));
+  saveOrder({
+    ...current,
+    ...(orderJson
+      ? parseJsonField<Partial<OrderRecord>>(formData.get("orderJson"), {})
+      : {
+          status: optionalField(formData.get("status")) || current.status,
+          paymentStatus: optionalField(formData.get("paymentStatus")) || current.paymentStatus,
+          invoiceStatus: optionalField(formData.get("invoiceStatus")) || current.invoiceStatus,
+          shippingRateLabel: optionalField(formData.get("shippingRateLabel")) || current.shippingRateLabel,
+          trackingNumber: optionalField(formData.get("trackingNumber")) || current.trackingNumber,
+          shippingCents: parseOptionalInteger(formData.get("shippingCents")) ?? current.shippingCents,
+          taxCents: parseOptionalInteger(formData.get("taxCents")) ?? current.taxCents,
+          discountCents: parseOptionalInteger(formData.get("discountCents")) ?? current.discountCents
+        }),
+    orderNumber: current.orderNumber
+  });
   revalidatePath("/studio");
   redirect(`/studio?order=${encodeURIComponent(orderNumber)}&saved=1`);
 }

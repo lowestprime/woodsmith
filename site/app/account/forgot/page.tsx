@@ -6,7 +6,7 @@ export default async function ForgotPage({ searchParams }: { searchParams: Promi
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Account" title="Reset password" copy="A reset link is emailed through the studio notification system when SMTP is configured." />
+        <PageIntro eyebrow="Account" title="Reset password" copy="A reset link is emailed through the notification system when SMTP is configured." />
         {sent ? <p className="notice-panel">If the email exists in the system, a reset link has been queued.</p> : null}
         <ForgotPasswordForm />
       </PageSection>

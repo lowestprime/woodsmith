@@ -6,8 +6,8 @@ export default async function StudioLoginPage({ searchParams }: { searchParams: 
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Studio" title="Private dashboard login" copy="Use the studio account to manage content, media, inventory, orders, project stages, invoices, and settings from the browser." />
-        {error ? <p className="notice-panel danger">The studio login was not accepted.</p> : null}
+        <PageIntro eyebrow="Woodshop" title="Private dashboard login" copy="Use the woodshop account to manage content, media, inventory, orders, project stages, invoices, and settings from the browser." />
+        {error ? <p className="notice-panel danger">The dashboard login was not accepted.</p> : null}
         <LoginForm email={email} redirectTo="/studio" studio />
       </PageSection>
     </Shell>

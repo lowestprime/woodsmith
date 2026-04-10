@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { formatDate, formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
+import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getSiteSettings, listCartItems, type PageRecord, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
@@ -11,33 +12,78 @@ export function Shell({ children, className = "" }: { children: ReactNode; class
   return <div className={`shell ${className}`.trim()}>{children}</div>;
 }
 
+function BrandMark() {
+  return (
+    <svg aria-hidden="true" className="brand-emblem" viewBox="0 0 84 84">
+      <rect height="70" rx="24" width="70" x="7" y="7" />
+      <path d="M26 22v40m0-20h32m-12-20v40M22 26h36v32H22z" />
+      <circle cx="60" cy="24" r="4" />
+    </svg>
+  );
+}
+
+function AccountBadge({ label }: { label: string }) {
+  return <span className="account-badge" aria-hidden="true">{label}</span>;
+}
+
+function CategoryIcon({ category }: { category: string }) {
+  const key = getPiecePortfolioCategory({ category } as Pick<PieceRecord, "category">);
+
+  if (key === "tables") {
+    return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;
+  }
+
+  if (key === "benches") {
+    return <span className="category-icon bench-icon" aria-hidden="true"><i /><i /><i /></span>;
+  }
+
+  if (key === "stepstools") {
+    return <span className="category-icon stepstool-icon" aria-hidden="true"><i /><i /><i /></span>;
+  }
+
+  if (key === "cabinets") {
+    return <span className="category-icon cabinet-icon" aria-hidden="true"><i /><i /><i /></span>;
+  }
+
+  return <span className="category-icon object-icon" aria-hidden="true"><i /><i /><i /></span>;
+}
+
 export async function SiteHeader() {
   const site = getSiteSettings();
   const user = await getCurrentUser();
   const cookieStore = await cookies();
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
+  const accountHref = user ? (user.role === "admin" ? "/studio" : "/account/profile") : "/account/login";
+  const accountLabel = (user?.displayName ?? "")
+    .split(/\s+/g)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((segment) => segment[0]?.toUpperCase() ?? "")
+    .join("") || "BW";
 
   return (
     <header className="site-header">
       <Shell className="header-inner">
         <Link className="brand-lockup" href="/">
-          <span className="brand-mark">{site.brandName}</span>
-          <span className="brand-subtitle">{site.brandTagline}</span>
+          <BrandMark />
+          <span>
+            <span className="brand-mark">{site.brandName}</span>
+            <span className="brand-subtitle">{site.brandTagline}</span>
+          </span>
         </Link>
         <nav aria-label="Primary" className="site-nav">
           {site.navigation.map((item) => (
-            <Link href={item.href} key={item.href}>{item.label}</Link>
+            <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
           ))}
-          <Link href="/shop/cart">Cart {cartCount > 0 ? `(${cartCount})` : ""}</Link>
-          {user ? (
-            <>
-              <Link href={user.role === "admin" ? "/studio" : "/account/profile"}>{user.role === "admin" ? "Studio" : "Account"}</Link>
-              <form action={logoutAction}><button className="text-button" type="submit">Log Out</button></form>
-            </>
-          ) : (
-            <Link href="/account/login">Account</Link>
-          )}
+          <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart">
+            <span aria-hidden="true">Cart</span>
+            <strong>{cartCount}</strong>
+          </Link>
+          <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
+            <AccountBadge label={accountLabel} />
+          </Link>
+          {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
         </nav>
         <ThemeToggle />
       </Shell>
@@ -55,7 +101,7 @@ export function SiteFooter() {
           <p className="footer-copy">{site.siteAnnouncement}</p>
         </div>
         <div>
-          <p className="footer-title">Studio contact</p>
+          <p className="footer-title">Woodshop contact</p>
           <p className="footer-copy">
             {site.builderName} · <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>
           </p>
@@ -110,21 +156,22 @@ export function DividerBand() {
 }
 
 export function PieceCard({ piece }: { piece: PieceRecord }) {
-  const firstImage = piece.mediaPaths[0];
+  const firstImage = getDisplayMediaPaths(piece)[0];
+  const verified = hasVerifiedMedia(piece);
   return (
     <article className="piece-card">
       <Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>
         {firstImage ? <img alt={piece.title} className="piece-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
         <div className="piece-card-body">
           <div className="piece-card-meta">
-            <span>{piece.category}</span>
-            <span>{piece.availabilityLabel}</span>
+            <span className="category-meta"><CategoryIcon category={piece.category} />{piece.category}</span>
+            <span>{verified ? "Verified photography" : "Photography in progress"}</span>
           </div>
           <h3>{piece.title}</h3>
           <p>{piece.summary}</p>
           <div className="piece-card-footer">
-            <span>{piece.priceCents == null ? formatLeadTime(piece.leadTimeDays) : formatMoney(piece.priceCents)}</span>
-            <span>{piece.status === "inventory" ? `${piece.inventoryCount} available` : formatLeadTime(piece.leadTimeDays)}</span>
+            <span>{piece.availabilityLabel}</span>
+            <span>Updated {formatDate(piece.updatedAt)}</span>
           </div>
         </div>
       </Link>
@@ -137,9 +184,9 @@ export function PostCard({ post }: { post: PostRecord }) {
     <article className="journal-card">
       <div className="journal-meta">
         <span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span>
-        {post.sourceUrl ? <span>Web highlight</span> : null}
+        <span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span>
       </div>
-      <h3><Link href={`/journal/${post.slug}`}>{post.title}</Link></h3>
+      <h3><Link href={`/process/${post.slug}`}>{post.title}</Link></h3>
       <p>{post.excerpt}</p>
     </article>
   );
@@ -152,7 +199,7 @@ export function StatusBand() {
       <div>
         <p className="eyebrow">Current bandwidth</p>
         <h2>{bandwidth.bandwidthPercent}% capacity</h2>
-        <p>Lead time running about {formatLeadTime(bandwidth.leadTimeDays)} with {bandwidth.activeProjects} active project{bandwidth.activeProjects === 1 ? "" : "s"} in the queue.</p>
+        <p>Lead time is running about {formatLeadTime(bandwidth.leadTimeDays)} with {bandwidth.activeProjects} active project{bandwidth.activeProjects === 1 ? "" : "s"} in the queue.</p>
       </div>
       <div className="status-bar-wrap">
         <div className="status-bar"><span style={{ width: `${bandwidth.bandwidthPercent}%` }} /></div>
@@ -197,6 +244,6 @@ export function PageGrid({ children }: { children: ReactNode }) {
   return <div className="page-grid">{children}</div>;
 }
 
-export function PageSection({ children, className = "" }: { children: ReactNode; className?: string }) {
-  return <section className={`page-section ${className}`.trim()}>{children}</section>;
+export function PageSection({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
+  return <section className={`page-section ${className}`.trim()} id={id}>{children}</section>;
 }

@@ -29,12 +29,13 @@ export default function AboutPage() {
         </div>
       </PageSection>
 
-      <PageSection>
+      <PageSection id="contact">
         <div className="contact-grid">
           <article className="studio-panel">
             <h2>Business contact</h2>
             <p>{site.builderName} · {site.builderHeadline}</p>
             <p><a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a></p>
+            <p className="muted-copy">Custom work starts with a direct note about the piece, room, intended use, and timing.</p>
             <p>{site.developerName} · {site.developerHeadline}</p>
             <p><a href={`mailto:${site.developerEmail}`}>{site.developerEmail}</a></p>
           </article>
@@ -44,7 +45,7 @@ export default function AboutPage() {
               {site.socialLinks.filter((item) => item.url).map((item) => <a href={item.url} key={item.label} rel="noreferrer" target="_blank">{item.label}</a>)}
               <a href={site.repoUrl} rel="noreferrer" target="_blank">GitHub repository</a>
             </div>
-            <p className="muted-copy">Social profile URLs remain editable in the studio settings so the public about page can be updated without code changes.</p>
+            <p className="muted-copy">Use the share tools on each piece page to send links to buyers, collaborators, or social platforms. Public profile URLs remain editable from the private dashboard.</p>
           </article>
         </div>
       </PageSection>

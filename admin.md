@@ -1,183 +1,85 @@
-# Beaman Woodworks Studio Admin Manual
+# Beaman Woodworks Private Dashboard Manual
 
-This guide covers the private browser dashboard at `/studio`.
+This guide covers the private Woodshop dashboard at `/studio`.
 
-## Studio login
+## Login
 
 - Open `/studio/login`.
 - Use the admin email `woodsmithbb@proton.me`.
 - Use the password stored in `STUDIO_PASSWORD` on the server.
-- A successful login creates a secure session cookie and opens the studio dashboard.
+- A successful login creates a secure session cookie and opens the dashboard.
 
-## What the studio dashboard manages
+## Dashboard areas
 
-### Site settings
+### Settings
 
-The Site Settings editor controls:
-
-- brand copy
-- navigation links
-- homepage featured-piece logic
-- coupon definitions
-- tax and shipping defaults
-- payment workflow settings
-- contact details
-- marketplace and revenue-model text
-- social links
-
-Changes save directly into SQLite and are reflected on the live site after revalidation.
+The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, piece divider names, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
 
 ### Pages
 
-The Pages section can:
+The Pages section can create, edit, publish, archive, or delete page records. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
 
-- edit any existing page record
-- create new page records
-- delete page records
+### Portfolio and shop pieces
 
-This drives built-in pages such as the home, portfolio, shop, journal, commissions, and about pages, along with extra content pages like care and warranty.
+The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, assign media paths, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified.
 
-### Portfolio pieces
+Do not guess piece-to-photo identity. If a piece is not verified, leave media unassigned or keep it marked for review. Scientist Desk media must stay withheld until the correct black phenolic resin top, birds-eye maple rails, and white maple legs photos are verified.
 
-The Pieces section can:
+### Custom work types
 
-- add new draft pieces
-- revise titles, summaries, materials, tags, and lead times
-- assign media paths
-- change publication state
-- set inventory count and price
-- remove pieces
+Custom work types define labels, descriptions, default dimensions, base labor hours, markup defaults, and material option lists. These records support the contact workflow and lead-time/estimate context.
 
-Important note: the application does not guess media identity. If a piece is not yet verified, leave the media unassigned or mark that requirement clearly in `metadata`.
+### People
 
-### Journal posts
+The People section can update admin, woodworker, customer, developer, and public profile records. It is the current foundation for future multi-woodworker support, public profile cards, and role-aware dashboard behavior.
 
-The Posts section supports:
+### Process notes
 
-- new draft posts
-- markdown body editing
-- cover media assignment
-- publication control
-- source links for “Highlights from the Web”
-
-### Commission types
-
-Commission types define:
-
-- buyer-facing labels and descriptions
-- default dimensions
-- base labor hours
-- markup defaults
-- material option lists
-
-These records drive the commission form and the estimator defaults.
-
-### Profiles and users
-
-The Users section can create or update:
-
-- admin accounts
-- woodworker profiles
-- public profile cards for the About page
-- hidden buyer accounts created from signup
-
-Use this section when adding additional woodworkers to the platform.
+Process notes replace the old Journal surface. The editor supports title, excerpt, markdown body, publication state, cover media, tags, and source-credit links for outside references or inspiration.
 
 ### Media library
 
-The media section now supports browser-side operations against the shared `pics/` library:
+The media section operates against the shared `pics/` library:
 
-- upload new files
-- assign uploaded media to a piece, post, page, or project
+- upload files into a selected folder
+- filter all indexed media, not only recent files
+- assign media to a piece, process note, page, or project
 - rename files in place
-- edit media metadata JSON
+- edit alt text, tags, focal X/Y, zoom, and reviewed status
 - delete files
-- refresh the indexed media library
+- refresh the indexed library
 
-The dashboard stores media metadata in SQLite and writes file changes to the mounted `pics/` path. On Synology, that mount must remain writable.
+Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering.
 
 ### Projects
 
-Each project record can be updated with:
-
-- status
-- stage
-- public notes
-- internal notes
-- lead time
-- estimate data
-- timeline messages
-- public or private visibility on each timeline entry
-
-Buyer access to `/requests/[reference]` now requires either:
-
-- a matching signed-in account, or
-- the buyer email used for the project
-
-This is the current protection for the public project tracker.
+Projects can be updated with status, stage, public notes, internal notes, lead time, and timeline entries. Buyer access to `/requests/[reference]` requires either an admin session, a matching signed-in account, or the buyer email used for the project.
 
 ### Orders
 
-Orders can be reviewed and edited from the dashboard. When the relevant providers are configured, the dashboard can also:
-
-- create Stripe invoices
-- request EasyPost shipping labels
-- store tracking numbers and shipping state
+Orders can be reviewed and updated from the dashboard. When providers are configured, the dashboard can create Stripe invoices, request EasyPost shipping labels, store tracking numbers, and update payment/shipping state.
 
 ### Reviews
 
-New buyer reviews are created as draft records. The studio dashboard is where they should be reviewed and either:
-
-- published
-- kept as draft
-- removed
+Reviews are moderated from the dashboard. They can remain draft, be published, or be removed.
 
 ### Notifications
 
-Every password reset, project update, and commission email queues a notification record. The Notifications section shows:
+Password resets, project updates, contact requests, and commerce emails queue notification records. If SMTP is missing, notifications stay in the database and show the send failure instead of pretending delivery succeeded.
 
-- current status
-- recipient
-- subject
-- body
-- send errors, if any
+## Buyer-facing workflow
 
-## Buyer-facing workflow notes
+### Custom work contact
 
-### Commission intake
-
-The commission form collects:
-
-- contact details
-- location
-- budget
-- material selection
-- dimensions
-- project brief
-- attachments
-- optional visualization inclusion
-- estimated total and lead-time data from the live estimator
+The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, and a written brief. It creates a private project record and redirects the buyer to a reference page.
 
 ### Shop checkout
 
-The cart calculates:
-
-- subtotal
-- coupon discount
-- shipping estimate
-- tax estimate
-- total
-
-If Stripe is configured, the app creates a hosted Checkout Session. If Stripe is not configured, the cart stops at a configuration-needed state.
+The cart calculates subtotal, coupon discount, tax estimate, shipping estimate, and total. If Stripe is configured, the app creates a hosted Checkout Session. If Stripe is not configured, checkout stops at a configuration-needed state.
 
 ### Buyer project lookup
 
-Buyers can use:
-
-- `/commissions/status`
-- `/requests/[reference]?email=buyer@example.com`
-
-The dedicated request page is meant to be shared only with the buyer and trusted collaborators.
+Buyers can use `/commissions/status` or `/requests/[reference]?email=buyer@example.com`. Reference links should be shared only with the buyer and trusted collaborators.
 
 ## Environment-dependent services
 
@@ -187,48 +89,29 @@ These features require server configuration before they work live:
 - Stripe checkout and invoices: `STRIPE_*`
 - EasyPost labels: `EASYPOST_API_KEY` and `SHIP_FROM_*`
 
-If SMTP is missing, notifications still queue in the database but do not send.
-
 ## Recommended operating routine
 
 1. Open `/studio`.
-2. Review queued notifications and active project count.
-3. Update buyer-facing statuses and lead times.
-4. Keep published pieces and inventory counts current.
-5. Moderate new reviews.
-6. Keep media assignments accurate before publishing new content.
-7. Use the Orders section for invoice or shipment operations when providers are configured.
+2. Review active project count, queued notifications, and order status.
+3. Update buyer-facing project stages and lead times.
+4. Keep portfolio categories, inventory counts, asking prices, and fulfillment options current.
+5. Review and assign media before publishing pieces.
+6. Publish process notes only when source credits, media, and wording are ready.
+7. Moderate new reviews.
 
 ## Troubleshooting
 
 ### The site sent no email
 
-Check:
-
-- `SMTP_HOST`
-- `SMTP_PORT`
-- `SMTP_SECURE`
-- `SMTP_USER`
-- `SMTP_PASSWORD`
-
-Then review the Notifications section for a queued or failed status.
+Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASSWORD`, then review the Notifications section for queued or failed records.
 
 ### Checkout did not open Stripe
 
-Check:
-
-- `STRIPE_SECRET_KEY`
-- `STRIPE_PUBLISHABLE_KEY`
-- `SITE_URL`
-- `NEXT_PUBLIC_SITE_URL`
+Check `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `SITE_URL`, and `NEXT_PUBLIC_SITE_URL`.
 
 ### Shipping labels fail
 
-Check:
-
-- `EASYPOST_API_KEY`
-- `SHIP_FROM_*`
-- the order shipping address fields
+Check `EASYPOST_API_KEY`, all `SHIP_FROM_*` values, and the order shipping address fields.
 
 ### Media uploads fail on Synology
 

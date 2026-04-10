@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".bmp"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
+const IGNORED_MEDIA_FILE_NAMES = new Set(["synoindex_media_info", ".ds_store", "thumbs.db"]);
 
 export type MediaKind = "image" | "video" | "other";
 
@@ -60,6 +61,11 @@ export function detectMediaKind(fileName: string): MediaKind {
   return "other";
 }
 
+function shouldIgnoreMediaEntry(name: string) {
+  const normalized = name.toLowerCase();
+  return IGNORED_MEDIA_FILE_NAMES.has(normalized) || normalized.startsWith("._");
+}
+
 function deriveDatePrefix(fileName: string) {
   const patterns = [
     /^(?:IMG|PXL)_(\d{8})/i,
@@ -99,6 +105,10 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
   const entries = readdirSync(directory, { withFileTypes: true });
 
   for (const entry of entries) {
+    if (shouldIgnoreMediaEntry(entry.name)) {
+      continue;
+    }
+
     const absolutePath = path.join(directory, entry.name);
 
     if (entry.isDirectory()) {

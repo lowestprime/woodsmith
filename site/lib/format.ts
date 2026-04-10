@@ -37,6 +37,14 @@ export function formatLeadTime(days: number | null | undefined) {
   return `${weeks} week${weeks === 1 ? "" : "s"}`;
 }
 
+export function formatDimensions(value: { width: number; depth: number; height: number; unit: string } | null | undefined) {
+  if (!value) {
+    return "Sized during review";
+  }
+
+  return `${value.width} × ${value.depth} × ${value.height} ${value.unit}`;
+}
+
 export function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }

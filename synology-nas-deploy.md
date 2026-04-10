@@ -8,7 +8,7 @@ Deploy Beaman Woodworks from `/volume2/docker_ssd/woodsmith/` so that:
 - Synology Reverse Proxy terminates public HTTPS
 - SQLite persists in `site/data/`
 - Next.js image cache persists in `cache/next-image/`
-- the shared `pics/` library is writable from the studio dashboard
+- the shared `pics/` library is writable from the private Woodshop dashboard
 - password reset links, share links, and Stripe redirects use the public site URL
 
 ## Runtime layout
@@ -55,7 +55,7 @@ STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
 
-Optional services:
+Optional live services:
 
 ```dotenv
 STRIPE_SECRET_KEY=
@@ -84,7 +84,7 @@ SHIP_FROM_COUNTRY=US
 - `/volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache`
 - loopback-only port binding on `127.0.0.1:3002`
 
-The `pics/` mount is intentionally read-write now. The studio dashboard can upload, rename, and delete media directly inside that library.
+The `pics/` mount is intentionally read-write. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not change the mount back to read-only unless media management is intentionally disabled.
 
 ## Build from WSL or another Docker host
 
@@ -156,9 +156,14 @@ curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 
 ```bash
 curl -I http://127.0.0.1:3002/
+curl -I http://127.0.0.1:3002/portfolio
+curl -I http://127.0.0.1:3002/shop
+curl -I http://127.0.0.1:3002/process
 curl -I http://127.0.0.1:3002/commissions
 curl -I http://127.0.0.1:3002/studio/login
 ```
+
+`/journal` and `/journal/[slug]` should redirect to the Process routes.
 
 ### Logs
 
@@ -168,7 +173,7 @@ docker compose -f docker-compose.synology.yml logs --tail=200 woodsmith
 
 ## Backup guidance
 
-Because the studio can now mutate the shared media library, back up these paths together:
+Because the dashboard can mutate the shared media library, back up these paths together:
 
 - `site/data/`
 - `pics/`
@@ -180,4 +185,5 @@ A SQLite backup without the matching media tree is no longer sufficient for full
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- The build will fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.
+- The public custom work page is contact-first; the older SVG visualizer is not a photorealistic 3D renderer.
+- The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

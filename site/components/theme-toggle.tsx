@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 
 type ThemeMode = "light" | "dark";
 
@@ -8,17 +8,32 @@ function applyTheme(nextTheme: ThemeMode) {
   document.documentElement.dataset.theme = nextTheme;
   document.cookie = `beaman-theme=${nextTheme}; path=/; max-age=31536000; samesite=lax`;
   window.localStorage.setItem("beaman-theme", nextTheme);
+  window.dispatchEvent(new Event("beaman-theme-change"));
+}
+
+function getThemeSnapshot(): ThemeMode {
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+
+  return window.localStorage.getItem("beaman-theme") === "light" ? "light" : "dark";
+}
+
+function subscribeTheme(listener: () => void) {
+  window.addEventListener("storage", listener);
+  window.addEventListener("beaman-theme-change", listener);
+  return () => {
+    window.removeEventListener("storage", listener);
+    window.removeEventListener("beaman-theme-change", listener);
+  };
 }
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<ThemeMode>("dark");
+  const theme = useSyncExternalStore<ThemeMode>(subscribeTheme, getThemeSnapshot, () => "dark");
 
   useEffect(() => {
-    const stored = window.localStorage.getItem("beaman-theme");
-    const nextTheme = stored === "light" ? "light" : "dark";
-    setTheme(nextTheme);
-    applyTheme(nextTheme);
-  }, []);
+    applyTheme(theme);
+  }, [theme]);
 
   return (
     <button
@@ -26,14 +41,19 @@ export function ThemeToggle() {
       className="theme-toggle"
       onClick={() => {
         const nextTheme = theme === "dark" ? "light" : "dark";
-        setTheme(nextTheme);
         applyTheme(nextTheme);
       }}
       type="button"
     >
-      <span className="theme-toggle-track" />
+      <span className="theme-toggle-copy">
+        <strong>{theme === "dark" ? "Night" : "Day"}</strong>
+        <span>{theme === "dark" ? "OLED black" : "Maple light"}</span>
+      </span>
+      <span className="theme-toggle-track">
+        <span className="theme-toggle-track-label theme-toggle-track-label-left">Night</span>
+        <span className="theme-toggle-track-label theme-toggle-track-label-right">Day</span>
+      </span>
       <span className="theme-toggle-thumb" data-theme={theme} />
-      <span className="theme-toggle-label">{theme === "dark" ? "Night" : "Day"}</span>
     </button>
   );
 }

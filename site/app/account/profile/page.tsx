@@ -11,7 +11,7 @@ export default async function ProfilePage() {
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Account" title="Profile & projects" copy="Manage account details, keep project references close, and review order or commission status from the same dashboard." />
+        <PageIntro eyebrow="Account" title="Profile & projects" copy="Manage account details, keep project references close, and review order or custom work status from the same dashboard." />
         <div className="account-layout">
           <ProfileForm user={user} />
           <div className="studio-panel">
@@ -19,7 +19,7 @@ export default async function ProfilePage() {
             <div className="project-listing">
               {projects.length > 0 ? projects.map((project) => <ProjectOverviewCard key={project.reference} project={project} />) : <p className="muted-copy">No projects are currently linked to this account.</p>}
             </div>
-            <p className="muted-copy"><Link href="/commissions">Start a new commission</Link> or <Link href="/shop">review available work</Link>.</p>
+            <p className="muted-copy"><Link href="/commissions">Start a new custom work request</Link> or <Link href="/shop">review available work</Link>.</p>
           </div>
         </div>
       </PageSection>

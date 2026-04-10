@@ -15,6 +15,12 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
 
   const activeItem = useMemo(() => (activeIndex == null ? null : items[activeIndex] ?? null), [activeIndex, items]);
 
+  function openPreview(index: number | null) {
+    setActiveIndex(index);
+    setZoom(1);
+    setOffset({ x: 0, y: 0 });
+  }
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -24,9 +30,13 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
       }
       if (event.key === "ArrowRight" && activeIndex != null) {
         setActiveIndex((activeIndex + 1) % items.length);
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
       }
       if (event.key === "ArrowLeft" && activeIndex != null) {
         setActiveIndex((activeIndex - 1 + items.length) % items.length);
+        setZoom(1);
+        setOffset({ x: 0, y: 0 });
       }
     }
 
@@ -34,16 +44,11 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [activeIndex, items.length]);
 
-  useEffect(() => {
-    setZoom(1);
-    setOffset({ x: 0, y: 0 });
-  }, [activeIndex]);
-
   return (
     <>
       <div className={className}>
         {items.map((item, index) => (
-          <button className="media-card" key={`${item.src}-${index}`} onClick={() => setActiveIndex(index)} type="button">
+          <button className="media-card" key={`${item.src}-${index}`} onClick={() => openPreview(index)} type="button">
             {item.kind === "video" ? (
               <video className="media-card-image" muted playsInline preload="metadata" src={item.src} />
             ) : (
@@ -54,8 +59,8 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
       </div>
 
       {activeItem ? (
-        <div className="lightbox-shell" onClick={() => setActiveIndex(null)} role="presentation">
-          <button aria-label="Close image preview" className="lightbox-close" onClick={() => setActiveIndex(null)} type="button">X</button>
+        <div className="lightbox-shell" onClick={() => openPreview(null)} role="presentation">
+          <button aria-label="Close image preview" className="lightbox-close" onClick={() => openPreview(null)} type="button">X</button>
           <div className="lightbox-toolbar">
             <button onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.max(1, value - 0.25)); }} type="button">-</button>
             <button onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.min(4, value + 0.25)); }} type="button">+</button>

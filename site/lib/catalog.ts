@@ -1,0 +1,69 @@
+import type { PieceRecord } from "@/lib/db";
+
+export const portfolioCategories = [
+  { key: "all", label: "All pieces" },
+  { key: "tables", label: "Tables" },
+  { key: "benches", label: "Benches" },
+  { key: "stepstools", label: "Stepstools" },
+  { key: "cabinets", label: "Cabinets" },
+  { key: "objects", label: "Objects" }
+] as const;
+
+export type PortfolioCategoryKey = (typeof portfolioCategories)[number]["key"];
+
+export function normalizePortfolioCategory(value: string | null | undefined): PortfolioCategoryKey {
+  const normalized = (value || "").toLowerCase().trim();
+
+  if (normalized.includes("bench")) {
+    return "benches";
+  }
+
+  if (normalized.includes("step") || normalized.includes("stool")) {
+    return "stepstools";
+  }
+
+  if (normalized.includes("cabinet") || normalized.includes("rack")) {
+    return "cabinets";
+  }
+
+  if (normalized.includes("table") || normalized.includes("desk")) {
+    return "tables";
+  }
+
+  if (normalized.includes("tray") || normalized.includes("object")) {
+    return "objects";
+  }
+
+  return "all";
+}
+
+export function getPiecePortfolioCategory(piece: Pick<PieceRecord, "category">): PortfolioCategoryKey {
+  return normalizePortfolioCategory(piece.category);
+}
+
+export function getDisplayMediaPaths(piece: Pick<PieceRecord, "mediaPaths" | "metadata" | "status">) {
+  const preferredLimit = Number(piece.metadata?.publicMediaLimit ?? (piece.status === "inventory" ? 5 : 4));
+  const safeLimit = Number.isFinite(preferredLimit) ? Math.max(1, Math.min(12, Math.round(preferredLimit))) : 4;
+  return piece.mediaPaths.slice(0, safeLimit);
+}
+
+export function hasVerifiedMedia(piece: Pick<PieceRecord, "mediaPaths" | "metadata">) {
+  if (piece.mediaPaths.length === 0) {
+    return false;
+  }
+
+  return piece.metadata?.verifiedMedia !== false;
+}
+
+export function getFulfillmentOptions(piece: Pick<PieceRecord, "metadata" | "status">) {
+  const stored = piece.metadata?.fulfillmentOptions;
+  if (Array.isArray(stored)) {
+    return stored.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+  }
+
+  if (piece.status === "inventory") {
+    return ["Pickup", "Delivery review", "Shipment review"];
+  }
+
+  return ["Built to order", "Pickup or delivery planned during review"];
+}

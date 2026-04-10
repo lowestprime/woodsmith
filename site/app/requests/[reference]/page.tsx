@@ -31,7 +31,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
             <div>
               <p className="eyebrow">Reference {project.reference}</p>
               <h1>Confirm buyer email</h1>
-              <p className="lede">Enter the same email used during commission intake or checkout to open this project tracker.</p>
+              <p className="lede">Enter the same email used during the custom work request or checkout to open this project tracker.</p>
             </div>
           </div>
           {flags.created ? <p className="notice-panel">The project was created successfully. Enter the buyer email used on the form to open the tracker.</p> : null}

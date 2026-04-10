@@ -82,7 +82,7 @@ export const pieceDividerNames = [
 
 export const siteSettingsSeed = {
   brandName: "Beaman Woodworks",
-  brandTagline: "Custom furniture, cabinetry, and small-batch pieces built in wood.",
+  brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop.",
   supportEmail: "woodsmithbb@proton.me",
   builderEmail: "woodsmithbb@proton.me",
   builderName: "William Beaman",
@@ -101,14 +101,13 @@ export const siteSettingsSeed = {
     { label: "Workshop", href: "/" },
     { label: "Portfolio", href: "/portfolio" },
     { label: "Shop", href: "/shop" },
-    { label: "Journal", href: "/journal" },
-    { label: "Commissions", href: "/commissions" },
+    { label: "Process", href: "/shop#process" },
     { label: "About", href: "/about" },
     { label: "Search", href: "/search" }
   ],
   homepageFeaturedMode: "manual",
   homepageFeaturedPieceSlugs: ["hallway-bench", "pastry-table", "pantry-cabinets", "footstool"],
-  siteAnnouncement: "Studio calendar open for furniture, cabinetry, and room-specific commissions.",
+  siteAnnouncement: "Lead times reflect the active build queue. Available work can be reserved online, and custom work starts with a direct contact request.",
   themeDefault: "dark",
   cartCurrency: "usd",
   cartTaxMode: "local",
@@ -116,7 +115,7 @@ export const siteSettingsSeed = {
   shippingBaseCents: 9500,
   shippingPerItemCents: 2200,
   couponCodes: [
-    { code: "STUDIO10", label: "Studio introduction", percentOff: 10, active: true }
+    { code: "WOODSHOP10", label: "Opening offer", percentOff: 10, active: true }
   ],
   checkout: {
     provider: "stripe",
@@ -129,7 +128,7 @@ export const siteSettingsSeed = {
   marketplace: {
     readyForMultipleWoodworkers: true,
     revenueModelTitle: "Built for independent woodworkers",
-    revenueModelBody: "Default platform settings preserve direct ownership of the work. The seeded model assumes no listing fee, a 6% completed-sale platform fee, and pass-through payment processor costs. Every rate is editable in the studio settings so the platform can stay fair as additional woodworkers join."
+    revenueModelBody: "Default platform settings preserve direct ownership of the work. The seeded model assumes no listing fee, a 6% completed-sale platform fee, and pass-through payment processor costs. Every rate is editable in dashboard settings so the platform can stay fair as additional woodworkers join."
   },
   email: {
     fromName: "Beaman Woodworks",
@@ -141,22 +140,22 @@ export const siteSettingsSeed = {
     {
       key: "hero",
       eyebrow: "Beaman Woodworks",
-      title: "Furniture, cabinetry, and custom commissions built to fit real rooms and daily use.",
-      copy: "The site combines portfolio, journal, shop, and project tracking so buyers can review finished work, reserve available pieces, and follow a commission from first measurements through delivery.",
+      title: "Tables, cabinetry, benches, and smaller household pieces made for steady daily use.",
+      copy: "Review finished work, reserve available pieces, and ask about custom builds from the same self-hosted woodshop site.",
       primaryCta: { label: "View Portfolio", href: "/portfolio" },
-      secondaryCta: { label: "Start a Commission", href: "/commissions" }
+      secondaryCta: { label: "Shop Current Work", href: "/shop" }
     },
     {
       key: "services",
-      eyebrow: "What the studio builds",
-      title: "Casework, work tables, seating, small furniture, and room-specific commissions.",
-      copy: "Every project starts with use, dimensions, and material choices. The public pages remain concise; the studio dashboard and buyer account pages carry the details needed to keep work moving."
+      eyebrow: "What William builds",
+      title: "Cabinetry, work tables, benches, smaller pieces, and room-specific custom work.",
+      copy: "Portfolio pages stay selective, verified, and practical. The shop carries available work, while custom requests begin with a direct contact brief instead of a generic template."
     },
     {
       key: "bandwidth",
       eyebrow: "Current bandwidth",
-      title: "Lead time updates stay tied to the live project queue.",
-      copy: "The availability bar and lead-time estimate update from active projects, projected bench hours, and open inventory so buyers see the current workload before they submit a brief."
+      title: "Lead time updates follow the live build queue.",
+      copy: "Capacity, work in progress, and lead-time guidance update from active projects so buyers can see the current workload before reaching out."
     }
   ]
 } as const;
@@ -169,10 +168,10 @@ export const seedPieces: SeedPiece[] = [
     slug: "hallway-bench",
     title: "Hallway Bench",
     subtitle: "Entry bench with exposed joinery and a low stance",
-    category: "Seating",
+    category: "Benches",
     status: "commission",
     publicationStatus: "published",
-    availabilityLabel: "Commission from this pattern",
+    availabilityLabel: "Built to order",
     summary: "A low entry bench built with a long horizon line, visible joinery, and proportions that keep the piece useful without crowding the room.",
     story: "The bench was developed as an entry piece that reads clearly from across the room and remains comfortable when used every day for shoes, bags, and short waits by the door.",
     details: [
@@ -188,22 +187,22 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 84,
     mediaPaths: [furniture("DSC_0051.JPG"), furniture("DSC_0052.JPG"), furniture("DSC_0053.JPG")],
     featuredRank: 1,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 3 }
   },
   {
     slug: "end-table",
     title: "End Table",
     subtitle: "Compact occasional table for bedside or reading chair placement",
-    category: "Occasional furniture",
+    category: "Tables",
     status: "inventory",
     publicationStatus: "published",
-    availabilityLabel: "Reserve current piece",
-    summary: "A compact table with a broad top, a quiet apron line, and enough surface for a lamp, books, or a cup beside a chair.",
+    availabilityLabel: "Available now",
+    summary: "A compact table with a broad top, a simple apron line, and enough surface for a lamp, books, or a cup beside a chair.",
     story: "The table was built as a versatile room piece that can work at bedside, beside a sofa, or as part of a pair. The proportions stay direct and the silhouette avoids excess weight.",
     details: [
       "Suitable for single-piece purchase or mirrored pairs.",
       "Can be resized into a side table set.",
-      "Current inventory includes finish confirmation before delivery."
+      "Shop purchases include finish confirmation before delivery."
     ],
     tags: ["table", "end table", "inventory"],
     materials: ["Hardwood", "Hand-rubbed finish"],
@@ -213,16 +212,16 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 21,
     mediaPaths: [furniture("IMG_20200628_153839.jpg"), furniture("IMG_20200628_153747.jpg"), furniture("IMG_20200621_172630.jpg")],
     featuredRank: 2,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 3, fulfillmentOptions: ["Pickup", "Local delivery", "Shipment review"] }
   },
   {
     slug: "scientists-desk",
     title: "Scientists Desk",
     subtitle: "Writing desk with black phenolic resin top and maple base",
-    category: "Writing furniture",
+    category: "Tables",
     status: "commission",
     publicationStatus: "published",
-    availabilityLabel: "Commission build",
+    availabilityLabel: "Built to order",
     summary: "A writing desk designed around a black phenolic resin top, bird's-eye maple rails, and white maple legs.",
     story: "The design prioritizes a durable work surface, a bright maple base, and a straightforward profile suited to writing, instruments, and compact task work.",
     details: [
@@ -238,7 +237,7 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 98,
     mediaPaths: [],
     featuredRank: 6,
-    metadata: { verifiedMedia: false, mediaReviewRequired: true }
+    metadata: { verifiedMedia: false, mediaReviewRequired: true, publicMediaLimit: 1 }
   },
   {
     slug: "pantry-cabinets",
@@ -247,7 +246,7 @@ export const seedPieces: SeedPiece[] = [
     category: "Cabinetry",
     status: "commission",
     publicationStatus: "published",
-    availabilityLabel: "Cabinet project intake open",
+    availabilityLabel: "Room-sized custom work",
     summary: "Wall and base cabinets designed around real storage habits, appliance clearances, and the dimensions of the room.",
     story: "The pantry project focuses on durable storage and calm proportions. Interior use drives the layout first, then door fronts, hardware, and finish decisions follow from the plan.",
     details: [
@@ -263,16 +262,16 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 112,
     mediaPaths: [cabinets("PXL_20240624_021031088.jpg"), cabinets("PXL_20240624_021024485.jpg"), cabinets("PXL_20240624_021020003.jpg"), cabinets("PXL_20240624_020957542.jpg")],
     featuredRank: 3,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 4 }
   },
   {
     slug: "pastry-table",
     title: "Pastry Table",
     subtitle: "Stone-topped prep table with open shelf storage",
-    category: "Work table",
+    category: "Tables",
     status: "inventory",
     publicationStatus: "published",
-    availabilityLabel: "Reserve or request a variation",
+    availabilityLabel: "Available now",
     summary: "A pastry table built around a stone top, direct bracing, and open shelf space for daily kitchen prep.",
     story: "The table keeps the base lean so the stone remains the visual anchor. It works as a dedicated prep surface and still reads cleanly when left empty.",
     details: [
@@ -288,16 +287,16 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 28,
     mediaPaths: [furniture("PXL_20250302_223145008.jpg"), furniture("PXL_20250302_223155446.jpg"), furniture("PXL_20250222_201547090.jpg")],
     featuredRank: 4,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 4, fulfillmentOptions: ["Pickup", "Local delivery", "Freight shipment"] }
   },
   {
     slug: "footstool",
     title: "Footstool",
     subtitle: "Low stool for extra seating, bedside use, or an entry perch",
-    category: "Small furniture",
+    category: "Stepstools",
     status: "inventory",
     publicationStatus: "published",
-    availabilityLabel: "Reserve recent build",
+    availabilityLabel: "Available now",
     summary: "A compact stool with shaped sides and enough structure to work as a footrest, spare seat, or low stand.",
     story: "The stool is sized to move from room to room without losing presence. It keeps the footprint modest while remaining strong enough for daily use.",
     details: [
@@ -313,7 +312,7 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 14,
     mediaPaths: [furniture("PXL_20260321_195141872.jpg"), furniture("PXL_20260319_000709864.jpg"), furniture("PXL_20260319_000724223.jpg")],
     featuredRank: 5,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 3, fulfillmentOptions: ["Pickup", "Local delivery", "Shipment review"] }
   },
   {
     slug: "serving-tray",
@@ -322,9 +321,9 @@ export const seedPieces: SeedPiece[] = [
     category: "Objects",
     status: "inventory",
     publicationStatus: "published",
-    availabilityLabel: "Small-batch inquiry",
+    availabilityLabel: "Available by request",
     summary: "A serving tray with soft edges and durable finish work, suited to daily table use rather than display only.",
-    story: "Smaller objects help buyers see the studio's handling and finish decisions up close. The tray offers a lower-cost point of entry without treating the object as secondary.",
+    story: "Smaller objects help buyers see the woodshop's handling and finish decisions up close. The tray offers a lower-cost point of entry without treating the object as secondary.",
     details: [
       "Produced in small runs between larger commissions.",
       "Good fit for breakfast service, desk storage, or table presentation.",
@@ -338,7 +337,57 @@ export const seedPieces: SeedPiece[] = [
     leadTimeDays: 10,
     mediaPaths: [furniture("IMG_20210420_175507.jpg"), furniture("IMG_20210420_175450.jpg"), furniture("IMG_20210420_175427.jpg")],
     featuredRank: 7,
-    metadata: { verifiedMedia: true }
+    metadata: { verifiedMedia: true, publicMediaLimit: 3, fulfillmentOptions: ["Pickup", "Shipment review"] }
+  },
+  {
+    slug: "dining-room-table",
+    title: "Dining Room Table",
+    subtitle: "Room-sized table planned around seating count, circulation, and wear",
+    category: "Tables",
+    status: "commission",
+    publicationStatus: "published",
+    availabilityLabel: "Built to order",
+    summary: "A dining table planned around room size, chair count, and the way the household actually uses the surface every day.",
+    story: "Dining tables are quoted from the room outward. Seating count, leg placement, circulation, and finish wear all change the final dimensions, so the piece is treated as a custom build rather than a fixed stock item.",
+    details: [
+      "Sized around the room rather than a catalog dimension.",
+      "Joinery, top thickness, and finish schedule are settled during review.",
+      "Photography is still being assembled before a public image set is released."
+    ],
+    tags: ["dining table", "table", "custom", "commission"],
+    materials: ["White Oak", "Walnut", "Cherry", "Hard Maple"],
+    dimensions: { width: 84, depth: 40, height: 30, unit: "in" },
+    priceCents: null,
+    inventoryCount: 0,
+    leadTimeDays: 112,
+    mediaPaths: [],
+    featuredRank: 8,
+    metadata: { verifiedMedia: false, mediaReviewRequired: true, publicMediaLimit: 1 }
+  },
+  {
+    slug: "spice-rack",
+    title: "Spice Rack",
+    subtitle: "Wall or counter storage planned around the jars and tools already in use",
+    category: "Cabinets",
+    status: "commission",
+    publicationStatus: "published",
+    availabilityLabel: "Built to order",
+    summary: "A compact spice rack sized around real jars, reachable shelf spacing, and the wall or counter where it will live.",
+    story: "Smaller storage pieces still start with use. Shelf spacing, wall clearances, and the number of jars on hand matter more than treating the rack as a decorative afterthought.",
+    details: [
+      "Can be wall-mounted or made to sit on the counter.",
+      "Shelf spacing and mounting details are reviewed before the build begins.",
+      "Public photography will be added after media for this piece is verified."
+    ],
+    tags: ["spice rack", "storage", "kitchen", "custom"],
+    materials: ["Maple", "Cherry", "White Oak"],
+    dimensions: { width: 20, depth: 4, height: 18, unit: "in" },
+    priceCents: null,
+    inventoryCount: 0,
+    leadTimeDays: 35,
+    mediaPaths: [],
+    featuredRank: 9,
+    metadata: { verifiedMedia: false, mediaReviewRequired: true, publicMediaLimit: 1 }
   }
 ];
 
@@ -426,7 +475,7 @@ export const seedCommissionTypes: SeedCommissionType[] = [
   {
     slug: "other-custom-work",
     label: "Other Custom Work",
-    description: "Use the visualizer and brief form for custom work outside the listed templates.",
+    description: "Use the contact form for custom work outside the listed categories.",
     baseLaborHours: 36,
     baseMarkupPercent: 20,
     materialOptions: ["White Oak", "Walnut", "Cherry", "Maple"],
@@ -451,7 +500,7 @@ export const seedPosts: SeedPost[] = [
     slug: "why-cabinet-interiors-matter",
     title: "Why Cabinet Interiors Matter",
     excerpt: "Good cabinetry is judged every time a shelf is used, not only when the doors are closed.",
-    body: `Cabinet fronts draw the first photograph, but the inside of the casework determines whether the project succeeds in daily use. Shelf spacing, door swing, pull-out access, and the way jars or trays are actually stored matter more than a decorative gesture.\n\nThat is why cabinetry commissions in the studio begin with habits and measurements. The plan starts with what needs to be stored, what needs to stay visible, and what needs to clear nearby appliances.\n\nOnce the inside works cleanly, the exterior can remain quiet and durable.`,
+    body: `Cabinet fronts draw the first photograph, but the inside of the casework determines whether the project succeeds in daily use. Shelf spacing, door swing, pull-out access, and the way jars or trays are actually stored matter more than a decorative gesture.\n\nThat is why custom cabinetry requests begin with habits and measurements. The plan starts with what needs to be stored, what needs to stay visible, and what needs to clear nearby appliances.\n\nOnce the inside works cleanly, the exterior can remain simple and durable.`,
     publicationStatus: "published",
     publishedAt: "2026-03-12T08:00:00.000Z",
     authorEmail: "woodsmithbb@proton.me",
@@ -462,7 +511,7 @@ export const seedPosts: SeedPost[] = [
     slug: "small-furniture-holds-a-room",
     title: "Small Furniture Holds a Room",
     excerpt: "Compact pieces often carry the rhythm of a room more clearly than the largest item in it.",
-    body: `Large furniture defines function. Smaller pieces often define the rhythm of the room. A stool, side table, or tray is handled more often, moved more often, and seen at the edge of everyday activity.\n\nThat makes scale and finish decisions more exposed. When a compact piece is right, it quietly improves the entire room without demanding attention.\n\nSome of the studio's most durable ideas begin in these smaller builds, where proportions and handling can be judged without distraction.`,
+    body: `Large furniture defines function. Smaller pieces often define the rhythm of the room. A stool, side table, or tray is handled more often, moved more often, and seen at the edge of everyday activity.\n\nThat makes scale and finish decisions more exposed. When a compact piece is right, it improves the room without taking over.\n\nSome of the woodshop's most durable ideas begin in these smaller builds, where proportions and handling can be judged without distraction.`,
     publicationStatus: "published",
     publishedAt: "2026-03-04T08:00:00.000Z",
     authorEmail: "woodsmithbb@proton.me",
@@ -487,11 +536,11 @@ export const seedPosts: SeedPost[] = [
 export const seedPages: SeedPage[] = [
   {
     slug: "home",
-    title: "The Workshop",
+    title: "Workshop",
     navLabel: "Workshop",
     status: "published",
-    intro: "Portfolio, available work, project tracking, and commission planning in one place.",
-    body: "The home page combines featured pieces, current studio bandwidth, and buyer pathways for shop orders or custom work.",
+    intro: "Finished work, available pieces, current lead time, and a direct path to ask about custom builds.",
+    body: "The home page combines featured pieces, queue status, and the clearest next step for buyers: review the portfolio, shop available work, or send a direct inquiry.",
     layout: "editorial-oled",
     heroMediaPath: furniture("DSC_0051.JPG"),
     sections: []
@@ -501,39 +550,49 @@ export const seedPages: SeedPage[] = [
     title: "Portfolio",
     navLabel: "Portfolio",
     status: "published",
-    intro: "Past pieces and current build patterns.",
-    body: "Each piece page pairs verified media, material details, and the right next step: reserve the current build or use the piece as the basis for a commission.",
+    intro: "Past pieces grouped by type, with verified photography and practical build notes.",
+    body: "Each public piece page keeps the photography selective and accurate. Portfolio pages describe the work, materials, and availability without turning every piece into a checkout page.",
     layout: "gallery",
     sections: []
   },
   {
     slug: "shop",
-    title: "The Piece Ledger",
+    title: "Shop",
     navLabel: "Shop",
     status: "published",
-    intro: "Available work with cart, checkout, shipping, and invoice support.",
-    body: "Inventory counts, prices, coupon handling, and order status are managed in the studio dashboard and reflected live on the public shop page.",
+    intro: "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop.",
+    body: "Inventory counts, asking prices, pickup or shipping options, and order status are managed from the private dashboard and reflected live on the public shop page.",
     layout: "ledger",
     sections: []
   },
   {
-    slug: "journal",
-    title: "Shop Talk",
-    navLabel: "Journal",
+    slug: "process",
+    title: "Process",
+    navLabel: "Process",
     status: "published",
-    intro: "Process notes, material observations, and curated links worth keeping close to the bench.",
-    body: "Posts can be written directly in the studio with markdown preview, inline images, and optional external source links for the web highlights section.",
-    layout: "journal",
+    intro: "Behind-the-scenes notes, material observations, and selected outside references.",
+    body: "Process writing and outside references live beside the shop so buyers can move from finished work to the making process without switching systems.",
+    layout: "process",
+    sections: []
+  },
+  {
+    slug: "journal",
+    title: "Process",
+    navLabel: "Process",
+    status: "draft",
+    intro: "Legacy route retained for redirects.",
+    body: "Journal content now lives under Process and is surfaced from the shop.",
+    layout: "redirect",
     sections: []
   },
   {
     slug: "commissions",
-    title: "Commission Flow & Visualizer",
-    navLabel: "Commissions",
+    title: "Custom Work Contact",
+    navLabel: "Custom Work",
     status: "published",
-    intro: "Configure a custom build, see a to-scale preview, and submit a commission brief with budget and schedule details.",
-    body: "The commission page combines the visualizer, cost estimator, material selection, buyer uploads, and project intake form in one workflow.",
-    layout: "visualizer",
+    intro: "Custom work now starts with a direct contact request instead of a fixed public template.",
+    body: "The private workflow still supports estimates, build notes, lead-time tracking, and visualization, but the public entry point is a simpler contact-first intake.",
+    layout: "contact",
     sections: []
   },
   {
@@ -541,7 +600,7 @@ export const seedPages: SeedPage[] = [
     title: "About & Contact",
     navLabel: "About",
     status: "published",
-    intro: "Master builder and developer profiles, contact routes, and the studio story.",
+    intro: "Master builder and developer profiles, business contact information, and the story behind the woodshop.",
     body: "This page introduces William Beaman and Cooper Beaman, provides business contact information, and surfaces social links plus the public project repository.",
     layout: "profiles",
     sections: []
@@ -552,7 +611,7 @@ export const seedPages: SeedPage[] = [
     navLabel: "Care & Warranty",
     status: "published",
     intro: "Care guidance for hardwood furniture and cabinetry.",
-    body: "Wipe surfaces with a soft damp cloth, avoid prolonged standing water, and keep pieces away from direct heat vents. Finish refresh and structural repair support are coordinated through the studio dashboard or the contact page.",
+    body: "Wipe surfaces with a soft damp cloth, avoid prolonged standing water, and keep pieces away from direct heat vents. Finish refresh and structural repair support are coordinated through the woodshop contact page.",
     layout: "document",
     sections: []
   }
@@ -564,7 +623,7 @@ export const seedProfiles: SeedProfile[] = [
     displayName: "William Beaman",
     role: "admin",
     headline: "Master Builder",
-    bio: "William Beaman builds furniture, cabinetry, and commissioned room pieces with an emphasis on durable joinery, measured proportions, and practical daily use. The public site reflects current work, available inventory, and the active commission queue from his bench.",
+    bio: "William Beaman builds furniture, cabinetry, and room-specific woodwork with an emphasis on durable joinery, measured proportions, and daily use. The public site reflects current work, available inventory, and the active build queue from his bench.",
     publicProfile: true,
     avatarPath: "profiles/william-beaman.svg",
     links: [],
@@ -575,7 +634,7 @@ export const seedProfiles: SeedProfile[] = [
     displayName: "Cooper Beaman",
     role: "admin",
     headline: "Website Developer",
-    bio: "Cooper Beaman designed and built the Beaman Woodworks platform so the portfolio, journal, media archive, shop, project tracking, and studio operations can all be managed directly from the same self-hosted system.",
+    bio: "Cooper Beaman designed and built the Beaman Woodworks platform so the portfolio, media archive, shop, process writing, project tracking, and woodshop operations can all be managed in one deployment.",
     publicProfile: true,
     avatarPath: "profiles/cooper-beaman.svg",
     links: [

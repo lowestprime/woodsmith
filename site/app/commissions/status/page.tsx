@@ -13,7 +13,7 @@ export default async function CommissionStatusPage({ searchParams }: { searchPar
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Project status" title="Open an existing project" copy="Enter the project reference and the buyer email used during checkout or commission intake." />
+        <PageIntro eyebrow="Project status" title="Open an existing project" copy="Enter the project reference and the buyer email used during checkout or a custom work request." />
         <form action="/commissions/status" className="request-form compact-form">
           <div className="field-grid two-up compact-grid">
             <label><span>Reference</span><input defaultValue={reference} name="reference" required type="text" /></label>
