@@ -75,7 +75,7 @@ function buildCandidates(includePrivate: boolean): SearchCandidate[] {
   }
 
   if (includePrivate) {
-    for (const media of listMedia({ includeUnreviewed: true })) {
+    for (const media of listMedia({ includeUnreviewed: true, limit: 500 })) {
       const aiTags = Array.isArray(media.metadata.aiTags) ? media.metadata.aiTags.map(String) : [];
       const aiDescription = typeof media.metadata.aiDescription === "string" ? media.metadata.aiDescription : "";
       candidates.push({

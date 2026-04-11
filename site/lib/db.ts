@@ -1673,9 +1673,14 @@ export function deleteCommissionType(slug: string) {
   db.prepare(`DELETE FROM commission_types WHERE slug = ?`).run(slug);
 }
 
+/** Synology @eaDir and thumbnail sidecars must never be served or indexed as primary media. */
+function mediaJunkPathClauses() {
+  return ["lower(relative_path) NOT LIKE '%@eadir%'", "lower(relative_path) NOT LIKE '%synofile_thumb%'"];
+}
+
 export function listMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean; limit?: number; offset?: number }) {
   const db = getDatabase();
-  const clauses: string[] = [];
+  const clauses: string[] = [...mediaJunkPathClauses()];
   const params: (string | number | null)[] = [];
 
   if (!options?.includeUnreviewed) {
@@ -1695,7 +1700,7 @@ export function listMedia(options?: { query?: string; pieceSlug?: string | null;
     params.push(like, like, like, like, like, like);
   }
 
-  const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
+  const where = `WHERE ${clauses.join(" AND ")}`;
   let sql = `
     SELECT relative_path AS relativePath, folder, file_name AS fileName, kind, size_bytes AS sizeBytes, cluster_key AS clusterKey,
            alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
@@ -1717,6 +1722,53 @@ export function listMedia(options?: { query?: string; pieceSlug?: string | null;
   }
 
   const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map(mapMedia);
+}
+
+export function countMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean }) {
+  const db = getDatabase();
+  const clauses: string[] = [...mediaJunkPathClauses()];
+  const params: (string | number | null)[] = [];
+
+  if (!options?.includeUnreviewed) {
+    clauses.push("reviewed = 1");
+  }
+  if (options?.pieceSlug) {
+    clauses.push("piece_slug = ?");
+    params.push(options.pieceSlug);
+  }
+  if (options?.postSlug) {
+    clauses.push("post_slug = ?");
+    params.push(options.postSlug);
+  }
+  if (options?.query) {
+    clauses.push("(relative_path LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ?)");
+    const like = `%${options.query}%`;
+    params.push(like, like, like, like, like, like);
+  }
+
+  const row = db.prepare(`SELECT COUNT(*) AS n FROM media_items WHERE ${clauses.join(" AND ")}`).get(...params) as { n: number };
+  return Number(row?.n ?? 0);
+}
+
+export function listMediaForProjectReferences(references: string[]): MediaRecord[] {
+  const uniq = [...new Set(references.filter(Boolean))];
+  if (uniq.length === 0) {
+    return [];
+  }
+  const db = getDatabase();
+  const placeholders = uniq.map(() => "?").join(", ");
+  const junk = mediaJunkPathClauses().join(" AND ");
+  const rows = db.prepare(`
+    SELECT relative_path AS relativePath, folder, file_name AS fileName, kind, size_bytes AS sizeBytes, cluster_key AS clusterKey,
+           alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
+           project_reference AS projectReference, user_email AS userEmail, focal_x AS focalX, focal_y AS focalY,
+           zoom, reviewed, tags_json AS tagsJson, metadata_json AS metadataJson,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM media_items
+    WHERE project_reference IN (${placeholders}) AND ${junk}
+    ORDER BY datetime(updated_at) DESC, relative_path ASC
+  `).all(...uniq) as Record<string, unknown>[];
   return rows.map(mapMedia);
 }
 
@@ -1881,6 +1933,8 @@ export function listMediaWithoutAiTags(): MediaRecord[] {
     FROM media_items
     WHERE kind = 'image'
       AND json_extract(metadata_json, '$.aiAnalyzed') IS NULL
+      AND lower(relative_path) NOT LIKE '%@eadir%'
+      AND lower(relative_path) NOT LIKE '%synofile_thumb%'
     ORDER BY datetime(updated_at) DESC
     LIMIT 50
   `).all() as Record<string, unknown>[];
@@ -2416,7 +2470,7 @@ export function searchSite(query: string, includePrivate = false) {
       results.push({ id: page.slug, type: "page", title: page.title, href: page.slug === "home" ? "/" : `/${page.slug}`, summary: page.intro, score, private: page.status !== "published" });
     }
   }
-  for (const media of listMedia({ includeUnreviewed: true })) {
+  for (const media of listMedia({ includeUnreviewed: true, limit: 400 })) {
     const score = scoreMatch(query, [media.relativePath, media.folder, media.fileName, media.altText, media.clusterKey, media.tags.join(" "), media.pieceSlug ?? "", media.postSlug ?? "", media.pageSlug ?? "", JSON.stringify(media.metadata)].join(" "));
     if (score > 0 && includePrivate) {
       results.push({ id: media.relativePath, type: "media", title: media.fileName, href: `/media/${media.relativePath}`, summary: media.altText || media.relativePath, score, private: true });

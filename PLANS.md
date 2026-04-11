@@ -140,6 +140,23 @@
 - **Home page metadata** (`page.tsx`): Added explicit `title`, `description`, and `openGraph` metadata.
 - **Highlight card CSS** (`globals.css`): `.highlight-card` style for deep-linked project cards with accent outline and scroll margin.
 
+## What Was Implemented In the Studio Crash & Media Hardening Pass (2026-04)
+
+Root cause (from production logs `woodsmith_logs.txt`): `/media/[...slug]` used `createReadStream` on paths without an existence check. Missing files (stale DB rows, Synology `@eaDir` thumbnails, moved profile images) caused **ENOENT** and **failed to pipe response**, flooding the browser with broken image requests and exhausting RAM. The dashboard also rendered **every** media row as a full editor with eager images.
+
+- **Safe media streaming** (`app/media/[...slug]/route.ts`): `existsSync` + `statSync` (regular file) before streaming; **404** with `Cache-Control: no-store` when missing; stream `error` handler calls `destroy()`.
+- **Synology scan exclusions** (`lib/media.ts`): Skip `@eaDir` directories and files; skip paths containing `@eaDir` or `synofile_thumb`.
+- **SQL exclusions** (`lib/db.ts`): `listMedia` / `countMedia` always exclude `relative_path` rows matching `@eaDir` / `synofile_thumb`; `listMediaWithoutAiTags` aligned; new **`countMedia`**, **`listMediaForProjectReferences`**.
+- **Studio pagination** (`app/studio/page.tsx`): Default **48** media editors per page; `mediaPage` query param; prev/next links; verification queue uses up to **500** recent images for scoring (not the full library); project strips use **`listMediaForProjectReferences`** so thumbnails are not tied to the current page slice.
+- **Lazy images** (`studio/page.tsx`): `loading="lazy"`, `decoding="async"`, `fetchPriority="low"` on dashboard thumbnails.
+- **Removed live markdown preview** from `PostEditor` on the dashboard (huge HTML + `marked` per post); copy points editors to the public Process page.
+- **Loading UI** (`app/loading.tsx`): Lightweight text-only global loading (no heavy skeleton animation). **`app/studio/loading.tsx`**: Studio-specific message.
+- **Search caps** (`lib/db.ts` `searchSite` media loop, `lib/search.ts`): Bounded `listMedia` limits so admin search does not load unbounded media rows.
+
+**PLANS.md tasks 30–31 / 40:** Synology junk paths are excluded from indexing and from list queries; dashboard lists are paginated (not “recent only” — still “all,” navigated by pages).
+
+**Task 34 (full visual in-page editor, zero JSON):** **NOT DONE** in this pass — scope is a large product rewrite; current dashboard remains form-based. Crash fix and media hardening were prioritized.
+
 ## Validation Completed
 
 - `npm run typecheck`: passed (0 errors).

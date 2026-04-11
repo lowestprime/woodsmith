@@ -1,4 +1,3 @@
-import { marked } from "marked";
 import {
   createInvoiceAction,
   createShippingLabelAction,
@@ -25,11 +24,14 @@ import {
   uploadMediaAction
 } from "@/lib/actions";
 import { requireAdmin } from "@/lib/auth";
+import Link from "next/link";
 import {
+  countMedia,
   getSiteSettings,
   getStudioDashboardSummary,
   listCommissionTypes,
   listMedia,
+  listMediaForProjectReferences,
   listNotifications,
   listOrders,
   listPages,
@@ -45,11 +47,14 @@ import {
   type PostRecord,
   type UserRecord
 } from "@/lib/db";
-import { formatDateTime, formatMoney, sanitizeHtml, toMediaUrl } from "@/lib/format";
+import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
 import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { MediaCropEditor } from "@/components/media-crop-editor";
+
+const STUDIO_MEDIA_PAGE_SIZE = 48;
+const STUDIO_VERIFICATION_MEDIA_CAP = 500;
 
 function Field({ label, name, defaultValue = "", type = "text", required = false }: { label: string; name: string; defaultValue?: string | number | null; type?: string; required?: boolean }) {
   return <label><span>{label}</span><input defaultValue={defaultValue ?? ""} name={name} required={required} type={type} /></label>;
@@ -134,7 +139,7 @@ function PostEditor({ post }: { post: Omit<PostRecord, "createdAt" | "updatedAt"
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
         <button className="button-primary" type="submit">Save process note</button>
       </form>
-      <div className="markdown-preview" dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(post.body) as string) }} />
+      <p className="muted-copy">Live preview is omitted in the dashboard for performance. Use the public Process page to confirm formatting after saving.</p>
     </article>
   );
 }
@@ -147,7 +152,7 @@ function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
   return (
     <article className="studio-panel studio-media-card">
-      <div className={`studio-media-preview cleanup-${cleanupMode}`}>{item.kind === "image" ? <img alt={item.altText} src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
+      <div className={`studio-media-preview cleanup-${cleanupMode}`}>{item.kind === "image" ? <img alt={item.altText} decoding="async" fetchPriority="low" loading="lazy" src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
       <div className="studio-media-body">
         <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p>{aiAnalyzed ? <p className="muted-copy">AI: {aiDescription || aiTags.join(", ") || "Analyzed"}</p> : null}</div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
         <form action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></form>
@@ -254,9 +259,11 @@ function CommissionTypeEditor({ item }: { item: Omit<CommissionTypeRecord, "crea
   );
 }
 
-export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; error?: string; cleaned?: string; assigned?: string; project?: string }> }) {
+export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; mediaPage?: string; error?: string; cleaned?: string; assigned?: string; project?: string }> }) {
   await requireAdmin();
-  const { media: mediaQuery = "", error = "", cleaned = "", assigned = "", project: projectHighlight = "" } = await searchParams;
+  const { media: mediaQuery = "", mediaPage: mediaPageRaw = "", error = "", cleaned = "", assigned = "", project: projectHighlight = "" } = await searchParams;
+  const mediaPage = Math.max(1, Number.parseInt(mediaPageRaw, 10) || 1);
+  const mediaOffset = (mediaPage - 1) * STUDIO_MEDIA_PAGE_SIZE;
   const settings = getSiteSettings();
   const aiStatus = getAiServiceStatus();
   const summary = getStudioDashboardSummary();
@@ -265,9 +272,13 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
   const posts = listPosts(true);
   const commissionTypes = listCommissionTypes(true);
   const users = listUsers();
-  const media = listMedia({ includeUnreviewed: true, query: mediaQuery });
-  const verificationQueue = buildMediaVerificationQueue(pieces, media);
+  const queryOpt = mediaQuery.trim() || undefined;
+  const mediaTotal = countMedia({ includeUnreviewed: true, query: queryOpt });
+  const media = listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset });
+  const verificationMedia = listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_VERIFICATION_MEDIA_CAP });
+  const verificationQueue = buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image"));
   const projects = listProjects(true).slice(0, 20);
+  const projectMedia = listMediaForProjectReferences(projects.map((p) => p.reference));
   const orders = listOrders().slice(0, 20);
   const reviews = listReviews().slice(0, 20);
   const notifications = listNotifications().slice(0, 20);
@@ -284,7 +295,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           <article className="studio-panel"><span>{summary.bandwidth.activeProjects}</span><p>Active projects</p></article>
           <article className="studio-panel"><span>{summary.publishedPieces}</span><p>Published pieces</p></article>
           <article className="studio-panel"><span>{posts.filter((post) => post.publicationStatus === "published").length}</span><p>Process notes</p></article>
-          <article className="studio-panel"><span>{media.length}</span><p>Indexed media</p></article>
+          <article className="studio-panel"><span>{mediaTotal}</span><p>Indexed media</p></article>
           <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Revenue this month</p></article>
         </div>
       </PageSection>
@@ -322,10 +333,17 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
               <label><span>File</span><input name="file" required type="file" /></label><button className="button-primary" type="submit">Upload</button>
             </form>
             <form action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></form>
-            <form action="/studio" className="request-form compact-form"><Field label="Filter media" name="media" defaultValue={mediaQuery} /><button className="button-secondary" type="submit">Filter</button></form>
+            <form action="/studio" className="request-form compact-form"><Field label="Filter media" name="media" defaultValue={mediaQuery} /><input name="mediaPage" type="hidden" value="1" /><button className="button-secondary" type="submit">Filter</button></form>
+            {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
+              <nav aria-label="Media pagination" className="studio-media-pagination">
+                {mediaPage > 1 ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage - 1) }).toString()}`}>Previous page</Link> : <span className="muted-copy">Previous page</span>}
+                <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
+                {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage + 1) }).toString()}`}>Next page</Link> : <span className="muted-copy">Next page</span>}
+              </nav>
+            ) : null}
           </article>
           <article className="studio-panel"><h3>Media status</h3>
-            <p className="muted-copy">{media.length} files shown. Synology sidecar files are filtered during indexing.</p>
+            <p className="muted-copy">{mediaTotal} indexed total; showing {media.length === 0 ? 0 : mediaOffset + 1}–{mediaOffset + media.length} on this page. Synology <code>@eaDir</code> and <code>SYNOFILE_THUMB</code> paths are excluded from lists and scans.</p>
             <p className="muted-copy">Automatic clustering uses folder/filename/date patterns and, when enabled, AI vision analysis and embedding similarity. Manual assignments always take priority.</p>
             <dl className="estimate-list compact-estimate">
               <div><dt>AI background cleanup</dt><dd>{aiStatus.backgroundCleanup ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
@@ -349,7 +367,7 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
                       <input name="relativePath" type="hidden" value={item.relativePath} />
                       <input name="pieceSlug" type="hidden" value={entry.piece.slug} />
                       <button type="submit">
-                        <img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} />
+                        <img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} />
                         <span>{score}</span>
                       </button>
                     </form>
@@ -360,6 +378,13 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           </div>
         </div>
         <div className="studio-stack">{media.map((item) => <MediaEditor key={item.relativePath} item={item} pages={pages} pieces={pieces} posts={posts} />)}</div>
+        {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
+          <nav aria-label="Media pagination footer" className="studio-media-pagination studio-media-pagination-footer">
+            {mediaPage > 1 ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage - 1) }).toString()}`}>Previous page</Link> : null}
+            <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
+            {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage + 1) }).toString()}`}>Next page</Link> : null}
+          </nav>
+        ) : null}
       </PageSection>
 
       <PageSection>
@@ -369,8 +394,8 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
             <article className={`studio-panel studio-editor-card${projectHighlight === project.reference ? " highlight-card" : ""}`} id={`project-${project.reference}`} key={project.reference}>
               <div className="studio-editor-head"><h3>{project.reference}</h3><span>{project.status} · {project.stage}</span></div>
               <div className="project-media-strip">
-                {media.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (
-                  <a href={`/media/${item.relativePath}`} key={item.relativePath}><img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} /></a>
+                {projectMedia.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (
+                  <a href={toMediaUrl(item.relativePath)} key={item.relativePath}><img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} /></a>
                 ))}
               </div>
               <form action={saveProjectAction} className="request-form compact-form">

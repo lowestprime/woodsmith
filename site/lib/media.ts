@@ -60,7 +60,16 @@ export function detectMediaKind(fileName: string): MediaKind {
 
 function shouldIgnoreMediaEntry(name: string) {
   const normalized = name.toLowerCase();
-  return IGNORED_MEDIA_FILE_NAMES.has(normalized) || normalized.startsWith("._");
+  if (IGNORED_MEDIA_FILE_NAMES.has(normalized) || normalized.startsWith("._")) {
+    return true;
+  }
+  if (normalized === "@eadir") {
+    return true;
+  }
+  if (normalized.includes("synofile_thumb")) {
+    return true;
+  }
+  return false;
 }
 
 function deriveDatePrefix(fileName: string) {
@@ -109,6 +118,9 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
     const absolutePath = path.join(directory, entry.name);
 
     if (entry.isDirectory()) {
+      if (shouldIgnoreMediaEntry(entry.name)) {
+        continue;
+      }
       walkMedia(absolutePath, root, output);
       continue;
     }
@@ -119,6 +131,10 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
 
     const stats = statSync(absolutePath);
     const relativePath = normalizeRelativePath(path.relative(root, absolutePath));
+    const rpLower = relativePath.toLowerCase();
+    if (rpLower.includes("@eadir") || rpLower.includes("synofile_thumb")) {
+      continue;
+    }
 
     output.push({
       relativePath,

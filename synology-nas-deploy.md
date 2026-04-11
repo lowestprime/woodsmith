@@ -161,6 +161,14 @@ docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'test -w /ap
 curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 ```
 
+Missing or removed files must return **404** (not a broken stream). Stale `media_items` rows pointing at deleted paths used to trigger `failed to pipe response` in logs when the dashboard rendered hundreds of thumbnails at once.
+
+### Woodshop dashboard (`/studio`) and large libraries
+
+- The dashboard **paginates media** (48 items per page) and caps verification-candidate scans. Use **Filter** and **Next page** for very large `pics/` trees.
+- After upgrading the app image, use **Refresh library** once so the scanner skips Synology **`@eaDir`** folders and **`SYNOFILE_THUMB*`** files; those paths are also excluded from SQL media lists.
+- If logs show `ENOENT` for profile or generated paths, fix the file on disk or clear the bad path in SQLite / re-upload.
+
 ### App routes
 
 ```bash

@@ -1822,3 +1822,22 @@ input[type="range"]::-moz-range-thumb {
   outline-offset: -2px;
   scroll-margin-top: var(--space-8);
 }
+
+.studio-media-pagination,
+.studio-media-pagination-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
+.studio-media-pagination-footer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--line);
+}
+
+.studio-loading-shell {
+  min-height: 40vh;
+}
