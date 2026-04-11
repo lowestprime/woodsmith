@@ -32,7 +32,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=orders">
         <PageIntro eyebrow="Cart" title="Your ledger" copy="Review reserved pieces, shipping estimate, taxes, coupon handling, and checkout before payment capture." />
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         <div className="cart-layout">

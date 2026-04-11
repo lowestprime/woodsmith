@@ -7,7 +7,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=people">
         <PageIntro eyebrow="Account" title="Create a buyer account" copy="Buyer accounts keep project references, order history, and profile details together in one place." />
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         <SignupForm />

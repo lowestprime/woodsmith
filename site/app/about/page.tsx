@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { getPage, getSiteSettings, listPublicProfiles } from "@/lib/db";
-import { toMediaUrl } from "@/lib/format";
+import { resolveAssetUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "About",
@@ -16,12 +16,12 @@ export default function AboutPage() {
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=pages&page=about#page-about">
         <PageIntro eyebrow="About & contact" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet the master builder and the developer behind the platform."} />
         <div className="profile-grid">
           {profiles.map((profile) => (
             <article className="profile-card" key={profile.email}>
-              {profile.avatarPath ? <img alt={profile.displayName} className="profile-photo" src={profile.avatarPath.startsWith("profiles/") ? `/${profile.avatarPath}` : toMediaUrl(profile.avatarPath)} /> : <div className="profile-photo placeholder-photo">{profile.displayName.split(" ").filter(Boolean).map((part) => part[0]).join("")}</div>}
+              {profile.avatarPath ? <img alt={profile.displayName} className="profile-photo" src={resolveAssetUrl(profile.avatarPath)} /> : <div className="profile-photo placeholder-photo">{profile.displayName.split(" ").filter(Boolean).map((part) => part[0]).join("")}</div>}
               <div>
                 <p className="eyebrow">{profile.headline}</p>
                 <h2>{profile.displayName}</h2>
@@ -36,7 +36,7 @@ export default function AboutPage() {
         </div>
       </PageSection>
 
-      <PageSection id="contact">
+      <PageSection editHref="/studio?panel=settings" id="contact">
         <div className="contact-grid">
           <article className="studio-panel">
             <h2>Business contact</h2>

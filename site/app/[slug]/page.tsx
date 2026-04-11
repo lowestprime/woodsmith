@@ -19,7 +19,7 @@ export default async function DynamicPage({ params }: { params: Promise<{ slug: 
 
   return (
     <Shell>
-      <PageSection className="journal-entry">
+      <PageSection className="journal-entry" editHref={`/studio?panel=pages&page=${encodeURIComponent(page.slug)}#page-${page.slug}`}>
         <p className="eyebrow">{page.navLabel}</p>
         <h1>{page.title}</h1>
         <p className="lede">{page.intro}</p>

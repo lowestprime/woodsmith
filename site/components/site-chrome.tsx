@@ -1,9 +1,9 @@
-import type { ReactNode } from "react";
+import { cache, type ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
-import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
+import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
@@ -24,11 +24,34 @@ export function BrandMark() {
   );
 }
 
-function AccountBadge({ label, avatarPath }: { label: string; avatarPath?: string | null }) {
+const getViewer = cache(async () => getCurrentUser());
+
+function AccountBadge({ label, avatarPath, loggedIn }: { label: string; avatarPath?: string | null; loggedIn: boolean }) {
   if (avatarPath) {
-    return <img alt={label} className="account-badge-avatar" src={toMediaUrl(avatarPath)} />;
+    return <img alt={label} className="account-badge-avatar" src={resolveAssetUrl(avatarPath)} />;
   }
+
+  if (!loggedIn) {
+    return (
+      <span className="account-badge account-badge-placeholder" aria-hidden="true">
+        <svg viewBox="0 0 24 24">
+          <circle cx="12" cy="8.5" r="3.4" />
+          <path d="M5.75 18.25c1.5-3 3.63-4.5 6.25-4.5s4.75 1.5 6.25 4.5" />
+        </svg>
+      </span>
+    );
+  }
+
   return <span className="account-badge" aria-hidden="true">{label}</span>;
+}
+
+function EditGlyph() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24">
+      <path d="M4 16.8V20h3.2L18.7 8.5l-3.2-3.2L4 16.8Z" />
+      <path d="m14.9 5.9 3.2 3.2" />
+    </svg>
+  );
 }
 
 export function CategoryIcon({ category }: { category: string }) {
@@ -59,7 +82,7 @@ export function CategoryIcon({ category }: { category: string }) {
 
 export async function SiteHeader() {
   const site = getSiteSettings();
-  const user = await getCurrentUser();
+  const user = await getViewer();
   const cookieStore = await cookies();
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
@@ -90,7 +113,7 @@ export async function SiteHeader() {
             <strong>{cartCount}</strong>
           </Link>
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
-            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} />
+            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} />
           </Link>
           {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
         </nav>
@@ -254,6 +277,30 @@ export function PageGrid({ children }: { children: ReactNode }) {
   return <div className="page-grid">{children}</div>;
 }
 
-export function PageSection({ children, className = "", id }: { children: ReactNode; className?: string; id?: string }) {
-  return <section className={`page-section ${className}`.trim()} id={id}>{children}</section>;
+export async function PageSection({
+  children,
+  className = "",
+  id,
+  editHref,
+  editLabel = "Edit section"
+}: {
+  children: ReactNode;
+  className?: string;
+  id?: string;
+  editHref?: string;
+  editLabel?: string;
+}) {
+  const viewer = editHref ? await getViewer() : null;
+
+  return (
+    <section className={`page-section ${className}${editHref ? " section-has-edit" : ""}`.trim()} id={id}>
+      {viewer?.role === "admin" && editHref ? (
+        <Link aria-label={editLabel} className="section-edit-link" href={editHref} title={editLabel}>
+          <EditGlyph />
+          <span>Edit</span>
+        </Link>
+      ) : null}
+      {children}
+    </section>
+  );
 }

@@ -25,7 +25,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   return (
     <>
       <Shell>
-        <PageSection>
+        <PageSection editHref="/studio?panel=pieces">
           <PageIntro eyebrow="Portfolio" title={page?.title ?? "Portfolio"} copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."} />
           <nav className="portfolio-filter-row" aria-label="Piece categories">
             {portfolioCategories.map((item) => {

@@ -14,7 +14,7 @@ export default async function ProcessPostPage({ params }: { params: Promise<{ sl
 
   return (
     <Shell>
-      <PageSection className="journal-entry">
+      <PageSection className="journal-entry" editHref={`/studio?panel=process&post=${encodeURIComponent(post.slug)}#post-${post.slug}`}>
         <p className="eyebrow">{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</p>
         <h1>{post.title}</h1>
         <p className="lede">{post.excerpt}</p>

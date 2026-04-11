@@ -96,7 +96,7 @@ function buildCandidates(includePrivate: boolean): SearchCandidate[] {
         id: project.reference,
         type: "project",
         title: `${project.reference} · ${project.guestName}`,
-        href: `/studio?project=${project.reference}`,
+        href: `/studio?panel=projects&project=${project.reference}`,
         summary: project.brief,
         score: 0,
         private: true,

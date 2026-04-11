@@ -21,7 +21,7 @@ export default function HomePage() {
   return (
     <>
       <Shell>
-        <PageSection className="hero-section">
+        <PageSection className="hero-section" editHref="/studio?panel=settings">
           <PageIntro
             eyebrow={String(hero?.eyebrow ?? home?.title ?? site.brandName)}
             title={String(hero?.title ?? site.brandTagline)}
@@ -37,7 +37,7 @@ export default function HomePage() {
       <DividerBand />
 
       <Shell>
-        <PageSection>
+        <PageSection editHref="/studio?panel=pieces">
           <SectionHeading
             eyebrow="Featured work"
             title="Current collection and established build patterns"
@@ -46,9 +46,11 @@ export default function HomePage() {
           <div className="piece-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
         </PageSection>
 
-        <StatusBand />
+        <PageSection editHref="/studio?panel=projects">
+          <StatusBand />
+        </PageSection>
 
-        <PageSection>
+        <PageSection editHref="/studio?panel=pages&page=home#page-home">
           <SectionHeading
             eyebrow="Woodshop services"
             title={String(services?.title ?? "From available work to room-specific custom builds")}
@@ -62,7 +64,7 @@ export default function HomePage() {
           </div>
         </PageSection>
 
-        <PageSection>
+        <PageSection editHref="/studio?panel=process">
           <SectionHeading
             eyebrow="Behind the scenes"
             title="Process notes and references that stay close to the work"

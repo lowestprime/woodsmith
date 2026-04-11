@@ -43,7 +43,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 
 ### Private Woodshop dashboard
 
-`/studio` remains the private route name, but the product language is Woodshop dashboard. The dashboard exposes structured browser forms for:
+`/studio` remains the private route name, but the product language is Woodshop dashboard. The dashboard opens on an overview workspace, exposes focused workspace tabs, and exposes structured browser forms for:
 
 - site settings
 - pages
@@ -56,6 +56,8 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - orders, invoices, shipping labels, and tracking state
 - reviews
 - queued notifications
+
+Admins signed into the public site also get pencil edit entrypoints on supported sections. Those links jump into the matching dashboard workspace rather than exposing raw JSON or code editing on the public pages.
 
 ## Database model
 
@@ -76,7 +78,7 @@ The SQLite schema includes these primary tables:
 - `reviews`
 - `notifications`
 
-Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases with an older seeded version are upgraded to the current v3 seed set without deleting runtime orders, projects, users, or media metadata.
+Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases with an older seeded version are upgraded to the current v4 seed set without deleting runtime orders, projects, users, or media metadata. The current migration also normalizes legacy developer-email references from `lowestprime@proton.me` to `cooperbeaman@proton.me` in seeded settings and profile data.
 
 ## Media system
 
@@ -120,6 +122,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 
 - birds-eye maple, ebony, and white-maple palette
 - persistent light/day and black OLED night theme toggle
+- repaired toggle track/thumb alignment and admin-aware account/profile badge resolution
 - local Mackintosh typography throughout the site
 - rounded controls, larger form fields, and more legible button language
 - categorized portfolio tabs with icon-like labels

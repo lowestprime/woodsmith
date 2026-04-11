@@ -2,9 +2,11 @@
 
 ## Beaman Woodworks 3.0 Completion Pass
 
-- Status: DONE for repository-contained implementation and validation
-- Last updated: 2026-04-10
-- Branch: `codex/beaman-woodworks-3-audit-completion`
+- Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
+- Last updated: 2026-04-11
+- Branch: `codex/live-audit-hardening-20260411`
+
+The sections below include historical completion notes from the 2026-04-10 pass. The 2026-04-11 live audit found that the public site at `https://ws.lowestprime.synology.me/` was still serving stale persisted content and still exposed several source/runtime regressions that this branch corrects.
 
 ## Ground Rules Preserved
 
@@ -13,6 +15,33 @@
 - The repo-local `pics/` folder is legacy only. Production uses `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025:/app/pics:rw`.
 - OpenAI-backed rendering, background cleanup, and embedding re-ranking are disabled by default and require server-side credentials plus explicit feature flags.
 - Public custom work remains contact-first. Backend project records and estimator data continue to support the Woodshop workflow.
+
+## What Was Implemented In The 2026-04-11 Live Audit Hardening Pass
+
+- Audited the live public deployment and confirmed it was still serving stale homepage copy and the legacy developer email; this branch now includes the migration path needed to replace that persisted data on next deploy/startup.
+- Fixed the day/night toggle markup and CSS so the thumb stays inside the track and the control reads clearly in both themes.
+- Fixed the logged-in account badge by resolving local seeded profile assets such as `profiles/cooper-beaman.svg` and by rendering a proper guest placeholder icon when signed out.
+- Added admin-only pencil edit links across public sections so signed-in admins can jump directly from the live page to the matching Woodshop workspace.
+- Refactored the dashboard into focused workspaces with panel-preserving redirects so saves, uploads, deletes, invoice actions, and shipping actions return to the correct panel instead of dropping back to the overview.
+- Removed the remaining silent studio-login fallback that accepted an empty email and defaulted to the primary admin account.
+- Added safe profile deletion from the People workspace and preserved protections for the current signed-in admin and the last remaining admin.
+- Updated new draft ownership defaults and project timeline updates to use the current admin account instead of hard-coded seed emails.
+
+## Additional 2026-04-11 Ledger Items
+
+| ID | Status | Outcome |
+|----|--------|---------|
+| 45 | DONE | The dashboard is more compact and functional: it now opens on an overview and loads one focused workspace at a time instead of rendering every editor at once. |
+| 46 | DONE | The day/night toggle thumb, labels, and track alignment were corrected in shared markup and CSS. |
+| 47 | DONE | Logged-in avatars now render correctly for seeded local profile assets; signed-out users see a consistent circular placeholder icon. |
+| 48 | DONE / DEPLOY | The legacy `lowestprime@proton.me` seed profile was replaced in active seed data, the People workspace can now delete profiles safely, and a startup migration updates persisted legacy developer references on next deploy. |
+
+## 2026-04-11 Validation Snapshot
+
+- `npm run typecheck`: passed.
+- `npm run lint`: passed with existing `<img>` warnings only.
+- `npm run build`: passed and emitted the full route table.
+- Built-server smoke: `node --experimental-sqlite ./node_modules/next/dist/bin/next start --hostname 127.0.0.1 --port 3104` returned `200` for `/` and `/studio/login`, and the `/about` HTML contained `cooperbeaman@proton.me`, `theme-toggle-thumb`, and `account-badge-placeholder`.
 
 ## What Was Implemented In This Pass
 

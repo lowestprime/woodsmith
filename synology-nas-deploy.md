@@ -130,6 +130,8 @@ cd /volume2/docker_ssd/woodsmith
 docker compose -f docker-compose.synology.yml up -d
 ```
 
+The startup path for this branch includes the current seed upgrade. On first boot after deploy, persisted legacy developer-contact data is normalized from `lowestprime@proton.me` to `cooperbeaman@proton.me`.
+
 ## Reverse proxy
 
 Configure Synology Reverse Proxy with:

@@ -16,7 +16,7 @@ export default function CommissionsPage() {
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=custom">
         <PageIntro eyebrow="Custom work" title={page?.title ?? "Custom Work Contact"} copy={page?.intro ?? "Custom work now starts with a direct contact request instead of a fixed public template."} />
         <p className="muted-copy">Already have a reference? <Link href="/commissions/status">Look up your project status here.</Link></p>
         <ContactRequestForm

@@ -11,6 +11,8 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 ## Dashboard areas
 
+The dashboard now opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil links while you are signed in; those links jump straight into the matching dashboard workspace.
+
 ### Settings
 
 The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, piece divider names, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
@@ -32,6 +34,12 @@ Custom work types define labels, descriptions, default dimensions, base labor ho
 ### People
 
 The People section can update admin, woodworker, customer, developer, and public profile records. It is the current foundation for future multi-woodworker support, public profile cards, and role-aware dashboard behavior.
+
+It also supports:
+
+- safe email renames that rewrite related project, order, review, session, and post references
+- deleting non-current users directly from the dashboard
+- protecting the current signed-in admin and the last remaining admin from deletion
 
 ### Process notes
 
@@ -98,7 +106,7 @@ These features require server configuration before they work live:
 ## Recommended operating routine
 
 1. Open `/studio`.
-2. Review active project count, queued notifications, and order status.
+2. Start from the overview workspace and open the focused panel you need.
 3. Update buyer-facing project stages and lead times.
 4. Keep portfolio categories, inventory counts, asking prices, and fulfillment options current.
 5. Review and assign media before publishing pieces.

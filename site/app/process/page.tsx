@@ -16,12 +16,12 @@ export default function ProcessPage() {
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=process">
         <PageIntro eyebrow="Process" title={page?.title ?? "Process"} copy={page?.intro ?? "Behind-the-scenes notes, material observations, and selected outside references."} />
         <div className="journal-listing">{notes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>
       {highlights.length > 0 ? (
-        <PageSection>
+        <PageSection editHref="/studio?panel=process">
           <PageIntro eyebrow="References" title="Outside material worth keeping close to the bench" copy="A smaller set of books, essays, and references that help frame the work." />
           <div className="journal-listing">{highlights.map((post) => <PostCard key={post.slug} post={post} />)}</div>
         </PageSection>

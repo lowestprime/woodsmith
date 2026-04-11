@@ -49,7 +49,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
 
   return (
     <Shell>
-      <PageSection className="piece-detail-grid">
+      <PageSection className="piece-detail-grid" editHref={`/studio?panel=pieces&piece=${encodeURIComponent(piece.slug)}#piece-${piece.slug}`}>
         <div>
           <p className="eyebrow">{piece.category}</p>
           <h1>{piece.title}</h1>
@@ -77,7 +77,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         </div>
       </PageSection>
 
-      <PageSection className="split-section commissions-layout">
+      <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>
         <div>
           <h2>{piece.status === "inventory" ? "Ask about this piece" : "Use this piece as the starting point for custom work"}</h2>
           <p>{piece.status === "inventory" ? "Use this contact form if you want to reserve the current build, confirm delivery options, or ask for a related variation. Checkout details stay in the shop." : "Custom work begins with a direct note about the room, intended use, timing, and material preferences. The private project workflow takes over after the initial review."}</p>
@@ -90,7 +90,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         />
       </PageSection>
 
-      <PageSection>
+      <PageSection editHref={`/studio?panel=reviews&piece=${encodeURIComponent(piece.slug)}`}>
         <h2>Reviews</h2>
         <div className="review-grid">
           {reviews.length > 0 ? reviews.map((review) => (

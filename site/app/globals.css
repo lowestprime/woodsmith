@@ -168,9 +168,9 @@ main {
 .header-inner {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr) auto;
-  gap: var(--space-6);
+  gap: var(--space-4);
   align-items: center;
-  padding: 1rem 0;
+  padding: 0.85rem 0;
 }
 
 .brand-lockup {
@@ -192,7 +192,7 @@ main {
 .site-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
   justify-content: center;
   font-size: 0.95rem;
   letter-spacing: 0.06em;
@@ -200,41 +200,6 @@ main {
 
 .text-button {
   padding: 0;
-}
-
-.theme-toggle {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.7rem;
-  color: var(--accent);
-}
-
-.theme-toggle-track {
-  width: 3.8rem;
-  height: 2rem;
-  background: var(--bg-card);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-pill);
-}
-
-.theme-toggle-thumb {
-  position: absolute;
-  left: 0.25rem;
-  top: 0.25rem;
-  width: 1.5rem;
-  height: 1.5rem;
-  background: var(--accent);
-  border-radius: 50%;
-  transition: transform 180ms ease;
-}
-
-.theme-toggle-thumb[data-theme="light"] {
-  transform: translateX(1.78rem);
-}
-
-.theme-toggle-label {
-  font-size: 0.85rem;
 }
 
 .page-section {
@@ -257,6 +222,38 @@ main {
   letter-spacing: 0.16em;
   font-size: 0.8rem;
   color: var(--accent);
+}
+
+.section-has-edit {
+  position: relative;
+}
+
+.section-edit-link {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.5rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--muted);
+  font-size: 0.76rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.section-edit-link svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 h1,
@@ -460,6 +457,49 @@ h3 {
   align-items: center;
   font-size: 0.85rem;
   color: var(--accent);
+}
+
+.studio-head-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.studio-workspace-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem;
+}
+
+.studio-workspace-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.55rem;
+  padding: 0.65rem 1rem;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
+  color: var(--muted);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.studio-workspace-pill.is-active {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--line));
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
+}
+
+.studio-workspace-card {
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.studio-workspace-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--line));
 }
 
 .service-card,
@@ -1096,6 +1136,16 @@ img.cleanup-subject-isolate {
   .media-admin-item {
     grid-template-columns: 1fr;
   }
+
+  .theme-toggle {
+    justify-content: space-between;
+  }
+
+  .section-edit-link {
+    position: static;
+    width: fit-content;
+    margin-bottom: var(--space-4);
+  }
 }
 
 @media (max-width: 720px) {
@@ -1105,6 +1155,10 @@ img.cleanup-subject-isolate {
 
   .header-inner {
     grid-template-columns: 1fr;
+  }
+
+  .theme-toggle {
+    min-width: 0;
   }
 
   .piece-card,
@@ -1224,8 +1278,8 @@ img.cleanup-subject-isolate {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 3rem;
-  height: 3rem;
+  width: 3.1rem;
+  height: 3.1rem;
   border-radius: 50%;
   border: 1px solid var(--line);
   background: color-mix(in srgb, var(--bg-elevated) 88%, transparent);
@@ -1234,8 +1288,8 @@ img.cleanup-subject-isolate {
 .account-badge {
   display: inline-grid;
   place-items: center;
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 2.2rem;
+  height: 2.2rem;
   border-radius: 50%;
   background: var(--button);
   color: var(--button-text);
@@ -1243,30 +1297,44 @@ img.cleanup-subject-isolate {
   letter-spacing: 0.08em;
 }
 
+.account-badge-placeholder svg {
+  width: 1.18rem;
+  height: 1.18rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .account-badge-avatar {
-  width: 2.1rem;
-  height: 2.1rem;
+  width: 2.2rem;
+  height: 2.2rem;
   border-radius: 50%;
   object-fit: cover;
 }
 
 .theme-toggle {
+  display: inline-flex;
+  align-items: center;
   justify-content: flex-end;
-  gap: 0.85rem;
+  gap: 0.75rem;
+  min-width: 13rem;
+  color: var(--accent);
 }
 
-.theme-toggle-copy {
+.theme-toggle-state {
   display: grid;
   gap: 0.1rem;
   text-align: right;
   color: var(--text);
 }
 
-.theme-toggle-copy strong {
+.theme-toggle-state strong {
   font-size: 0.95rem;
 }
 
-.theme-toggle-copy span {
+.theme-toggle-state span {
   font-size: 0.72rem;
   color: var(--muted);
   letter-spacing: 0.08em;
@@ -1278,14 +1346,18 @@ img.cleanup-subject-isolate {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
-  width: 6.25rem;
-  height: 2.7rem;
+  width: 6rem;
+  height: 2.6rem;
   padding: 0 0.8rem;
   border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--bg-card) 84%, transparent);
+  border: 1px solid var(--line);
+  overflow: hidden;
 }
 
 .theme-toggle-track-label {
+  position: relative;
+  z-index: 1;
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -1293,20 +1365,19 @@ img.cleanup-subject-isolate {
 }
 
 .theme-toggle-thumb {
+  position: absolute;
   top: 0.27rem;
   left: 0.27rem;
   width: 2.15rem;
   height: 2.15rem;
   border-radius: 50%;
+  background: var(--accent);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.24);
+  transition: transform 180ms ease;
 }
 
 .theme-toggle-thumb[data-theme="light"] {
-  transform: translateX(3.48rem);
-}
-
-.theme-toggle-label {
-  display: none;
+  transform: translateX(3.28rem);
 }
 
 .button-primary,

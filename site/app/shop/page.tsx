@@ -19,7 +19,7 @@ export default function ShopPage() {
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=pieces">
         <PageIntro eyebrow="Shop" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop."} />
         <div className="shop-grid">
           {pieces.map((piece) => {
@@ -54,7 +54,7 @@ export default function ShopPage() {
         </div>
       </PageSection>
 
-      <PageSection id="process">
+      <PageSection editHref="/studio?panel=process" id="process">
         <PageIntro eyebrow="Process" title="Behind the scenes" copy="Selected notes from the woodshop, including build decisions, materials, and a few outside references worth keeping close to the bench." />
         <div className="journal-listing">{posts.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>

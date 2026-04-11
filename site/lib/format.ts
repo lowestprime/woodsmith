@@ -56,6 +56,22 @@ export function toMediaUrl(assetPath: string) {
     .join("/")}`;
 }
 
+export function resolveAssetUrl(assetPath: string | null | undefined) {
+  if (!assetPath) {
+    return "";
+  }
+
+  if (assetPath.startsWith("profiles/")) {
+    return `/${assetPath}`;
+  }
+
+  if (assetPath.startsWith("/")) {
+    return assetPath;
+  }
+
+  return toMediaUrl(assetPath);
+}
+
 export function sentenceCase(value: string) {
   if (!value) {
     return value;

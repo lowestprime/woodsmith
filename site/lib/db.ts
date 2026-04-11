@@ -575,11 +575,42 @@ function getSetting<T>(key: string, fallback: T): T {
   return row?.value ? readJson<T>(row.value, fallback) : fallback;
 }
 
+function rewriteUserEmailReferences(db: DatabaseSync, fromEmail: string, toEmail: string) {
+  const from = fromEmail.toLowerCase();
+  const to = toEmail.toLowerCase();
+  if (from === to) {
+    return;
+  }
+
+  db.prepare(`UPDATE sessions SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE projects SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE orders SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE reviews SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE media_items SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE project_updates SET author_email = ? WHERE lower(author_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE pieces SET owner_email = ? WHERE lower(owner_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE posts SET author_email = ? WHERE lower(author_email) = lower(?)`).run(to, from);
+  db.prepare(`UPDATE cart_items SET user_email = ? WHERE lower(user_email) = lower(?)`).run(to, from);
+}
+
+function clearUserEmailReferences(db: DatabaseSync, email: string) {
+  const normalized = email.toLowerCase();
+  db.prepare(`DELETE FROM sessions WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE projects SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE orders SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE reviews SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE media_items SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE project_updates SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE pieces SET owner_email = NULL WHERE lower(owner_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE posts SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
+  db.prepare(`UPDATE cart_items SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+}
+
 function seedDefaultContent(db: DatabaseSync) {
   const seededVersion = getSeededVersion(db);
   if (seededVersion === 0) {
     upsertSetting(db, "site", { ...siteSettingsSeed, pieceDividerNames });
-    upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso() });
+    upsertSetting(db, "seededVersion", { version: 4, updatedAt: nowIso() });
   }
 
   for (const profile of seedProfiles) {
@@ -924,6 +955,73 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso() });
+  }
+
+  if (seededVersion > 0 && seededVersion < 4) {
+    const currentSite = getSetting<SiteSettings>("site", { ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
+    const nextSite: SiteSettings = {
+      ...currentSite,
+      developerName: siteSettingsSeed.developerName,
+      developerHeadline: siteSettingsSeed.developerHeadline,
+      developerEmail: currentSite.developerEmail.toLowerCase() === "lowestprime@proton.me" ? siteSettingsSeed.developerEmail : currentSite.developerEmail,
+      homeSections: currentSite.homeSections.map((section) => {
+        if (section.key !== "hero") {
+          return section;
+        }
+
+        const existingCopy = String((section as Record<string, unknown>).copy ?? "");
+        const nextCopy = existingCopy.includes("same woodshop site") || existingCopy.includes("self-hosted")
+          ? siteSettingsSeed.homeSections.find((entry) => entry.key === "hero")?.copy ?? existingCopy
+          : existingCopy;
+
+        return {
+          ...section,
+          copy: nextCopy
+        };
+      }) as unknown as SiteSettings["homeSections"]
+    };
+
+    saveSiteSettings(nextSite);
+
+    const desiredDeveloperProfile = seedProfiles.find((profile) => profile.email === "cooperbeaman@proton.me");
+    const legacyDeveloper = getUserByEmail("lowestprime@proton.me");
+    const currentDeveloper = getUserByEmail("cooperbeaman@proton.me");
+
+    if (desiredDeveloperProfile) {
+      if (legacyDeveloper && currentDeveloper && legacyDeveloper.id !== currentDeveloper.id) {
+        rewriteUserEmailReferences(db, legacyDeveloper.email, currentDeveloper.email);
+        db.prepare(`DELETE FROM users WHERE id = ?`).run(legacyDeveloper.id);
+        saveUserProfile({
+          originalEmail: currentDeveloper.email,
+          email: desiredDeveloperProfile.email,
+          role: desiredDeveloperProfile.role,
+          displayName: desiredDeveloperProfile.displayName,
+          headline: desiredDeveloperProfile.headline,
+          bio: desiredDeveloperProfile.bio,
+          avatarPath: desiredDeveloperProfile.avatarPath ?? null,
+          publicProfile: desiredDeveloperProfile.publicProfile,
+          links: desiredDeveloperProfile.links,
+          metadata: { ...(currentDeveloper.metadata ?? {}), ...desiredDeveloperProfile.metadata }
+        });
+      } else {
+        saveUserProfile({
+          originalEmail: legacyDeveloper?.email ?? currentDeveloper?.email ?? desiredDeveloperProfile.email,
+          email: desiredDeveloperProfile.email,
+          role: desiredDeveloperProfile.role,
+          displayName: desiredDeveloperProfile.displayName,
+          headline: desiredDeveloperProfile.headline,
+          bio: desiredDeveloperProfile.bio,
+          avatarPath: desiredDeveloperProfile.avatarPath ?? null,
+          publicProfile: desiredDeveloperProfile.publicProfile,
+          links: desiredDeveloperProfile.links,
+          metadata: { ...(legacyDeveloper?.metadata ?? currentDeveloper?.metadata ?? {}), ...desiredDeveloperProfile.metadata }
+        });
+      }
+    }
+
+    db.prepare(`UPDATE posts SET author_email = ? WHERE lower(author_email) = lower(?)`).run("cooperbeaman@proton.me", "lowestprime@proton.me");
+
+    upsertSetting(db, "seededVersion", { version: 4, updatedAt: nowIso() });
   }
 }
 
@@ -1304,6 +1402,13 @@ export function listUsers() {
 
   return rows.map(mapUser);
 }
+
+export function countUsersByRole(role: UserRole) {
+  const db = getDatabase();
+  const row = db.prepare(`SELECT count(*) AS total FROM users WHERE role = ?`).get(role) as { total?: number } | undefined;
+  return Number(row?.total ?? 0);
+}
+
 export function getUserByEmail(email: string) {
   const db = getDatabase();
   const row = db.prepare(`
@@ -1335,6 +1440,7 @@ export function getUserById(id: string) {
 }
 
 export function saveUserProfile(input: {
+  originalEmail?: string;
   email: string;
   role: UserRole;
   displayName: string;
@@ -1347,8 +1453,49 @@ export function saveUserProfile(input: {
   passwordHash?: string;
 }) {
   const db = getDatabase();
-  const existing = getUserByEmail(input.email);
+  const originalEmail = (input.originalEmail ?? input.email).toLowerCase();
+  const nextEmail = input.email.toLowerCase();
+  const existingByOriginal = getUserByEmail(originalEmail);
+  const existingByNext = nextEmail === originalEmail ? existingByOriginal : getUserByEmail(nextEmail);
+  const existing = existingByOriginal ?? existingByNext;
   const timestamp = nowIso();
+
+  if (existingByOriginal && existingByNext && existingByOriginal.id !== existingByNext.id) {
+    throw new Error("A user with that email already exists.");
+  }
+
+  if (existingByOriginal && originalEmail !== nextEmail) {
+    db.prepare(`
+      UPDATE users
+      SET email = :email,
+          role = :role,
+          password_hash = CASE WHEN :passwordHash = '' THEN password_hash ELSE :passwordHash END,
+          display_name = :displayName,
+          headline = :headline,
+          bio = :bio,
+          avatar_path = :avatarPath,
+          public_profile = :publicProfile,
+          links_json = :linksJson,
+          metadata_json = :metadataJson,
+          updated_at = :updatedAt
+      WHERE id = :id
+    `).run({
+      id: existingByOriginal.id,
+      email: nextEmail,
+      role: input.role,
+      passwordHash: input.passwordHash ?? "",
+      displayName: input.displayName,
+      headline: input.headline,
+      bio: input.bio,
+      avatarPath: input.avatarPath ?? null,
+      publicProfile: input.publicProfile ? 1 : 0,
+      linksJson: writeJson(input.links),
+      metadataJson: writeJson(input.metadata ?? existingByOriginal.metadata ?? {}),
+      updatedAt: timestamp
+    });
+    rewriteUserEmailReferences(db, originalEmail, nextEmail);
+    return;
+  }
 
   db.prepare(`
     INSERT INTO users (
@@ -1371,7 +1518,7 @@ export function saveUserProfile(input: {
       updated_at = excluded.updated_at
   `).run({
     id: existing?.id ?? randomUUID(),
-    email: input.email.toLowerCase(),
+    email: nextEmail,
     role: input.role,
     passwordHash: input.passwordHash ?? "",
     displayName: input.displayName,
@@ -1384,6 +1531,18 @@ export function saveUserProfile(input: {
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
   });
+}
+
+export function deleteUserProfile(email: string) {
+  const db = getDatabase();
+  const existing = getUserByEmail(email);
+  if (!existing) {
+    return false;
+  }
+
+  clearUserEmailReferences(db, existing.email);
+  db.prepare(`DELETE FROM users WHERE id = ?`).run(existing.id);
+  return true;
 }
 
 export function setPasswordHash(email: string, passwordHash: string) {
@@ -2479,7 +2638,7 @@ export function searchSite(query: string, includePrivate = false) {
   for (const project of listProjects(true)) {
     const score = scoreMatch(query, [project.reference, project.guestName, project.guestEmail, project.brief, project.materials.join(" "), project.stage, project.status].join(" "));
     if (score > 0 && includePrivate) {
-      results.push({ id: project.reference, type: "project", title: `${project.reference} · ${project.guestName}`, href: `/studio?project=${project.reference}`, summary: project.brief, score, private: true });
+      results.push({ id: project.reference, type: "project", title: `${project.reference} · ${project.guestName}`, href: `/studio?panel=projects&project=${project.reference}`, summary: project.brief, score, private: true });
     }
   }
   return results.sort((left, right) => right.score - left.score || left.title.localeCompare(right.title)).slice(0, 60);

@@ -8,6 +8,7 @@ import {
   deletePieceAction,
   deletePostAction,
   deleteReviewAdminAction,
+  deleteUserProfileAdminAction,
   deleteCommissionTypeAction,
   refreshMediaLibraryAction,
   renameMediaAction,
@@ -55,6 +56,9 @@ import { MediaCropEditor } from "@/components/media-crop-editor";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_VERIFICATION_MEDIA_CAP = 500;
+const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "custom", "people", "process", "media", "projects", "orders", "reviews", "notifications"] as const;
+
+type StudioPanel = (typeof STUDIO_PANELS)[number];
 
 function Field({ label, name, defaultValue = "", type = "text", required = false }: { label: string; name: string; defaultValue?: string | number | null; type?: string; required?: boolean }) {
   return <label><span>{label}</span><input defaultValue={defaultValue ?? ""} name={name} required={required} type={type} /></label>;
@@ -68,9 +72,22 @@ function Check({ label, name, defaultChecked = false }: { label: string; name: s
   return <label className="checkbox-row"><input defaultChecked={defaultChecked} name={name} type="checkbox" value="1" /><span>{label}</span></label>;
 }
 
-function PageEditor({ page }: { page: Omit<PageRecord, "createdAt" | "updatedAt"> }) {
+function toDomId(prefix: string, value: string) {
+  return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item"}`;
+}
+
+function studioMessage(code: string) {
+  const messages: Record<string, string> = {
+    "cannot-delete-current-user": "The profile currently signed in cannot be deleted.",
+    "cannot-delete-last-admin": "At least one admin profile must remain available.",
+    "user-missing": "The requested profile could not be found."
+  };
+  return messages[code] ?? code;
+}
+
+function PageEditor({ page, highlight = false }: { page: Omit<PageRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
   return (
-    <article className="studio-panel studio-editor-card">
+    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("page", page.slug)}>
       <div className="studio-editor-head">
         <h3>{page.title}</h3>
         {page.slug !== "new-page-draft" ? <form action={deletePageAction}><input name="slug" type="hidden" value={page.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
@@ -91,9 +108,9 @@ function PageEditor({ page }: { page: Omit<PageRecord, "createdAt" | "updatedAt"
   );
 }
 
-function PieceEditor({ piece }: { piece: Omit<PieceRecord, "createdAt" | "updatedAt"> }) {
+function PieceEditor({ piece, highlight = false }: { piece: Omit<PieceRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
   return (
-    <article className="studio-panel studio-editor-card">
+    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("piece", piece.slug)}>
       <div className="studio-editor-head">
         <h3>{piece.title}</h3>
         {piece.slug !== "new-piece-draft" ? <form action={deletePieceAction}><input name="slug" type="hidden" value={piece.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
@@ -122,9 +139,9 @@ function PieceEditor({ piece }: { piece: Omit<PieceRecord, "createdAt" | "update
   );
 }
 
-function PostEditor({ post }: { post: Omit<PostRecord, "createdAt" | "updatedAt"> }) {
+function PostEditor({ post, highlight = false }: { post: Omit<PostRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
   return (
-    <article className="studio-panel studio-editor-card">
+    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("post", post.slug)}>
       <div className="studio-editor-head">
         <h3>{post.title}</h3>
         {post.slug !== "new-process-entry" ? <form action={deletePostAction}><input name="slug" type="hidden" value={post.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
@@ -197,12 +214,12 @@ function pageDraft(): Omit<PageRecord, "createdAt" | "updatedAt"> {
   return { slug: "new-page-draft", title: "New Page Draft", navLabel: "New Page", status: "draft", intro: "", body: "", layout: "document", sections: [], heroMediaPath: null };
 }
 
-function pieceDraft(): Omit<PieceRecord, "createdAt" | "updatedAt"> {
-  return { slug: "new-piece-draft", title: "New Piece Draft", subtitle: "", category: "Tables", status: "commission", publicationStatus: "draft", availabilityLabel: "Draft", summary: "", story: "", details: [], tags: ["draft"], materials: ["Hardwood"], dimensions: { width: 48, depth: 24, height: 30, unit: "in" }, priceCents: null, inventoryCount: 0, leadTimeDays: 56, mediaPaths: [], featuredRank: 99, ownerEmail: "woodsmithbb@proton.me", metadata: { verifiedMedia: false, publicMediaLimit: 4, fulfillmentOptions: [] } };
+function pieceDraft(ownerEmail: string): Omit<PieceRecord, "createdAt" | "updatedAt"> {
+  return { slug: "new-piece-draft", title: "New Piece Draft", subtitle: "", category: "Tables", status: "commission", publicationStatus: "draft", availabilityLabel: "Draft", summary: "", story: "", details: [], tags: ["draft"], materials: ["Hardwood"], dimensions: { width: 48, depth: 24, height: 30, unit: "in" }, priceCents: null, inventoryCount: 0, leadTimeDays: 56, mediaPaths: [], featuredRank: 99, ownerEmail, metadata: { verifiedMedia: false, publicMediaLimit: 4, fulfillmentOptions: [] } };
 }
 
-function postDraft(): Omit<PostRecord, "createdAt" | "updatedAt"> {
-  return { slug: "new-process-entry", title: "New Process Note", excerpt: "", body: "", publicationStatus: "draft", publishedAt: null, authorEmail: "woodsmithbb@proton.me", coverMediaPath: null, tags: ["draft"], sourceUrl: null, sourceLabel: null };
+function postDraft(authorEmail: string): Omit<PostRecord, "createdAt" | "updatedAt"> {
+  return { slug: "new-process-entry", title: "New Process Note", excerpt: "", body: "", publicationStatus: "draft", publishedAt: null, authorEmail, coverMediaPath: null, tags: ["draft"], sourceUrl: null, sourceLabel: null };
 }
 
 function commissionTypeDraft(): Omit<CommissionTypeRecord, "createdAt" | "updatedAt"> {
@@ -213,12 +230,33 @@ function userDraft(): Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | 
   return { email: "new@beamanwoodworks.local", role: "woodworker", displayName: "New Woodworker", headline: "Independent woodworker", bio: "", avatarPath: null, publicProfile: false, links: [], metadata: { woodworker: true, developer: false, showOnAboutPage: false } };
 }
 
-function UserEditor({ user }: { user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "createdAt" | "updatedAt"> }) {
+function UserEditor({
+  user,
+  currentAdminEmail,
+  highlight = false
+}: {
+  user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "createdAt" | "updatedAt">;
+  currentAdminEmail: string;
+  highlight?: boolean;
+}) {
   const link = (label: string) => user.links.find((entry) => entry.label.toLowerCase() === label)?.url ?? "";
+  const isCurrentAdmin = currentAdminEmail.toLowerCase() === user.email.toLowerCase();
   return (
-    <article className="studio-panel studio-editor-card">
-      <div className="studio-editor-head"><h3>{user.displayName}</h3><span>{user.role}</span></div>
+    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("user", user.email)}>
+      <div className="studio-editor-head">
+        <h3>{user.displayName}</h3>
+        <div className="studio-head-actions">
+          <span>{user.role}</span>
+          {user.email !== "new@beamanwoodworks.local" ? (
+            <form action={deleteUserProfileAdminAction}>
+              <input name="email" type="hidden" value={user.email} />
+              <button className="button-secondary" disabled={isCurrentAdmin} title={isCurrentAdmin ? "Sign out of this account before deleting it." : "Delete profile"} type="submit">Delete</button>
+            </form>
+          ) : null}
+        </div>
+      </div>
       <form action={saveUserProfileAdminAction} className="request-form compact-form">
+        <input name="originalEmail" type="hidden" value={user.email} />
         <div className="field-grid two-up compact-grid"><Field label="Email" name="email" defaultValue={user.email} required /><Field label="Display name" name="displayName" defaultValue={user.displayName} required /></div>
         <div className="field-grid two-up compact-grid">
           <label><span>Role</span><select defaultValue={user.role} name="role"><option value="admin">Admin</option><option value="woodworker">Woodworker</option><option value="customer">Customer</option></select></label>
@@ -235,13 +273,14 @@ function UserEditor({ user }: { user: Omit<UserRecord, "id" | "resetToken" | "re
         <Check label="Developer profile" name="developerProfile" defaultChecked={Boolean(user.metadata.developer)} />
         <button className="button-primary" type="submit">Save profile</button>
       </form>
+      {isCurrentAdmin ? <p className="muted-copy">This is the account currently signed into the dashboard and cannot be deleted from this session.</p> : null}
     </article>
   );
 }
 
-function CommissionTypeEditor({ item }: { item: Omit<CommissionTypeRecord, "createdAt" | "updatedAt"> }) {
+function CommissionTypeEditor({ item, highlight = false }: { item: Omit<CommissionTypeRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
   return (
-    <article className="studio-panel studio-editor-card">
+    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("commission-type", item.slug)}>
       <div className="studio-editor-head">
         <h3>{item.label}</h3>
         {item.slug !== "new-custom-type" ? <form action={deleteCommissionTypeAction}><input name="slug" type="hidden" value={item.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
@@ -259,47 +298,144 @@ function CommissionTypeEditor({ item }: { item: Omit<CommissionTypeRecord, "crea
   );
 }
 
-export default async function StudioPage({ searchParams }: { searchParams: Promise<{ media?: string; mediaPage?: string; error?: string; cleaned?: string; assigned?: string; project?: string }> }) {
-  await requireAdmin();
-  const { media: mediaQuery = "", mediaPage: mediaPageRaw = "", error = "", cleaned = "", assigned = "", project: projectHighlight = "" } = await searchParams;
+export default async function StudioPage({
+  searchParams
+}: {
+  searchParams: Promise<{
+    panel?: string;
+    media?: string;
+    mediaPage?: string;
+    error?: string;
+    cleaned?: string;
+    assigned?: string;
+    uploaded?: string;
+    renamed?: string;
+    refreshed?: string;
+    saved?: string;
+    deleted?: string;
+    project?: string;
+    order?: string;
+    invoice?: string;
+    shipped?: string;
+    page?: string;
+    piece?: string;
+    post?: string;
+    user?: string;
+    email?: string;
+  }>;
+}) {
+  const currentAdmin = await requireAdmin();
+  const {
+    panel: requestedPanel = "",
+    media: mediaQuery = "",
+    mediaPage: mediaPageRaw = "",
+    error = "",
+    cleaned = "",
+    assigned = "",
+    uploaded = "",
+    renamed = "",
+    refreshed = "",
+    saved = "",
+    deleted = "",
+    project: projectHighlight = "",
+    order: orderHighlight = "",
+    invoice = "",
+    shipped = "",
+    page: pageHighlight = "",
+    piece: pieceHighlight = "",
+    post: postHighlight = "",
+    user: userHighlight = "",
+    email = ""
+  } = await searchParams;
+  const currentPanel: StudioPanel =
+    STUDIO_PANELS.includes(requestedPanel as StudioPanel) ? requestedPanel as StudioPanel
+      : cleaned || assigned || uploaded || renamed || refreshed || mediaQuery || saved === "media" || deleted === "media" || error.startsWith("media-") || error.startsWith("cleanup-") ? "media"
+        : saved === "settings" ? "settings"
+          : projectHighlight ? "projects"
+          : orderHighlight || invoice || shipped ? "orders"
+            : pageHighlight || saved === "page" || deleted === "page" ? "pages"
+              : pieceHighlight || saved === "piece" || deleted === "piece" ? "pieces"
+                : postHighlight || saved === "post" || deleted === "post" ? "process"
+                  : userHighlight || email || saved === "user" || deleted === "user" ? "people"
+                    : saved === "commission-type" || deleted === "commission-type" ? "custom"
+                      : saved === "review" || deleted === "review" ? "reviews"
+                        : "overview";
   const mediaPage = Math.max(1, Number.parseInt(mediaPageRaw, 10) || 1);
   const mediaOffset = (mediaPage - 1) * STUDIO_MEDIA_PAGE_SIZE;
-  const settings = getSiteSettings();
-  const aiStatus = getAiServiceStatus();
   const summary = getStudioDashboardSummary();
-  const pages = listPages(true);
-  const pieces = listPieces(true);
-  const posts = listPosts(true);
-  const commissionTypes = listCommissionTypes(true);
-  const users = listUsers();
   const queryOpt = mediaQuery.trim() || undefined;
-  const mediaTotal = countMedia({ includeUnreviewed: true, query: queryOpt });
-  const media = listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset });
-  const verificationMedia = listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_VERIFICATION_MEDIA_CAP });
-  const verificationQueue = buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image"));
-  const projects = listProjects(true).slice(0, 20);
-  const projectMedia = listMediaForProjectReferences(projects.map((p) => p.reference));
-  const orders = listOrders().slice(0, 20);
-  const reviews = listReviews().slice(0, 20);
-  const notifications = listNotifications().slice(0, 20);
+  const settings = currentPanel === "settings" ? getSiteSettings() : null;
+  const aiStatus = currentPanel === "overview" || currentPanel === "media" ? getAiServiceStatus() : null;
+  const pages = currentPanel === "pages" || currentPanel === "media" ? listPages(true) : [];
+  const pieces = currentPanel === "pieces" || currentPanel === "media" ? listPieces(true) : [];
+  const posts = currentPanel === "process" || currentPanel === "media" ? listPosts(true) : [];
+  const commissionTypes = currentPanel === "custom" ? listCommissionTypes(true) : [];
+  const users = currentPanel === "people" ? listUsers() : [];
+  const mediaTotal = currentPanel === "media" ? countMedia({ includeUnreviewed: true, query: queryOpt }) : 0;
+  const media = currentPanel === "media" ? listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset }) : [];
+  const verificationMedia = currentPanel === "media" ? listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_VERIFICATION_MEDIA_CAP }) : [];
+  const verificationQueue = currentPanel === "media" ? buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image")) : [];
+  const projects = currentPanel === "projects" ? listProjects(true).slice(0, 20) : [];
+  const projectMedia = currentPanel === "projects" ? listMediaForProjectReferences(projects.map((p) => p.reference)) : [];
+  const orders = currentPanel === "orders" ? listOrders().slice(0, 20) : [];
+  const reviews = currentPanel === "reviews" ? listReviews().slice(0, 20) : [];
+  const notifications = currentPanel === "notifications" ? listNotifications().slice(0, 20) : [];
+  const panelHref = (panel: StudioPanel, extras?: Record<string, string>) => {
+    const params = new URLSearchParams({ panel });
+    if (panel === "media" && queryOpt) {
+      params.set("media", queryOpt);
+    }
+    for (const [key, value] of Object.entries(extras ?? {})) {
+      if (value) {
+        params.set(key, value);
+      }
+    }
+    return `/studio?${params.toString()}`;
+  };
 
   return (
     <Shell>
       <PageSection>
-        <PageIntro eyebrow="Woodshop" title="Beaman Woodworks dashboard" copy="Edit live pages, pieces, process notes, media, orders, and project status through structured browser forms." />
-        {error ? <p className="notice-panel danger">Dashboard action failed: {error}</p> : null}
+        <PageIntro eyebrow="Woodshop" title="Dashboard" copy="Switch between focused workspaces for pages, pieces, media, process notes, projects, orders, and profiles." />
+        {error ? <p className="notice-panel danger">Dashboard action failed: {studioMessage(error)}</p> : null}
         {cleaned ? <p className="notice-panel">Cleaned media copy created: {cleaned}</p> : null}
         {assigned ? <p className="notice-panel">Media assigned and marked reviewed: {assigned}</p> : null}
+        {uploaded ? <p className="notice-panel">Media uploaded: {uploaded}</p> : null}
+        {renamed ? <p className="notice-panel">Media renamed: {renamed}</p> : null}
+        {refreshed ? <p className="notice-panel">Media library refreshed.</p> : null}
+        {saved ? <p className="notice-panel">{saved === "user" && email ? `Profile saved: ${email}` : `Saved: ${saved}`}</p> : null}
+        {deleted ? <p className="notice-panel">{deleted === "user" && email ? `Profile deleted: ${email}` : `Deleted: ${deleted}`}</p> : null}
         <div className="admin-summary-grid">
           <article className="studio-panel"><span>{summary.bandwidth.bandwidthPercent}%</span><p>Capacity</p></article>
           <article className="studio-panel"><span>{summary.bandwidth.activeProjects}</span><p>Active projects</p></article>
           <article className="studio-panel"><span>{summary.publishedPieces}</span><p>Published pieces</p></article>
-          <article className="studio-panel"><span>{posts.filter((post) => post.publicationStatus === "published").length}</span><p>Process notes</p></article>
-          <article className="studio-panel"><span>{mediaTotal}</span><p>Indexed media</p></article>
+          <article className="studio-panel"><span>{summary.publishedPosts}</span><p>Process notes</p></article>
+          <article className="studio-panel"><span>{currentPanel === "media" ? mediaTotal : "Panel"}</span><p>{currentPanel === "media" ? "Indexed media" : currentPanel}</p></article>
           <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Revenue this month</p></article>
         </div>
+        <nav aria-label="Studio workspaces" className="studio-workspace-nav">
+          {STUDIO_PANELS.map((panel) => (
+            <Link aria-current={panel === currentPanel ? "page" : undefined} className={`studio-workspace-pill ${panel === currentPanel ? "is-active" : ""}`.trim()} href={panelHref(panel)} key={panel}>
+              {panel === "overview" ? "Overview" : panel.charAt(0).toUpperCase() + panel.slice(1)}
+            </Link>
+          ))}
+        </nav>
       </PageSection>
 
+      {currentPanel === "overview" ? (
+        <PageSection>
+          <div className="section-heading"><p className="eyebrow">Overview</p><h2>Focused workspaces</h2><p>The dashboard now loads one workspace at a time to keep the editing surface lighter and easier to scan.</p></div>
+          <div className="studio-grid two-column-grid">
+            <Link className="studio-panel studio-workspace-card" href={panelHref("settings")}><p className="eyebrow">Brand</p><h3>Site settings</h3><p>Homepage copy, contact details, and divider labels.</p></Link>
+            <Link className="studio-panel studio-workspace-card" href={panelHref("pieces")}><p className="eyebrow">Pieces</p><h3>{summary.publishedPieces} published</h3><p>Portfolio, shop, pricing visibility, and fulfillment details.</p></Link>
+            <Link className="studio-panel studio-workspace-card" href={panelHref("media")}><p className="eyebrow">Media</p><h3>Mounted NAS library</h3><p>Upload, review, crop, assign, and verify piece accuracy.</p></Link>
+            <Link className="studio-panel studio-workspace-card" href={panelHref("projects")}><p className="eyebrow">Projects</p><h3>{summary.bandwidth.activeProjects} active</h3><p>Lead time, queue visibility, notes, and project stages.</p></Link>
+            {aiStatus ? <article className="studio-panel"><p className="eyebrow">AI services</p><h3>{aiStatus.backgroundCleanup || aiStatus.embeddingSearch || aiStatus.mediaAnalysis || aiStatus.publicRendering ? "Mixed availability" : "Credential-free mode"}</h3><p className="muted-copy">Optional AI services remain honest and off by default unless their environment configuration is present.</p></article> : null}
+          </div>
+        </PageSection>
+      ) : null}
+
+      {currentPanel === "settings" && settings ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Settings</p><h2>Brand and homepage</h2><p>Core contact information and homepage wording.</p></div>
         <article className="studio-panel">
@@ -314,13 +450,15 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           </form>
         </article>
       </PageSection>
+      ) : null}
 
-      <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor key={page.slug} page={page} />)}</div></PageSection>
-      <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor piece={pieceDraft()} />{pieces.map((piece) => <PieceEditor key={piece.slug} piece={piece} />)}</div></PageSection>
-      <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection>
-      <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Woodworker, developer, and customer profile information for current and future multi-maker support.</p></div><div className="studio-grid two-column-grid"><UserEditor user={userDraft()} />{users.map((user) => <UserEditor key={user.email} user={user} />)}</div></PageSection>
-      <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Markdown body, cover images, external links, and publication state.</p></div><div className="studio-grid two-column-grid"><PostEditor post={postDraft()} />{posts.map((post) => <PostEditor key={post.slug} post={post} />)}</div></PageSection>
+      {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} page={page} />)}</div></PageSection> : null}
+      {currentPanel === "pieces" ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor piece={pieceDraft(currentAdmin.email)} />{pieces.map((piece) => <PieceEditor highlight={piece.slug === pieceHighlight} key={piece.slug} piece={piece} />)}</div></PageSection> : null}
+      {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
+      {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} user={user} />)}</div></PageSection> : null}
+      {currentPanel === "process" ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Markdown body, cover images, external links, and publication state.</p></div><div className="studio-grid two-column-grid"><PostEditor post={postDraft(currentAdmin.email)} />{posts.map((post) => <PostEditor highlight={post.slug === postHighlight} key={post.slug} post={post} />)}</div></PageSection> : null}
 
+      {currentPanel === "media" ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Media</p><h2>All media</h2><p>Upload, filter, rename, assign, tag, and adjust focal crop controls.</p></div>
         <div className="studio-grid two-column-grid">
@@ -333,23 +471,23 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
               <label><span>File</span><input name="file" required type="file" /></label><button className="button-primary" type="submit">Upload</button>
             </form>
             <form action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></form>
-            <form action="/studio" className="request-form compact-form"><Field label="Filter media" name="media" defaultValue={mediaQuery} /><input name="mediaPage" type="hidden" value="1" /><button className="button-secondary" type="submit">Filter</button></form>
+            <form action="/studio" className="request-form compact-form"><input name="panel" type="hidden" value="media" /><Field label="Filter media" name="media" defaultValue={mediaQuery} /><input name="mediaPage" type="hidden" value="1" /><button className="button-secondary" type="submit">Filter</button></form>
             {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
               <nav aria-label="Media pagination" className="studio-media-pagination">
-                {mediaPage > 1 ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage - 1) }).toString()}`}>Previous page</Link> : <span className="muted-copy">Previous page</span>}
+                {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })}>Previous page</Link> : <span className="muted-copy">Previous page</span>}
                 <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
-                {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage + 1) }).toString()}`}>Next page</Link> : <span className="muted-copy">Next page</span>}
+                {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })}>Next page</Link> : <span className="muted-copy">Next page</span>}
               </nav>
             ) : null}
           </article>
           <article className="studio-panel"><h3>Media status</h3>
             <p className="muted-copy">{mediaTotal} indexed total; showing {media.length === 0 ? 0 : mediaOffset + 1}–{mediaOffset + media.length} on this page. Synology <code>@eaDir</code> and <code>SYNOFILE_THUMB</code> paths are excluded from lists and scans.</p>
-            <p className="muted-copy">Automatic clustering uses folder/filename/date patterns and, when enabled, AI vision analysis and embedding similarity. Manual assignments always take priority.</p>
+            <p className="muted-copy">Automatic clustering uses folder, filename, and date patterns locally. AI vision analysis and embedding similarity stay optional when configured. Manual assignments always take priority.</p>
             <dl className="estimate-list compact-estimate">
-              <div><dt>AI background cleanup</dt><dd>{aiStatus.backgroundCleanup ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
-              <div><dt>Embedding search</dt><dd>{aiStatus.embeddingSearch ? `Enabled (${aiStatus.embeddingModel})` : "Not configured"}</dd></div>
-              <div><dt>AI media analysis</dt><dd>{aiStatus.mediaAnalysis ? `Enabled (${aiStatus.visionModel})` : "Not configured"}</dd></div>
-              <div><dt>Photorealistic rendering</dt><dd>{aiStatus.publicRendering ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
+              <div><dt>AI background cleanup</dt><dd>{aiStatus?.backgroundCleanup ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
+              <div><dt>Embedding search</dt><dd>{aiStatus?.embeddingSearch ? `Enabled (${aiStatus.embeddingModel})` : "Not configured"}</dd></div>
+              <div><dt>AI media analysis</dt><dd>{aiStatus?.mediaAnalysis ? `Enabled (${aiStatus.visionModel})` : "Not configured"}</dd></div>
+              <div><dt>Photorealistic rendering</dt><dd>{aiStatus?.publicRendering ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div>
             </dl>
             <p className="muted-copy">When AI services are enabled, the analysis endpoint at <code>/api/media-analysis</code> can auto-tag, embed, cluster, and match media to pieces. Trigger a full analysis run from the dashboard or via POST with actions: analyze, embed, cluster, match, or full.</p>
           </article>
@@ -380,13 +518,15 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
         <div className="studio-stack">{media.map((item) => <MediaEditor key={item.relativePath} item={item} pages={pages} pieces={pieces} posts={posts} />)}</div>
         {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
           <nav aria-label="Media pagination footer" className="studio-media-pagination studio-media-pagination-footer">
-            {mediaPage > 1 ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage - 1) }).toString()}`}>Previous page</Link> : null}
+            {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })}>Previous page</Link> : null}
             <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
-            {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={`/studio?${new URLSearchParams({ ...(queryOpt ? { media: queryOpt } : {}), ...(projectHighlight ? { project: projectHighlight } : {}), mediaPage: String(mediaPage + 1) }).toString()}`}>Next page</Link> : null}
+            {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })}>Next page</Link> : null}
           </nav>
         ) : null}
       </PageSection>
+      ) : null}
 
+      {currentPanel === "projects" ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Projects</p><h2>Queue and status</h2><p>Project status, stage, notes, and timeline updates.</p></div>
         <div className="studio-grid two-column-grid">
@@ -410,23 +550,26 @@ export default async function StudioPage({ searchParams }: { searchParams: Promi
           ))}
         </div>
       </PageSection>
+      ) : null}
 
+      {currentPanel === "orders" ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Orders</p><h2>Payments and shipping</h2><p>Order status, invoice, and label actions.</p></div>
         <div className="studio-grid two-column-grid">
-          {orders.map((order) => (
-            <article className="studio-panel studio-editor-card" key={order.orderNumber}>
-              <div className="studio-editor-head"><h3>{order.orderNumber}</h3><span>{formatMoney(order.totalCents)}</span></div>
-              <form action={saveOrderAction} className="request-form compact-form"><input name="orderNumber" type="hidden" value={order.orderNumber} /><Field label="Status" name="status" defaultValue={order.status} /><Field label="Payment status" name="paymentStatus" defaultValue={order.paymentStatus ?? ""} /><Field label="Tracking number" name="trackingNumber" defaultValue={order.trackingNumber ?? ""} /><button className="button-primary" type="submit">Save order</button></form>
-              <div className="button-row"><form action={createInvoiceAction}><input name="orderNumber" type="hidden" value={order.orderNumber} /><button className="button-secondary" type="submit">Issue invoice</button></form><form action={createShippingLabelAction}><input name="orderNumber" type="hidden" value={order.orderNumber} /><input name="weightOunces" type="hidden" value="96" /><button className="button-secondary" type="submit">Create label</button></form></div>
-              <p className="muted-copy">Updated {formatDateTime(order.updatedAt)}</p>
+          {orders.map((orderRecord) => (
+            <article className={`studio-panel studio-editor-card${orderRecord.orderNumber === orderHighlight || orderRecord.orderNumber === invoice || orderRecord.orderNumber === shipped ? " highlight-card" : ""}`} key={orderRecord.orderNumber}>
+              <div className="studio-editor-head"><h3>{orderRecord.orderNumber}</h3><span>{formatMoney(orderRecord.totalCents)}</span></div>
+              <form action={saveOrderAction} className="request-form compact-form"><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><Field label="Status" name="status" defaultValue={orderRecord.status} /><Field label="Payment status" name="paymentStatus" defaultValue={orderRecord.paymentStatus ?? ""} /><Field label="Tracking number" name="trackingNumber" defaultValue={orderRecord.trackingNumber ?? ""} /><button className="button-primary" type="submit">Save order</button></form>
+              <div className="button-row"><form action={createInvoiceAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><button className="button-secondary" type="submit">Issue invoice</button></form><form action={createShippingLabelAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><input name="weightOunces" type="hidden" value="96" /><button className="button-secondary" type="submit">Create label</button></form></div>
+              <p className="muted-copy">Updated {formatDateTime(orderRecord.updatedAt)}</p>
             </article>
           ))}
         </div>
       </PageSection>
+      ) : null}
 
-      <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className="studio-panel studio-editor-card" key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection>
-      <PageSection><div className="section-heading"><p className="eyebrow">Notifications</p><h2>Email queue</h2><p>Queued and sent notification records.</p></div><div className="studio-grid two-column-grid">{notifications.length > 0 ? notifications.map((notification) => <article className="studio-panel" key={notification.id}><p className="eyebrow">{notification.status}</p><h3>{notification.subject}</h3><p>{notification.recipient}</p><p className="muted-copy">Queued {formatDateTime(notification.createdAt)}</p>{notification.sentAt ? <p className="muted-copy">Sent {formatDateTime(notification.sentAt)}</p> : null}{notification.error ? <p className="notice-panel danger">{notification.error}</p> : null}<p className="muted-copy">{notification.body}</p></article>) : <article className="studio-panel"><p className="muted-copy">No notifications have been queued yet.</p></article>}</div></PageSection>
+      {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className={`studio-panel studio-editor-card${pieceHighlight && review.pieceSlug === pieceHighlight ? " highlight-card" : ""}`} key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection> : null}
+      {currentPanel === "notifications" ? <PageSection><div className="section-heading"><p className="eyebrow">Notifications</p><h2>Email queue</h2><p>Queued and sent notification records.</p></div><div className="studio-grid two-column-grid">{notifications.length > 0 ? notifications.map((notification) => <article className="studio-panel" key={notification.id}><p className="eyebrow">{notification.status}</p><h3>{notification.subject}</h3><p>{notification.recipient}</p><p className="muted-copy">Queued {formatDateTime(notification.createdAt)}</p>{notification.sentAt ? <p className="muted-copy">Sent {formatDateTime(notification.sentAt)}</p> : null}{notification.error ? <p className="notice-panel danger">{notification.error}</p> : null}<p className="muted-copy">{notification.body}</p></article>) : <article className="studio-panel"><p className="muted-copy">No notifications have been queued yet.</p></article>}</div></PageSection> : null}
     </Shell>
   );
 }

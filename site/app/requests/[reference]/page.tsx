@@ -26,7 +26,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   if (!canView) {
     return (
       <Shell>
-        <PageSection>
+        <PageSection editHref={`/studio?panel=projects&project=${encodeURIComponent(project.reference)}#project-${project.reference}`}>
           <div className="request-summary-head">
             <div>
               <p className="eyebrow">Reference {project.reference}</p>
@@ -54,7 +54,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref={`/studio?panel=projects&project=${encodeURIComponent(project.reference)}#project-${project.reference}`}>
         <div className="request-summary-head">
           <div>
             <p className="eyebrow">Reference {project.reference}</p>

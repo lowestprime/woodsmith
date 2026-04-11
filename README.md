@@ -11,19 +11,22 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 - Contact-first custom work requests with attachments, lead-time context, material preferences, project tracking, and an optional live procedural 3D scale preview
 - Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
-- Private Woodshop dashboard for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
+- Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
+- Admin-only pencil edit entrypoints on public sections that link directly into the matching Woodshop workspace while signed in
 - Browser media management for upload, rename, delete, assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
 - Keyword/metadata search plus browser-assisted visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. Optional OpenAI embeddings can re-rank results when enabled.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
 - Programmatic Beaman Woodworks favicon and brand mark
+- Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 
 ## Current production notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
+- The public site exposes admin-only edit links when an admin is signed in. Those links open the matching workspace in `/studio`; they are entrypoints into the dashboard, not a drag-and-drop page builder.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
 - Payment capture, invoice delivery, shipping-label creation, outbound email, OpenAI image cleanup, photorealistic preview generation, and embedding re-ranking require environment configuration before they work live.
@@ -129,6 +132,8 @@ Private Woodshop:
 ## Deployment
 
 The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics:rw`; do not remount or bind the repo-local `pics/` folder under `docker_ssd`.
+
+After deploying a build from this branch, the startup migration updates legacy `lowestprime@proton.me` developer references in persisted settings and seeded profile data to `cooperbeaman@proton.me`.
 
 Use these docs together:
 

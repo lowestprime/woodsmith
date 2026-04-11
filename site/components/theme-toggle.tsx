@@ -45,15 +45,15 @@ export function ThemeToggle() {
       }}
       type="button"
     >
-      <span className="theme-toggle-copy">
+      <span className="theme-toggle-state">
         <strong>{theme === "dark" ? "Night" : "Day"}</strong>
         <span>{theme === "dark" ? "OLED black" : "Maple light"}</span>
       </span>
       <span className="theme-toggle-track">
         <span className="theme-toggle-track-label theme-toggle-track-label-left">Night</span>
         <span className="theme-toggle-track-label theme-toggle-track-label-right">Day</span>
+        <span className="theme-toggle-thumb" data-theme={theme} />
       </span>
-      <span className="theme-toggle-thumb" data-theme={theme} />
     </button>
   );
 }

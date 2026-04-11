@@ -6,7 +6,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const { error, email = "", redirectTo = "/account/profile" } = await searchParams;
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=people">
         <PageIntro eyebrow="Account" title="Log in" copy="Use your buyer or dashboard account to review projects, edit your profile, or access private tools." />
         {error ? <div className="notice-panel" role="alert"><p>{error === "1" ? "The email and password did not match a current account." : error}</p></div> : null}
         <LoginForm email={email} redirectTo={redirectTo} />

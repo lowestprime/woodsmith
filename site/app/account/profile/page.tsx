@@ -10,7 +10,7 @@ export default async function ProfilePage() {
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref={`/studio?panel=people&user=${encodeURIComponent(user.email)}#${`user-${user.email.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item"}`}`}>
         <PageIntro eyebrow="Account" title="Profile & projects" copy="Manage account details, keep project references close, and review order or custom work status from the same dashboard." />
         <div className="account-layout">
           <ProfileForm user={user} />

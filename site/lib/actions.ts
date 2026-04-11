@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   appendProjectUpdate,
+  countUsersByRole,
   createDraftOrder,
   createProject,
   deleteCommissionType,
@@ -12,6 +13,7 @@ import {
   deletePiece,
   deletePost,
   deleteReview,
+  deleteUserProfile,
   getOrder,
   getMedia,
   getPage,
@@ -137,14 +139,14 @@ export async function loginAction(formData: FormData) {
 }
 
 export async function studioLoginAction(formData: FormData) {
-  const email = optionalField(formData.get("email")) || "woodsmithbb@proton.me";
+  const email = requiredField(formData.get("email"), "Email").toLowerCase();
   const password = requiredField(formData.get("password"), "Password");
   const user = await verifyLogin(email, password);
   if (!user || user.role !== "admin") {
     redirect(`/studio/login?error=invalid&email=${encodeURIComponent(email)}`);
   }
   await createSession(user);
-  redirect("/studio");
+  redirect("/studio?panel=overview");
 }
 
 export async function signupAction(formData: FormData) {
@@ -657,7 +659,7 @@ export async function saveSiteSettingsAction(formData: FormData) {
   revalidatePath("/shop");
   revalidatePath("/portfolio");
   revalidatePath("/process");
-  redirect("/studio?saved=settings");
+  redirect("/studio?panel=settings&saved=settings");
 }
 
 export async function savePageAction(formData: FormData) {
@@ -679,14 +681,14 @@ export async function savePageAction(formData: FormData) {
         heroMediaPath: optionalField(formData.get("heroMediaPath")) || current?.heroMediaPath || null
       });
   revalidatePath(`/${optionalField(formData.get("slug"))}`);
-  redirect("/studio?saved=page");
+  redirect(`/studio?panel=pages&saved=page&page=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePageAction(formData: FormData) {
   await requireAdmin();
   deletePage(requiredField(formData.get("slug"), "Page slug"));
   revalidatePath("/");
-  redirect("/studio?deleted=page");
+  redirect("/studio?panel=pages&deleted=page");
 }
 
 export async function savePieceAction(formData: FormData) {
@@ -733,14 +735,14 @@ export async function savePieceAction(formData: FormData) {
       });
   revalidatePath("/portfolio");
   revalidatePath("/shop");
-  redirect("/studio?saved=piece");
+  redirect(`/studio?panel=pieces&saved=piece&piece=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePieceAction(formData: FormData) {
   await requireAdmin();
   deletePiece(requiredField(formData.get("slug"), "Piece slug"));
   revalidatePath("/portfolio");
-  redirect("/studio?deleted=piece");
+  redirect("/studio?panel=pieces&deleted=piece");
 }
 
 export async function savePostAction(formData: FormData) {
@@ -765,7 +767,7 @@ export async function savePostAction(formData: FormData) {
       });
   revalidatePath("/shop");
   revalidatePath("/process");
-  redirect("/studio?saved=post");
+  redirect(`/studio?panel=process&saved=post&post=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePostAction(formData: FormData) {
@@ -773,17 +775,23 @@ export async function deletePostAction(formData: FormData) {
   deletePost(requiredField(formData.get("slug"), "Post slug"));
   revalidatePath("/shop");
   revalidatePath("/process");
-  redirect("/studio?deleted=post");
+  redirect("/studio?panel=process&deleted=post");
 }
 
 export async function saveUserProfileAdminAction(formData: FormData) {
   await requireAdmin();
+  const originalEmail = optionalField(formData.get("originalEmail")).toLowerCase() || null;
   const email = requiredField(formData.get("email"), "Email").toLowerCase();
   const currentSessionUser = await getCurrentUser();
-  const existing = getUserByEmail(email);
+  const existing = getUserByEmail(originalEmail || email);
+  const existingByTargetEmail = getUserByEmail(email);
+  if (originalEmail && originalEmail !== email && existingByTargetEmail && existingByTargetEmail.id !== existing?.id) {
+    redirect(`/studio?panel=people&error=${encodeURIComponent("A profile with that email already exists.")}`);
+  }
   const userJson = optionalField(formData.get("userJson"));
   saveUserProfile(userJson
     ? parseJsonField(formData.get("userJson"), {
+        originalEmail: originalEmail || email,
         email,
         role: "woodworker",
         displayName: email,
@@ -795,6 +803,7 @@ export async function saveUserProfileAdminAction(formData: FormData) {
         metadata: {}
       })
     : {
+        originalEmail: originalEmail || email,
         email,
         role: (optionalField(formData.get("role")) || existing?.role || "woodworker") as UserRecord["role"],
         displayName: optionalField(formData.get("displayName")) || existing?.displayName || email,
@@ -817,10 +826,36 @@ export async function saveUserProfileAdminAction(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/about");
   revalidatePath("/studio");
-  if (currentSessionUser?.email === email) {
+  if (currentSessionUser?.email === email || currentSessionUser?.email === originalEmail) {
     revalidatePath("/account/profile");
   }
-  redirect(`/studio?saved=user&email=${encodeURIComponent(email)}`);
+  redirect(`/studio?panel=people&saved=user&email=${encodeURIComponent(email)}`);
+}
+
+export async function deleteUserProfileAdminAction(formData: FormData) {
+  await requireAdmin();
+  const email = requiredField(formData.get("email"), "User email").toLowerCase();
+  const currentSessionUser = await getCurrentUser();
+  const user = getUserByEmail(email);
+
+  if (!user) {
+    redirect("/studio?panel=people&error=user-missing");
+  }
+
+  if (currentSessionUser?.email === email) {
+    redirect("/studio?panel=people&error=cannot-delete-current-user");
+  }
+
+  if (user.role === "admin" && countUsersByRole("admin") <= 1) {
+    redirect("/studio?panel=people&error=cannot-delete-last-admin");
+  }
+
+  deleteUserProfile(email);
+  revalidatePath("/");
+  revalidatePath("/about");
+  revalidatePath("/studio");
+  revalidatePath("/account/profile");
+  redirect(`/studio?panel=people&deleted=user&email=${encodeURIComponent(email)}`);
 }
 
 export async function saveReviewAdminAction(formData: FormData) {
@@ -849,7 +884,7 @@ export async function saveReviewAdminAction(formData: FormData) {
   saveReview(review);
   revalidatePath("/studio");
   revalidatePath(`/portfolio/${review.pieceSlug}`);
-  redirect(`/studio?saved=review&id=${encodeURIComponent(review.id)}`);
+  redirect(`/studio?panel=reviews&saved=review&id=${encodeURIComponent(review.id)}`);
 }
 
 export async function deleteReviewAdminAction(formData: FormData) {
@@ -861,7 +896,7 @@ export async function deleteReviewAdminAction(formData: FormData) {
   if (pieceSlug) {
     revalidatePath(`/portfolio/${pieceSlug}`);
   }
-  redirect(`/studio?deleted=review&id=${encodeURIComponent(id)}`);
+  redirect(`/studio?panel=reviews&deleted=review&id=${encodeURIComponent(id)}`);
 }
 export async function saveCommissionTypeAction(formData: FormData) {
   await requireAdmin();
@@ -885,21 +920,21 @@ export async function saveCommissionTypeAction(formData: FormData) {
         active: parseBooleanField(formData.get("active"))
       });
   revalidatePath("/commissions");
-  redirect("/studio?saved=commission-type");
+  redirect("/studio?panel=custom&saved=commission-type");
 }
 
 export async function deleteCommissionTypeAction(formData: FormData) {
   await requireAdmin();
   deleteCommissionType(requiredField(formData.get("slug"), "Slug"));
   revalidatePath("/commissions");
-  redirect("/studio?deleted=commission-type");
+  redirect("/studio?panel=custom&deleted=commission-type");
 }
 
 export async function uploadMediaAction(formData: FormData) {
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    redirect("/studio?error=media-upload");
+    redirect("/studio?panel=media&error=media-upload");
   }
   const folder = optionalField(formData.get("folder")) || "Uploads";
   const relativePath = await persistUploadedMedia(file, folder);
@@ -924,7 +959,7 @@ export async function uploadMediaAction(formData: FormData) {
   revalidatePath("/portfolio");
   revalidatePath("/shop");
   revalidatePath("/process");
-  redirect(`/studio?uploaded=${encodeURIComponent(relativePath)}`);
+  redirect(`/studio?panel=media&uploaded=${encodeURIComponent(relativePath)}`);
 }
 
 export async function renameMediaAction(formData: FormData) {
@@ -933,7 +968,7 @@ export async function renameMediaAction(formData: FormData) {
   const nextRelativePath = renameMediaAsset(previousPath, requiredField(formData.get("baseName"), "New name"));
   refreshMediaLibrary();
   revalidatePath("/studio");
-  redirect(`/studio?renamed=${encodeURIComponent(nextRelativePath)}`);
+  redirect(`/studio?panel=media&renamed=${encodeURIComponent(nextRelativePath)}`);
 }
 
 export async function deleteMediaAction(formData: FormData) {
@@ -942,7 +977,7 @@ export async function deleteMediaAction(formData: FormData) {
   deleteMediaAsset(relativePath);
   refreshMediaLibrary();
   revalidatePath("/studio");
-  redirect("/studio?deleted=media");
+  redirect("/studio?panel=media&deleted=media");
 }
 
 export async function assignMediaCandidateAction(formData: FormData) {
@@ -952,7 +987,7 @@ export async function assignMediaCandidateAction(formData: FormData) {
   const piece = getPiece(pieceSlug);
   const media = getMedia(relativePath);
   if (!piece || !media) {
-    redirect("/studio?error=media-assignment");
+    redirect("/studio?panel=media&error=media-assignment");
   }
 
   saveMediaMetadata({
@@ -989,7 +1024,7 @@ export async function assignMediaCandidateAction(formData: FormData) {
   revalidatePath("/studio");
   revalidatePath("/portfolio");
   revalidatePath(`/portfolio/${pieceSlug}`);
-  redirect(`/studio?assigned=${encodeURIComponent(relativePath)}`);
+  redirect(`/studio?panel=media&assigned=${encodeURIComponent(relativePath)}`);
 }
 
 export async function cleanupMediaBackgroundAction(formData: FormData) {
@@ -999,11 +1034,11 @@ export async function cleanupMediaBackgroundAction(formData: FormData) {
   const prompt = optionalField(formData.get("cleanupPrompt"));
   const media = getMedia(relativePath);
   if (!media) {
-    redirect("/studio?error=media-missing");
+    redirect("/studio?panel=media&error=media-missing");
   }
 
   if (!getAiServiceStatus().backgroundCleanup) {
-    redirect("/studio?error=cleanup-unconfigured");
+    redirect("/studio?panel=media&error=cleanup-unconfigured");
   }
 
   const generated = await createCleanedBackgroundVariant(relativePath, resolveMediaPath(relativePath), prompt);
@@ -1011,12 +1046,12 @@ export async function cleanupMediaBackgroundAction(formData: FormData) {
   if (!b64Json && generated.url) {
     const response = await fetch(generated.url);
     if (!response.ok) {
-      redirect("/studio?error=cleanup-download");
+      redirect("/studio?panel=media&error=cleanup-download");
     }
     b64Json = Buffer.from(await response.arrayBuffer()).toString("base64");
   }
   if (!b64Json) {
-    redirect("/studio?error=cleanup-empty");
+    redirect("/studio?panel=media&error=cleanup-empty");
   }
 
   const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
@@ -1047,7 +1082,7 @@ export async function cleanupMediaBackgroundAction(formData: FormData) {
   revalidatePath("/studio");
   revalidatePath("/portfolio");
   revalidatePath("/shop");
-  redirect(`/studio?cleaned=${encodeURIComponent(nextPath)}`);
+  redirect(`/studio?panel=media&cleaned=${encodeURIComponent(nextPath)}`);
 }
 
 export async function saveMediaMetadataAction(formData: FormData) {
@@ -1093,18 +1128,18 @@ export async function saveMediaMetadataAction(formData: FormData) {
         metadata
       });
   revalidatePath("/studio");
-  redirect("/studio?saved=media");
+  redirect("/studio?panel=media&saved=media");
 }
 
 export async function refreshMediaLibraryAction() {
   await requireAdmin();
   refreshMediaLibrary();
   revalidatePath("/studio");
-  redirect("/studio?refreshed=media");
+  redirect("/studio?panel=media&refreshed=media");
 }
 
 export async function saveProjectAction(formData: FormData) {
-  await requireAdmin();
+  const currentAdmin = await requireAdmin();
   const reference = requiredField(formData.get("reference"), "Project reference");
   updateProject(reference, optionalField(formData.get("projectJson"))
     ? parseJsonField(formData.get("projectJson"), {})
@@ -1122,7 +1157,7 @@ export async function saveProjectAction(formData: FormData) {
   if (optionalField(formData.get("timelineBody"))) {
     appendProjectUpdate({
       projectReference: reference,
-      authorEmail: "woodsmithbb@proton.me",
+      authorEmail: currentAdmin.email,
       authorRole: "studio",
       visibility: optionalField(formData.get("visibility")) === "private" ? "private" : "public",
       body: optionalField(formData.get("timelineBody"))
@@ -1140,7 +1175,7 @@ export async function saveProjectAction(formData: FormData) {
   }
   revalidatePath("/studio");
   revalidatePath(`/requests/${reference}`);
-  redirect(`/studio?project=${encodeURIComponent(reference)}&saved=1`);
+  redirect(`/studio?panel=projects&project=${encodeURIComponent(reference)}&saved=1`);
 }
 
 export async function saveOrderAction(formData: FormData) {
@@ -1148,7 +1183,7 @@ export async function saveOrderAction(formData: FormData) {
   const orderNumber = requiredField(formData.get("orderNumber"), "Order number");
   const current = getOrder(orderNumber);
   if (!current) {
-    redirect("/studio?error=order-missing");
+    redirect("/studio?panel=orders&error=order-missing");
   }
   const orderJson = optionalField(formData.get("orderJson"));
   saveOrder({
@@ -1168,7 +1203,7 @@ export async function saveOrderAction(formData: FormData) {
     orderNumber: current.orderNumber
   });
   revalidatePath("/studio");
-  redirect(`/studio?order=${encodeURIComponent(orderNumber)}&saved=1`);
+  redirect(`/studio?panel=orders&order=${encodeURIComponent(orderNumber)}&saved=1`);
 }
 
 export async function createInvoiceAction(formData: FormData) {
@@ -1176,7 +1211,7 @@ export async function createInvoiceAction(formData: FormData) {
   const orderNumber = requiredField(formData.get("orderNumber"), "Order number");
   const order = getOrder(orderNumber);
   if (!order || !order.userEmail) {
-    redirect("/studio?error=invoice");
+    redirect("/studio?panel=orders&error=invoice");
   }
   const invoice = await createStripeInvoice({
     customerEmail: order.userEmail,
@@ -1187,7 +1222,7 @@ export async function createInvoiceAction(formData: FormData) {
   });
   saveOrder({ ...order, stripeInvoiceId: invoice.id, invoiceStatus: "Sent" });
   revalidatePath("/studio");
-  redirect(`/studio?invoice=${encodeURIComponent(order.orderNumber)}`);
+  redirect(`/studio?panel=orders&invoice=${encodeURIComponent(order.orderNumber)}`);
 }
 
 export async function createShippingLabelAction(formData: FormData) {
@@ -1195,7 +1230,7 @@ export async function createShippingLabelAction(formData: FormData) {
   const orderNumber = requiredField(formData.get("orderNumber"), "Order number");
   const order = getOrder(orderNumber);
   if (!order) {
-    redirect("/studio?error=shipping");
+    redirect("/studio?panel=orders&error=shipping");
   }
   const address = order.shippingAddress;
   const label = await createEasyPostShippingLabel({
@@ -1208,7 +1243,7 @@ export async function createShippingLabelAction(formData: FormData) {
   });
   saveOrder({ ...order, shippingLabelId: String(label.id || ""), trackingNumber: String((label as { tracker?: { tracking_code?: string } }).tracker?.tracking_code || ""), status: "Shipped" });
   revalidatePath("/studio");
-  redirect(`/studio?shipped=${encodeURIComponent(order.orderNumber)}`);
+  redirect(`/studio?panel=orders&shipped=${encodeURIComponent(order.orderNumber)}`);
 }
 
 

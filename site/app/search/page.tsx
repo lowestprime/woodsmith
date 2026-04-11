@@ -16,7 +16,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
   return (
     <Shell>
-      <PageSection>
+      <PageSection editHref="/studio?panel=media">
         <PageIntro eyebrow="Search" title="Search the site" copy="Search pieces, shop and process notes, pages, and, when signed into the dashboard, private media tags, clusters, and project records." />
         <form action="/search" className="request-form compact-form">
           <VisualSearchAssist initialQuery={q} isAdmin={user?.role === "admin"} />

@@ -88,7 +88,7 @@ export const siteSettingsSeed = {
   builderName: "William Beaman",
   builderHeadline: "Master Builder",
   developerName: "Cooper Beaman",
-  developerEmail: "lowestprime@proton.me",
+  developerEmail: "cooperbeaman@proton.me",
   developerHeadline: "Website Developer",
   notificationForwardEmail: "wbeaman1@gmail.com",
   repoUrl: "https://x.gd/woodsmith_git",
@@ -141,7 +141,7 @@ export const siteSettingsSeed = {
       key: "hero",
       eyebrow: "Beaman Woodworks",
       title: "Tables, cabinetry, benches, and smaller household pieces made for steady daily use.",
-      copy: "Review finished work, reserve available pieces, and ask about custom builds from the same woodshop site.",
+      copy: "View finished work, current availability, and lead-time guidance from one woodshop website.",
       primaryCta: { label: "View Portfolio", href: "/portfolio" },
       secondaryCta: { label: "Shop Current Work", href: "/shop" }
     },
@@ -525,7 +525,7 @@ export const seedPosts: SeedPost[] = [
     body: `This external highlight points readers to George Nakashima's *The Soul of a Tree*, a foundational book for woodworkers thinking about material, form, and stewardship over time. The book remains useful because it keeps the conversation on timber itself rather than style alone.`,
     publicationStatus: "published",
     publishedAt: "2026-03-20T08:00:00.000Z",
-    authorEmail: "lowestprime@proton.me",
+    authorEmail: "cooperbeaman@proton.me",
     coverMediaPath: furniture("IMG_20210420_175450.jpg"),
     tags: ["highlight", "books", "woodworking"],
     sourceUrl: "https://www.goodreads.com/book/show/241360.The_Soul_of_a_Tree",
@@ -630,7 +630,7 @@ export const seedProfiles: SeedProfile[] = [
     metadata: { showOnAboutPage: true, woodworker: true }
   },
   {
-    email: "lowestprime@proton.me",
+    email: "cooperbeaman@proton.me",
     displayName: "Cooper Beaman",
     role: "admin",
     headline: "Website Developer",
@@ -638,7 +638,7 @@ export const seedProfiles: SeedProfile[] = [
     publicProfile: true,
     avatarPath: "profiles/cooper-beaman.svg",
     links: [
-      { label: "Email", url: "mailto:lowestprime@proton.me" },
+      { label: "Email", url: "mailto:cooperbeaman@proton.me" },
       { label: "GitHub", url: "https://x.gd/woodsmith_git" }
     ],
     metadata: { showOnAboutPage: true, developer: true }
