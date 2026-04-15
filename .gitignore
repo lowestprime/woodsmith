@@ -49,3 +49,5 @@ releases/
 *.pem
 *.key
 *.tsbuildinfo
+cloudflared/*.json
+cloudflared/config.yml
