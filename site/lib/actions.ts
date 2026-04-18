@@ -37,6 +37,8 @@ import {
   setPasswordHash,
   setPasswordResetToken,
   updateProject,
+  deleteMediaRecordAndReferences,
+  renameMediaRecordAndReferences,
   type CommissionTypeRecord,
   type OrderRecord,
   type PageRecord,
@@ -50,6 +52,32 @@ import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMe
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
+function revalidateMediaSurfaces(affected?: {
+  pieceSlugs: string[];
+  postSlugs: string[];
+  pageSlugs: string[];
+}) {
+  revalidatePath("/studio");
+  revalidatePath("/portfolio");
+  revalidatePath("/shop");
+  revalidatePath("/process");
+  revalidatePath("/about");
+
+  if (!affected) return;
+
+  for (const slug of affected.pieceSlugs) {
+    revalidatePath(`/portfolio/${slug}`);
+  }
+
+  for (const slug of affected.postSlugs) {
+    revalidatePath(`/process/${slug}`);
+  }
+
+  for (const slug of affected.pageSlugs) {
+    revalidatePath(slug === "home" ? "/" : `/${slug}`);
+  }
+}
+
 function requiredField(value: FormDataEntryValue | null, label: string) {
   const text = value?.toString().trim();
   if (!text) {
@@ -965,9 +993,12 @@ export async function uploadMediaAction(formData: FormData) {
 export async function renameMediaAction(formData: FormData) {
   await requireAdmin();
   const previousPath = requiredField(formData.get("relativePath"), "Media path");
-  const nextRelativePath = renameMediaAsset(previousPath, requiredField(formData.get("baseName"), "New name"));
-  refreshMediaLibrary();
-  revalidatePath("/studio");
+  const nextRelativePath = renameMediaAsset(
+    previousPath,
+    requiredField(formData.get("baseName"), "New name")
+  );
+  const affected = renameMediaRecordAndReferences(previousPath, nextRelativePath);
+  revalidateMediaSurfaces(affected);
   redirect(`/studio?panel=media&renamed=${encodeURIComponent(nextRelativePath)}`);
 }
 
@@ -975,8 +1006,8 @@ export async function deleteMediaAction(formData: FormData) {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   deleteMediaAsset(relativePath);
-  refreshMediaLibrary();
-  revalidatePath("/studio");
+  const affected = deleteMediaRecordAndReferences(relativePath);
+  revalidateMediaSurfaces(affected);
   redirect("/studio?panel=media&deleted=media");
 }
 
@@ -1134,7 +1165,7 @@ export async function saveMediaMetadataAction(formData: FormData) {
 export async function refreshMediaLibraryAction() {
   await requireAdmin();
   refreshMediaLibrary();
-  revalidatePath("/studio");
+  revalidateMediaSurfaces();
   redirect("/studio?panel=media&refreshed=media");
 }
 

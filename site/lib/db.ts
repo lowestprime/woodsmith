@@ -1994,9 +1994,114 @@ export function saveMediaMetadata(input: {
   });
 }
 
+function replaceMediaPathInList(values: string[], previousPath: string, nextPath: string | null) {
+  const nextValues = nextPath
+    ? values.map((value) => (value === previousPath ? nextPath : value))
+    : values.filter((value) => value !== previousPath);
+
+  return [...new Set(nextValues)];
+}
+
+function rewriteMediaReferences(previousPath: string, nextPath: string | null) {
+  const affectedPieceSlugs: string[] = [];
+  const affectedPostSlugs: string[] = [];
+  const affectedPageSlugs: string[] = [];
+
+  for (const piece of listPieces(true)) {
+    if (!piece.mediaPaths.includes(previousPath)) continue;
+    const nextMediaPaths = replaceMediaPathInList(piece.mediaPaths, previousPath, nextPath);
+    savePiece({ ...piece, mediaPaths: nextMediaPaths });
+    affectedPieceSlugs.push(piece.slug);
+  }
+
+  for (const post of listPosts(true)) {
+    if (post.coverMediaPath !== previousPath) continue;
+    savePost({ ...post, coverMediaPath: nextPath });
+    affectedPostSlugs.push(post.slug);
+  }
+
+  for (const page of listPages(true)) {
+    if (page.heroMediaPath !== previousPath) continue;
+    savePage({ ...page, heroMediaPath: nextPath });
+    affectedPageSlugs.push(page.slug);
+  }
+
+  for (const user of listUsers()) {
+    if (user.avatarPath !== previousPath) continue;
+    saveUserProfile({
+      originalEmail: user.email,
+      email: user.email,
+      role: user.role,
+      displayName: user.displayName,
+      headline: user.headline,
+      bio: user.bio,
+      avatarPath: nextPath,
+      publicProfile: user.publicProfile,
+      links: user.links,
+      metadata: user.metadata
+    });
+  }
+
+  return {
+    pieceSlugs: [...new Set(affectedPieceSlugs)],
+    postSlugs: [...new Set(affectedPostSlugs)],
+    pageSlugs: [...new Set(affectedPageSlugs)]
+  };
+}
+
+export function renameMediaRecordAndReferences(previousPath: string, nextPath: string) {
+  const db = getDatabase();
+  const previous = getMedia(previousPath);
+
+  syncMediaLibraryIntoDatabase(db);
+
+  if (previous) {
+    saveMediaMetadata({
+      relativePath: nextPath,
+      altText: previous.altText,
+      pieceSlug: previous.pieceSlug,
+      postSlug: previous.postSlug,
+      pageSlug: previous.pageSlug,
+      projectReference: previous.projectReference,
+      userEmail: previous.userEmail,
+      focalX: previous.focalX,
+      focalY: previous.focalY,
+      zoom: previous.zoom,
+      reviewed: previous.reviewed,
+      tags: previous.tags,
+      metadata: previous.metadata
+    });
+  }
+
+  db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(previousPath);
+  return rewriteMediaReferences(previousPath, nextPath);
+}
+
+export function deleteMediaRecordAndReferences(relativePath: string) {
+  const db = getDatabase();
+  const affected = rewriteMediaReferences(relativePath, null);
+  db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(relativePath);
+  return affected;
+}
+
 export function refreshMediaLibrary() {
   const db = getDatabase();
+  const scanned = scanMediaLibrary();
+  const scannedPaths = new Set(scanned.map((media) => media.relativePath));
+
   syncMediaLibraryIntoDatabase(db);
+
+  const staleRows = db.prepare(`
+    SELECT relative_path AS relativePath
+    FROM media_items
+  `).all() as Array<{ relativePath: string }>;
+
+  for (const row of staleRows) {
+    if (!scannedPaths.has(row.relativePath)) {
+      deleteMediaRecordAndReferences(row.relativePath);
+    }
+  }
+
   return listMedia({ includeUnreviewed: true });
 }
 
