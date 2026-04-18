@@ -1,0 +1,15 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: woodsmith-cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    depends_on:
+      - woodsmith
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    volumes:
+      - ./cloudflared:/etc/cloudflared:ro
