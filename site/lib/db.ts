@@ -232,6 +232,26 @@ export type NotificationRecord = {
   sentAt: string | null;
 };
 
+export type VisitorSessionRecord = {
+  id: string;
+  sessionToken: string;
+  firstPath: string;
+  lastPath: string;
+  referrer: string | null;
+  host: string | null;
+  countryCode: string | null;
+  city: string | null;
+  region: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  ipHash: string | null;
+  cfRay: string | null;
+  userAgent: string | null;
+  visitCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+};
+
 export type SearchResult = {
   id: string;
   type: "piece" | "post" | "page" | "media" | "project";
@@ -523,6 +543,26 @@ function getDatabase() {
       error TEXT,
       created_at TEXT NOT NULL,
       sent_at TEXT
+    ) STRICT;
+
+    CREATE TABLE IF NOT EXISTS visitor_sessions (
+      id TEXT PRIMARY KEY,
+      session_token TEXT NOT NULL UNIQUE,
+      first_path TEXT NOT NULL,
+      last_path TEXT NOT NULL,
+      referrer TEXT,
+      host TEXT,
+      country_code TEXT,
+      city TEXT,
+      region TEXT,
+      latitude REAL,
+      longitude REAL,
+      ip_hash TEXT,
+      cf_ray TEXT,
+      user_agent TEXT,
+      visit_count INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
     ) STRICT;
 
     CREATE TABLE IF NOT EXISTS embedding_cache (
@@ -1363,6 +1403,29 @@ function mapNotification(row: Record<string, unknown>): NotificationRecord {
     sentAt: row.sentAt ? String(row.sentAt) : null
   };
 }
+
+function mapVisitorSession(row: Record<string, unknown>): VisitorSessionRecord {
+  return {
+    id: String(row.id),
+    sessionToken: String(row.sessionToken),
+    firstPath: String(row.firstPath),
+    lastPath: String(row.lastPath),
+    referrer: row.referrer ? String(row.referrer) : null,
+    host: row.host ? String(row.host) : null,
+    countryCode: row.countryCode ? String(row.countryCode) : null,
+    city: row.city ? String(row.city) : null,
+    region: row.region ? String(row.region) : null,
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
+    ipHash: row.ipHash ? String(row.ipHash) : null,
+    cfRay: row.cfRay ? String(row.cfRay) : null,
+    userAgent: row.userAgent ? String(row.userAgent) : null,
+    visitCount: Number(row.visitCount ?? 1),
+    firstSeenAt: String(row.firstSeenAt),
+    lastSeenAt: String(row.lastSeenAt)
+  };
+}
+
 export function getSiteSettings() {
   return getSetting<SiteSettings>("site", { ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
 }
@@ -1568,6 +1631,55 @@ export function getUserByResetToken(token: string) {
   `).get(token) as (Record<string, unknown> & { passwordHash?: string }) | undefined;
 
   return row ? { ...mapUser(row), passwordHash: row.passwordHash ? String(row.passwordHash) : "" } : null;
+}
+
+export function getUserByVerificationToken(token: string) {
+  const now = Date.now();
+  return listUsers().find((user) => {
+    const metadataToken = typeof user.metadata.emailVerificationToken === "string" ? user.metadata.emailVerificationToken : "";
+    const expiresAt = typeof user.metadata.emailVerificationExpiresAt === "string" ? user.metadata.emailVerificationExpiresAt : "";
+    return metadataToken === token && (!expiresAt || Date.parse(expiresAt) > now);
+  }) ?? null;
+}
+
+export function setUserEmailVerification(email: string, input: {
+  emailVerified: boolean;
+  token?: string | null;
+  expiresAt?: string | null;
+}) {
+  const existing = getUserByEmail(email);
+  if (!existing) {
+    return false;
+  }
+
+  const metadata: Record<string, unknown> = { ...existing.metadata, emailVerified: input.emailVerified };
+  if (input.token) {
+    metadata.emailVerificationToken = input.token;
+  } else {
+    delete metadata.emailVerificationToken;
+  }
+
+  if (input.expiresAt) {
+    metadata.emailVerificationExpiresAt = input.expiresAt;
+  } else {
+    delete metadata.emailVerificationExpiresAt;
+  }
+
+  saveUserProfile({
+    originalEmail: existing.email,
+    email: existing.email,
+    role: existing.role,
+    displayName: existing.displayName,
+    headline: existing.headline,
+    bio: existing.bio,
+    avatarPath: existing.avatarPath,
+    publicProfile: existing.publicProfile,
+    links: existing.links,
+    metadata,
+    passwordHash: existing.passwordHash
+  });
+
+  return true;
 }
 
 export function createSessionRecord(userEmail: string, tokenHash: string, expiresAt: string) {
@@ -2641,6 +2753,131 @@ export function listNotifications() {
   const db = getDatabase();
   const rows = db.prepare(`SELECT id, category, recipient, subject, body, status, error, created_at AS createdAt, sent_at AS sentAt FROM notifications ORDER BY datetime(created_at) DESC`).all() as Record<string, unknown>[];
   return rows.map(mapNotification);
+}
+
+export function upsertVisitorSession(input: {
+  sessionToken: string;
+  path: string;
+  referrer?: string | null;
+  host?: string | null;
+  countryCode?: string | null;
+  city?: string | null;
+  region?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  ipHash?: string | null;
+  cfRay?: string | null;
+  userAgent?: string | null;
+}) {
+  const db = getDatabase();
+  const existing = db.prepare(`
+    SELECT id, session_token AS sessionToken, first_path AS firstPath, last_path AS lastPath, referrer, host,
+           country_code AS countryCode, city, region, latitude, longitude, ip_hash AS ipHash, cf_ray AS cfRay,
+           user_agent AS userAgent, visit_count AS visitCount, first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt
+    FROM visitor_sessions
+    WHERE session_token = ?
+    LIMIT 1
+  `).get(input.sessionToken) as Record<string, unknown> | undefined;
+
+  const timestamp = nowIso();
+  if (existing) {
+    const current = mapVisitorSession(existing);
+    db.prepare(`
+      UPDATE visitor_sessions
+      SET last_path = :lastPath,
+          referrer = :referrer,
+          host = :host,
+          country_code = :countryCode,
+          city = :city,
+          region = :region,
+          latitude = :latitude,
+          longitude = :longitude,
+          ip_hash = :ipHash,
+          cf_ray = :cfRay,
+          user_agent = :userAgent,
+          visit_count = :visitCount,
+          last_seen_at = :lastSeenAt
+      WHERE id = :id
+    `).run({
+      id: current.id,
+      lastPath: input.path,
+      referrer: input.referrer ?? current.referrer,
+      host: input.host ?? current.host,
+      countryCode: input.countryCode ?? current.countryCode,
+      city: input.city ?? current.city,
+      region: input.region ?? current.region,
+      latitude: input.latitude ?? current.latitude,
+      longitude: input.longitude ?? current.longitude,
+      ipHash: input.ipHash ?? current.ipHash,
+      cfRay: input.cfRay ?? current.cfRay,
+      userAgent: input.userAgent ?? current.userAgent,
+      visitCount: current.visitCount + 1,
+      lastSeenAt: timestamp
+    });
+    return { created: false, record: { ...current, lastPath: input.path, visitCount: current.visitCount + 1, lastSeenAt: timestamp } };
+  }
+
+  const record: VisitorSessionRecord = {
+    id: randomUUID(),
+    sessionToken: input.sessionToken,
+    firstPath: input.path,
+    lastPath: input.path,
+    referrer: input.referrer ?? null,
+    host: input.host ?? null,
+    countryCode: input.countryCode ?? null,
+    city: input.city ?? null,
+    region: input.region ?? null,
+    latitude: input.latitude ?? null,
+    longitude: input.longitude ?? null,
+    ipHash: input.ipHash ?? null,
+    cfRay: input.cfRay ?? null,
+    userAgent: input.userAgent ?? null,
+    visitCount: 1,
+    firstSeenAt: timestamp,
+    lastSeenAt: timestamp
+  };
+
+  db.prepare(`
+    INSERT INTO visitor_sessions (
+      id, session_token, first_path, last_path, referrer, host, country_code, city, region, latitude, longitude,
+      ip_hash, cf_ray, user_agent, visit_count, first_seen_at, last_seen_at
+    ) VALUES (
+      :id, :sessionToken, :firstPath, :lastPath, :referrer, :host, :countryCode, :city, :region, :latitude, :longitude,
+      :ipHash, :cfRay, :userAgent, :visitCount, :firstSeenAt, :lastSeenAt
+    )
+  `).run(record);
+
+  return { created: true, record };
+}
+
+export function listVisitorSessions(limit = 120) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, session_token AS sessionToken, first_path AS firstPath, last_path AS lastPath, referrer, host,
+           country_code AS countryCode, city, region, latitude, longitude, ip_hash AS ipHash, cf_ray AS cfRay,
+           user_agent AS userAgent, visit_count AS visitCount, first_seen_at AS firstSeenAt, last_seen_at AS lastSeenAt
+    FROM visitor_sessions
+    ORDER BY datetime(last_seen_at) DESC
+    LIMIT ?
+  `).all(limit) as Record<string, unknown>[];
+  return rows.map(mapVisitorSession);
+}
+
+export function listVisitorCountrySummary(limit = 24) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT country_code AS countryCode, COUNT(*) AS total
+    FROM visitor_sessions
+    WHERE country_code IS NOT NULL AND country_code != '' AND country_code != 'XX'
+    GROUP BY country_code
+    ORDER BY total DESC, country_code ASC
+    LIMIT ?
+  `).all(limit) as Array<{ countryCode?: string; total?: number }>;
+
+  return rows.map((row) => ({
+    countryCode: String(row.countryCode ?? "XX"),
+    total: Number(row.total ?? 0)
+  }));
 }
 
 export function getBandwidthSnapshot(): BandwidthSnapshot {

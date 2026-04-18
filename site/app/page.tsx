@@ -69,7 +69,7 @@ export default function HomePage() {
           <div className="journal-rail">{processNotes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
           <div className="hero-actions">
             <Link className="button-secondary" href="/shop#process">Read more process notes</Link>
-            <Link className="button-primary" href="/about#contact">Ask about a custom piece</Link>
+            <Link className="button-primary" href="/contact">Ask about a custom piece</Link>
           </div>
         </PageSection>
       </Shell>

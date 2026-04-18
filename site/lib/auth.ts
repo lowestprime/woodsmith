@@ -20,6 +20,14 @@ function safeEquals(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
+export function userEmailVerified(user: Pick<UserRecord, "role" | "metadata">) {
+  if (user.role !== "customer") {
+    return true;
+  }
+
+  return user.metadata.emailVerified !== false;
+}
+
 export function createPasswordHash(password: string) {
   const iterations = 120000;
   const salt = randomBytes(16).toString("hex");

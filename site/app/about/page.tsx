@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
+import { AvatarBadge } from "@/components/avatar-badge";
+import { readAvatarGradient } from "@/lib/avatar";
 import { getPage, getSiteSettings, listPublicProfiles } from "@/lib/db";
-import { resolveAssetUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "About",
@@ -21,7 +22,14 @@ export default function AboutPage() {
         <div className="profile-grid">
           {profiles.map((profile) => (
             <article className="profile-card" key={profile.email}>
-              {profile.avatarPath ? <img alt={profile.displayName} className="profile-photo" src={resolveAssetUrl(profile.avatarPath)} /> : <div className="profile-photo placeholder-photo">{profile.displayName.split(" ").filter(Boolean).map((part) => part[0]).join("")}</div>}
+              <AvatarBadge
+                avatarPath={profile.avatarPath}
+                className="profile-photo placeholder-photo profile-photo-gradient"
+                gradient={readAvatarGradient(profile.metadata)}
+                imageClassName="profile-photo"
+                label={profile.displayName.split(" ").filter(Boolean).map((part) => part[0]).join("")}
+                seed={profile.email || profile.displayName}
+              />
               <div>
                 <p className="eyebrow">{profile.headline}</p>
                 <h2>{profile.displayName}</h2>

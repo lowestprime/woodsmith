@@ -10,7 +10,10 @@ type ActionFormProps = {
   children: ReactNode;
   resetOnSuccess?: boolean;
   refreshOnSuccess?: boolean;
-  onSuccess?: (result: Extract<MediaActionResult, { ok: true }>) => void;
+  onSuccess?: (
+    result: Extract<MediaActionResult, { ok: true }>,
+    context: { form: HTMLFormElement | null; formData: FormData | null }
+  ) => void;
   successLabel?: (result: Extract<MediaActionResult, { ok: true }>) => string;
 };
 
@@ -25,18 +28,18 @@ function describe(result: Extract<MediaActionResult, { ok: true }>): string {
   return "Done.";
 }
 
-export function ActionForm({ action, className, children, resetOnSuccess, refreshOnSuccess = true, onSuccess, successLabel }: ActionFormProps) {
+export function ActionForm({ action, className, children, resetOnSuccess, refreshOnSuccess = false, onSuccess, successLabel }: ActionFormProps) {
   const [state, formAction, isPending] = useActionState<MediaActionResult | null, FormData>(action, null);
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const handledKey = useRef<string | null>(null);
+  const handledState = useRef<MediaActionResult | null>(null);
+  const submittedDataRef = useRef<FormData | null>(null);
 
   useEffect(() => {
     if (!state || !state.ok) return;
-    const key = `${state.kind}:${"relativePath" in state ? state.relativePath : state.kind}:${Date.now()}`;
-    if (handledKey.current === key) return;
-    handledKey.current = key;
-    onSuccess?.(state);
+    if (handledState.current === state) return;
+    handledState.current = state;
+    onSuccess?.(state, { form: formRef.current, formData: submittedDataRef.current });
     if (resetOnSuccess && formRef.current) {
       formRef.current.reset();
     }
@@ -52,7 +55,14 @@ export function ActionForm({ action, className, children, resetOnSuccess, refres
     : null;
 
   return (
-    <form action={formAction} className={className} ref={formRef}>
+    <form
+      action={formAction}
+      className={className}
+      onSubmit={() => {
+        submittedDataRef.current = formRef.current ? new FormData(formRef.current) : null;
+      }}
+      ref={formRef}
+    >
       {children}
       {notice ? (
         <p

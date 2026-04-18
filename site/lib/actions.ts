@@ -22,6 +22,7 @@ import {
   getProject,
   getSiteSettings,
   getUserByEmail,
+  getUserByVerificationToken,
   listCartItems,
   refreshMediaLibrary,
   removeCartItem,
@@ -34,6 +35,7 @@ import {
   saveReview,
   saveSiteSettings,
   saveUserProfile,
+  setUserEmailVerification,
   setPasswordHash,
   setPasswordResetToken,
   updateProject,
@@ -47,7 +49,7 @@ import {
   type SiteSettings,
   type UserRecord
 } from "@/lib/db";
-import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
+import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, userEmailVerified, verifyLogin } from "@/lib/auth";
 import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMediaAsset, resolveMediaPath } from "@/lib/media";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail } from "@/lib/notifications";
@@ -149,7 +151,36 @@ async function getCartToken() {
 }
 
 function resolveBaseUrl() {
-  return process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://127.0.0.1:3000";
+  return process.env.NEXT_PUBLIC_SITE_URL
+    || process.env.SITE_URL
+    || (process.env.NODE_ENV === "production" ? "https://www.woodmat.ch" : "http://127.0.0.1:3000");
+}
+
+function normalizeColor(value: string | undefined, fallback: string) {
+  const candidate = (value || "").trim();
+  return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate : fallback;
+}
+
+function buildAvatarGradientMetadata(formData: FormData, existingMetadata: Record<string, unknown>) {
+  return {
+    ...existingMetadata,
+    avatarGradient: {
+      from: normalizeColor(optionalField(formData.get("avatarGradientFrom")), "#e6d7c0"),
+      to: normalizeColor(optionalField(formData.get("avatarGradientTo")), "#5a3a25"),
+      angle: parseInteger(formData.get("avatarGradientAngle"), 132)
+    }
+  };
+}
+
+async function sendVerificationEmail(email: string, displayName: string, token: string) {
+  const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(token)}`;
+  return sendNotificationEmail({
+    category: "email_verification",
+    to: email,
+    subject: "Verify your Beaman Woodworks account",
+    text: `Hello ${displayName},\n\nUse this link to verify your Beaman Woodworks account:\n${verifyUrl}\n\nIf you did not create this account, you can ignore this email.`,
+    html: `<p>Hello ${displayName},</p><p>Use this link to verify your Beaman Woodworks account:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>If you did not create this account, you can ignore this email.</p>`
+  });
 }
 
 export async function loginAction(formData: FormData) {
@@ -160,6 +191,9 @@ export async function loginAction(formData: FormData) {
   const user = await verifyLogin(email, password);
   if (!user) {
     redirect(`/account/login?error=invalid&email=${encodeURIComponent(email)}`);
+  }
+  if (!userEmailVerified(user)) {
+    redirect(`/account/login?error=verify&email=${encodeURIComponent(email)}&redirectTo=${encodeURIComponent(redirectTo)}`);
   }
 
   await createSession(user);
@@ -205,17 +239,24 @@ export async function signupAction(formData: FormData) {
     avatarPath: null,
     publicProfile: false,
     links: [],
-    metadata: { signupAt: new Date().toISOString() },
+    metadata: buildAvatarGradientMetadata(formData, {
+      signupAt: new Date().toISOString(),
+      emailVerified: false
+    }),
     passwordHash: createPasswordHash(password)
   });
 
-  const user = await verifyLogin(email, password);
-  if (user) {
-    await createSession(user);
-  }
+  const verificationToken = crypto.randomUUID();
+  const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+  setUserEmailVerification(email, {
+    emailVerified: false,
+    token: verificationToken,
+    expiresAt: verificationExpiresAt
+  });
+
+  const verificationDelivery = await sendVerificationEmail(email, displayName, verificationToken);
 
   try {
-    const { sendNotificationEmail } = await import("@/lib/notifications");
     const site = getSiteSettings();
     const notifyTo = site.notificationForwardEmail || site.builderEmail;
     if (notifyTo) {
@@ -230,7 +271,40 @@ export async function signupAction(formData: FormData) {
     // Notification is best-effort; signup must not fail when email transport is unavailable.
   }
 
-  redirect("/account/profile?created=1");
+  redirect(`/account/signup?verify=${verificationDelivery.sent ? "sent" : "queued"}&email=${encodeURIComponent(email)}`);
+}
+
+export async function resendVerificationAction(formData: FormData) {
+  const email = requiredField(formData.get("email"), "Email").toLowerCase();
+  const user = getUserByEmail(email);
+  if (!user) {
+    redirect(`/account/login?error=${encodeURIComponent("No account was found for that email.")}`);
+  }
+
+  if (userEmailVerified(user)) {
+    redirect(`/account/login?email=${encodeURIComponent(email)}&error=${encodeURIComponent("That account is already verified. Please log in.")}`);
+  }
+
+  const verificationToken = crypto.randomUUID();
+  const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24).toISOString();
+  setUserEmailVerification(email, {
+    emailVerified: false,
+    token: verificationToken,
+    expiresAt: verificationExpiresAt
+  });
+
+  const delivery = await sendVerificationEmail(email, user.displayName, verificationToken);
+  redirect(`/account/login?email=${encodeURIComponent(email)}&notice=${delivery.sent ? "verify-sent" : "verify-queued"}`);
+}
+
+export async function consumeVerificationTokenAction(token: string) {
+  const user = getUserByVerificationToken(token);
+  if (!user) {
+    return { ok: false as const, email: "", displayName: "", message: "That verification link is invalid or has expired." };
+  }
+
+  setUserEmailVerification(user.email, { emailVerified: true, token: null, expiresAt: null });
+  return { ok: true as const, email: user.email, displayName: user.displayName, message: "Your account is verified and ready to use." };
 }
 
 export async function logoutAction() {
@@ -278,7 +352,8 @@ export async function resetPasswordAction(formData: FormData) {
 export async function updateProfileAction(formData: FormData) {
   const user = await requireUser();
   const avatar = formData.get("avatar") as File | null;
-  let avatarPath = user.avatarPath;
+  const removeAvatar = parseBooleanField(formData.get("removeAvatar"));
+  let avatarPath = removeAvatar ? null : user.avatarPath;
   if (avatar && avatar.size > 0) {
     avatarPath = await persistUploadedMedia(avatar, "profiles");
   }
@@ -298,7 +373,7 @@ export async function updateProfileAction(formData: FormData) {
     avatarPath,
     publicProfile: user.publicProfile,
     links: directLinks.length > 0 ? directLinks : parseJsonField(formData.get("linksJson"), user.links),
-    metadata: user.metadata
+    metadata: buildAvatarGradientMetadata(formData, user.metadata)
   });
 
   revalidatePath("/about");
@@ -725,7 +800,9 @@ export async function savePageAction(formData: FormData) {
         body: optionalField(formData.get("body")) || current?.body || "",
         layout: optionalField(formData.get("layout")) || current?.layout || "document",
         sections: current?.sections || [],
-        heroMediaPath: optionalField(formData.get("heroMediaPath")) || current?.heroMediaPath || null
+        heroMediaPath: formData.has("heroMediaPath")
+          ? optionalField(formData.get("heroMediaPath")) || null
+          : current?.heroMediaPath || null
       });
   revalidatePath(`/${optionalField(formData.get("slug"))}`);
   redirect(`/studio?panel=pages&saved=page&page=${encodeURIComponent(slug)}`);
@@ -769,7 +846,7 @@ export async function savePieceAction(formData: FormData) {
         priceCents: parseOptionalInteger(formData.get("priceCents")) ?? current?.priceCents ?? null,
         inventoryCount: parseInteger(formData.get("inventoryCount"), current?.inventoryCount ?? 0),
         leadTimeDays: parseInteger(formData.get("leadTimeDays"), current?.leadTimeDays ?? 0),
-        mediaPaths: parseListField(formData.get("mediaPathsText")).length > 0 ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
+        mediaPaths: formData.has("mediaPathsText") ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
         featuredRank: parseInteger(formData.get("featuredRank"), current?.featuredRank ?? 99),
         ownerEmail: optionalField(formData.get("ownerEmail")) || current?.ownerEmail || "woodsmithbb@proton.me",
         metadata: {
@@ -807,7 +884,9 @@ export async function savePostAction(formData: FormData) {
         publicationStatus: (optionalField(formData.get("publicationStatus")) || current?.publicationStatus || "draft") as PostRecord["publicationStatus"],
         publishedAt: optionalField(formData.get("publishedAt")) || current?.publishedAt || null,
         authorEmail: optionalField(formData.get("authorEmail")) || current?.authorEmail || "woodsmithbb@proton.me",
-        coverMediaPath: optionalField(formData.get("coverMediaPath")) || current?.coverMediaPath || null,
+        coverMediaPath: formData.has("coverMediaPath")
+          ? optionalField(formData.get("coverMediaPath")) || null
+          : current?.coverMediaPath || null,
         tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : current?.tags || [],
         sourceUrl: optionalField(formData.get("sourceUrl")) || current?.sourceUrl || null,
         sourceLabel: optionalField(formData.get("sourceLabel")) || current?.sourceLabel || null

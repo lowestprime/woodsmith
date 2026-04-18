@@ -1,12 +1,12 @@
 <div align="center">
   <br />
-  <a href="https://woodmat.ch">
+  <a href="https://www.woodmat.ch">
     <img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="128" height="128" />
   </a>
 </div>
 
 <h1 align="center">
-  <a href="https://woodmat.ch">🪵 Woodsmith</a>
+  <a href="https://www.woodmat.ch">🪵 Woodsmith</a>
   <br />
   <a href="https://deepwiki.com/lowestprime/woodsmith">
     <img src="https://badgen.net/badge/Woodsmith/DeepWiki/800000?labelColor=000000&icon=https://raw.githubusercontent.com/lowestprime/woodsmith/refs/heads/master/site/app/icon.svg" alt="Woodsmith DeepWiki" />
@@ -23,11 +23,13 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Process writing under `/process` and the Shop process section, with markdown content and optional source-credit links for outside references
 - Contact-first custom work requests with attachments, lead-time context, material preferences, project tracking, and an optional live procedural 3D scale preview
 - Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
-- Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
+- Buyer account pages for signup, email verification, login, password reset, profile editing, customizable gradient or uploaded profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
 - Admin-only pencil edit entrypoints on public sections that link directly into the matching Woodshop workspace while signed in
-- Browser media management for upload, rename, delete, assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library
+- Browser media management for upload, rename, delete, assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library, plus a compact thumbnail workspace that edits in place without bouncing back to the top of the page
+- Visual media pickers for pages, pieces, and process notes so editors can browse the mounted NAS library without manually typing file paths
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
+- Best-effort new-visitor session logging with a dashboard world map and visitor-session email alerts when SMTP is configured. Country/city/coordinate detail depends on Cloudflare visitor-location headers being enabled.
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
 - Keyword/metadata search plus browser-assisted visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. Optional OpenAI embeddings can re-rank results when enabled.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
@@ -40,6 +42,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
 - The public site exposes admin-only edit links when an admin is signed in. Those links open the matching workspace in `/studio`; they are entrypoints into the dashboard, not a drag-and-drop page builder.
+- The canonical public origin is `https://www.woodmat.ch`. Middleware redirects `woodmat.ch` and the retired `ws.lowestprime.synology.me` host to that canonical origin.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
 - Payment capture, invoice delivery, shipping-label creation, outbound email, OpenAI image cleanup, photorealistic preview generation, and embedding re-ranking require environment configuration before they work live.
@@ -120,6 +123,7 @@ Public:
 - `/commissions`
 - `/commissions/status`
 - `/about`
+- `/contact`
 - `/search`
 
 Legacy redirects:
@@ -133,6 +137,7 @@ Buyer account and request access:
 - `/account/login`
 - `/account/forgot`
 - `/account/reset`
+- `/account/verify`
 - `/account/profile`
 - `/account/projects`
 - `/requests/[reference]`

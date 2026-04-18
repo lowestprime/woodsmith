@@ -3,12 +3,13 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
-import { avatarGradientStyle } from "@/lib/avatar";
+import { readAvatarGradient } from "@/lib/avatar";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
-import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
+import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
+import { AvatarBadge } from "@/components/avatar-badge";
 
 export function Shell({ children, className = "" }: { children: ReactNode; className?: string }) {
   return <div className={`shell ${className}`.trim()}>{children}</div>;
@@ -27,25 +28,6 @@ export function BrandMark() {
 }
 
 const getViewer = cache(async () => getCurrentUser());
-
-function AccountBadge({ label, avatarPath, loggedIn, seed }: { label: string; avatarPath?: string | null; loggedIn: boolean; seed?: string }) {
-  if (avatarPath) {
-    return <img alt={label} className="account-badge-avatar" src={resolveAssetUrl(avatarPath)} />;
-  }
-
-  if (!loggedIn) {
-    return (
-      <span className="account-badge account-badge-placeholder" aria-hidden="true">
-        <svg viewBox="0 0 24 24">
-          <circle cx="12" cy="8.5" r="3.4" />
-          <path d="M5.75 18.25c1.5-3 3.63-4.5 6.25-4.5s4.75 1.5 6.25 4.5" />
-        </svg>
-      </span>
-    );
-  }
-
-  return <span className="account-badge account-badge-gradient" aria-hidden="true" style={avatarGradientStyle(seed ?? label)}>{label}</span>;
-}
 
 function EditGlyph() {
   return (
@@ -116,7 +98,13 @@ export async function SiteHeader() {
             <strong>{cartCount}</strong>
           </Link>
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
-            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} seed={user?.email ?? user?.displayName ?? accountLabel} />
+            <AvatarBadge
+              avatarPath={user?.avatarPath}
+              gradient={readAvatarGradient(user?.metadata)}
+              label={accountLabel}
+              placeholder={!user}
+              seed={user?.email ?? user?.displayName ?? accountLabel}
+            />
           </Link>
           {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
         </nav>

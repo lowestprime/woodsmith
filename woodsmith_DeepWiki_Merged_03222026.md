@@ -56,6 +56,8 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - orders, invoices, shipping labels, and tracking state
 - reviews
 - queued notifications
+- buyer email verification at `/account/verify`
+- visitor-session logging endpoint at `/api/visits`
 
 Admins signed into the public site also get pencil edit entrypoints on supported sections. Those links jump into the matching dashboard workspace rather than exposing raw JSON or code editing on the public pages.
 
@@ -79,6 +81,8 @@ The SQLite schema includes these primary tables:
 - `notifications`
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases with an older seeded version are upgraded to the current v4 seed set without deleting runtime orders, projects, users, or media metadata. The current migration also normalizes legacy developer-email references from `lowestprime@proton.me` to `cooperbeaman@proton.me` in seeded settings and profile data.
+
+User records now keep buyer email-verification state inside `metadata_json`, and visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
 
 ## Media system
 
@@ -151,8 +155,11 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notifications.ts`: SMTP and notification queue handling
-- `site/components/forms.tsx`: public, account, profile, and custom work forms
+- `site/components/forms.tsx`: public, account, profile, resend-verification, and custom work forms
 - `site/components/site-chrome.tsx`: header, footer, cards, shared layout pieces, and account badge
+- `site/components/media-picker.tsx`: visual library picker used by page, piece, and process editors
+- `site/components/studio-media-workspace.tsx`: compact media-management workspace for `/studio?panel=media`
+- `site/components/visitor-tracker.tsx` + `site/components/visitor-insights.tsx`: client visit logging and dashboard visitor map/list
 - `site/components/visualizer.tsx`: procedural custom-work visualizer, optional AI preview trigger, legacy to-scale SVG snapshot, and estimator fields
 - `site/app/icon.tsx`: generated favicon
 - `site/app/studio/page.tsx`: private Woodshop dashboard

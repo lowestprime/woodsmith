@@ -4,7 +4,19 @@
 
 - Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
 - Last updated: 2026-04-18
-- Branch: `codex/live-audit-hardening-20260411`
+- Branch: `codex/woodmatch-live-audit-20260418`
+
+## 2026-04-18 Hardening Follow-Up
+
+| ID | Status | Notes |
+|----|--------|-------|
+| 1 / 3 / 15 (no-jump media workflow, compact classification UI, assignment flow) | DONE | `/studio?panel=media` now uses a client-side thumbnail workspace with a single inspector panel, inline action notices, local state updates, candidate-assignment cards, and no redirect-based jumps back to the top of the page for routine media edits. |
+| 4 / 5 (visual media selector from mounted library) | DONE | Pages, Pieces, and Process editors now use a visual `MediaPicker` backed by the full indexed `/app/pics` library. Editors no longer need to type raw media paths to assign hero images, cover images, or piece galleries. |
+| 8 / 42 (email verification, account hardening) | DONE | Buyer signups now store a verification token in user metadata, send a verification email, block login until the link is consumed, expose `/account/verify`, and support resending the verification email from the login/signup flow. |
+| 9 / 25 / 47 (profile badge and avatar customization) | DONE | Account/profile avatars now support uploaded images or customizable gradient defaults. Header badges fall back cleanly if a profile image is missing or broken. |
+| 12 / 27 / 39 (canonical domain and branding) | DONE | The canonical public origin is now `https://www.woodmat.ch`; `site/middleware.ts` redirects `woodmat.ch` and the retired Synology reverse-proxy host to that origin. Metadata defaults were updated to the canonical domain. |
+| 17 / 18 / 20 | VERIFIED | Custom work remains contact-first via `/contact` and `/commissions`, homepage CTA now points to `/contact`, and homepage featured-piece editing remains exposed in Settings. |
+| 22 (visitor alerts + map) | DONE / DEPENDS ON CLOUDFLARE HEADERS | The app now tracks visitor sessions, queues a new-visitor email when SMTP is configured, and shows a dashboard world map + recent-session list. Country/city/coordinate detail depends on Cloudflare geolocation headers being enabled. |
 
 ## 2026-04-18 Studio UX + Upgrade Batch
 
@@ -24,11 +36,9 @@
 | 21 (bandwidth tracker) | DONE | Removed the `StatusBand` bandwidth section from the homepage. |
 | 22 (search bar) | DONE | Removed `Search` nav link from seed navigation and header render; added a compact `HeaderSearch` client bar that routes submit to `/search?q=...`. |
 
-### Tasks explicitly **NOT DONE** in this pass and why
+### Historical tasks explicitly **NOT DONE** in that earlier pass
 
-- 4 / 5 / 7 (media picker, interactive world map, advanced media selector UX): These are larger product features requiring new Cloudflare Analytics integrations and a dedicated image-library UI; deferred so they can be designed holistically instead of shipped as half-measures.
-- 3 / 15 (intuitive automated classification UI beyond pagination + candidate cards): The verification queue already exposes candidate matches; deeper redesign is pending.
-- 8 (email verification link): Requires a schema migration (`emailVerified`, `verificationToken`) and a `/account/verify` route; signup notification has been added as a first step.
+- 7 (Cloudflare-enriched visitor telemetry detail): Visitor-session logging and the dashboard map are now implemented, but full city/coordinate richness still depends on Cloudflare location headers.
 - 14 (all delete buttons): The seven media delete/rename/save actions now run inline; non-media delete buttons still redirect back to their panel as before — behavior unchanged and verified working.
 - 19 (persistence): Already guaranteed by the existing SQLite + mounted `data/` volume configuration; no new code change required.
 

@@ -1,0 +1,7 @@
+Add Cloudflare tunnel compose + cursor plugin config
+
+- cloudflared/config.yml.example: ingress template for woodmat.ch and
+  www.woodmat.ch routing to the woodsmith service on port 3002.
+- docker-compose.synology.tunnel.yml: hardened cloudflared sidecar
+  (read-only, no-new-privileges, cap_drop ALL) mounting ./cloudflared.
+- .cursor/settings.json: enable Cloudflare Cursor plugin for this repo.

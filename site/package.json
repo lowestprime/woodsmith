@@ -17,6 +17,7 @@
     "nodemailer": "^8.0.3",
     "react": "19.2.0",
     "react-dom": "19.2.0",
+    "react-svg-worldmap": "^2.0.2",
     "stripe": "^20.4.1",
     "three": "^0.183.2"
   },
