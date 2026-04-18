@@ -1,8 +1,21 @@
-# Beaman Woodworks
+<div align="center">
+  <br />
+  <a href="https://woodmat.ch">
+    <img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="128" height="128" />
+  </a>
+</div>
 
-Beaman Woodworks is a self-hosted Next.js application for a woodworking business. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
+<h1 align="center">
+  <a href="https://woodmat.ch">🪵 Woodsmith</a>
+  <br />
+  <a href="https://deepwiki.com/lowestprime/woodsmith">
+    <img src="https://badgen.net/badge/Woodsmith/DeepWiki/800000?labelColor=000000&icon=https://raw.githubusercontent.com/lowestprime/woodsmith/refs/heads/master/site/app/icon.svg" alt="Woodsmith DeepWiki" />
+  </a>
+</h1>
 
-## What is in the app
+Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
+
+## 📃 Description
 
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`
 - Portfolio category filtering for tables, benches, stepstools, cabinets, and smaller objects
@@ -21,7 +34,7 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 
-## Current production notes
+## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
@@ -31,7 +44,7 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
 - Payment capture, invoice delivery, shipping-label creation, outbound email, OpenAI image cleanup, photorealistic preview generation, and embedding re-ranking require environment configuration before they work live.
 
-## Repository layout
+## 🖇️ Repository Architecture
 
 - `site/`: the Next.js application
 - The repo-local `pics/` folder is legacy/ignored and should not be used as the source of truth. Production mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics`, and `MEDIA_ROOT` defaults to `/app/pics` rather than creating a local media folder.
@@ -42,7 +55,7 @@ Beaman Woodworks is a self-hosted Next.js application for a woodworking business
 - `admin.md`: private Woodshop dashboard manual
 - `woodsmith_DeepWiki_Merged_03222026.md`: codebase architecture reference
 
-## Local development
+## 💻 Local Development
 
 1. Install dependencies from the repo root with `npm install`.
 2. Copy `.env.example` to `.env` and fill the values you intend to use locally.
@@ -57,7 +70,7 @@ Root scripts proxy into `site/`:
 - `npm run build`
 - `npm run start`
 
-## Environment variables
+## 🔡 Environment Variables
 
 Use the root `.env.example` as the canonical reference.
 
@@ -93,7 +106,7 @@ Required for optional live services:
 - `ENABLE_AI_BACKGROUND_CLEANUP`
 - `ENABLE_EMBEDDING_SEARCH`
 
-## Key routes
+## 🛣️ Main Routes
 
 Public:
 
@@ -129,7 +142,7 @@ Private Woodshop:
 - `/studio/login`
 - `/studio`
 
-## Deployment
+## 🚀 Deployment
 
 The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics:rw`; do not remount or bind the repo-local `pics/` folder under `docker_ssd`.
 
