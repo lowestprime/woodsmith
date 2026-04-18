@@ -95,6 +95,8 @@ ENABLE_EMBEDDING_SEARCH=false
 
 The `/app/pics` mount is intentionally read-write. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
 
+The image now normalizes ownership and read permissions for bundled runtime assets under `/app/site/public` and `/_next/static` so the app still boots correctly when `docker-compose.synology.yml` runs the container as the NAS `PUID:PGID` user instead of the image-default `nextjs` user.
+
 ## Build from WSL or another Docker host
 
 ```bash
@@ -142,7 +144,7 @@ Configure Synology Reverse Proxy with:
 
 The public source host should match `SITE_URL` and `NEXT_PUBLIC_SITE_URL`.
 
-The app now treats `https://www.woodmat.ch` as canonical. Requests arriving on `woodmat.ch` or the retired `ws.lowestprime.synology.me` host are redirected by Next middleware to the canonical origin.
+The app now treats `https://www.woodmat.ch` as canonical. Requests arriving on `woodmat.ch` or the retired `ws.lowestprime.synology.me` host are redirected by the Next `proxy.ts` boundary to the canonical origin.
 
 ## Cloudflare visitor-location headers
 

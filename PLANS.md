@@ -2,7 +2,7 @@
 
 ## Beaman Woodworks 3.0 Completion Pass
 
-- Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
+- Status: SOURCE UPDATED, DEPLOYED, AND VERIFIED ON `https://www.woodmat.ch`
 - Last updated: 2026-04-18
 - Branch: `codex/woodmatch-live-audit-20260418`
 
@@ -14,9 +14,10 @@
 | 4 / 5 (visual media selector from mounted library) | DONE | Pages, Pieces, and Process editors now use a visual `MediaPicker` backed by the full indexed `/app/pics` library. Editors no longer need to type raw media paths to assign hero images, cover images, or piece galleries. |
 | 8 / 42 (email verification, account hardening) | DONE | Buyer signups now store a verification token in user metadata, send a verification email, block login until the link is consumed, expose `/account/verify`, and support resending the verification email from the login/signup flow. |
 | 9 / 25 / 47 (profile badge and avatar customization) | DONE | Account/profile avatars now support uploaded images or customizable gradient defaults. Header badges fall back cleanly if a profile image is missing or broken. |
-| 12 / 27 / 39 (canonical domain and branding) | DONE | The canonical public origin is now `https://www.woodmat.ch`; `site/middleware.ts` redirects `woodmat.ch` and the retired Synology reverse-proxy host to that origin. Metadata defaults were updated to the canonical domain. |
+| 12 / 27 / 39 (canonical domain and branding) | DONE | The canonical public origin is now `https://www.woodmat.ch`; `site/proxy.ts` redirects `woodmat.ch` and the retired Synology reverse-proxy host to that origin. Metadata defaults were updated to the canonical domain. |
 | 17 / 18 / 20 | VERIFIED | Custom work remains contact-first via `/contact` and `/commissions`, homepage CTA now points to `/contact`, and homepage featured-piece editing remains exposed in Settings. |
 | 22 (visitor alerts + map) | DONE / DEPENDS ON CLOUDFLARE HEADERS | The app now tracks visitor sessions, queues a new-visitor email when SMTP is configured, and shows a dashboard world map + recent-session list. Country/city/coordinate detail depends on Cloudflare geolocation headers being enabled. |
+| Deploy / live audit | DONE | Rebuilt `woodsmith:prod` on the NAS, redeployed via `docker compose -f docker-compose.synology.yml up -d`, verified origin and public domain, confirmed `https://woodmat.ch` now 308-redirects to `https://www.woodmat.ch`, and smoke-tested authenticated header/avatar rendering against the live origin. |
 
 ## 2026-04-18 Studio UX + Upgrade Batch
 
