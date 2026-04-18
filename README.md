@@ -1,9 +1,16 @@
-<h1 align="center">
+<div align="center">
+  <br />
   <a href="https://woodmat.ch">
     <img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="128" height="128" />
   </a>
+</div>
+
+<h1 align="center">
+  <a href="https://woodmat.ch">🪵 Woodsmith</a>
   <br />
-  🪵 Woodsmith
+  <a href="https://deepwiki.com/lowestprime/woodsmith">
+    <img src="https://badgen.net/badge/Woodsmith/DeepWiki/800000?labelColor=000000&icon=https://raw.githubusercontent.com/lowestprime/woodsmith/refs/heads/master/site/app/icon.svg" alt="Woodsmith DeepWiki" />
+  </a>
 </h1>
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
