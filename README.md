@@ -15,10 +15,6 @@
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
-## 🌐 Website
-
-[woodmat.ch](https://woodmat.ch)
-
 ## 📃 Description
 
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`
