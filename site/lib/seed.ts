@@ -103,7 +103,7 @@ export const siteSettingsSeed = {
     { label: "Shop", href: "/shop" },
     { label: "Process", href: "/shop#process" },
     { label: "About", href: "/about" },
-    { label: "Search", href: "/search" }
+    { label: "Contact", href: "/contact" }
   ],
   homepageFeaturedMode: "manual",
   homepageFeaturedPieceSlugs: ["hallway-bench", "pastry-table", "pantry-cabinets", "footstool"],

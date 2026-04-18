@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell, StatusBand } from "@/components/site-chrome";
+import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
 import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -44,10 +44,6 @@ export default function HomePage() {
             copy="Public piece pages stay selective and accurate. Available work can be reserved from the shop, while custom work starts with a direct contact request."
           />
           <div className="piece-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
-        </PageSection>
-
-        <PageSection editHref="/studio?panel=projects">
-          <StatusBand />
         </PageSection>
 
         <PageSection editHref="/studio?panel=pages&page=home#page-home">

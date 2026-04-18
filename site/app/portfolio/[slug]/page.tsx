@@ -70,7 +70,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         </div>
         <div>
           {mediaItems.length > 0 ? (
-            <MediaLightbox items={mediaItems} title={piece.title} />
+            <MediaLightbox className="piece-media-carousel" items={mediaItems} title={piece.title} />
           ) : (
             <div className="piece-card-placeholder tall-placeholder">Archival media is being verified for this piece before additional images are shown publicly.</div>
           )}

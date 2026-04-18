@@ -58,8 +58,11 @@ export async function GET(_: Request, { params }: { params: Promise<{ slug: stri
 
   return new NextResponse(stream as never, {
     headers: {
-      "Content-Type": MIME_TYPES[extension] || (kind === "video" ? "application/octet-stream" : "image/jpeg"),
-      "Cache-Control": "public, max-age=31536000, immutable"
+      "Content-Type":
+        MIME_TYPES[extension] ||
+        (kind === "video" ? "application/octet-stream" : "image/jpeg"),
+      "Cache-Control": "no-store",
+      "CDN-Cache-Control": "no-store"
     }
   });
 }

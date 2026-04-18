@@ -3,8 +3,34 @@
 ## Beaman Woodworks 3.0 Completion Pass
 
 - Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
-- Last updated: 2026-04-11
+- Last updated: 2026-04-18
 - Branch: `codex/live-audit-hardening-20260411`
+
+## 2026-04-18 Studio UX + Upgrade Batch
+
+| ID | Status | Notes |
+|----|--------|-------|
+| 1 (no-jump studio media) | DONE | Media actions (`uploadMediaAction`, `renameMediaAction`, `deleteMediaAction`, `saveMediaMetadataAction`, `cleanupMediaBackgroundAction`, `assignMediaCandidateAction`, `refreshMediaLibraryAction`) now return `MediaActionResult` instead of `redirect(...)`. A new client `ActionForm` component wraps each form with `useActionState`, shows inline notices, and calls `router.refresh()` on success so the UI updates in-place without scrolling to the top. Pagination uses `<Link scroll={false}>` and the filter uses a client `StudioMediaFilter` with `router.replace({scroll:false})`. |
+| 2 / 13 (preview dismiss & hover-zoom) | DONE | `MediaLightbox` already closes via X button, Esc key, and backdrop click, and supports zoom + pointer-drag pan + next/prev arrows. Confirmed no regression. |
+| 6 (carousel) | DONE | Portfolio piece detail now uses a scroll-snap horizontal carousel (`.piece-media-carousel`) backed by `MediaLightbox`. |
+| 9 (gradient avatar) | DONE | Logged-in avatar falls back to a deterministic HSL gradient seeded by email/name via `lib/avatar.ts` + `account-badge-gradient` styles. |
+| 10 (forgot password) | VERIFIED | `forgotPasswordAction` / `resetPasswordAction` already present; no code change needed. |
+| 11 (email notifications) | DONE | `signupAction` now queues a signup notification email to the configured `notificationForwardEmail`/`builderEmail` via `sendNotificationEmail` (best-effort; no failure propagation). |
+| 12 (legacy domain) | DONE | `ws.lowestprime.synology.me` no longer appears in source (remains only in historical PLANS.md notes). |
+| 16 (scroll-margin-top) | DONE | Added `scroll-margin-top: 6rem` for studio editor cards and all `[id^="page-"] [id^="piece-"] [id^="post-"] [id^="user-"] [id^="project-"]` anchors so pencil deep-links land below the sticky header. |
+| 17 (compact header) | DONE | Reduced header vertical padding and tightened brand mark/emblem sizes at desktop widths. |
+| 18 (/contact) | DONE | New `/contact` route renders `ContactRequestForm`; nav updated to point at `/contact` by default. |
+| 20 (featured pieces editor) | DONE | Studio settings now exposes a `homepageFeaturedPieceSlugs` textarea; `saveSiteSettingsAction` persists the ordered list. |
+| 21 (bandwidth tracker) | DONE | Removed the `StatusBand` bandwidth section from the homepage. |
+| 22 (search bar) | DONE | Removed `Search` nav link from seed navigation and header render; added a compact `HeaderSearch` client bar that routes submit to `/search?q=...`. |
+
+### Tasks explicitly **NOT DONE** in this pass and why
+
+- 4 / 5 / 7 (media picker, interactive world map, advanced media selector UX): These are larger product features requiring new Cloudflare Analytics integrations and a dedicated image-library UI; deferred so they can be designed holistically instead of shipped as half-measures.
+- 3 / 15 (intuitive automated classification UI beyond pagination + candidate cards): The verification queue already exposes candidate matches; deeper redesign is pending.
+- 8 (email verification link): Requires a schema migration (`emailVerified`, `verificationToken`) and a `/account/verify` route; signup notification has been added as a first step.
+- 14 (all delete buttons): The seven media delete/rename/save actions now run inline; non-media delete buttons still redirect back to their panel as before — behavior unchanged and verified working.
+- 19 (persistence): Already guaranteed by the existing SQLite + mounted `data/` volume configuration; no new code change required.
 
 The sections below include historical completion notes from the 2026-04-10 pass. The 2026-04-11 live audit found that the public site at `https://ws.lowestprime.synology.me/` was still serving stale persisted content and still exposed several source/runtime regressions that this branch corrects.
 

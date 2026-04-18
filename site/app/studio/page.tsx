@@ -53,6 +53,8 @@ import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { MediaCropEditor } from "@/components/media-crop-editor";
+import { ActionForm } from "@/components/action-form";
+import { StudioMediaFilter } from "@/components/studio-media-filter";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_VERIFICATION_MEDIA_CAP = 500;
@@ -171,9 +173,9 @@ function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces
     <article className="studio-panel studio-media-card">
       <div className={`studio-media-preview cleanup-${cleanupMode}`}>{item.kind === "image" ? <img alt={item.altText} decoding="async" fetchPriority="low" loading="lazy" src={toMediaUrl(item.relativePath)} style={{ objectPosition: `${item.focalX}% ${item.focalY}%`, transform: `scale(${item.zoom})` }} /> : <div className="piece-card-placeholder">{item.kind}</div>}</div>
       <div className="studio-media-body">
-        <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p>{aiAnalyzed ? <p className="muted-copy">AI: {aiDescription || aiTags.join(", ") || "Analyzed"}</p> : null}</div><form action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></form></div>
-        <form action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></form>
-        <form action={saveMediaMetadataAction} className="request-form compact-form">
+        <div className="studio-editor-head"><div><h3>{item.fileName}</h3><p className="muted-copy">{item.relativePath}</p><p className="muted-copy">Cluster {item.clusterKey}</p>{aiAnalyzed ? <p className="muted-copy">AI: {aiDescription || aiTags.join(", ") || "Analyzed"}</p> : null}</div><ActionForm action={deleteMediaAction}><input name="relativePath" type="hidden" value={item.relativePath} /><button className="button-secondary" type="submit">Delete</button></ActionForm></div>
+        <ActionForm action={renameMediaAction} className="request-form compact-form studio-inline-form"><input name="relativePath" type="hidden" value={item.relativePath} /><Field label="Rename" name="baseName" defaultValue={item.fileName.replace(/\.[^.]+$/, "")} /><button className="button-secondary" type="submit">Rename</button></ActionForm>
+        <ActionForm action={saveMediaMetadataAction} className="request-form compact-form">
           <input name="relativePath" type="hidden" value={item.relativePath} />
           <Field label="Alt text" name="altText" defaultValue={item.altText} />
           <div className="field-grid two-up compact-grid">
@@ -196,14 +198,14 @@ function MediaEditor({ item, pieces, posts, pages }: { item: MediaRecord; pieces
           <Field label="Crop note" name="cropNote" defaultValue={String(item.metadata.cropNote ?? "")} />
           <Check label="Reviewed for public use" name="reviewed" defaultChecked={item.reviewed} />
           <button className="button-primary" type="submit">Save media</button>
-        </form>
+        </ActionForm>
         {item.kind === "image" ? (
-          <form action={cleanupMediaBackgroundAction} className="request-form compact-form ai-cleanup-form">
+          <ActionForm action={cleanupMediaBackgroundAction} className="request-form compact-form ai-cleanup-form">
             <input name="relativePath" type="hidden" value={item.relativePath} />
             <label><span>AI cleanup mode</span><select defaultValue={cleanupMode === "original" ? "soft-matte" : cleanupMode} name="cleanupMode"><option value="soft-matte">Soft matte</option><option value="warm-crop">Warm crop</option><option value="subject-isolate">Subject isolate</option></select></label>
             <Area label="Cleanup prompt" name="cleanupPrompt" defaultValue="Remove distracting background clutter while preserving the woodworking piece, joinery, wood color, proportions, and natural shadows." rows={2} />
             <button className="button-secondary" type="submit">Generate cleaned copy</button>
-          </form>
+          </ActionForm>
         ) : null}
       </div>
     </article>
@@ -444,6 +446,7 @@ export default async function StudioPage({
             <Area label="Site announcement" name="siteAnnouncement" defaultValue={settings.siteAnnouncement} rows={3} />
             <div className="field-grid three-up compact-grid"><Field label="Builder email" name="builderEmail" defaultValue={settings.builderEmail} /><Field label="Developer email" name="developerEmail" defaultValue={settings.developerEmail} /><Field label="Repository URL" name="repoUrl" defaultValue={settings.repoUrl} /></div>
             <Area label="Piece divider names" name="pieceDividerNames" defaultValue={settings.pieceDividerNames.join("\n")} rows={4} />
+            <Area label="Homepage featured piece slugs (one per line, in display order)" name="homepageFeaturedPieceSlugs" defaultValue={settings.homepageFeaturedPieceSlugs.join("\n")} rows={4} />
             <Area label="Hero title" name="heroTitle" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.title ?? "")} rows={3} />
             <Area label="Hero copy" name="heroCopy" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.copy ?? "")} rows={4} />
             <button className="button-primary" type="submit">Save settings</button>
@@ -464,19 +467,19 @@ export default async function StudioPage({
         <div className="studio-grid two-column-grid">
           <article className="studio-panel">
             <h3>Upload media</h3>
-            <form action={uploadMediaAction} className="request-form compact-form">
+            <ActionForm action={uploadMediaAction} className="request-form compact-form" resetOnSuccess>
               <Field label="Folder" name="folder" defaultValue="Uploads" /><Field label="Alt text" name="altText" />
               <div className="field-grid two-up compact-grid"><Field label="Piece slug" name="pieceSlug" /><Field label="Process note slug" name="postSlug" /></div>
               <Field label="Page slug" name="pageSlug" /><Field label="Project reference" name="projectReference" /><Area label="Tags" name="tagsText" rows={2} />
               <label><span>File</span><input name="file" required type="file" /></label><button className="button-primary" type="submit">Upload</button>
-            </form>
-            <form action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></form>
-            <form action="/studio" className="request-form compact-form"><input name="panel" type="hidden" value="media" /><Field label="Filter media" name="media" defaultValue={mediaQuery} /><input name="mediaPage" type="hidden" value="1" /><button className="button-secondary" type="submit">Filter</button></form>
+            </ActionForm>
+            <ActionForm action={refreshMediaLibraryAction}><button className="button-secondary" type="submit">Refresh library</button></ActionForm>
+            <StudioMediaFilter defaultQuery={mediaQuery} />
             {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
               <nav aria-label="Media pagination" className="studio-media-pagination">
-                {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })}>Previous page</Link> : <span className="muted-copy">Previous page</span>}
+                {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })} scroll={false}>Previous page</Link> : <span className="muted-copy">Previous page</span>}
                 <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
-                {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })}>Next page</Link> : <span className="muted-copy">Next page</span>}
+                {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })} scroll={false}>Next page</Link> : <span className="muted-copy">Next page</span>}
               </nav>
             ) : null}
           </article>
@@ -501,14 +504,14 @@ export default async function StudioPage({
                 <p className="muted-copy">{entry.needsReview ? "Needs media review before public use." : "Candidate matches are available for review."}</p>
                 <div className="project-media-strip">
                   {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
-                    <form action={assignMediaCandidateAction} className="candidate-assignment-form" key={item.relativePath} title={`Candidate score ${score}`}>
+                    <ActionForm action={assignMediaCandidateAction} className="candidate-assignment-form" key={item.relativePath}>
                       <input name="relativePath" type="hidden" value={item.relativePath} />
                       <input name="pieceSlug" type="hidden" value={entry.piece.slug} />
-                      <button type="submit">
+                      <button title={`Candidate score ${score}`} type="submit">
                         <img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} />
                         <span>{score}</span>
                       </button>
-                    </form>
+                    </ActionForm>
                   )) : <span className="muted-copy">No safe filename/tag candidates found.</span>}
                 </div>
               </article>
@@ -518,9 +521,9 @@ export default async function StudioPage({
         <div className="studio-stack">{media.map((item) => <MediaEditor key={item.relativePath} item={item} pages={pages} pieces={pieces} posts={posts} />)}</div>
         {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? (
           <nav aria-label="Media pagination footer" className="studio-media-pagination studio-media-pagination-footer">
-            {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })}>Previous page</Link> : null}
+            {mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })} scroll={false}>Previous page</Link> : null}
             <span className="muted-copy">Page {mediaPage} of {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
-            {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })}>Next page</Link> : null}
+            {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })} scroll={false}>Next page</Link> : null}
           </nav>
         ) : null}
       </PageSection>

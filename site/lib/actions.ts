@@ -205,13 +205,29 @@ export async function signupAction(formData: FormData) {
     avatarPath: null,
     publicProfile: false,
     links: [],
-    metadata: {},
+    metadata: { signupAt: new Date().toISOString() },
     passwordHash: createPasswordHash(password)
   });
 
   const user = await verifyLogin(email, password);
   if (user) {
     await createSession(user);
+  }
+
+  try {
+    const { sendNotificationEmail } = await import("@/lib/notifications");
+    const site = getSiteSettings();
+    const notifyTo = site.notificationForwardEmail || site.builderEmail;
+    if (notifyTo) {
+      await sendNotificationEmail({
+        category: "signup",
+        to: notifyTo,
+        subject: `New account: ${displayName}`,
+        text: `A new customer account was created.\n\nName: ${displayName}\nEmail: ${email}\nAt: ${new Date().toISOString()}`
+      });
+    }
+  } catch {
+    // Notification is best-effort; signup must not fail when email transport is unavailable.
   }
 
   redirect("/account/profile?created=1");
@@ -641,6 +657,9 @@ export async function saveSiteSettingsAction(formData: FormData) {
         repoUrl: optionalField(formData.get("repoUrl")) || existing.repoUrl,
         siteAnnouncement: optionalField(formData.get("siteAnnouncement")) || existing.siteAnnouncement,
         pieceDividerNames: parseListField(formData.get("pieceDividerNames")).length > 0 ? parseListField(formData.get("pieceDividerNames")) : existing.pieceDividerNames,
+        homepageFeaturedPieceSlugs: parseListField(formData.get("homepageFeaturedPieceSlugs")).length > 0
+          ? parseListField(formData.get("homepageFeaturedPieceSlugs")).map((slug) => slug.trim()).filter(Boolean)
+          : existing.homepageFeaturedPieceSlugs,
         socialLinks: [
           { label: "Instagram", url: optionalField(formData.get("instagramUrl")) },
           { label: "Pinterest", url: optionalField(formData.get("pinterestUrl")) },
@@ -958,11 +977,21 @@ export async function deleteCommissionTypeAction(formData: FormData) {
   redirect("/studio?panel=custom&deleted=commission-type");
 }
 
-export async function uploadMediaAction(formData: FormData) {
+export type MediaActionResult =
+  | { ok: true; kind: "upload"; relativePath: string }
+  | { ok: true; kind: "rename"; previousPath: string; relativePath: string }
+  | { ok: true; kind: "delete"; relativePath: string }
+  | { ok: true; kind: "assign"; relativePath: string; pieceSlug: string }
+  | { ok: true; kind: "cleanup"; relativePath: string }
+  | { ok: true; kind: "save"; relativePath: string }
+  | { ok: true; kind: "refresh" }
+  | { ok: false; kind: "error"; message: string };
+
+export async function uploadMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) {
-    redirect("/studio?panel=media&error=media-upload");
+    return { ok: false, kind: "error", message: "Please choose a non-empty file to upload." };
   }
   const folder = optionalField(formData.get("folder")) || "Uploads";
   const relativePath = await persistUploadedMedia(file, folder);
@@ -983,14 +1012,11 @@ export async function uploadMediaAction(formData: FormData) {
     reviewed: true,
     tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : parseJsonField<string[]>(formData.get("tagsJson"), [])
   });
-  revalidatePath("/studio");
-  revalidatePath("/portfolio");
-  revalidatePath("/shop");
-  revalidatePath("/process");
-  redirect(`/studio?panel=media&uploaded=${encodeURIComponent(relativePath)}`);
+  revalidateMediaSurfaces();
+  return { ok: true, kind: "upload", relativePath };
 }
 
-export async function renameMediaAction(formData: FormData) {
+export async function renameMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const previousPath = requiredField(formData.get("relativePath"), "Media path");
   const nextRelativePath = renameMediaAsset(
@@ -999,26 +1025,26 @@ export async function renameMediaAction(formData: FormData) {
   );
   const affected = renameMediaRecordAndReferences(previousPath, nextRelativePath);
   revalidateMediaSurfaces(affected);
-  redirect(`/studio?panel=media&renamed=${encodeURIComponent(nextRelativePath)}`);
+  return { ok: true, kind: "rename", previousPath, relativePath: nextRelativePath };
 }
 
-export async function deleteMediaAction(formData: FormData) {
+export async function deleteMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   deleteMediaAsset(relativePath);
   const affected = deleteMediaRecordAndReferences(relativePath);
   revalidateMediaSurfaces(affected);
-  redirect("/studio?panel=media&deleted=media");
+  return { ok: true, kind: "delete", relativePath };
 }
 
-export async function assignMediaCandidateAction(formData: FormData) {
+export async function assignMediaCandidateAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
   const piece = getPiece(pieceSlug);
   const media = getMedia(relativePath);
   if (!piece || !media) {
-    redirect("/studio?panel=media&error=media-assignment");
+    return { ok: false, kind: "error", message: "Could not resolve piece or media for assignment." };
   }
 
   saveMediaMetadata({
@@ -1052,24 +1078,22 @@ export async function assignMediaCandidateAction(formData: FormData) {
     }
   });
 
-  revalidatePath("/studio");
-  revalidatePath("/portfolio");
-  revalidatePath(`/portfolio/${pieceSlug}`);
-  redirect(`/studio?panel=media&assigned=${encodeURIComponent(relativePath)}`);
+  revalidateMediaSurfaces({ pieceSlugs: [pieceSlug], postSlugs: [], pageSlugs: [] });
+  return { ok: true, kind: "assign", relativePath, pieceSlug };
 }
 
-export async function cleanupMediaBackgroundAction(formData: FormData) {
+export async function cleanupMediaBackgroundAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   const mode = optionalField(formData.get("cleanupMode")) || "soft-matte";
   const prompt = optionalField(formData.get("cleanupPrompt"));
   const media = getMedia(relativePath);
   if (!media) {
-    redirect("/studio?panel=media&error=media-missing");
+    return { ok: false, kind: "error", message: "Media not found for cleanup." };
   }
 
   if (!getAiServiceStatus().backgroundCleanup) {
-    redirect("/studio?panel=media&error=cleanup-unconfigured");
+    return { ok: false, kind: "error", message: "AI background cleanup is not configured on this deployment." };
   }
 
   const generated = await createCleanedBackgroundVariant(relativePath, resolveMediaPath(relativePath), prompt);
@@ -1077,12 +1101,12 @@ export async function cleanupMediaBackgroundAction(formData: FormData) {
   if (!b64Json && generated.url) {
     const response = await fetch(generated.url);
     if (!response.ok) {
-      redirect("/studio?panel=media&error=cleanup-download");
+      return { ok: false, kind: "error", message: `Cleanup download failed (HTTP ${response.status}).` };
     }
     b64Json = Buffer.from(await response.arrayBuffer()).toString("base64");
   }
   if (!b64Json) {
-    redirect("/studio?panel=media&error=cleanup-empty");
+    return { ok: false, kind: "error", message: "Cleanup service returned no image data." };
   }
 
   const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
@@ -1110,13 +1134,11 @@ export async function cleanupMediaBackgroundAction(formData: FormData) {
     }
   });
 
-  revalidatePath("/studio");
-  revalidatePath("/portfolio");
-  revalidatePath("/shop");
-  redirect(`/studio?panel=media&cleaned=${encodeURIComponent(nextPath)}`);
+  revalidateMediaSurfaces();
+  return { ok: true, kind: "cleanup", relativePath: nextPath };
 }
 
-export async function saveMediaMetadataAction(formData: FormData) {
+export async function saveMediaMetadataAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   await requireAdmin();
   const relativePath = requiredField(formData.get("relativePath"), "Media path");
   const mediaJson = optionalField(formData.get("mediaJson"));
@@ -1158,15 +1180,15 @@ export async function saveMediaMetadataAction(formData: FormData) {
         tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
         metadata
       });
-  revalidatePath("/studio");
-  redirect("/studio?panel=media&saved=media");
+  revalidateMediaSurfaces();
+  return { ok: true, kind: "save", relativePath };
 }
 
-export async function refreshMediaLibraryAction() {
+export async function refreshMediaLibraryAction(): Promise<MediaActionResult> {
   await requireAdmin();
   refreshMediaLibrary();
   revalidateMediaSurfaces();
-  redirect("/studio?panel=media&refreshed=media");
+  return { ok: true, kind: "refresh" };
 }
 
 export async function saveProjectAction(formData: FormData) {

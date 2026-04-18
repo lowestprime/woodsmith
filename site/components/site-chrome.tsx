@@ -2,6 +2,8 @@ import { cache, type ReactNode } from "react";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { HeaderSearch } from "@/components/header-search";
+import { avatarGradientStyle } from "@/lib/avatar";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
@@ -26,7 +28,7 @@ export function BrandMark() {
 
 const getViewer = cache(async () => getCurrentUser());
 
-function AccountBadge({ label, avatarPath, loggedIn }: { label: string; avatarPath?: string | null; loggedIn: boolean }) {
+function AccountBadge({ label, avatarPath, loggedIn, seed }: { label: string; avatarPath?: string | null; loggedIn: boolean; seed?: string }) {
   if (avatarPath) {
     return <img alt={label} className="account-badge-avatar" src={resolveAssetUrl(avatarPath)} />;
   }
@@ -42,7 +44,7 @@ function AccountBadge({ label, avatarPath, loggedIn }: { label: string; avatarPa
     );
   }
 
-  return <span className="account-badge" aria-hidden="true">{label}</span>;
+  return <span className="account-badge account-badge-gradient" aria-hidden="true" style={avatarGradientStyle(seed ?? label)}>{label}</span>;
 }
 
 function EditGlyph() {
@@ -105,15 +107,16 @@ export async function SiteHeader() {
           </span>
         </Link>
         <nav aria-label="Primary" className="site-nav">
-          {site.navigation.map((item) => (
+          {site.navigation.filter((item) => String(item.href) !== "/search").map((item) => (
             <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
           ))}
+          <HeaderSearch />
           <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart">
             <span aria-hidden="true">Cart</span>
             <strong>{cartCount}</strong>
           </Link>
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
-            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} />
+            <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} seed={user?.email ?? user?.displayName ?? accountLabel} />
           </Link>
           {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
         </nav>
