@@ -3,8 +3,18 @@
 ## Beaman Woodworks 3.0 Completion Pass
 
 - Status: SOURCE UPDATED, DEPLOYED, AND VERIFIED ON `https://www.woodmat.ch`
-- Last updated: 2026-04-18
+- Last updated: 2026-04-19
 - Branch: `codex/woodmatch-live-audit-20260418`
+
+## 2026-04-19 Compact Chrome + Page Persistence Pass
+
+| ID | Status | Notes |
+|----|--------|-------|
+| Header compactness / auto-hide / spacing audit | DONE | Replaced the oversized sticky header behavior with a client `site-header-shell` that condenses on scroll and hides while scrolling down, while preserving the compact search, cart, account badge, and theme toggle layout across desktop and mobile. Global spacing tokens, card padding, footer spacing, and dashboard metrics were tightened to reduce wasted vertical space. |
+| Studio long-scroll audit for Pages workspace | DONE | The Pages workspace no longer renders every page editor at once. It now uses a compact record picker plus a single active editor panel, keeping the workspace focused and materially shorter. The Settings workspace also stops duplicating homepage copy fields that belong to the Pages editor. |
+| Page edits not reflecting live site / across rebuilds | DONE | Fixed page-route persistence wiring in three places: `savePageAction` now revalidates the correct public aliases (`/`, `/process`, `/commissions`, `/contact`), page renames preserve the saved record through `originalSlug`, and the public routes now render the stored page `body`/`intro` content instead of leaving those fields disconnected. |
+| Request-time rendering for persisted page content | DONE | Public DB-backed routes now explicitly call `connection()` so the live site reads the mounted SQLite data at request time instead of depending on build-time output. The 2026-04-19 build route table now shows the edited public routes as `ƒ` dynamic routes. |
+| Contact/custom-work page copy source audit | DONE | `/contact` and `/commissions` now both consume the persisted `commissions` page record for title/intro/body, so page-editor changes apply consistently to the public custom-work entry points. |
 
 ## 2026-04-18 Hardening Follow-Up
 

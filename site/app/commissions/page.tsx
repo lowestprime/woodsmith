@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { ContactRequestForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getPage, listCommissionTypes } from "@/lib/db";
@@ -10,14 +11,16 @@ export const metadata: Metadata = {
   openGraph: { title: "Custom Work | Beaman Woodworks", description: "Commission custom hardwood furniture." }
 };
 
-export default function CommissionsPage() {
+export default async function CommissionsPage() {
+  await connection();
   const page = getPage("commissions");
   const bandwidth = getBandwidthSnapshot();
 
   return (
     <Shell>
-      <PageSection editHref="/studio?panel=custom">
+      <PageSection editHref="/studio?panel=pages&page=commissions#page-commissions">
         <PageIntro eyebrow="Custom work" title={page?.title ?? "Custom Work Contact"} copy={page?.intro ?? "Custom work now starts with a direct contact request instead of a fixed public template."} />
+        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <p className="muted-copy">Already have a reference? <Link href="/commissions/status">Look up your project status here.</Link></p>
         <ContactRequestForm
           bandwidthLeadTimeDays={bandwidth.leadTimeDays}

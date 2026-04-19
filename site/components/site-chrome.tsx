@@ -3,6 +3,7 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
+import { HeaderShell } from "@/components/header-shell";
 import { readAvatarGradient } from "@/lib/avatar";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
@@ -79,38 +80,40 @@ export async function SiteHeader() {
     .join("") || "BW";
 
   return (
-    <header className="site-header">
-      <Shell className="header-inner">
-        <Link className="brand-lockup" href="/">
-          <BrandMark />
-          <span>
-            <span className="brand-mark">{site.brandName}</span>
-            <span className="brand-subtitle">{site.brandTagline}</span>
-          </span>
-        </Link>
-        <nav aria-label="Primary" className="site-nav">
-          {site.navigation.filter((item) => String(item.href) !== "/search").map((item) => (
-            <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
-          ))}
-          <HeaderSearch />
-          <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart">
-            <span aria-hidden="true">Cart</span>
-            <strong>{cartCount}</strong>
+    <HeaderShell>
+      <header className="site-header">
+        <Shell className="header-inner">
+          <Link className="brand-lockup" href="/">
+            <BrandMark />
+            <span className="brand-copy">
+              <span className="brand-mark">{site.brandName}</span>
+              <span className="brand-subtitle">{site.brandTagline}</span>
+            </span>
           </Link>
-          <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
-            <AvatarBadge
-              avatarPath={user?.avatarPath}
-              gradient={readAvatarGradient(user?.metadata)}
-              label={accountLabel}
-              placeholder={!user}
-              seed={user?.email ?? user?.displayName ?? accountLabel}
-            />
-          </Link>
-          {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
-        </nav>
-        <ThemeToggle />
-      </Shell>
-    </header>
+          <nav aria-label="Primary" className="site-nav">
+            {site.navigation.filter((item) => String(item.href) !== "/search").map((item) => (
+              <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
+            ))}
+            <HeaderSearch />
+            <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart">
+              <span aria-hidden="true">Cart</span>
+              <strong>{cartCount}</strong>
+            </Link>
+            <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
+              <AvatarBadge
+                avatarPath={user?.avatarPath}
+                gradient={readAvatarGradient(user?.metadata)}
+                label={accountLabel}
+                placeholder={!user}
+                seed={user?.email ?? user?.displayName ?? accountLabel}
+              />
+            </Link>
+            {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
+          </nav>
+          <ThemeToggle />
+        </Shell>
+      </header>
+    </HeaderShell>
   );
 }
 

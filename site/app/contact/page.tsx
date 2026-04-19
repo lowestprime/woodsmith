@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { ContactRequestForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
-import { getBandwidthSnapshot, getSiteSettings, listCommissionTypes } from "@/lib/db";
+import { getBandwidthSnapshot, getPage, getSiteSettings, listCommissionTypes } from "@/lib/db";
 
 export const metadata: Metadata = {
   title: "Contact Beaman Woodworks",
@@ -10,18 +11,21 @@ export const metadata: Metadata = {
   openGraph: { title: "Contact | Beaman Woodworks", description: "Contact the Beaman Woodworks woodshop." }
 };
 
-export default function ContactPage() {
+export default async function ContactPage() {
+  await connection();
+  const page = getPage("commissions");
   const site = getSiteSettings();
   const bandwidth = getBandwidthSnapshot();
 
   return (
     <Shell>
-      <PageSection editHref="/studio?panel=settings">
+      <PageSection editHref="/studio?panel=pages&page=commissions#page-commissions">
         <PageIntro
           eyebrow="Contact"
-          title="Ask about a custom piece"
-          copy="Use the intake form below to send a message directly to the woodshop. Every inquiry is read personally — replies come from a real human, usually within a business day."
+          title={page?.title ?? "Ask about a custom piece"}
+          copy={page?.intro ?? "Use the intake form below to send a message directly to the woodshop. Every inquiry is read personally — replies come from a real human, usually within a business day."}
         />
+        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <p className="muted-copy">
           Prefer email? Reach us at <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>. You can also
           {" "}

@@ -126,6 +126,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 
 - birds-eye maple, ebony, and white-maple palette
 - persistent light/day and black OLED night theme toggle
+- compact header shell that condenses on scroll and hides while scrolling down
 - repaired toggle track/thumb alignment and admin-aware account/profile badge resolution
 - local Mackintosh typography throughout the site
 - rounded controls, larger form fields, and more legible button language
@@ -157,6 +158,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/notifications.ts`: SMTP and notification queue handling
 - `site/components/forms.tsx`: public, account, profile, resend-verification, and custom work forms
 - `site/components/site-chrome.tsx`: header, footer, cards, shared layout pieces, and account badge
+- `site/components/header-shell.tsx`: client scroll-state wrapper that compacts and hides the header chrome during downward scrolling
 - `site/components/media-picker.tsx`: visual library picker used by page, piece, and process editors
 - `site/components/studio-media-workspace.tsx`: compact media-management workspace for `/studio?panel=media`
 - `site/components/visitor-tracker.tsx` + `site/components/visitor-insights.tsx`: client visit logging and dashboard visitor map/list

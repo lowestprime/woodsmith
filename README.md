@@ -25,6 +25,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
 - Buyer account pages for signup, email verification, login, password reset, profile editing, customizable gradient or uploaded profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
+- Compact Pages workspace with a record picker and single active editor so page updates do not require scrolling through the entire page library
 - Admin-only pencil edit entrypoints on public sections that link directly into the matching Woodshop workspace while signed in
 - Browser media management for upload, rename, delete, assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, cleanup mode, display order, source credit, and zoom metadata against the writable NAS photo library, plus a compact thumbnail workspace that edits in place without bouncing back to the top of the page
 - Visual media pickers for pages, pieces, and process notes so editors can browse the mounted NAS library without manually typing file paths
@@ -42,6 +43,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
 - The public site exposes admin-only edit links when an admin is signed in. Those links open the matching workspace in `/studio`; they are entrypoints into the dashboard, not a drag-and-drop page builder.
+- Public page records are now read at request time from the mounted SQLite data store, so page edits revalidate the live routes immediately and persist through rebuilds when `site/data/` is mounted correctly.
 - The canonical public origin is `https://www.woodmat.ch`. Middleware redirects `woodmat.ch` and the retired `ws.lowestprime.synology.me` host to that canonical origin.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.

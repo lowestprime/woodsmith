@@ -64,6 +64,13 @@ const STUDIO_VERIFICATION_MEDIA_CAP = 500;
 const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "custom", "people", "process", "media", "projects", "orders", "reviews", "notifications"] as const;
 
 type StudioPanel = (typeof STUDIO_PANELS)[number];
+type StudioNavItem = {
+  key: string;
+  label: string;
+  meta: string;
+  href: string;
+  active: boolean;
+};
 
 function Field({ label, name, defaultValue = "", type = "text", required = false }: { label: string; name: string; defaultValue?: string | number | null; type?: string; required?: boolean }) {
   return <label><span>{label}</span><input defaultValue={defaultValue ?? ""} name={name} required={required} type={type} /></label>;
@@ -90,6 +97,39 @@ function studioMessage(code: string) {
   return messages[code] ?? code;
 }
 
+function StudioRecordNav({
+  eyebrow,
+  title,
+  items
+}: {
+  eyebrow: string;
+  title: string;
+  items: StudioNavItem[];
+}) {
+  return (
+    <aside className="studio-record-nav">
+      <article className="studio-panel studio-record-nav-card">
+        <p className="eyebrow">{eyebrow}</p>
+        <h3>{title}</h3>
+        <div className="studio-record-link-list">
+          {items.map((item) => (
+            <Link
+              aria-current={item.active ? "page" : undefined}
+              className={`studio-record-link${item.active ? " is-active" : ""}`.trim()}
+              href={item.href}
+              key={item.key}
+              scroll={false}
+            >
+              <strong>{item.label}</strong>
+              <small>{item.meta}</small>
+            </Link>
+          ))}
+        </div>
+      </article>
+    </aside>
+  );
+}
+
 function PageEditor({
   page,
   mediaLibrary,
@@ -106,6 +146,7 @@ function PageEditor({
         {page.slug !== "new-page-draft" ? <form action={deletePageAction}><input name="slug" type="hidden" value={page.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
       </div>
       <form action={savePageAction} className="request-form compact-form">
+        <input name="originalSlug" type="hidden" value={page.slug === "new-page-draft" ? "" : page.slug} />
         <div className="field-grid two-up compact-grid"><Field label="Slug" name="slug" defaultValue={page.slug} required /><Field label="Title" name="title" defaultValue={page.title} required /></div>
         <div className="field-grid two-up compact-grid">
           <Field label="Navigation label" name="navLabel" defaultValue={page.navLabel} />
@@ -115,6 +156,7 @@ function PageEditor({
         <MediaPicker defaultValue={page.heroMediaPath} helperText="Choose from every indexed file in the mounted NAS library." items={mediaLibrary} label="Hero media" name="heroMediaPath" />
         <Area label="Intro" name="intro" defaultValue={page.intro} rows={3} />
         <Area label="Body" name="body" defaultValue={page.body} rows={5} />
+        {page.slug === "home" ? <p className="muted-copy">On the homepage, Intro feeds the hero copy and Body feeds the supporting services copy.</p> : null}
         <button className="button-primary" type="submit">Save page</button>
       </form>
     </article>
@@ -378,6 +420,16 @@ export default async function StudioPage({
     }
     return `/studio?${params.toString()}`;
   };
+  const selectedPageSlug = currentPanel === "pages"
+    ? pageHighlight === "new-page-draft"
+      ? "new-page-draft"
+      : pages.find((page) => page.slug === pageHighlight)?.slug || pages[0]?.slug || "new-page-draft"
+    : "";
+  const selectedPage = currentPanel === "pages"
+    ? selectedPageSlug === "new-page-draft"
+      ? pageDraft()
+      : pages.find((page) => page.slug === selectedPageSlug) ?? pageDraft()
+    : null;
 
   return (
     <Shell>
@@ -444,23 +496,51 @@ export default async function StudioPage({
 
       {currentPanel === "settings" && settings ? (
       <PageSection>
-        <div className="section-heading"><p className="eyebrow">Settings</p><h2>Brand and homepage</h2><p>Core contact information and homepage wording.</p></div>
+        <div className="section-heading"><p className="eyebrow">Settings</p><h2>Brand and homepage</h2><p>Core contact information, global labels, and the featured pieces shown on the Workshop page.</p></div>
         <article className="studio-panel">
-          <form action={saveSiteSettingsAction} className="request-form">
+          <form action={saveSiteSettingsAction} className="request-form compact-form">
             <div className="field-grid two-up compact-grid"><Field label="Brand name" name="brandName" defaultValue={settings.brandName} /><Field label="Tagline" name="brandTagline" defaultValue={settings.brandTagline} /></div>
             <Area label="Site announcement" name="siteAnnouncement" defaultValue={settings.siteAnnouncement} rows={3} />
             <div className="field-grid three-up compact-grid"><Field label="Builder email" name="builderEmail" defaultValue={settings.builderEmail} /><Field label="Developer email" name="developerEmail" defaultValue={settings.developerEmail} /><Field label="Repository URL" name="repoUrl" defaultValue={settings.repoUrl} /></div>
             <Area label="Piece divider names" name="pieceDividerNames" defaultValue={settings.pieceDividerNames.join("\n")} rows={4} />
             <Area label="Homepage featured piece slugs (one per line, in display order)" name="homepageFeaturedPieceSlugs" defaultValue={settings.homepageFeaturedPieceSlugs.join("\n")} rows={4} />
-            <Area label="Hero title" name="heroTitle" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.title ?? "")} rows={3} />
-            <Area label="Hero copy" name="heroCopy" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.copy ?? "")} rows={4} />
+            <p className="muted-copy">Public page wording now lives in the Pages workspace so saved edits correspond directly to the live routes they control.</p>
             <button className="button-primary" type="submit">Save settings</button>
           </form>
         </article>
       </PageSection>
       ) : null}
 
-      {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media.</p></div><div className="studio-grid two-column-grid"><PageEditor mediaLibrary={mediaLibrary} page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} mediaLibrary={mediaLibrary} page={page} />)}</div></PageSection> : null}
+      {currentPanel === "pages" ? (
+      <PageSection>
+        <div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Edit one page at a time so the workspace stays compact and the saved content maps directly to the live route.</p></div>
+        <div className="studio-record-workspace">
+          <StudioRecordNav
+            eyebrow="Pages"
+            items={[
+              {
+                key: "new-page-draft",
+                label: "New page draft",
+                meta: "Create a new public route",
+                href: panelHref("pages", { page: "new-page-draft" }),
+                active: selectedPageSlug === "new-page-draft"
+              },
+              ...pages.map((page) => ({
+                key: page.slug,
+                label: page.title,
+                meta: `${page.status} · ${page.slug === "home" ? "/" : `/${page.slug}`}`,
+                href: panelHref("pages", { page: page.slug }),
+                active: page.slug === selectedPageSlug
+              }))
+            ]}
+            title="Select a page"
+          />
+          <div className="studio-record-editor">
+            {selectedPage ? <PageEditor highlight mediaLibrary={mediaLibrary} page={selectedPage} /> : null}
+          </div>
+        </div>
+      </PageSection>
+      ) : null}
       {currentPanel === "pieces" ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor mediaLibrary={mediaLibrary} piece={pieceDraft(currentAdmin.email)} />{pieces.map((piece) => <PieceEditor highlight={piece.slug === pieceHighlight} key={piece.slug} mediaLibrary={mediaLibrary} piece={piece} />)}</div></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} user={user} />)}</div></PageSection> : null}

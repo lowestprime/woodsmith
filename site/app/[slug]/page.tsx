@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { PageSection, Shell } from "@/components/site-chrome";
 import { getPage } from "@/lib/db";
@@ -7,6 +8,7 @@ import { sanitizeHtml } from "@/lib/format";
 const RESERVED = new Set(["portfolio", "shop", "journal", "process", "commissions", "requests", "studio", "about", "account", "search", "media"]);
 
 export default async function DynamicPage({ params }: { params: Promise<{ slug: string }> }) {
+  await connection();
   const { slug } = await params;
   if (RESERVED.has(slug)) {
     notFound();

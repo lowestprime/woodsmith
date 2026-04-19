@@ -76,7 +76,39 @@ function revalidateMediaSurfaces(affected?: {
   }
 
   for (const slug of affected.pageSlugs) {
-    revalidatePath(slug === "home" ? "/" : `/${slug}`);
+    revalidatePublishedPageSurfaces(slug);
+  }
+}
+
+function getPublishedPagePaths(slug: string) {
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) {
+    return [];
+  }
+
+  const paths = new Set<string>();
+
+  if (normalized === "home") {
+    paths.add("/");
+  } else {
+    paths.add(`/${normalized}`);
+  }
+
+  if (normalized === "journal" || normalized === "process") {
+    paths.add("/process");
+  }
+
+  if (normalized === "commissions") {
+    paths.add("/commissions");
+    paths.add("/contact");
+  }
+
+  return [...paths];
+}
+
+function revalidatePublishedPageSurfaces(slug: string) {
+  for (const path of getPublishedPagePaths(slug)) {
+    revalidatePath(path);
   }
 }
 
@@ -781,13 +813,16 @@ export async function saveSiteSettingsAction(formData: FormData) {
   revalidatePath("/shop");
   revalidatePath("/portfolio");
   revalidatePath("/process");
+  revalidatePath("/commissions");
+  revalidatePath("/contact");
   redirect("/studio?panel=settings&saved=settings");
 }
 
 export async function savePageAction(formData: FormData) {
   await requireAdmin();
   const slug = requiredField(formData.get("slug"), "Page slug");
-  const current = getPage(slug);
+  const originalSlug = optionalField(formData.get("originalSlug")) || slug;
+  const current = getPage(originalSlug) || getPage(slug);
   const pageJson = optionalField(formData.get("pageJson"));
   savePage(pageJson
     ? parseJsonField<PageRecord>(formData.get("pageJson"), current!)
@@ -804,14 +839,21 @@ export async function savePageAction(formData: FormData) {
           ? optionalField(formData.get("heroMediaPath")) || null
           : current?.heroMediaPath || null
       });
-  revalidatePath(`/${optionalField(formData.get("slug"))}`);
+  if (originalSlug && originalSlug !== slug) {
+    deletePage(originalSlug);
+  }
+  revalidatePath("/studio");
+  revalidatePublishedPageSurfaces(originalSlug);
+  revalidatePublishedPageSurfaces(slug);
   redirect(`/studio?panel=pages&saved=page&page=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePageAction(formData: FormData) {
   await requireAdmin();
-  deletePage(requiredField(formData.get("slug"), "Page slug"));
-  revalidatePath("/");
+  const slug = requiredField(formData.get("slug"), "Page slug");
+  deletePage(slug);
+  revalidatePath("/studio");
+  revalidatePublishedPageSurfaces(slug);
   redirect("/studio?panel=pages&deleted=page");
 }
 

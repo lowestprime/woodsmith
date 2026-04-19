@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { CategoryIcon, DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
 import { portfolioCategories, type PortfolioCategoryKey, getPiecePortfolioCategory } from "@/lib/catalog";
 import { getPage, listPieces } from "@/lib/db";
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 };
 
 export default async function PortfolioPage({ searchParams }: { searchParams: Promise<{ category?: string }> }) {
+  await connection();
   const { category } = await searchParams;
   const page = getPage("portfolio");
   const selectedCategory = portfolioCategories.some((item) => item.key === category) ? (category as PortfolioCategoryKey) : "all";
@@ -27,6 +29,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
       <Shell>
         <PageSection editHref="/studio?panel=pieces">
           <PageIntro eyebrow="Portfolio" title={page?.title ?? "Portfolio"} copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."} />
+          {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
           <nav className="portfolio-filter-row" aria-label="Piece categories">
             {portfolioCategories.map((item) => {
               const active = item.key === selectedCategory;

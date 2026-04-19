@@ -20,7 +20,7 @@ export function HeaderSearch() {
         id="site-header-search"
         name="q"
         onChange={(event) => setValue(event.target.value)}
-        placeholder="Search pieces, process, media"
+        placeholder="Search pieces, process, media…"
         type="search"
         value={value}
       />

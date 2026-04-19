@@ -19,7 +19,9 @@ The settings editor controls brand copy, homepage wording, contact email address
 
 ### Pages
 
-The Pages section can create, edit, publish, archive, or delete page records. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
+The Pages section can create, edit, publish, archive, or delete page records. It now uses a compact record picker with one active editor at a time instead of rendering every page form in a long stack. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
+
+Changes save into the mounted SQLite data store, revalidate the matching public routes immediately, and survive rebuilds as long as `site/data/` remains mounted persistently. On the home page record, `intro` feeds the hero copy and `body` feeds the secondary home copy block.
 
 ### Portfolio and shop pieces
 

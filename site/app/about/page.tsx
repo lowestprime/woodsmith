@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { AvatarBadge } from "@/components/avatar-badge";
 import { readAvatarGradient } from "@/lib/avatar";
@@ -10,7 +11,8 @@ export const metadata: Metadata = {
   openGraph: { title: "About | Beaman Woodworks", description: "Meet the woodworkers behind Beaman Woodworks." }
 };
 
-export default function AboutPage() {
+export default async function AboutPage() {
+  await connection();
   const page = getPage("about");
   const site = getSiteSettings();
   const profiles = listPublicProfiles();
@@ -19,6 +21,7 @@ export default function AboutPage() {
     <Shell>
       <PageSection editHref="/studio?panel=pages&page=about#page-about">
         <PageIntro eyebrow="About & contact" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet the master builder and the developer behind the platform."} />
+        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <div className="profile-grid">
           {profiles.map((profile) => (
             <article className="profile-card" key={profile.email}>
