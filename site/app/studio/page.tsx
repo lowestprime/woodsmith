@@ -55,6 +55,7 @@ import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { ActionForm } from "@/components/action-form";
 import { StudioMediaFilter } from "@/components/studio-media-filter";
+import { StudioScrollRestore } from "@/components/studio-form";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_VERIFICATION_MEDIA_CAP = 500;
@@ -228,7 +229,7 @@ function commissionTypeDraft(): Omit<CommissionTypeRecord, "createdAt" | "update
   return { slug: "new-custom-type", label: "New Custom Type", description: "", baseLaborHours: 12, baseMarkupPercent: 30, materialOptions: ["White maple", "Birds-eye maple", "Walnut", "Cherry", "Ebony accent"], defaultDimensions: { width: 48, depth: 24, height: 30, unit: "in" }, active: true };
 }
 
-function userDraft(): Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "createdAt" | "updatedAt"> {
+function userDraft(): Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "emailVerified" | "verificationToken" | "verificationExpiresAt" | "createdAt" | "updatedAt"> {
   return { email: "new@beamanwoodworks.local", role: "woodworker", displayName: "New Woodworker", headline: "Independent woodworker", bio: "", avatarPath: null, publicProfile: false, links: [], metadata: { woodworker: true, developer: false, showOnAboutPage: false } };
 }
 
@@ -237,7 +238,7 @@ function UserEditor({
   currentAdminEmail,
   highlight = false
 }: {
-  user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "createdAt" | "updatedAt">;
+  user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "emailVerified" | "verificationToken" | "verificationExpiresAt" | "createdAt" | "updatedAt">;
   currentAdminEmail: string;
   highlight?: boolean;
 }) {
@@ -397,6 +398,8 @@ export default async function StudioPage({
 
   return (
     <Shell>
+      <StudioScrollRestore />
+      <div data-studio-root="true">
       <PageSection>
         <PageIntro eyebrow="Woodshop" title="Dashboard" copy="Switch between focused workspaces for pages, pieces, media, process notes, projects, orders, and profiles." />
         {error ? <p className="notice-panel danger">Dashboard action failed: {studioMessage(error)}</p> : null}
@@ -496,26 +499,51 @@ export default async function StudioPage({
           </article>
         </div>
         <div className="media-verification-queue">
-          <div className="section-heading"><p className="eyebrow">Verification queue</p><h2>Piece photo accuracy</h2><p>Review candidates before assigning photos. Nothing in this section auto-publishes or guesses piece identity.</p></div>
+          <div className="section-heading">
+            <p className="eyebrow">Verification queue</p>
+            <h2>Piece photo accuracy</h2>
+            <p>Review candidates before assigning photos. Nothing in this section auto-publishes or guesses piece identity.</p>
+            {verificationQueue.length > 0 ? (
+              <p className="muted-copy">
+                <strong>{verificationQueue.filter((entry) => entry.needsReview).length}</strong> of {verificationQueue.length} pieces still need human verification.
+              </p>
+            ) : (
+              <p className="muted-copy">No pieces are waiting for photo verification right now.</p>
+            )}
+          </div>
           <div className="studio-grid two-column-grid">
-            {verificationQueue.slice(0, 12).map((entry) => (
-              <article className="studio-panel verification-card" key={entry.piece.slug}>
-                <div className="studio-editor-head"><h3>{entry.piece.title}</h3><span>{entry.assigned.length} assigned</span></div>
-                <p className="muted-copy">{entry.needsReview ? "Needs media review before public use." : "Candidate matches are available for review."}</p>
-                <div className="project-media-strip">
-                  {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
-                    <ActionForm action={assignMediaCandidateAction} className="candidate-assignment-form" key={item.relativePath}>
-                      <input name="relativePath" type="hidden" value={item.relativePath} />
-                      <input name="pieceSlug" type="hidden" value={entry.piece.slug} />
-                      <button title={`Candidate score ${score}`} type="submit">
-                        <img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} />
-                        <span>{score}</span>
-                      </button>
-                    </ActionForm>
-                  )) : <span className="muted-copy">No safe filename/tag candidates found.</span>}
-                </div>
-              </article>
-            ))}
+            {verificationQueue.slice(0, 12).map((entry) => {
+              const topScore = entry.suggestions.length > 0 ? entry.suggestions[0].score : 0;
+              return (
+                <article className="studio-panel verification-card" key={entry.piece.slug}>
+                  <div className="studio-editor-head">
+                    <h3>{entry.piece.title}</h3>
+                    <span>{entry.assigned.length} assigned</span>
+                  </div>
+                  <p className={`muted-copy${entry.needsReview ? " needs-review" : ""}`}>
+                    {entry.needsReview ? "Needs media review before public use." : "Candidate matches are available for review."}
+                  </p>
+                  {entry.suggestions.length > 0 ? (
+                    <p className="muted-copy">
+                      Top candidate score: <strong>{topScore}</strong>
+                      {topScore >= 60 ? " (high confidence)" : topScore >= 35 ? " (moderate)" : " (low)"}
+                    </p>
+                  ) : null}
+                  <div className="project-media-strip">
+                    {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
+                      <ActionForm action={assignMediaCandidateAction} className="candidate-assignment-form" key={item.relativePath}>
+                        <input name="relativePath" type="hidden" value={item.relativePath} />
+                        <input name="pieceSlug" type="hidden" value={entry.piece.slug} />
+                        <button title={`Assign to ${entry.piece.title} (candidate score ${score})`} type="submit">
+                          <img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} />
+                          <span className={`candidate-score${score >= 60 ? " is-strong" : score >= 35 ? " is-moderate" : " is-weak"}`}>{score}</span>
+                        </button>
+                      </ActionForm>
+                    )) : <span className="muted-copy">No safe filename/tag candidates found.</span>}
+                  </div>
+                </article>
+              );
+            })}
           </div>
         </div>
         <div className="studio-stack">{media.map((item) => <MediaEditor key={item.relativePath} item={item} pages={pages} pieces={pieces} posts={posts} />)}</div>
@@ -573,6 +601,7 @@ export default async function StudioPage({
 
       {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className={`studio-panel studio-editor-card${pieceHighlight && review.pieceSlug === pieceHighlight ? " highlight-card" : ""}`} key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection> : null}
       {currentPanel === "notifications" ? <PageSection><div className="section-heading"><p className="eyebrow">Notifications</p><h2>Email queue</h2><p>Queued and sent notification records.</p></div><div className="studio-grid two-column-grid">{notifications.length > 0 ? notifications.map((notification) => <article className="studio-panel" key={notification.id}><p className="eyebrow">{notification.status}</p><h3>{notification.subject}</h3><p>{notification.recipient}</p><p className="muted-copy">Queued {formatDateTime(notification.createdAt)}</p>{notification.sentAt ? <p className="muted-copy">Sent {formatDateTime(notification.sentAt)}</p> : null}{notification.error ? <p className="notice-panel danger">{notification.error}</p> : null}<p className="muted-copy">{notification.body}</p></article>) : <article className="studio-panel"><p className="muted-copy">No notifications have been queued yet.</p></article>}</div></PageSection> : null}
+      </div>
     </Shell>
   );
 }

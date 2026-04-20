@@ -22,7 +22,9 @@ import {
   getProject,
   getSiteSettings,
   getUserByEmail,
+  getUserByVerificationToken,
   listCartItems,
+  markEmailVerified,
   refreshMediaLibrary,
   removeCartItem,
   saveCommissionType,
@@ -34,6 +36,7 @@ import {
   saveReview,
   saveSiteSettings,
   saveUserProfile,
+  setEmailVerificationToken,
   setPasswordHash,
   setPasswordResetToken,
   updateProject,
@@ -244,16 +247,33 @@ export async function signupAction(formData: FormData) {
     passwordHash: createPasswordHash(password)
   });
 
+  const verificationToken = crypto.randomUUID();
+  const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString();
+  setEmailVerificationToken(email, verificationToken, verificationExpiresAt);
+
+  const verifyUrl = `${resolveBaseUrl()}/account/verify/${encodeURIComponent(verificationToken)}`;
+
+  try {
+    await sendNotificationEmail({
+      category: "signup",
+      to: email,
+      subject: "Confirm your Beaman Woodworks email",
+      text: `Welcome to Beaman Woodworks.\n\nConfirm your email address to finish activating your buyer account:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
+      html: `<p>Welcome to Beaman Woodworks.</p><p>Confirm your email address to finish activating your buyer account:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
+    });
+  } catch {
+    // Notification is best-effort; signup must not fail when email transport is unavailable.
+  }
+
   const user = await verifyLogin(email, password);
   if (user) {
     await createSession(user);
   }
 
   try {
-    const { sendNotificationEmail } = await import("@/lib/notifications");
     const site = getSiteSettings();
     const notifyTo = site.notificationForwardEmail || site.builderEmail;
-    if (notifyTo) {
+    if (notifyTo && notifyTo.toLowerCase() !== email.toLowerCase()) {
       await sendNotificationEmail({
         category: "signup",
         to: notifyTo,
@@ -265,7 +285,47 @@ export async function signupAction(formData: FormData) {
     // Notification is best-effort; signup must not fail when email transport is unavailable.
   }
 
-  redirect("/account/profile?created=1");
+  redirect("/account/profile?created=1&verify=sent");
+}
+
+export async function resendVerificationAction() {
+  const user = await requireUser();
+  if (user.emailVerified) {
+    redirect("/account/profile?verify=already");
+  }
+
+  const verificationToken = crypto.randomUUID();
+  const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString();
+  setEmailVerificationToken(user.email, verificationToken, verificationExpiresAt);
+
+  const verifyUrl = `${resolveBaseUrl()}/account/verify/${encodeURIComponent(verificationToken)}`;
+
+  try {
+    await sendNotificationEmail({
+      category: "signup",
+      to: user.email,
+      subject: "Confirm your Beaman Woodworks email",
+      text: `Confirm your email address:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
+      html: `<p>Confirm your email address:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
+    });
+  } catch {
+    // Notification is best-effort; resending must not throw to the user.
+  }
+
+  redirect("/account/profile?verify=sent");
+}
+
+export async function verifyEmailAction(token: string) {
+  if (!token) {
+    return { ok: false as const, message: "Missing verification token." };
+  }
+  const user = getUserByVerificationToken(token);
+  if (!user) {
+    return { ok: false as const, message: "This verification link is expired or invalid. Request a new one." };
+  }
+  markEmailVerified(user.email);
+  revalidatePath("/account/profile");
+  return { ok: true as const, email: user.email };
 }
 
 export async function logoutAction() {

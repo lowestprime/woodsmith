@@ -36,6 +36,9 @@ export type UserRecord = {
   metadata: Record<string, unknown>;
   resetToken: string | null;
   resetExpiresAt: string | null;
+  emailVerified: boolean;
+  verificationToken: string | null;
+  verificationExpiresAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -321,6 +324,9 @@ function getDatabase() {
       metadata_json TEXT NOT NULL DEFAULT '{}',
       reset_token TEXT,
       reset_expires_at TEXT,
+      email_verified INTEGER NOT NULL DEFAULT 0,
+      verification_token TEXT,
+      verification_expires_at TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     ) STRICT;
@@ -552,12 +558,27 @@ function getDatabase() {
   `);
 
   if (!initialized) {
+    ensureUserVerificationColumns(database);
     seedDefaultContent(database);
     syncMediaLibraryIntoDatabase(database);
     initialized = true;
   }
 
   return database;
+}
+
+function ensureUserVerificationColumns(db: DatabaseSync) {
+  const rows = db.prepare(`PRAGMA table_info(users)`).all() as Array<{ name?: unknown }>;
+  const columns = new Set(rows.map((row) => String(row.name ?? "")));
+  if (!columns.has("email_verified")) {
+    db.exec(`ALTER TABLE users ADD COLUMN email_verified INTEGER NOT NULL DEFAULT 0`);
+  }
+  if (!columns.has("verification_token")) {
+    db.exec(`ALTER TABLE users ADD COLUMN verification_token TEXT`);
+  }
+  if (!columns.has("verification_expires_at")) {
+    db.exec(`ALTER TABLE users ADD COLUMN verification_expires_at TEXT`);
+  }
 }
 
 function upsertSetting(db: DatabaseSync, key: string, value: unknown) {
@@ -1179,6 +1200,9 @@ function mapUser(row: Record<string, unknown>): UserRecord {
     metadata: readJson(row.metadataJson, {}),
     resetToken: row.resetToken ? String(row.resetToken) : null,
     resetExpiresAt: row.resetExpiresAt ? String(row.resetExpiresAt) : null,
+    emailVerified: toBoolean(row.emailVerified),
+    verificationToken: row.verificationToken ? String(row.verificationToken) : null,
+    verificationExpiresAt: row.verificationExpiresAt ? String(row.verificationExpiresAt) : null,
     createdAt: String(row.createdAt),
     updatedAt: String(row.updatedAt)
   };
@@ -1414,6 +1438,8 @@ export function listPublicProfiles() {
     SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
            public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
            reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt
     FROM users
     WHERE public_profile = 1
@@ -1429,6 +1455,8 @@ export function listUsers() {
     SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
            public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
            reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt
     FROM users
     ORDER BY CASE role WHEN 'admin' THEN 0 WHEN 'woodworker' THEN 1 ELSE 2 END, display_name ASC, email ASC
@@ -1449,6 +1477,8 @@ export function getUserByEmail(email: string) {
     SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
            public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
            reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt, password_hash AS passwordHash
     FROM users
     WHERE lower(email) = lower(?)
@@ -1464,6 +1494,8 @@ export function getUserById(id: string) {
     SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
            public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
            reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt
     FROM users
     WHERE id = ?
@@ -1593,12 +1625,45 @@ export function setPasswordResetToken(email: string, token: string, expiresAt: s
   db.prepare(`UPDATE users SET reset_token = ?, reset_expires_at = ?, updated_at = ? WHERE lower(email) = lower(?)`).run(token, expiresAt, nowIso(), email);
 }
 
+export function setEmailVerificationToken(email: string, token: string, expiresAt: string) {
+  const db = getDatabase();
+  db.prepare(
+    `UPDATE users SET verification_token = ?, verification_expires_at = ?, email_verified = 0, updated_at = ? WHERE lower(email) = lower(?)`
+  ).run(token, expiresAt, nowIso(), email);
+}
+
+export function markEmailVerified(email: string) {
+  const db = getDatabase();
+  db.prepare(
+    `UPDATE users SET email_verified = 1, verification_token = NULL, verification_expires_at = NULL, updated_at = ? WHERE lower(email) = lower(?)`
+  ).run(nowIso(), email);
+}
+
+export function getUserByVerificationToken(token: string) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
+           public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
+           reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM users
+    WHERE verification_token = ? AND (verification_expires_at IS NULL OR datetime(verification_expires_at) > datetime('now'))
+    LIMIT 1
+  `).get(token) as Record<string, unknown> | undefined;
+
+  return row ? mapUser(row) : null;
+}
+
 export function getUserByResetToken(token: string) {
   const db = getDatabase();
   const row = db.prepare(`
     SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
            public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
            reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
+           email_verified AS emailVerified, verification_token AS verificationToken,
+           verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt, password_hash AS passwordHash
     FROM users
     WHERE reset_token = ? AND (reset_expires_at IS NULL OR datetime(reset_expires_at) > datetime('now'))

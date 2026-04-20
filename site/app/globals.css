@@ -944,6 +944,25 @@ h3 {
   background: rgba(0, 0, 0, 0.72);
   color: white;
   padding: 0.1rem 0.42rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.candidate-score.is-strong {
+  background: color-mix(in srgb, #2e7d32 80%, black 20%);
+}
+
+.candidate-score.is-moderate {
+  background: color-mix(in srgb, #c98a2b 80%, black 20%);
+}
+
+.candidate-score.is-weak {
+  background: color-mix(in srgb, #7a7a7a 82%, black 18%);
+}
+
+.verification-card .muted-copy.needs-review {
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .cleanup-soft-matte,

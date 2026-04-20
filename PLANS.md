@@ -6,6 +6,14 @@
 - Last updated: 2026-04-19
 - Branch: `codex/live-audit-hardening-20260411`
 
+## 2026-04-19 Verification + No-Jump Studio + Ranked Review Queue
+
+| ID | Status | Notes |
+|----|--------|-------|
+| 8 (email verification link) | DONE | Added `email_verified`, `verification_token`, `verification_expires_at` columns to the `users` table with a backwards-compatible `ensureUserVerificationColumns` additive migration (PRAGMA table_info + ALTER TABLE). Added DB helpers `setEmailVerificationToken`, `markEmailVerified`, `getUserByVerificationToken`. `signupAction` now issues a 48h-expiry token and emails a confirm link to the new user. Added server action `verifyEmailAction(token)` and `resendVerificationAction` for signed-in users who haven't verified. New public route `/account/verify/[token]` confirms the address and shows a clear outcome. Profile page shows a "Your email is not verified" alert + resend button for unverified users and a success banner after signup. Docs/examples unchanged (no new env required — existing `SMTP_*` transport already used via `sendNotificationEmail`). |
+| 14 (all delete/save studio buttons jump to top) | DONE | Introduced `components/studio-form.tsx` `StudioScrollRestore` client component mounted inside a `data-studio-root` wrapper on `/studio`. It uses delegated `submit` capture on `document` to save `window.scrollY` + nearest `id="(page|piece|post|user|project|order|commission|review|media)-*"` anchor to `sessionStorage` before navigation, and on mount restores by scrolling to the anchor (or raw Y) and then clears the entry. This preserves scroll for EVERY studio form (pages, pieces, posts, people, commissions, settings, projects, orders, reviews) — no per-form refactor needed. Expires entries after 30 s to avoid cross-session leaks. |
+| 3 / 15 (automated classification UX) | DONE | Verification queue now shows: (a) a count of pieces still needing review at the top, (b) the top-candidate score in the card with a qualitative label (high/moderate/low confidence), (c) color-coded score badges (`.is-strong` green / `.is-moderate` amber / `.is-weak` grey) on each candidate, (d) more descriptive `title` tooltips on assign buttons, and (e) highlighted "needs review" copy. The underlying `buildMediaVerificationQueue` (heuristic + optional embedding scoring) is unchanged. |
+
 ## 2026-04-19 Mobile Overflow + Lightbox Stacking Fix
 
 | ID | Status | Notes |
@@ -50,10 +58,10 @@
 ### Tasks explicitly **NOT DONE** in this pass and why
 
 - 4 / 5 / 7 (media picker, interactive world map, advanced media selector UX): These are larger product features requiring new Cloudflare Analytics integrations and a dedicated image-library UI; deferred so they can be designed holistically instead of shipped as half-measures.
-- 3 / 15 (intuitive automated classification UI beyond pagination + candidate cards): The verification queue already exposes candidate matches; deeper redesign is pending.
-- 8 (email verification link): Requires a schema migration (`emailVerified`, `verificationToken`) and a `/account/verify` route; signup notification has been added as a first step.
-- 14 (all delete buttons): The seven media delete/rename/save actions now run inline; non-media delete buttons still redirect back to their panel as before — behavior unchanged and verified working.
-- 19 (persistence): Already guaranteed by the existing SQLite + mounted `data/` volume configuration; no new code change required.
+- 3 / 15 (intuitive automated classification UI): shipped in the 2026-04-19 ranked-review pass — see new ledger above; deeper AI-driven auto-approve loop remains future work.
+- 8 (email verification link): shipped in the 2026-04-19 verification pass — see new ledger above.
+- 14 (all delete buttons): shipped in the 2026-04-19 no-jump-studio pass — see new ledger above; all studio forms now preserve scroll.
+- 19 (persistence): Already guaranteed by the existing SQLite + mounted `data/` volume configuration plus the `seed_tombstones` log from the persistence pass; no new code change required.
 
 The sections below include historical completion notes from the 2026-04-10 pass. The 2026-04-11 live audit found that the public site at `https://ws.lowestprime.synology.me/` was still serving stale persisted content and still exposed several source/runtime regressions that this branch corrects.
 
