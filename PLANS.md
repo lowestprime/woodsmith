@@ -6,6 +6,14 @@
 - Last updated: 2026-04-19
 - Branch: `codex/live-audit-hardening-20260411`
 
+## 2026-04-19 Mobile Overflow + Lightbox Stacking Fix
+
+| ID | Status | Notes |
+|----|--------|-------|
+| M1 (viewport horizontal overflow on mobile) | DONE | Added `overflow-x: hidden` to both `html` and `body`, `max-width: 100vw` on both, and `min-width: 0` on `.header-inner`, `.site-nav`, `.brand-lockup`. Also `white-space: nowrap; text-overflow: ellipsis` on brand text so the header can no longer push the viewport wider than its own width. Fixes IMG_9361 where the whole page had horizontal scroll and content was clipped on the left/right. |
+| M2 (mobile header actions clumped left, large empty space on right) | DONE | Rebuilt the `≤720px` header as a two-row grid: row 1 `brand` + `actions` (right-aligned via `justify-self: end`), row 2 full-width `nav` with horizontal scroll. On `≤420px` the brand mark text is hidden (emblem only) and the cart label text hides so only the count badge remains. Nav row auto-collapses when `.site-header.is-compact` so scrolling gives back vertical space. |
+| M3 (site header rendered above the media lightbox on mobile) | DONE | Root cause: `main { z-index: 1 }` created a stacking context that capped every descendant (including the lightbox with `z-index: 9999`) below the sibling sticky header (`z-index: 30`). Removed the `z-index: 1` from `main` and now render `MediaLightbox` via `createPortal(..., document.body)` so it is mounted outside any parent stacking context. The lightbox overlay + close button now reliably cover the header on every device. Fixes IMG_9363. |
+
 ## 2026-04-19 Persistence + Header Hardening Pass
 
 | ID | Status | Notes |

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type LightboxItem = {
   src: string;
@@ -74,41 +75,44 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
         ))}
       </div>
 
-      {activeItem ? (
-        <div aria-label={title} aria-modal="true" className="lightbox-shell" onClick={close} role="dialog">
-          <button aria-label="Close image preview" className="lightbox-close" onClick={close} ref={closeRef} type="button">&#x2715;</button>
-          <div className="lightbox-toolbar">
-            {items.length > 1 ? <button aria-label="Previous image" onClick={(event) => { event.stopPropagation(); navigate(-1); }} type="button">&#x2190;</button> : null}
-            <button aria-label="Zoom out" onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.max(1, value - 0.25)); }} type="button">&#x2212;</button>
-            <span>{zoom > 1 ? `${Math.round(zoom * 100)}%` : ""} {title}{items.length > 1 ? ` (${(activeIndex ?? 0) + 1}/${items.length})` : ""}</span>
-            <button aria-label="Zoom in" onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.min(4, value + 0.25)); }} type="button">&#x2b;</button>
-            {items.length > 1 ? <button aria-label="Next image" onClick={(event) => { event.stopPropagation(); navigate(1); }} type="button">&#x2192;</button> : null}
-          </div>
-          <div
-            className="lightbox-stage"
-            onClick={(event) => event.stopPropagation()}
-            onPointerMove={(event) => {
-              if (zoom <= 1 || event.buttons !== 1) return;
-              setOffset((current) => ({ x: current.x + event.movementX, y: current.y + event.movementY }));
-            }}
-            role="presentation"
-          >
-            {activeItem.kind === "video" ? (
-              <video className="lightbox-media" controls src={activeItem.src} />
-            ) : (
-              <img
-                alt={activeItem.alt}
-                className="lightbox-media"
-                src={activeItem.src}
-                style={{
-                  objectPosition: `${activeItem.focalX ?? 50}% ${activeItem.focalY ?? 50}%`,
-                  transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom * (activeItem.zoom ?? 1)})`
+      {activeItem && typeof document !== "undefined"
+        ? createPortal(
+            <div aria-label={title} aria-modal="true" className="lightbox-shell" onClick={close} role="dialog">
+              <button aria-label="Close image preview" className="lightbox-close" onClick={close} ref={closeRef} type="button">&#x2715;</button>
+              <div className="lightbox-toolbar" onClick={(event) => event.stopPropagation()}>
+                {items.length > 1 ? <button aria-label="Previous image" onClick={(event) => { event.stopPropagation(); navigate(-1); }} type="button">&#x2190;</button> : null}
+                <button aria-label="Zoom out" onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.max(1, value - 0.25)); }} type="button">&#x2212;</button>
+                <span>{zoom > 1 ? `${Math.round(zoom * 100)}%` : ""} {title}{items.length > 1 ? ` (${(activeIndex ?? 0) + 1}/${items.length})` : ""}</span>
+                <button aria-label="Zoom in" onClick={(event) => { event.stopPropagation(); setZoom((value) => Math.min(4, value + 0.25)); }} type="button">&#x2b;</button>
+                {items.length > 1 ? <button aria-label="Next image" onClick={(event) => { event.stopPropagation(); navigate(1); }} type="button">&#x2192;</button> : null}
+              </div>
+              <div
+                className="lightbox-stage"
+                onClick={(event) => event.stopPropagation()}
+                onPointerMove={(event) => {
+                  if (zoom <= 1 || event.buttons !== 1) return;
+                  setOffset((current) => ({ x: current.x + event.movementX, y: current.y + event.movementY }));
                 }}
-              />
-            )}
-          </div>
-        </div>
-      ) : null}
+                role="presentation"
+              >
+                {activeItem.kind === "video" ? (
+                  <video className="lightbox-media" controls src={activeItem.src} />
+                ) : (
+                  <img
+                    alt={activeItem.alt}
+                    className="lightbox-media"
+                    src={activeItem.src}
+                    style={{
+                      objectPosition: `${activeItem.focalX ?? 50}% ${activeItem.focalY ?? 50}%`,
+                      transform: `translate(${offset.x}px, ${offset.y}px) scale(${zoom * (activeItem.zoom ?? 1)})`
+                    }}
+                  />
+                )}
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </>
   );
 }
