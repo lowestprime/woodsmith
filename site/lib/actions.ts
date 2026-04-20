@@ -52,6 +52,41 @@ import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMe
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
+function revalidatePagePaths(slug: string) {
+  revalidatePath("/", "layout");
+  revalidatePath("/");
+  revalidatePath("/portfolio");
+  revalidatePath("/shop");
+  revalidatePath("/process");
+  revalidatePath("/about");
+  revalidatePath("/contact");
+  revalidatePath("/commissions");
+  if (slug && slug !== "home") {
+    revalidatePath(`/${slug}`);
+  }
+}
+
+function revalidatePieceSurfaces(slug: string) {
+  revalidatePath("/", "layout");
+  revalidatePath("/");
+  revalidatePath("/portfolio");
+  revalidatePath("/shop");
+  if (slug) {
+    revalidatePath(`/portfolio/${slug}`);
+    revalidatePath(`/shop/${slug}`);
+  }
+}
+
+function revalidatePostSurfaces(slug: string) {
+  revalidatePath("/", "layout");
+  revalidatePath("/");
+  revalidatePath("/process");
+  revalidatePath("/shop");
+  if (slug) {
+    revalidatePath(`/process/${slug}`);
+  }
+}
+
 function revalidateMediaSurfaces(affected?: {
   pieceSlugs: string[];
   postSlugs: string[];
@@ -727,14 +762,15 @@ export async function savePageAction(formData: FormData) {
         sections: current?.sections || [],
         heroMediaPath: optionalField(formData.get("heroMediaPath")) || current?.heroMediaPath || null
       });
-  revalidatePath(`/${optionalField(formData.get("slug"))}`);
+  revalidatePagePaths(slug);
   redirect(`/studio?panel=pages&saved=page&page=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePageAction(formData: FormData) {
   await requireAdmin();
-  deletePage(requiredField(formData.get("slug"), "Page slug"));
-  revalidatePath("/");
+  const slug = requiredField(formData.get("slug"), "Page slug");
+  deletePage(slug);
+  revalidatePagePaths(slug);
   redirect("/studio?panel=pages&deleted=page");
 }
 
@@ -780,15 +816,15 @@ export async function savePieceAction(formData: FormData) {
           mediaReviewRequired: parseBooleanField(formData.get("mediaReviewRequired"))
         }
       });
-  revalidatePath("/portfolio");
-  revalidatePath("/shop");
+  revalidatePieceSurfaces(slug);
   redirect(`/studio?panel=pieces&saved=piece&piece=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePieceAction(formData: FormData) {
   await requireAdmin();
-  deletePiece(requiredField(formData.get("slug"), "Piece slug"));
-  revalidatePath("/portfolio");
+  const slug = requiredField(formData.get("slug"), "Piece slug");
+  deletePiece(slug);
+  revalidatePieceSurfaces(slug);
   redirect("/studio?panel=pieces&deleted=piece");
 }
 
@@ -812,16 +848,15 @@ export async function savePostAction(formData: FormData) {
         sourceUrl: optionalField(formData.get("sourceUrl")) || current?.sourceUrl || null,
         sourceLabel: optionalField(formData.get("sourceLabel")) || current?.sourceLabel || null
       });
-  revalidatePath("/shop");
-  revalidatePath("/process");
+  revalidatePostSurfaces(slug);
   redirect(`/studio?panel=process&saved=post&post=${encodeURIComponent(slug)}`);
 }
 
 export async function deletePostAction(formData: FormData) {
   await requireAdmin();
-  deletePost(requiredField(formData.get("slug"), "Post slug"));
-  revalidatePath("/shop");
-  revalidatePath("/process");
+  const slug = requiredField(formData.get("slug"), "Post slug");
+  deletePost(slug);
+  revalidatePostSurfaces(slug);
   redirect("/studio?panel=process&deleted=post");
 }
 

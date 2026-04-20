@@ -535,6 +535,13 @@ function getDatabase() {
       updated_at TEXT NOT NULL
     ) STRICT;
 
+    CREATE TABLE IF NOT EXISTS seed_tombstones (
+      entity_type TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      deleted_at TEXT NOT NULL,
+      PRIMARY KEY (entity_type, slug)
+    ) STRICT;
+
     CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
     CREATE INDEX IF NOT EXISTS idx_projects_guest_email ON projects(guest_email);
     CREATE INDEX IF NOT EXISTS idx_projects_user_email ON projects(user_email);
@@ -561,6 +568,24 @@ function upsertSetting(db: DatabaseSync, key: string, value: unknown) {
       value = excluded.value,
       updated_at = excluded.updated_at
   `).run({ key, value: writeJson(value), updatedAt: nowIso() });
+}
+
+function recordSeedTombstone(db: DatabaseSync, entityType: string, slug: string) {
+  db.prepare(`
+    INSERT OR REPLACE INTO seed_tombstones (entity_type, slug, deleted_at)
+    VALUES (?, ?, ?)
+  `).run(entityType, slug, nowIso());
+}
+
+function clearSeedTombstone(db: DatabaseSync, entityType: string, slug: string) {
+  db.prepare(`DELETE FROM seed_tombstones WHERE entity_type = ? AND slug = ?`).run(entityType, slug);
+}
+
+function isSeedTombstoned(db: DatabaseSync, entityType: string, slug: string): boolean {
+  const row = db
+    .prepare(`SELECT 1 AS present FROM seed_tombstones WHERE entity_type = ? AND slug = ? LIMIT 1`)
+    .get(entityType, slug) as { present?: number } | undefined;
+  return Boolean(row?.present);
 }
 
 function getSeededVersion(db: DatabaseSync) {
@@ -614,6 +639,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   for (const profile of seedProfiles) {
+    if (isSeedTombstoned(db, "user", profile.email.toLowerCase())) continue;
     const timestamp = nowIso();
     db.prepare(`
       INSERT OR IGNORE INTO users (
@@ -662,6 +688,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   for (const page of seedPages) {
+    if (isSeedTombstoned(db, "page", page.slug)) continue;
     const timestamp = nowIso();
     db.prepare(`
       INSERT OR IGNORE INTO pages (
@@ -705,6 +732,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   for (const piece of seedPieces) {
+    if (isSeedTombstoned(db, "piece", piece.slug)) continue;
     const timestamp = nowIso();
     db.prepare(`
       INSERT OR IGNORE INTO pieces (
@@ -781,6 +809,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   for (const post of seedPosts) {
+    if (isSeedTombstoned(db, "post", post.slug)) continue;
     const timestamp = nowIso();
     db.prepare(`
       INSERT OR IGNORE INTO posts (
@@ -830,6 +859,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   for (const commissionType of seedCommissionTypes) {
+    if (isSeedTombstoned(db, "commission_type", commissionType.slug)) continue;
     const timestamp = nowIso();
     db.prepare(`
       INSERT OR IGNORE INTO commission_types (
@@ -887,6 +917,7 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     for (const page of seedPages) {
+      if (isSeedTombstoned(db, "page", page.slug)) continue;
       savePage({
         slug: page.slug,
         title: page.title,
@@ -901,6 +932,7 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     for (const piece of seedPieces) {
+      if (isSeedTombstoned(db, "piece", piece.slug)) continue;
       savePiece({
         slug: piece.slug,
         title: piece.title,
@@ -926,6 +958,7 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     for (const post of seedPosts) {
+      if (isSeedTombstoned(db, "post", post.slug)) continue;
       savePost({
         slug: post.slug,
         title: post.title,
@@ -942,6 +975,7 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     for (const commissionType of seedCommissionTypes) {
+      if (isSeedTombstoned(db, "commission_type", commissionType.slug)) continue;
       saveCommissionType({
         slug: commissionType.slug,
         label: commissionType.label,
@@ -1460,6 +1494,9 @@ export function saveUserProfile(input: {
   const existing = existingByOriginal ?? existingByNext;
   const timestamp = nowIso();
 
+  clearSeedTombstone(db, "user", nextEmail);
+  if (originalEmail !== nextEmail) clearSeedTombstone(db, "user", originalEmail);
+
   if (existingByOriginal && existingByNext && existingByOriginal.id !== existingByNext.id) {
     throw new Error("A user with that email already exists.");
   }
@@ -1542,6 +1579,7 @@ export function deleteUserProfile(email: string) {
 
   clearUserEmailReferences(db, existing.email);
   db.prepare(`DELETE FROM users WHERE id = ?`).run(existing.id);
+  recordSeedTombstone(db, "user", existing.email.toLowerCase());
   return true;
 }
 
@@ -1622,6 +1660,7 @@ export function savePage(input: Omit<PageRecord, "createdAt" | "updatedAt">) {
   const db = getDatabase();
   const existing = getPage(input.slug);
   const timestamp = nowIso();
+  clearSeedTombstone(db, "page", input.slug);
   db.prepare(`
     INSERT INTO pages (slug, title, nav_label, status, intro, body, layout, hero_media_path, sections_json, created_at, updated_at)
     VALUES (:slug, :title, :navLabel, :status, :intro, :body, :layout, :heroMediaPath, :sectionsJson, :createdAt, :updatedAt)
@@ -1653,6 +1692,7 @@ export function savePage(input: Omit<PageRecord, "createdAt" | "updatedAt">) {
 export function deletePage(slug: string) {
   const db = getDatabase();
   db.prepare(`DELETE FROM pages WHERE slug = ?`).run(slug);
+  recordSeedTombstone(db, "page", slug);
 }
 export function listPieces(includeDraft = false) {
   const db = getDatabase();
@@ -1672,6 +1712,7 @@ export function savePiece(input: Omit<PieceRecord, "createdAt" | "updatedAt">) {
   const db = getDatabase();
   const existing = getPiece(input.slug);
   const timestamp = nowIso();
+  clearSeedTombstone(db, "piece", input.slug);
   db.prepare(`
     INSERT INTO pieces (slug, title, subtitle, category, status, publication_status, availability_label, summary, story, details_json, tags_json, materials_json, dimensions_json, price_cents, inventory_count, lead_time_days, media_paths_json, featured_rank, owner_email, metadata_json, created_at, updated_at)
     VALUES (:slug, :title, :subtitle, :category, :status, :publicationStatus, :availabilityLabel, :summary, :story, :detailsJson, :tagsJson, :materialsJson, :dimensionsJson, :priceCents, :inventoryCount, :leadTimeDays, :mediaPathsJson, :featuredRank, :ownerEmail, :metadataJson, :createdAt, :updatedAt)
@@ -1726,6 +1767,7 @@ export function deletePiece(slug: string) {
   const db = getDatabase();
   db.prepare(`DELETE FROM pieces WHERE slug = ?`).run(slug);
   db.prepare(`UPDATE media_items SET piece_slug = NULL WHERE piece_slug = ?`).run(slug);
+  recordSeedTombstone(db, "piece", slug);
 }
 
 export function listPosts(includeDraft = false) {
@@ -1746,6 +1788,7 @@ export function savePost(input: Omit<PostRecord, "createdAt" | "updatedAt">) {
   const db = getDatabase();
   const existing = getPost(input.slug);
   const timestamp = nowIso();
+  clearSeedTombstone(db, "post", input.slug);
   db.prepare(`
     INSERT INTO posts (slug, title, excerpt, body, publication_status, published_at, author_email, cover_media_path, tags_json, source_url, source_label, created_at, updated_at)
     VALUES (:slug, :title, :excerpt, :body, :publicationStatus, :publishedAt, :authorEmail, :coverMediaPath, :tagsJson, :sourceUrl, :sourceLabel, :createdAt, :updatedAt)
@@ -1782,6 +1825,7 @@ export function deletePost(slug: string) {
   const db = getDatabase();
   db.prepare(`DELETE FROM posts WHERE slug = ?`).run(slug);
   db.prepare(`UPDATE media_items SET post_slug = NULL WHERE post_slug = ?`).run(slug);
+  recordSeedTombstone(db, "post", slug);
 }
 export function listCommissionTypes(includeInactive = false) {
   const db = getDatabase();
@@ -1801,6 +1845,7 @@ export function saveCommissionType(input: Omit<CommissionTypeRecord, "createdAt"
   const db = getDatabase();
   const existing = getCommissionType(input.slug);
   const timestamp = nowIso();
+  clearSeedTombstone(db, "commission_type", input.slug);
   db.prepare(`
     INSERT INTO commission_types (slug, label, description, base_labor_hours, base_markup_percent, material_options_json, default_dimensions_json, active, created_at, updated_at)
     VALUES (:slug, :label, :description, :baseLaborHours, :baseMarkupPercent, :materialOptionsJson, :defaultDimensionsJson, :active, :createdAt, :updatedAt)
@@ -1830,6 +1875,7 @@ export function saveCommissionType(input: Omit<CommissionTypeRecord, "createdAt"
 export function deleteCommissionType(slug: string) {
   const db = getDatabase();
   db.prepare(`DELETE FROM commission_types WHERE slug = ?`).run(slug);
+  recordSeedTombstone(db, "commission_type", slug);
 }
 
 /** Synology @eaDir and thumbnail sidecars must never be served or indexed as primary media. */

@@ -35,25 +35,27 @@ export function ThemeToggle() {
     applyTheme(theme);
   }, [theme]);
 
+  const isDark = theme === "dark";
+
   return (
     <button
-      aria-label={theme === "dark" ? "Switch to day theme" : "Switch to night theme"}
-      className="theme-toggle"
-      onClick={() => {
-        const nextTheme = theme === "dark" ? "light" : "dark";
-        applyTheme(nextTheme);
-      }}
+      aria-label={isDark ? "Switch to day theme" : "Switch to night theme"}
+      aria-pressed={isDark}
+      className="theme-toggle-icon"
+      onClick={() => applyTheme(isDark ? "light" : "dark")}
+      title={isDark ? "Day mode" : "Night mode"}
       type="button"
     >
-      <span className="theme-toggle-state">
-        <strong>{theme === "dark" ? "Night" : "Day"}</strong>
-        <span>{theme === "dark" ? "OLED black" : "Maple light"}</span>
-      </span>
-      <span className="theme-toggle-track">
-        <span className="theme-toggle-track-label theme-toggle-track-label-left">Night</span>
-        <span className="theme-toggle-track-label theme-toggle-track-label-right">Day</span>
-        <span className="theme-toggle-thumb" data-theme={theme} />
-      </span>
+      {isDark ? (
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </svg>
+      ) : (
+        <svg aria-hidden="true" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3a7 7 0 0 0 9.79 9.79z" />
+        </svg>
+      )}
     </button>
   );
 }

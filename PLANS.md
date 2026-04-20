@@ -3,8 +3,23 @@
 ## Beaman Woodworks 3.0 Completion Pass
 
 - Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
-- Last updated: 2026-04-18
+- Last updated: 2026-04-19
 - Branch: `codex/live-audit-hardening-20260411`
+
+## 2026-04-19 Persistence + Header Hardening Pass
+
+| ID | Status | Notes |
+|----|--------|-------|
+| 1 (theme switch parent bar) | DONE | `ThemeToggle` rewritten as a single circular icon button (`.theme-toggle-icon`) with no surrounding text/track. Removed the `.theme-toggle`, `.theme-toggle-state`, `.theme-toggle-track`, `.theme-toggle-thumb` styles. |
+| 2 (single/two-row header w/ horizontal scroll) | DONE | `.site-nav` now `flex-wrap: nowrap; overflow-x: auto` with thin scrollbar so the nav row stays a single line on small layouts and scrolls horizontally. Header collapses to two rows max via `auto / 1fr / auto` grid. |
+| 3 (X + click-outside-to-dismiss preview) | DONE | `MediaLightbox` already supported Esc + backdrop click + X. The X button is now `position: fixed`, `z-index: 10000`, with safe-area-inset offsets so it always sits above the sticky header on mobile. |
+| 4 (X on media selection blocked by header) | DONE | Lightbox `z-index: 9999` (>>> the header's `z: 30`); close button `position: fixed` with `env(safe-area-inset-top/right)`. Verified on mobile widths via the same media path used by portfolio pieces. |
+| 5 / 10 (studio edits not persisted across rebuilds) | DONE | Added `seed_tombstones` table + helpers (`recordSeedTombstone`, `clearSeedTombstone`, `isSeedTombstoned`). Every seed `INSERT OR IGNORE` loop in `seedDefaultContent` and the v3 migration's blanket re-saves now skip records present in the tombstone log. Every `delete*` writes a tombstone; every `save*` clears the matching tombstone. SQLite volume + tombstones together preserve every studio edit/deletion across rebuilds. |
+| 6 (default Footstool/End Table/process notes resurrected) | DONE | Same tombstone mechanism: deleting `footstool`, `end-table`, `nakashima-soul-of-a-tree`, `cabinet-interiors`, `joinery-before-hardware`, `small-furniture` from Studio is now persistent across rebuilds because seedDefaultContent skips tombstoned slugs. |
+| 7 (added/removed pages don't reflect on live site) | DONE | (a) `savePageAction`/`deletePageAction` and the piece/post action variants now call new `revalidatePagePaths` / `revalidatePieceSurfaces` / `revalidatePostSurfaces` helpers that revalidate `layout`, `/`, and the dynamic page route. (b) `SiteHeader` automatically appends published pages whose slugs are not reserved/seeded into the primary nav, so a page added in Studio appears in the header on next render. |
+| 8 (header too big, no auto-hide) | DONE | New `HeaderShell` client wrapper toggles `is-compact` (when scrollY > 64) and `is-hidden` (when scrolling down past 200px). Compact mode shrinks the brand emblem, drops the subtitle, and tightens vertical padding. Hidden mode slides the header off-screen via `transform: translateY(-100%)`; it slides back on scroll-up. |
+| 9 (compact unified spacing site-wide) | DONE | Tightened `--space-*` tokens (e.g. `--space-16: 4rem → 3.25rem`), reduced `.page-section`/`.hero-section` padding, shrank `.button-primary/.button-secondary` (3.2rem → 2.4rem), `.nav-link-pill` (2.8rem → 2.2rem), `.account-link/.account-badge`, header search bar height. |
+| 11 (legacy domain) | DONE | Confirmed; legacy domain only present in historical PLANS.md notes. |
 
 ## 2026-04-18 Studio UX + Upgrade Batch
 

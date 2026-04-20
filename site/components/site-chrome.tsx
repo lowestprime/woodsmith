@@ -3,11 +3,12 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
+import { HeaderShell } from "@/components/header-shell";
 import { avatarGradientStyle } from "@/lib/avatar";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
-import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
+import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, listPages, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
 
 export function Shell({ children, className = "" }: { children: ReactNode; className?: string }) {
@@ -82,9 +83,29 @@ export function CategoryIcon({ category }: { category: string }) {
   return <span className="category-icon object-icon" aria-hidden="true"><i /><i /><i /></span>;
 }
 
+const RESERVED_NAV_SLUGS = new Set([
+  "home",
+  "portfolio",
+  "shop",
+  "journal",
+  "process",
+  "commissions",
+  "requests",
+  "studio",
+  "about",
+  "account",
+  "search",
+  "media",
+  "contact"
+]);
+
 export async function SiteHeader() {
   const site = getSiteSettings();
   const user = await getViewer();
+  const seedHrefs = new Set(site.navigation.map((entry) => String(entry.href)));
+  const dynamicPages = listPages(false)
+    .filter((page) => !RESERVED_NAV_SLUGS.has(page.slug) && !seedHrefs.has(`/${page.slug}`))
+    .map((page) => ({ href: `/${page.slug}` as const, label: page.navLabel || page.title }));
   const cookieStore = await cookies();
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
@@ -97,7 +118,7 @@ export async function SiteHeader() {
     .join("") || "BW";
 
   return (
-    <header className="site-header">
+    <HeaderShell>
       <Shell className="header-inner">
         <Link className="brand-lockup" href="/">
           <BrandMark />
@@ -110,7 +131,12 @@ export async function SiteHeader() {
           {site.navigation.filter((item) => String(item.href) !== "/search").map((item) => (
             <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
           ))}
+          {dynamicPages.map((item) => (
+            <Link className="nav-link-pill" href={item.href} key={item.href}>{item.label}</Link>
+          ))}
           <HeaderSearch />
+        </nav>
+        <div className="header-actions">
           <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart">
             <span aria-hidden="true">Cart</span>
             <strong>{cartCount}</strong>
@@ -118,11 +144,11 @@ export async function SiteHeader() {
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}>
             <AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} seed={user?.email ?? user?.displayName ?? accountLabel} />
           </Link>
-          {user ? <form action={logoutAction}><button className="text-button nav-link-pill subtle-pill" type="submit">Log out</button></form> : null}
-        </nav>
-        <ThemeToggle />
+          {user ? <form action={logoutAction}><button aria-label="Log out" className="header-icon-button" type="submit" title="Log out"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></button></form> : null}
+          <ThemeToggle />
+        </div>
       </Shell>
-    </header>
+    </HeaderShell>
   );
 }
 
