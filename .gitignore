@@ -51,3 +51,4 @@ releases/
 *.tsbuildinfo
 cloudflared/*.json
 cloudflared/config.yml
+wsl_build_nas_deploy_commands.md
