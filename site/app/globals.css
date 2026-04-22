@@ -205,10 +205,6 @@ main {
   min-width: 0;
 }
 
-.site-nav {
-  min-width: 0;
-}
-
 .header-actions {
   display: inline-flex;
   align-items: center;
@@ -286,6 +282,7 @@ main {
 }
 
 .site-nav {
+  min-width: 0;
   display: flex;
   flex-wrap: nowrap;
   gap: 0.4rem;
@@ -295,18 +292,16 @@ main {
   letter-spacing: 0.04em;
   overflow-x: auto;
   overflow-y: hidden;
-  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
   -ms-overflow-style: none;
   padding-bottom: 2px;
 }
 
 .site-nav::-webkit-scrollbar {
-  height: 4px;
-}
-
-.site-nav::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--accent) 50%, transparent);
-  border-radius: 999px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .site-nav .nav-link-pill {
@@ -1518,10 +1513,6 @@ img.cleanup-subject-isolate {
 .brand-mark,
 .brand-subtitle {
   display: block;
-}
-
-.site-nav {
-  align-items: center;
 }
 
 .nav-link-pill,
