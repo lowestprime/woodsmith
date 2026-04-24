@@ -294,6 +294,8 @@ main {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  
+  /* BASE: Completely hidden for touch screens (they rely on native swipe overlays) */
   scrollbar-width: none;
   -ms-overflow-style: none;
   padding-bottom: 2px;
@@ -301,8 +303,43 @@ main {
 
 .site-nav::-webkit-scrollbar {
   display: none;
-  width: 0;
-  height: 0;
+}
+
+/* ========================================================================
+   DESKTOP ENHANCEMENT: Hover-revealed scrollbars
+   Targets only devices with a mouse/trackpad. Uses the "Ghost Track" method 
+   to prevent 4px layout shifts on hover.
+   ======================================================================== */
+@media (hover: hover) and (pointer: fine) {
+  .site-nav {
+    /* Firefox standard */
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent; 
+  }
+  
+  .site-nav:hover {
+    /* Firefox thumb reveal */
+    scrollbar-color: color-mix(in srgb, var(--accent) 35%, transparent) transparent;
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: block; /* Overrides the 'none' from base */
+    height: 4px;
+  }
+  
+  .site-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  
+  .site-nav::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: var(--radius-pill);
+  }
+  
+  .site-nav:hover::-webkit-scrollbar-thumb {
+    /* Chrome/Edge/Safari thumb reveal */
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+  }
 }
 
 .site-nav .nav-link-pill {
