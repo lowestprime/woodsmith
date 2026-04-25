@@ -251,7 +251,7 @@ export async function signupAction(formData: FormData) {
   const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString();
   setEmailVerificationToken(email, verificationToken, verificationExpiresAt);
 
-  const verifyUrl = `${resolveBaseUrl()}/account/verify/${encodeURIComponent(verificationToken)}`;
+  const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(verificationToken)}`;
 
   try {
     await sendNotificationEmail({
@@ -298,7 +298,7 @@ export async function resendVerificationAction() {
   const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString();
   setEmailVerificationToken(user.email, verificationToken, verificationExpiresAt);
 
-  const verifyUrl = `${resolveBaseUrl()}/account/verify/${encodeURIComponent(verificationToken)}`;
+  const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(verificationToken)}`;
 
   try {
     await sendNotificationEmail({
@@ -1394,5 +1394,25 @@ export async function createShippingLabelAction(formData: FormData) {
   redirect(`/studio?panel=orders&shipped=${encodeURIComponent(order.orderNumber)}`);
 }
 
+export async function consumeVerificationTokenAction(token: string) {
+  const cleanToken = token.trim();
+  if (!cleanToken) {
+    return { ok: false as const, email: "", displayName: "", message: "That verification link is missing a token." };
+  }
 
+  const { getUserByVerificationToken, setUserEmailVerification } = await import("@/lib/db");
+  const user = getUserByVerificationToken(cleanToken);
 
+  if (!user) {
+    return { ok: false as const, email: "", displayName: "", message: "That verification link is invalid or has expired." };
+  }
+
+  setUserEmailVerification(user.email, { emailVerified: true, token: null, expiresAt: null });
+
+  return {
+    ok: true as const,
+    email: user.email,
+    displayName: user.displayName,
+    message: "Your account is verified and ready to use.",
+  };
+}

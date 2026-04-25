@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { MediaLightbox } from "@/components/lightbox";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
@@ -25,6 +26,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 }
 
 export default async function PiecePage({ params }: { params: Promise<{ slug: string }> }) {
+  await connection();
   const { slug } = await params;
   const piece = getPiece(slug);
   if (!piece) {

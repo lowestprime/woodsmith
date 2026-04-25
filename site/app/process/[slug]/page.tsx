@@ -1,4 +1,5 @@
 import { marked } from "marked";
+import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { MediaLightbox } from "@/components/lightbox";
 import { PageSection, Shell } from "@/components/site-chrome";
@@ -6,6 +7,7 @@ import { getPost } from "@/lib/db";
 import { formatDate, sanitizeHtml, toMediaUrl } from "@/lib/format";
 
 export default async function ProcessPostPage({ params }: { params: Promise<{ slug: string }> }) {
+  await connection();
   const { slug } = await params;
   const post = getPost(slug);
   if (!post) {

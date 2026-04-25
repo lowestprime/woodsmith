@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
 import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
   openGraph: { title: "Shop | Beaman Woodworks", description: "Available handcrafted hardwood pieces." }
 };
 
-export default function ShopPage() {
+export default async function ShopPage() {
+  await connection();
   const page = getPage("shop");
   const pieces = listPieces().filter((piece) => piece.status === "inventory");
   const posts = listPosts();
@@ -21,6 +23,7 @@ export default function ShopPage() {
     <Shell>
       <PageSection editHref="/studio?panel=pieces">
         <PageIntro eyebrow="Shop" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop."} />
+        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <div className="shop-grid">
           {pieces.map((piece) => {
             const firstImage = getDisplayMediaPaths(piece)[0];

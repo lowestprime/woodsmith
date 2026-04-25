@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import "./globals.css";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
+import { VisitorTracker } from "@/components/visitor-tracker";
 
 const mackintosh = localFont({
   variable: "--font-mackintosh",
@@ -14,7 +15,7 @@ const mackintosh = localFont({
   ]
 });
 
-const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://beamanwoodworks.com";
+const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.woodmat.ch";
 
 export const metadata: Metadata = {
   title: {
@@ -50,6 +51,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html className={mackintosh.variable} data-theme={theme} lang="en" suppressHydrationWarning>
       <body>
         <div className="site-backdrop" />
+        <VisitorTracker />
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

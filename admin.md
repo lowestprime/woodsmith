@@ -19,7 +19,9 @@ The settings editor controls brand copy, homepage wording, contact email address
 
 ### Pages
 
-The Pages section can create, edit, publish, archive, or delete page records. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
+The Pages section can create, edit, publish, archive, or delete page records. It now uses a compact record picker with one active editor at a time instead of rendering every page form in a long stack. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
+
+Changes save into the mounted SQLite data store, revalidate the matching public routes immediately, and survive rebuilds as long as `site/data/` remains mounted persistently. On the home page record, `intro` feeds the hero copy and `body` feeds the secondary home copy block.
 
 ### Portfolio and shop pieces
 
@@ -40,6 +42,8 @@ It also supports:
 - safe email renames that rewrite related project, order, review, session, and post references
 - deleting non-current users directly from the dashboard
 - protecting the current signed-in admin and the last remaining admin from deletion
+- buyer profile editing with uploaded or customizable gradient avatars
+- email-verified buyer logins; new customer signups must confirm the verification link before login succeeds
 
 ### Process notes
 
@@ -51,6 +55,7 @@ The media section operates against the NAS photo library mounted directly to `/a
 
 - upload files into a selected folder
 - filter all indexed media, not only recent files
+- browse a compact thumbnail workspace instead of a long full-page stack of editors
 - assign media to a piece, process note, page, or project
 - rename files in place
 - edit alt text, tags, focal X/Y, zoom, and reviewed status
@@ -61,6 +66,17 @@ The media section operates against the NAS photo library mounted directly to `/a
 - refresh the indexed library
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering. The verification queue suggests candidates from filenames, tags, folders, and metadata but never auto-assigns a piece.
+
+The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
+
+### Visitor map
+
+The overview workspace now shows recent visitor sessions on a world map and in a recent-session list. The map is sourced from session records stored in SQLite.
+
+- a new visitor session queues an email when SMTP is configured
+- country detail uses Cloudflare's `CF-IPCountry` header when available
+- city, region, latitude, and longitude require Cloudflare visitor-location headers to be enabled
+- if Cloudflare location headers are not present, the dashboard still records the session and host/path but shows unknown location data
 
 ### Projects
 
@@ -117,7 +133,7 @@ These features require server configuration before they work live:
 
 ### The site sent no email
 
-Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASSWORD`, then review the Notifications section for queued or failed records.
+Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASSWORD`, then review the Notifications section for queued or failed records. Buyer email verification and visitor-session alerts use the same outbound email transport.
 
 ### Checkout did not open Stripe
 
@@ -130,6 +146,10 @@ Check `EASYPOST_API_KEY`, all `SHIP_FROM_*` values, and the order shipping addre
 ### Media uploads fail on Synology
 
 Check that `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` is mounted directly to `/app/pics:rw` and that the container user has write permission. Do not use `/volume2/docker_ssd/woodsmith/pics` as an intermediate mount point.
+
+### Visitor locations are blank
+
+The site can log sessions without location data, but the dashboard map needs Cloudflare visitor-location headers. Enable Cloudflare IP geolocation or the Add visitor location headers Managed Transform for the zone, then redeploy or reload the app.
 
 ### AI preview, cleanup, or embedding search is unavailable
 

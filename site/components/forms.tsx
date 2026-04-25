@@ -1,6 +1,7 @@
 import {
   forgotPasswordAction,
   loginAction,
+  resendVerificationAction,
   resetPasswordAction,
   signupAction,
   studioLoginAction,
@@ -11,6 +12,7 @@ import {
 } from "@/lib/actions";
 import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
 import { CustomWorkVisualizer3D } from "@/components/visualizer";
+import { ProfileAvatarFields } from "@/components/profile-avatar-fields";
 
 export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece }: {
   commissionTypes: CommissionTypeRecord[];
@@ -137,6 +139,18 @@ export function ForgotPasswordForm() {
   );
 }
 
+export function ResendVerificationForm({ email = "" }: { email?: string }) {
+  return (
+    <form action={resendVerificationAction} className="request-form compact-form">
+      <label>
+        <span>Email</span>
+        <input defaultValue={email} name="email" required type="email" />
+      </label>
+      <button className="button-secondary" type="submit">Resend verification link</button>
+    </form>
+  );
+}
+
 export function ResetPasswordForm({ token }: { token: string }) {
   return (
     <form action={resetPasswordAction} className="request-form compact-form">
@@ -175,10 +189,7 @@ export function ProfileForm({ user }: { user: UserRecord }) {
         <label><span>GitHub</span><input defaultValue={github} name="githubUrl" type="url" /></label>
       </div>
       <input name="linksJson" type="hidden" value={JSON.stringify(user.links)} />
-      <label>
-        <span>Profile picture</span>
-        <input name="avatar" type="file" />
-      </label>
+      <ProfileAvatarFields avatarPath={user.avatarPath} displayName={user.displayName} email={user.email} metadata={user.metadata} />
       <button className="button-primary" type="submit">Save profile</button>
     </form>
   );

@@ -48,8 +48,8 @@ Start from `.env.example` and fill at least:
 ```dotenv
 PUID=1026
 PGID=100
-SITE_URL=https://beamanwoodworks.example.com
-NEXT_PUBLIC_SITE_URL=https://beamanwoodworks.example.com
+SITE_URL=https://www.woodmat.ch
+NEXT_PUBLIC_SITE_URL=https://www.woodmat.ch
 MEDIA_ROOT=/app/pics
 STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
@@ -94,6 +94,8 @@ ENABLE_EMBEDDING_SEARCH=false
 - optional OpenAI feature flags remain disabled unless a server-side API key is provided
 
 The `/app/pics` mount is intentionally read-write. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
+
+The image now normalizes ownership and read permissions for bundled runtime assets under `/app/site/public` and `/_next/static` so the app still boots correctly when `docker-compose.synology.yml` runs the container as the NAS `PUID:PGID` user instead of the image-default `nextjs` user.
 
 ## Build from WSL or another Docker host
 
@@ -141,6 +143,18 @@ Configure Synology Reverse Proxy with:
 - destination port: `3002`
 
 The public source host should match `SITE_URL` and `NEXT_PUBLIC_SITE_URL`.
+
+The app now treats `https://www.woodmat.ch` as canonical. Requests arriving on `woodmat.ch` or the retired `ws.lowestprime.synology.me` host are redirected by the Next `proxy.ts` boundary to the canonical origin.
+
+## Cloudflare visitor-location headers
+
+If you want the dashboard visitor map to show country and city data, enable Cloudflare IP Geolocation or the Add visitor location headers Managed Transform for the zone. Cloudflare documents that:
+
+- `CF-Connecting-IP` carries the client IP to the origin
+- `CF-IPCountry` carries the two-letter visitor country code
+- the visitor-location transform can add city, region, latitude, and longitude headers
+
+Without those headers, the app still records visitor sessions, paths, and hosts, but the map/list will show unknown location data.
 
 ## Verification after deploy
 

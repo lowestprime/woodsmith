@@ -1639,21 +1639,21 @@ export function markEmailVerified(email: string) {
   ).run(nowIso(), email);
 }
 
-export function getUserByVerificationToken(token: string) {
-  const db = getDatabase();
-  const row = db.prepare(`
-    SELECT id, email, role, display_name AS displayName, headline, bio, avatar_path AS avatarPath,
-           public_profile AS publicProfile, links_json AS linksJson, metadata_json AS metadataJson,
-           reset_token AS resetToken, reset_expires_at AS resetExpiresAt,
-           email_verified AS emailVerified, verification_token AS verificationToken,
-           verification_expires_at AS verificationExpiresAt,
-           created_at AS createdAt, updated_at AS updatedAt
-    FROM users
-    WHERE verification_token = ? AND (verification_expires_at IS NULL OR datetime(verification_expires_at) > datetime('now'))
-    LIMIT 1
-  `).get(token) as Record<string, unknown> | undefined;
+export function getUserByVerificationToken(token: string): UserRecord | null {
+  const cleanToken = token.trim();
+  if (!cleanToken) return null;
 
-  return row ? mapUser(row) : null;
+  const db = getDatabase();
+  const row = db
+    .prepare(`SELECT email, verification_expires_at AS verificationExpiresAt FROM users WHERE verification_token = ? LIMIT 1`)
+    .get(cleanToken) as { email?: string; verificationExpiresAt?: string | null } | undefined;
+
+  if (!row?.email) return null;
+
+  const expiresAt = row.verificationExpiresAt ? Date.parse(row.verificationExpiresAt) : Number.NaN;
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+
+  return getUserByEmail(row.email);
 }
 
 export function getUserByResetToken(token: string) {
@@ -2876,4 +2876,162 @@ export function getStudioDashboardSummary(): StudioDashboardSummary {
     queuedNotifications: notifications.length,
     monthlyRevenueCents
   };
+}
+
+export function setUserEmailVerification(
+  email: string,
+  verification: { emailVerified: boolean; token: string | null; expiresAt: string | null },
+) {
+  const db = getDatabase();
+  db.prepare(`
+    UPDATE users
+    SET email_verified = ?,
+        verification_token = ?,
+        verification_expires_at = ?,
+        updated_at = ?
+    WHERE lower(email) = lower(?)
+  `).run(
+    verification.emailVerified ? 1 : 0,
+    verification.token,
+    verification.expiresAt,
+    nowIso(),
+    email,
+  );
+}
+
+function ensureVisitorSessionsTableCompat() {
+  const db = getDatabase();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS visitor_sessions (
+      id TEXT PRIMARY KEY,
+      session_token TEXT NOT NULL UNIQUE,
+      first_path TEXT NOT NULL,
+      last_path TEXT NOT NULL,
+      referrer TEXT,
+      host TEXT,
+      country_code TEXT,
+      city TEXT,
+      region TEXT,
+      latitude REAL,
+      longitude REAL,
+      ip_hash TEXT,
+      cf_ray TEXT,
+      user_agent TEXT,
+      visit_count INTEGER NOT NULL DEFAULT 1,
+      first_seen_at TEXT NOT NULL,
+      last_seen_at TEXT NOT NULL
+    ) STRICT;
+  `);
+  return db;
+}
+
+function mapVisitorSessionCompat(row: Record<string, unknown>) {
+  return {
+    id: String(row.id),
+    sessionToken: String(row.session_token),
+    firstPath: String(row.first_path),
+    lastPath: String(row.last_path),
+    referrer: row.referrer == null ? null : String(row.referrer),
+    host: row.host == null ? null : String(row.host),
+    countryCode: row.country_code == null ? null : String(row.country_code),
+    city: row.city == null ? null : String(row.city),
+    region: row.region == null ? null : String(row.region),
+    latitude: row.latitude == null ? null : Number(row.latitude),
+    longitude: row.longitude == null ? null : Number(row.longitude),
+    ipHash: row.ip_hash == null ? null : String(row.ip_hash),
+    cfRay: row.cf_ray == null ? null : String(row.cf_ray),
+    userAgent: row.user_agent == null ? null : String(row.user_agent),
+    visitCount: Number(row.visit_count ?? 1),
+    firstSeenAt: String(row.first_seen_at),
+    lastSeenAt: String(row.last_seen_at),
+  };
+}
+
+export function upsertVisitorSession(input: {
+  sessionToken: string;
+  path: string;
+  referrer?: string | null;
+  host?: string | null;
+  countryCode?: string | null;
+  city?: string | null;
+  region?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  ipHash?: string | null;
+  cfRay?: string | null;
+  userAgent?: string | null;
+}) {
+  const db = ensureVisitorSessionsTableCompat();
+  const timestamp = nowIso();
+
+  const existing = db
+    .prepare(`SELECT * FROM visitor_sessions WHERE session_token = ? LIMIT 1`)
+    .get(input.sessionToken) as Record<string, unknown> | undefined;
+
+  if (existing) {
+    db.prepare(`
+      UPDATE visitor_sessions
+      SET last_path = :lastPath,
+          referrer = COALESCE(:referrer, referrer),
+          host = COALESCE(:host, host),
+          country_code = COALESCE(:countryCode, country_code),
+          city = COALESCE(:city, city),
+          region = COALESCE(:region, region),
+          latitude = COALESCE(:latitude, latitude),
+          longitude = COALESCE(:longitude, longitude),
+          ip_hash = COALESCE(:ipHash, ip_hash),
+          cf_ray = COALESCE(:cfRay, cf_ray),
+          user_agent = COALESCE(:userAgent, user_agent),
+          visit_count = visit_count + 1,
+          last_seen_at = :lastSeenAt
+      WHERE session_token = :sessionToken
+    `).run({
+      sessionToken: input.sessionToken,
+      lastPath: input.path,
+      referrer: input.referrer ?? null,
+      host: input.host ?? null,
+      countryCode: input.countryCode ?? null,
+      city: input.city ?? null,
+      region: input.region ?? null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      ipHash: input.ipHash ?? null,
+      cfRay: input.cfRay ?? null,
+      userAgent: input.userAgent ?? null,
+      lastSeenAt: timestamp,
+    });
+  } else {
+    db.prepare(`
+      INSERT INTO visitor_sessions (
+        id, session_token, first_path, last_path, referrer, host, country_code, city, region,
+        latitude, longitude, ip_hash, cf_ray, user_agent, visit_count, first_seen_at, last_seen_at
+      ) VALUES (
+        :id, :sessionToken, :firstPath, :lastPath, :referrer, :host, :countryCode, :city, :region,
+        :latitude, :longitude, :ipHash, :cfRay, :userAgent, 1, :firstSeenAt, :lastSeenAt
+      )
+    `).run({
+      id: randomUUID(),
+      sessionToken: input.sessionToken,
+      firstPath: input.path,
+      lastPath: input.path,
+      referrer: input.referrer ?? null,
+      host: input.host ?? null,
+      countryCode: input.countryCode ?? null,
+      city: input.city ?? null,
+      region: input.region ?? null,
+      latitude: input.latitude ?? null,
+      longitude: input.longitude ?? null,
+      ipHash: input.ipHash ?? null,
+      cfRay: input.cfRay ?? null,
+      userAgent: input.userAgent ?? null,
+      firstSeenAt: timestamp,
+      lastSeenAt: timestamp,
+    });
+  }
+
+  const row = db
+    .prepare(`SELECT * FROM visitor_sessions WHERE session_token = ? LIMIT 1`)
+    .get(input.sessionToken) as Record<string, unknown>;
+
+  return { created: !existing, record: mapVisitorSessionCompat(row) };
 }

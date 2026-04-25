@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { connection } from "next/server";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
 import { getPage, listPosts } from "@/lib/db";
 
@@ -8,7 +9,8 @@ export const metadata: Metadata = {
   openGraph: { title: "Process | Beaman Woodworks", description: "Workshop process notes and build logs." }
 };
 
-export default function ProcessPage() {
+export default async function ProcessPage() {
+  await connection();
   const page = getPage("process") || getPage("journal");
   const posts = listPosts();
   const highlights = posts.filter((post) => post.sourceUrl);
@@ -18,6 +20,7 @@ export default function ProcessPage() {
     <Shell>
       <PageSection editHref="/studio?panel=process">
         <PageIntro eyebrow="Process" title={page?.title ?? "Process"} copy={page?.intro ?? "Behind-the-scenes notes, material observations, and selected outside references."} />
+        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <div className="journal-listing">{notes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>
       {highlights.length > 0 ? (
