@@ -1,8 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <defs>
+    <linearGradient id="woodsmithWoodGradient" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a66b35"/>
+      <stop offset="0.22" stop-color="#8f592b"/>
+      <stop offset="0.48" stop-color="#75451f"/>
+      <stop offset="0.74" stop-color="#623819"/>
+      <stop offset="1" stop-color="#4d2b14"/>
+    </linearGradient>
+  </defs>
+
   <rect width="128" height="128" rx="32" fill="#050403"/>
-  <rect x="16" y="16" width="96" height="96" rx="28" fill="#15110d" stroke="#f0dec0" stroke-width="4"/>
-  <path d="M34 38h34L56 64l12 26H34V38Z" stroke="#f0dec0" stroke-width="7" stroke-linejoin="round"/>
-  <path d="M94 90H60l12-26-12-26h34v52Z" stroke="#f0dec0" stroke-width="7" stroke-linejoin="round"/>
-  <path d="M64 24v80M24 64h80" stroke="#f0dec0" stroke-width="4" stroke-linecap="round"/>
-  <circle cx="64" cy="64" r="5" fill="#f0dec0"/>
+  <rect x="16" y="16" width="96" height="96" rx="28" fill="#15110d" stroke="url(#woodsmithWoodGradient)" stroke-width="4"/>
+  <path d="M34 38h34L56 64l12 26H34V38Z" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M94 90H60l12-26-12-26h34v52Z" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="7" stroke-linejoin="round"/>
+  <path d="M64 24v80M24 64h80" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="4" stroke-linecap="round"/>
+  <circle cx="64" cy="64" r="5" fill="url(#woodsmithWoodGradient)"/>
 </svg>
