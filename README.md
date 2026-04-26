@@ -3,7 +3,7 @@
   <br>
   <a href="https://github.com/lowestprime/woodsmith"><img src="https://img.shields.io/badge/GitHub-lowestprime%2Fwoodsmith-002366?labelColor=000000&logo=github&logoColor=002366" alt="GitHub repository: lowestprime/woodsmith"></a>
   &nbsp;
-  <a href="https://woodmat.ch"><img src="https://badgen.net/badge/Live/woodmat.ch/6f42c1?labelColor=000000&icon=https%3A%2F%2Fraw.githubusercontent.com%2Flowestprime%2Fwoodsmith%2Frefs%2Fheads%2Fmaster%2Fsite%2Fapp%2Ficon.svg" alt="Live website: woodmat.ch"></a>
+  <a href="https://woodmat.ch"><img src="https://badgen.net/badge/Live/woodmat.ch/6f42c1?labelColor=000000&icon=https://raw.githubusercontent.com/lowestprime/woodsmith/refs/heads/master/site/app/icon.svg" alt="Live website: woodmat.ch"></a>
   &nbsp;
   <a href="https://deepwiki.com/lowestprime/woodsmith"><img src="https://badgen.net/badge/woodsmith/DeepWiki/800000?labelColor=000000&icon=https%3A%2F%2Fwww.freelogovectors.net%2Fsvg18%2Fdevin-logo-icon-freeloogvectors.net.svg" alt="Woodsmith DeepWiki"></a>
 </h1>
