@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="116" viewBox="0 0 760 116" role="img" aria-label="woodsmith">
+  <defs>
+    <linearGradient id="woodsmithTitleGradient" x1="118" y1="24" x2="642" y2="92" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fff7e6"></stop>
+      <stop offset="0.22" stop-color="#f0dec0"></stop>
+      <stop offset="0.48" stop-color="#c9a66b"></stop>
+      <stop offset="0.74" stop-color="#8a5a2b"></stop>
+      <stop offset="1" stop-color="#3a2112"></stop>
+    </linearGradient>
+  </defs>
+
+  <text x="380" y="82" text-anchor="middle" font-family="Georgia, Cambria, Times New Roman, serif" font-size="76" font-weight="700" letter-spacing="-1.4" fill="url(#woodsmithTitleGradient)">woodsmith</text>
+</svg>
