@@ -1,10 +1,5 @@
-<div align="center">
-  <br>
-  <a href="https://woodmat.ch"><img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="150" height="150"></a>
-</div>
-
 <h1 align="center" id="woodsmith">
-  <a href="https://woodmat.ch"><img src="site/app/woodsmith_readme-title.svg" alt="woodsmith" width="390"></a>
+  <a href="https://woodmat.ch"><img src="site/app/woodsmith_readme-lockup.svg" alt="woodsmith" width="390"></a>
   <br>
   <a href="https://github.com/lowestprime/woodsmith"><img src="https://img.shields.io/badge/GitHub-lowestprime%2Fwoodsmith-002366?labelColor=000000&logo=github&logoColor=002366" alt="GitHub repository: lowestprime/woodsmith"></a>
   &nbsp;
