@@ -1,11 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="438" height="116" viewBox="0 0 438 116" role="img" aria-label="woodsmith">
   <defs>
     <linearGradient id="woodsmithTitleGradient" x1="34" y1="24" x2="404" y2="92" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#8a5a2b"/>
-      <stop offset="0.22" stop-color="#72441f"/>
-      <stop offset="0.48" stop-color="#563018"/>
-      <stop offset="0.74" stop-color="#3a2112"/>
-      <stop offset="1" stop-color="#24150c"/>
+      <stop offset="0" stop-color="#a66b35"/>
+      <stop offset="0.22" stop-color="#8f592b"/>
+      <stop offset="0.48" stop-color="#75451f"/>
+      <stop offset="0.74" stop-color="#623819"/>
+      <stop offset="1" stop-color="#4d2b14"/>
     </linearGradient>
   </defs>
 
