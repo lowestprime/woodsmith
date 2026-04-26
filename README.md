@@ -1,16 +1,16 @@
 <div align="center">
-  <br />
-  <a href="https://woodmat.ch">
-    <img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="128" height="128" />
-  </a>
+  <br>
+  <a href="https://woodmat.ch"><img src="site/app/icon.svg" alt="Beaman Woodworks Brand Emblem" width="150" height="150"></a>
 </div>
 
-<h1 align="center">
-  <a href="https://woodmat.ch">🪵 Woodsmith</a>
-  <br />
-  <a href="https://deepwiki.com/lowestprime/woodsmith">
-    <img src="https://badgen.net/badge/Woodsmith/DeepWiki/800000?labelColor=000000&icon=https://raw.githubusercontent.com/lowestprime/woodsmith/refs/heads/master/site/app/icon.svg" alt="Woodsmith DeepWiki" />
-  </a>
+<h1 align="center" id="woodsmith">
+  <a href="https://woodmat.ch"><img src="site/app/woodsmith_readme-title.svg" alt="woodsmith" width="370"></a>
+  <br>
+  <a href="https://github.com/lowestprime/woodsmith"><img src="https://img.shields.io/badge/GitHub-lowestprime%2Fwoodsmith-002366?labelColor=000000&logo=github&logoColor=002366" alt="GitHub repository: lowestprime/woodsmith"></a>
+  &nbsp;
+  <a href="https://woodmat.ch"><img src="https://badgen.net/badge/Live/woodmat.ch/6f42c1?labelColor=000000&icon=https%3A%2F%2Fraw.githubusercontent.com%2Flowestprime%2Fwoodsmith%2Frefs%2Fheads%2Fmaster%2Fsite%2Fapp%2Ficon.svg" alt="Live website: woodmat.ch"></a>
+  &nbsp;
+  <a href="https://deepwiki.com/lowestprime/woodsmith"><img src="https://badgen.net/badge/woodsmith/DeepWiki/800000?labelColor=000000&icon=https%3A%2F%2Fwww.freelogovectors.net%2Fsvg18%2Fdevin-logo-icon-freeloogvectors.net.svg" alt="Woodsmith DeepWiki"></a>
 </h1>
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
