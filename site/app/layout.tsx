@@ -25,17 +25,45 @@ export const metadata: Metadata = {
   description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork by Beaman Woodworks. Browse the portfolio, shop available pieces, or commission something original.",
   applicationName: "Beaman Woodworks",
   metadataBase: new URL(siteUrl),
+  manifest: "/manifest.webmanifest",
+  alternates: {
+    canonical: "/"
+  },
+  icons: {
+    icon: [
+      { url: "/icon.svg", sizes: "any", type: "image/svg+xml" },
+      { url: "/icon", sizes: "512x512", type: "image/png" }
+    ],
+    apple: [
+      { url: "/apple-icon", sizes: "180x180", type: "image/png" }
+    ]
+  },
+  appleWebApp: {
+    title: "Beaman Woodworks",
+    capable: true,
+    statusBarStyle: "black-translucent"
+  },
   openGraph: {
     type: "website",
     locale: "en_US",
     siteName: "Beaman Woodworks",
     title: "Beaman Woodworks",
-    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork."
+    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork.",
+    url: "/",
+    images: [
+      {
+        url: "/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Beaman Woodworks brand mark and title"
+      }
+    ]
   },
   twitter: {
     card: "summary_large_image",
     title: "Beaman Woodworks",
-    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork."
+    description: "Handcrafted hardwood furniture, cabinetry, and custom woodwork.",
+    images: ["/opengraph-image"]
   },
   robots: {
     index: true,
