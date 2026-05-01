@@ -17,6 +17,23 @@ const mackintosh = localFont({
 
 const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.woodmat.ch";
 
+const brandIconCss = `
+.brand-emblem {
+  background-image: url("/icon.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.brand-emblem > * {
+  opacity: 0;
+}
+
+html[data-theme="light"] .brand-emblem {
+  background-image: url("/icon-light");
+}
+`;
+
 export const metadata: Metadata = {
   title: {
     default: "Beaman Woodworks",
@@ -78,6 +95,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html className={mackintosh.variable} data-theme={theme} lang="en" suppressHydrationWarning>
       <body>
+        <style dangerouslySetInnerHTML={{ __html: brandIconCss }} />
         <div className="site-backdrop" />
         <VisitorTracker />
         <SiteHeader />
