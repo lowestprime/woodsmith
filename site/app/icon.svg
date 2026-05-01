@@ -1,16 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" fill="none">
+  <style>
+    :root {
+      --woodsmith-icon-outer: #050403;
+      --woodsmith-icon-panel: #15110d;
+      --woodsmith-icon-stop-0: #a66b35;
+      --woodsmith-icon-stop-22: #8f592b;
+      --woodsmith-icon-stop-48: #75451f;
+      --woodsmith-icon-stop-74: #623819;
+      --woodsmith-icon-stop-100: #4d2b14;
+    }
+
+    @media (prefers-color-scheme: light) {
+      :root {
+        --woodsmith-icon-outer: #f7f2e8;
+        --woodsmith-icon-panel: #fffaf0;
+        --woodsmith-icon-stop-0: #75451f;
+        --woodsmith-icon-stop-22: #623819;
+        --woodsmith-icon-stop-48: #4d2b14;
+        --woodsmith-icon-stop-74: #3a2111;
+        --woodsmith-icon-stop-100: #24170c;
+      }
+    }
+  </style>
   <defs>
     <linearGradient id="woodsmithWoodGradient" x1="0" y1="0" x2="128" y2="128" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#a66b35"/>
-      <stop offset="0.22" stop-color="#8f592b"/>
-      <stop offset="0.48" stop-color="#75451f"/>
-      <stop offset="0.74" stop-color="#623819"/>
-      <stop offset="1" stop-color="#4d2b14"/>
+      <stop offset="0" stop-color="var(--woodsmith-icon-stop-0)"/>
+      <stop offset="0.22" stop-color="var(--woodsmith-icon-stop-22)"/>
+      <stop offset="0.48" stop-color="var(--woodsmith-icon-stop-48)"/>
+      <stop offset="0.74" stop-color="var(--woodsmith-icon-stop-74)"/>
+      <stop offset="1" stop-color="var(--woodsmith-icon-stop-100)"/>
     </linearGradient>
   </defs>
 
-  <rect width="128" height="128" rx="32" fill="#050403"/>
-  <rect x="16" y="16" width="96" height="96" rx="28" fill="#15110d" stroke="url(#woodsmithWoodGradient)" stroke-width="4"/>
+  <rect width="128" height="128" rx="32" fill="var(--woodsmith-icon-outer)"/>
+  <rect x="16" y="16" width="96" height="96" rx="28" fill="var(--woodsmith-icon-panel)" stroke="url(#woodsmithWoodGradient)" stroke-width="4"/>
   <path d="M34 38h34L56 64l12 26H34V38Z" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="7" stroke-linejoin="round"/>
   <path d="M94 90H60l12-26-12-26h34v52Z" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="7" stroke-linejoin="round"/>
   <path d="M64 24v80M24 64h80" fill="none" stroke="url(#woodsmithWoodGradient)" stroke-width="4" stroke-linecap="round"/>
