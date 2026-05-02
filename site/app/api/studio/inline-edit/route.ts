@@ -15,9 +15,29 @@ import {
 } from "@/lib/db";
 
 type InlineMode = "update" | "add" | "cut";
-type InlinePatch = { resource?: string; id?: string; field?: string; index?: number | string | null; value?: string; mode?: InlineMode };
+type InlinePatch = {
+  resource?: string;
+  id?: string;
+  field?: string;
+  index?: number | string | null;
+  value?: string;
+  mode?: InlineMode;
+};
 
-const settingsText = new Set(["brandName", "brandTagline", "siteAnnouncement", "builderName", "builderHeadline", "builderEmail", "developerName", "developerHeadline", "developerEmail", "supportEmail", "notificationForwardEmail", "repoUrl"]);
+const settingsText = new Set([
+  "brandName",
+  "brandTagline",
+  "siteAnnouncement",
+  "builderName",
+  "builderHeadline",
+  "builderEmail",
+  "developerName",
+  "developerHeadline",
+  "developerEmail",
+  "supportEmail",
+  "notificationForwardEmail",
+  "repoUrl"
+]);
 const homeText = new Set(["eyebrow", "title", "copy", "primaryCta.label", "secondaryCta.label"]);
 const pageText = new Set(["title", "navLabel", "intro", "body"]);
 const pieceText = new Set(["title", "subtitle", "summary", "story", "availabilityLabel"]);
@@ -57,9 +77,24 @@ function editList(current: string[], mode: InlineMode, index: number | null, val
   return next.map((item) => item.trim()).filter(Boolean);
 }
 
+function editLinkLabels<T extends { label: string }>(current: T[], mode: InlineMode, index: number | null, value: string) {
+  const next = [...current];
+  if (mode === "cut") {
+    if (index == null || index >= next.length) throw new Error("A valid link index is required for this link edit.");
+    next.splice(index, 1);
+    return next;
+  }
+  if (mode === "add") return next;
+  if (index == null || index >= next.length) throw new Error("A valid link index is required for this link edit.");
+  next[index] = { ...next[index], label: value };
+  return next;
+}
+
 function refresh(resource: string, id?: string) {
   revalidatePath("/", "layout");
-  for (const route of ["/", "/portfolio", "/shop", "/process", "/about", "/contact", "/studio"]) revalidatePath(route);
+  for (const route of ["/", "/portfolio", "/shop", "/process", "/about", "/contact", "/studio"]) {
+    revalidatePath(route);
+  }
   if (resource === "page" && id) revalidatePath(id === "home" ? "/" : `/${id}`);
   if (resource === "piece" && id) revalidatePath(`/portfolio/${id}`);
   if (resource === "post" && id) revalidatePath(`/process/${id}`);
@@ -87,8 +122,13 @@ function applyPatch(patch: InlinePatch) {
 
   if (resource === "settings") {
     const settings = getSiteSettings();
-    if (field === "pieceDividerNames") saveSiteSettings({ ...settings, pieceDividerNames: editList([...settings.pieceDividerNames], mode, index, value) });
-    else {
+    if (field === "pieceDividerNames") {
+      saveSiteSettings({ ...settings, pieceDividerNames: editList([...settings.pieceDividerNames], mode, index, value) });
+    } else if (field === "navigation") {
+      saveSiteSettings({ ...settings, navigation: editLinkLabels([...settings.navigation], mode, index, value) });
+    } else if (field === "socialLinks") {
+      saveSiteSettings({ ...settings, socialLinks: editLinkLabels([...settings.socialLinks], mode, index, value) });
+    } else {
       if (!settingsText.has(field) || mode !== "update") throw new Error(`Settings field '${field}' is not inline editable for '${mode}'.`);
       saveSiteSettings({ ...settings, [field]: value });
     }
@@ -135,8 +175,9 @@ function applyPatch(patch: InlinePatch) {
     if (!id) throw new Error("Post inline edit is missing a slug.");
     const post = getPost(id);
     if (!post) throw new Error(`Process note '${id}' was not found.`);
-    if (postLists.has(field)) savePost({ ...post, tags: editList(post.tags, mode, index, value) });
-    else {
+    if (postLists.has(field)) {
+      savePost({ ...post, tags: editList(post.tags, mode, index, value) });
+    } else {
       if (!postText.has(field) || mode !== "update") throw new Error(`Post field '${field}' is not inline editable for '${mode}'.`);
       savePost({ ...post, [field]: value });
     }
