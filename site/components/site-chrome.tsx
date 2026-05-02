@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
 import { HeaderShell } from "@/components/header-shell";
+import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
 import { avatarGradientStyle } from "@/lib/avatar";
 import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
@@ -60,26 +61,11 @@ function EditGlyph() {
 export function CategoryIcon({ category }: { category: string }) {
   const key = getPiecePortfolioCategory({ category } as Pick<PieceRecord, "category">);
 
-  if (key === "all") {
-    return <span className="category-icon all-icon" aria-hidden="true"><i /><i /><i /></span>;
-  }
-
-  if (key === "tables") {
-    return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;
-  }
-
-  if (key === "benches") {
-    return <span className="category-icon bench-icon" aria-hidden="true"><i /><i /><i /></span>;
-  }
-
-  if (key === "stepstools") {
-    return <span className="category-icon stepstool-icon" aria-hidden="true"><i /><i /><i /></span>;
-  }
-
-  if (key === "cabinets") {
-    return <span className="category-icon cabinet-icon" aria-hidden="true"><i /><i /><i /></span>;
-  }
-
+  if (key === "all") return <span className="category-icon all-icon" aria-hidden="true"><i /><i /><i /></span>;
+  if (key === "tables") return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;
+  if (key === "benches") return <span className="category-icon bench-icon" aria-hidden="true"><i /><i /><i /></span>;
+  if (key === "stepstools") return <span className="category-icon stepstool-icon" aria-hidden="true"><i /><i /><i /></span>;
+  if (key === "cabinets") return <span className="category-icon cabinet-icon" aria-hidden="true"><i /><i /><i /></span>;
   return <span className="category-icon object-icon" aria-hidden="true"><i /><i /><i /></span>;
 }
 
@@ -123,8 +109,8 @@ export async function SiteHeader() {
         <Link className="brand-lockup" href="/">
           <BrandMark />
           <span>
-            <span className="brand-mark">{site.brandName}</span>
-            <span className="brand-subtitle">{site.brandTagline}</span>
+            <EditableText as="span" className="brand-mark" target={{ resource: "settings", field: "brandName" }}>{site.brandName}</EditableText>
+            <EditableText as="span" className="brand-subtitle" target={{ resource: "settings", field: "brandTagline" }}>{site.brandTagline}</EditableText>
           </span>
         </Link>
         <nav aria-label="Primary" className="site-nav">
@@ -158,16 +144,16 @@ export function SiteFooter() {
     <footer className="site-footer">
       <Shell className="footer-grid">
         <div>
-          <p className="footer-title">{site.brandName}</p>
-          <p className="footer-copy">{site.siteAnnouncement}</p>
+          <EditableText as="p" className="footer-title" target={{ resource: "settings", field: "brandName" }}>{site.brandName}</EditableText>
+          <EditableText as="p" className="footer-copy" target={{ resource: "settings", field: "siteAnnouncement" }}>{site.siteAnnouncement}</EditableText>
         </div>
         <div>
           <p className="footer-title">Woodshop contact</p>
           <p className="footer-copy">
-            {site.builderName} · <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>
+            <EditableText target={{ resource: "settings", field: "builderName" }}>{site.builderName}</EditableText> · <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>
           </p>
           <p className="footer-copy footer-small">
-            Site design and development: {site.developerName} · <a href={`mailto:${site.developerEmail}`}>{site.developerEmail}</a>
+            Site design and development: <EditableText target={{ resource: "settings", field: "developerName" }}>{site.developerName}</EditableText> · <a href={`mailto:${site.developerEmail}`}>{site.developerEmail}</a>
           </p>
         </div>
         <div>
@@ -185,22 +171,42 @@ export function SiteFooter() {
   );
 }
 
-export function PageIntro({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+export function PageIntro({
+  eyebrow,
+  title,
+  copy,
+  targets
+}: {
+  eyebrow: string;
+  title: string;
+  copy: string;
+  targets?: Partial<Record<"eyebrow" | "title" | "copy", InlineEditTarget>>;
+}) {
   return (
     <div className="page-intro">
-      <p className="eyebrow">{eyebrow}</p>
-      <h1>{title}</h1>
-      <p className="lede">{copy}</p>
+      <p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p>
+      <h1 {...inlineEditAttrs(targets?.title)}>{title}</h1>
+      <p className="lede" {...inlineEditAttrs(targets?.copy)}>{copy}</p>
     </div>
   );
 }
 
-export function SectionHeading({ eyebrow, title, copy }: { eyebrow: string; title: string; copy: string }) {
+export function SectionHeading({
+  eyebrow,
+  title,
+  copy,
+  targets
+}: {
+  eyebrow: string;
+  title: string;
+  copy: string;
+  targets?: Partial<Record<"eyebrow" | "title" | "copy", InlineEditTarget>>;
+}) {
   return (
     <div className="section-heading">
-      <p className="eyebrow">{eyebrow}</p>
-      <h2>{title}</h2>
-      <p>{copy}</p>
+      <p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p>
+      <h2 {...inlineEditAttrs(targets?.title)}>{title}</h2>
+      <p {...inlineEditAttrs(targets?.copy)}>{copy}</p>
     </div>
   );
 }
@@ -209,8 +215,8 @@ export function DividerBand() {
   const site = getSiteSettings();
   return (
     <div aria-label="Piece divider list" className="divider-band">
-      {site.pieceDividerNames.map((name) => (
-        <span key={name}>{name}</span>
+      {site.pieceDividerNames.map((name, index) => (
+        <span key={`${name}-${index}`} {...inlineEditAttrs({ resource: "settings", field: "pieceDividerNames", index })}>{name}</span>
       ))}
     </div>
   );
@@ -229,10 +235,10 @@ export function PieceCard({ piece }: { piece: PieceRecord }) {
             <span className="category-meta"><CategoryIcon category={piece.category} />{piece.category}</span>
             <span>{verified ? "Verified photography" : "Photography in progress"}</span>
           </div>
-          <h3>{piece.title}</h3>
-          <p>{piece.summary}</p>
+          <h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3>
+          <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
           <div className="piece-card-footer">
-            <span>{piece.availabilityLabel}</span>
+            <span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span>
             <span>Updated {formatDate(piece.updatedAt)}</span>
           </div>
         </div>
@@ -248,8 +254,8 @@ export function PostCard({ post }: { post: PostRecord }) {
         <span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span>
         <span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span>
       </div>
-      <h3><Link href={`/process/${post.slug}`}>{post.title}</Link></h3>
-      <p>{post.excerpt}</p>
+      <h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3>
+      <p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p>
     </article>
   );
 }
