@@ -1,6 +1,6 @@
-import type { HTMLAttributes, ReactNode } from "react";
+import type { ElementType, HTMLAttributes, ReactNode } from "react";
 
-export type InlineEditResource = "settings" | "homeSection" | "page" | "piece" | "post" | "user" | "commissionType";
+export type InlineEditResource = "settings" | "homeSection" | "page" | "piece" | "post" | "user";
 
 export type InlineEditTarget = {
   resource: InlineEditResource;
@@ -25,7 +25,7 @@ export function EditableText({
   className,
   target
 }: {
-  as?: keyof JSX.IntrinsicElements;
+  as?: ElementType;
   children: ReactNode;
   className?: string;
   target?: InlineEditTarget;
