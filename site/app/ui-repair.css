@@ -1,0 +1,202 @@
+/* Targeted repair layer for post-inline-edit deployment regressions. Keep this file last. */
+
+/* Header navigation: keep the same polished thumb style, but do not show a permanent beige bar. */
+.site-nav {
+  padding-bottom: 0;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+}
+
+.site-nav::-webkit-scrollbar {
+  display: none;
+  height: 0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .site-nav {
+    padding-bottom: 0.24rem;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+
+  .site-nav:hover {
+    scrollbar-color: color-mix(in srgb, var(--accent) 38%, transparent) transparent;
+  }
+
+  .site-nav::-webkit-scrollbar {
+    display: block;
+    height: 0.28rem;
+  }
+
+  .site-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .site-nav::-webkit-scrollbar-thumb {
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: transparent;
+  }
+
+  .site-nav:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--accent) 38%, transparent);
+  }
+}
+
+/* Media verification must lay out as real assignment cards, not as thumbnail-width columns. */
+.media-verification-queue {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(27rem, 100%), 1fr));
+  align-items: start;
+  gap: clamp(0.75rem, 1.35vw, 1rem);
+}
+
+.media-verification-queue > *,
+.candidate-assignment-form,
+.studio-media-card,
+.studio-media-body,
+.studio-panel {
+  min-width: 0;
+}
+
+.media-verification-queue h3,
+.media-verification-queue p,
+.candidate-assignment-form h3,
+.candidate-assignment-form p {
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
+}
+
+.project-media-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(4.65rem, 5.75rem));
+  justify-content: start;
+  align-items: start;
+  gap: 0.45rem;
+}
+
+.project-media-strip a,
+.candidate-assignment-form button {
+  min-height: 4.65rem;
+  aspect-ratio: 1;
+}
+
+.project-media-strip img,
+.candidate-assignment-form img {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  object-fit: cover;
+}
+
+/* Studio media editor: keep the preview useful while preventing giant vertical pages. */
+.studio-media-card {
+  grid-template-columns: minmax(10rem, 0.48fr) minmax(0, 1.52fr);
+  gap: clamp(0.7rem, 1.2vw, 1rem);
+}
+
+.studio-media-preview {
+  max-height: min(48vh, 28rem);
+}
+
+.studio-media-preview img {
+  max-height: min(48vh, 28rem);
+}
+
+.studio-media-body .request-form,
+.studio-media-body .compact-form {
+  gap: 0.5rem;
+}
+
+.studio-media-body textarea {
+  min-height: 4.4rem;
+  max-height: 8.5rem;
+}
+
+/* Inline edit assistant should guide without covering half the public page. */
+.inline-edit-hint,
+.inline-url-dialog {
+  right: 0.75rem;
+  bottom: 0.75rem;
+  max-width: min(27.5rem, calc(100vw - 1.5rem));
+  max-height: min(45vh, 24rem);
+  overflow: auto;
+  padding: 0.68rem 0.78rem;
+  border-radius: 20px;
+  font-size: 0.86rem;
+}
+
+.inline-edit-hint p,
+.inline-url-dialog p {
+  margin: 0.18rem 0 0;
+  line-height: 1.28;
+}
+
+.inline-edit-hint .muted-copy,
+.inline-url-dialog .muted-copy {
+  font-size: 0.78rem;
+}
+
+.inline-edit-hint .hero-actions,
+.inline-url-dialog .hero-actions {
+  gap: 0.42rem;
+  margin-top: 0.52rem;
+}
+
+.inline-edit-hint .button-primary,
+.inline-edit-hint .button-secondary,
+.inline-url-dialog .button-primary,
+.inline-url-dialog .button-secondary {
+  min-height: 2.15rem;
+  padding: 0.42rem 0.64rem;
+  font-size: 0.78rem;
+}
+
+.inline-add-field {
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+}
+
+.inline-add-field input,
+.inline-url-dialog input {
+  min-height: 2.25rem;
+  padding: 0.46rem 0.62rem;
+}
+
+.inline-editable-active {
+  cursor: text;
+}
+
+.inline-editable-active-selected {
+  outline: 2px solid color-mix(in srgb, var(--accent) 84%, transparent);
+  outline-offset: 0.22rem;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
+
+/* Prevent the fixed assistant from hiding content near the page bottom. */
+body:has(.inline-edit-hint) main {
+  padding-bottom: 9rem;
+}
+
+@media (max-width: 980px) {
+  .media-verification-queue {
+    grid-template-columns: 1fr;
+  }
+
+  .project-media-strip {
+    grid-template-columns: repeat(auto-fill, minmax(4.25rem, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .inline-edit-hint,
+  .inline-url-dialog {
+    left: 0.5rem;
+    right: 0.5rem;
+    bottom: 0.5rem;
+    max-width: none;
+    max-height: 52vh;
+  }
+}
