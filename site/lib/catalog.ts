@@ -55,15 +55,45 @@ export function hasVerifiedMedia(piece: Pick<PieceRecord, "mediaPaths" | "metada
   return piece.metadata?.verifiedMedia !== false;
 }
 
+export function pieceShippingEnabled(piece: Pick<PieceRecord, "metadata">) {
+  return Boolean(piece.metadata?.shippingEnabled || piece.metadata?.shipEligible || piece.metadata?.shippingAllowed);
+}
+
+export function getWoodshopZip(metadata?: Record<string, unknown>) {
+  const value = metadata?.woodshopZip ?? metadata?.shopZip ?? metadata?.originZip;
+  return typeof value === "string" && value.trim() ? value.trim() : "94122";
+}
+
+export function getPickupRadiusMiles(metadata?: Record<string, unknown>) {
+  const value = Number(metadata?.pickupRadiusMiles ?? metadata?.dropoffRadiusMiles ?? 120);
+  return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 120;
+}
+
 export function getFulfillmentOptions(piece: Pick<PieceRecord, "metadata" | "status">) {
   const stored = piece.metadata?.fulfillmentOptions;
-  if (Array.isArray(stored)) {
+  if (Array.isArray(stored) && stored.some((value) => typeof value === "string" && value.trim().length > 0)) {
     return stored.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
   }
 
-  if (piece.status === "inventory") {
-    return ["Pickup", "Delivery review", "Shipment review"];
+  const zip = getWoodshopZip(piece.metadata);
+  const radius = getPickupRadiusMiles(piece.metadata);
+  const local = [`Pickup near ${zip}`, `Drop-off review within ~${radius} miles`];
+
+  if (pieceShippingEnabled(piece)) {
+    return [...local, "Shipping enabled for this piece"];
   }
 
-  return ["Built to order", "Pickup or delivery planned during review"];
+  if (piece.status === "inventory") {
+    return [...local, "Shipping disabled unless separately approved"];
+  }
+
+  return ["Built to order", ...local, "Shipping only if enabled during review"];
+}
+
+export function getFulfillmentSummary(piece: Pick<PieceRecord, "metadata" | "status">) {
+  const zip = getWoodshopZip(piece.metadata);
+  const radius = getPickupRadiusMiles(piece.metadata);
+  return pieceShippingEnabled(piece)
+    ? `Pickup near ${zip}, local drop-off review within ~${radius} miles, or shipping when confirmed for this piece.`
+    : `Default: in-person pickup near ${zip} or local drop-off review within ~${radius} miles. Shipping is not enabled for this piece unless separately approved.`;
 }
