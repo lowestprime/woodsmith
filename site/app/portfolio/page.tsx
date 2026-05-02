@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { CategoryIcon, DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { portfolioCategories, type PortfolioCategoryKey, getPiecePortfolioCategory } from "@/lib/catalog";
 import { getPage, listPieces } from "@/lib/db";
 
@@ -28,8 +29,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
     <>
       <Shell>
         <PageSection editHref="/studio?panel=pieces">
-          <PageIntro eyebrow="Portfolio" title={page?.title ?? "Portfolio"} copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."} />
-          {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
+          <PageIntro
+            eyebrow="Portfolio"
+            title={page?.title ?? "Portfolio"}
+            copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."}
+            targets={{
+              title: { resource: "page", id: "portfolio", field: "title" },
+              copy: { resource: "page", id: "portfolio", field: "intro" }
+            }}
+          />
+          {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "portfolio", field: "body" })}>{page.body}</p> : null}
           <nav className="portfolio-filter-row" aria-label="Piece categories">
             {portfolioCategories.map((item) => {
               const active = item.key === selectedCategory;
