@@ -14,25 +14,11 @@ export type PortfolioCategoryKey = (typeof portfolioCategories)[number]["key"];
 export function normalizePortfolioCategory(value: string | null | undefined): PortfolioCategoryKey {
   const normalized = (value || "").toLowerCase().trim();
 
-  if (normalized.includes("bench")) {
-    return "benches";
-  }
-
-  if (normalized.includes("step") || normalized.includes("stool")) {
-    return "stepstools";
-  }
-
-  if (normalized.includes("cabinet") || normalized.includes("rack")) {
-    return "cabinets";
-  }
-
-  if (normalized.includes("table") || normalized.includes("desk")) {
-    return "tables";
-  }
-
-  if (normalized.includes("tray") || normalized.includes("object")) {
-    return "objects";
-  }
+  if (normalized.includes("bench")) return "benches";
+  if (normalized.includes("step") || normalized.includes("stool")) return "stepstools";
+  if (normalized.includes("cabinet") || normalized.includes("rack")) return "cabinets";
+  if (normalized.includes("table") || normalized.includes("desk")) return "tables";
+  if (normalized.includes("tray") || normalized.includes("object")) return "objects";
 
   return "all";
 }
@@ -48,10 +34,7 @@ export function getDisplayMediaPaths(piece: Pick<PieceRecord, "mediaPaths" | "me
 }
 
 export function hasVerifiedMedia(piece: Pick<PieceRecord, "mediaPaths" | "metadata">) {
-  if (piece.mediaPaths.length === 0) {
-    return false;
-  }
-
+  if (piece.mediaPaths.length === 0) return false;
   return piece.metadata?.verifiedMedia !== false;
 }
 
@@ -59,9 +42,24 @@ export function pieceShippingEnabled(piece: Pick<PieceRecord, "metadata">) {
   return Boolean(piece.metadata?.shippingEnabled || piece.metadata?.shipEligible || piece.metadata?.shippingAllowed);
 }
 
+export function pieceIsHeavy(piece: Pick<PieceRecord, "metadata" | "dimensions">) {
+  if (piece.metadata?.heavyItem === true) return true;
+  const weight = Number(piece.metadata?.weightLbs ?? piece.metadata?.estimatedWeightLbs ?? 0);
+  if (Number.isFinite(weight) && weight >= 45) return true;
+  const dims = piece.dimensions;
+  if (!dims) return false;
+  const largest = Math.max(dims.width, dims.depth, dims.height);
+  return largest >= 60;
+}
+
 export function getWoodshopZip(metadata?: Record<string, unknown>) {
   const value = metadata?.woodshopZip ?? metadata?.shopZip ?? metadata?.originZip;
   return typeof value === "string" && value.trim() ? value.trim() : "94122";
+}
+
+export function getDropoffDriveMinutes(metadata?: Record<string, unknown>) {
+  const value = Number(metadata?.dropoffDriveMinutes ?? metadata?.pickupDriveMinutes ?? 120);
+  return Number.isFinite(value) ? Math.max(0, Math.min(480, Math.round(value))) : 120;
 }
 
 export function getPickupRadiusMiles(metadata?: Record<string, unknown>) {
@@ -69,31 +67,27 @@ export function getPickupRadiusMiles(metadata?: Record<string, unknown>) {
   return Number.isFinite(value) ? Math.max(0, Math.round(value)) : 120;
 }
 
-export function getFulfillmentOptions(piece: Pick<PieceRecord, "metadata" | "status">) {
+export function getFulfillmentOptions(piece: Pick<PieceRecord, "metadata" | "status" | "dimensions">) {
   const stored = piece.metadata?.fulfillmentOptions;
   if (Array.isArray(stored) && stored.some((value) => typeof value === "string" && value.trim().length > 0)) {
     return stored.filter((value): value is string => typeof value === "string" && value.trim().length > 0);
   }
 
   const zip = getWoodshopZip(piece.metadata);
-  const radius = getPickupRadiusMiles(piece.metadata);
-  const local = [`Pickup near ${zip}`, `Drop-off review within ~${radius} miles`];
+  const driveMinutes = getDropoffDriveMinutes(piece.metadata);
+  const local = [`Pickup near ${zip}`, `Drop-off review within ~${driveMinutes} minutes`];
 
-  if (pieceShippingEnabled(piece)) {
-    return [...local, "Shipping enabled for this piece"];
-  }
-
-  if (piece.status === "inventory") {
-    return [...local, "Shipping disabled unless separately approved"];
-  }
-
+  if (pieceShippingEnabled(piece)) return [...local, "Shipping enabled for this piece"];
+  if (piece.status === "inventory") return [...local, pieceIsHeavy(piece) ? "Shipping disabled for heavy/local item" : "Shipping disabled unless separately approved"];
   return ["Built to order", ...local, "Shipping only if enabled during review"];
 }
 
-export function getFulfillmentSummary(piece: Pick<PieceRecord, "metadata" | "status">) {
+export function getFulfillmentSummary(piece: Pick<PieceRecord, "metadata" | "status" | "dimensions">) {
   const zip = getWoodshopZip(piece.metadata);
-  const radius = getPickupRadiusMiles(piece.metadata);
-  return pieceShippingEnabled(piece)
-    ? `Pickup near ${zip}, local drop-off review within ~${radius} miles, or shipping when confirmed for this piece.`
-    : `Default: in-person pickup near ${zip} or local drop-off review within ~${radius} miles. Shipping is not enabled for this piece unless separately approved.`;
+  const driveMinutes = getDropoffDriveMinutes(piece.metadata);
+  if (pieceShippingEnabled(piece)) {
+    return `Pickup near ${zip}, local drop-off review within ~${driveMinutes} minutes, or shipping when confirmed for this piece.`;
+  }
+  const heavyNote = pieceIsHeavy(piece) ? " This is marked as heavy/local-first, so shipping is disabled unless the woodshop explicitly changes it." : "";
+  return `Default: in-person pickup near ${zip} or local drop-off review within ~${driveMinutes} minutes. Shipping is not enabled for this piece unless separately approved.${heavyNote}`;
 }
