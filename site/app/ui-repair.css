@@ -1,5 +1,84 @@
 /* Targeted repair layer for post-inline-edit deployment regressions. Keep this file last. */
 
+/* Sitewide responsive gutters: use available viewport width instead of a narrow centered 1200px column. */
+:root {
+  --site-gutter: clamp(0.75rem, 1.25vw, 1.6rem);
+}
+
+.shell {
+  width: auto;
+  max-width: none;
+  margin-inline: var(--site-gutter);
+}
+
+.site-header .shell,
+.site-footer .shell,
+header .shell,
+footer .shell {
+  width: auto;
+  max-width: none;
+  margin-inline: var(--site-gutter);
+}
+
+/* Keep long reading/forms usable while allowing grids, hero, header, and studio to breathe. */
+.page-intro,
+.section-heading {
+  max-width: min(92rem, calc(100vw - (var(--site-gutter) * 2)));
+}
+
+.page-intro > p,
+.section-heading > p,
+.lede,
+.section-heading p,
+.page-section p {
+  max-width: min(92ch, 100%);
+}
+
+.hero-section .page-intro,
+.hero-section .section-heading {
+  max-width: min(110rem, calc(100vw - (var(--site-gutter) * 2)));
+}
+
+.contact-grid,
+.account-layout,
+.cart-layout,
+.request-grid,
+.visualizer-layout,
+.studio-grid,
+.piece-grid,
+.service-grid,
+.profile-grid,
+.review-grid,
+.search-results,
+.admin-summary-grid,
+.page-grid {
+  width: 100%;
+}
+
+@media (min-width: 1500px) {
+  :root { --site-gutter: clamp(0.9rem, 1vw, 1.35rem); }
+
+  .piece-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(25rem, 100%), 1fr));
+  }
+
+  .piece-card {
+    grid-column: auto;
+  }
+
+  .service-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(20rem, 100%), 1fr));
+  }
+
+  .service-card {
+    grid-column: auto;
+  }
+}
+
+@media (max-width: 720px) {
+  :root { --site-gutter: 0.5rem; }
+}
+
 /* Header navigation: keep the same polished thumb style, but do not show a permanent beige bar. */
 .site-nav {
   padding-bottom: 0;
