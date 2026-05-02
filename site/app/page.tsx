@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -37,8 +38,8 @@ export default async function HomePage() {
             }}
           />
           <div className="hero-actions">
-            <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
-            <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/shop")}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Shop current work")}</Link>
+            <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "primaryCta.label", urlField: "primaryCta.href" })}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
+            <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/shop")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "secondaryCta.label", urlField: "secondaryCta.href" })}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Shop current work")}</Link>
           </div>
         </PageSection>
       </Shell>
