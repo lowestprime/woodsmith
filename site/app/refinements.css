@@ -1,0 +1,393 @@
+/* Global polish layer: compact layout, consistent scrollbars, larger brand mark, and denser studio tools. */
+:root {
+  --scrollbar-track: color-mix(in srgb, var(--bg) 78%, #000 22%);
+  --scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 68%, transparent);
+}
+
+html {
+  color-scheme: dark;
+}
+
+html[data-theme="light"] {
+  color-scheme: light;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 0.45rem;
+  height: 0.45rem;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  min-height: 2.5rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius-pill);
+  background: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+textarea::-webkit-scrollbar,
+select::-webkit-scrollbar,
+.site-nav::-webkit-scrollbar,
+.studio-workspace-nav::-webkit-scrollbar,
+.media-verification-queue::-webkit-scrollbar {
+  width: 0.38rem;
+  height: 0.38rem;
+}
+
+.shell {
+  width: min(1220px, calc(100vw - 1.35rem));
+}
+
+.page-section {
+  padding: clamp(1.6rem, 3.2vw, 3.25rem) 0;
+}
+
+.hero-section {
+  padding-top: clamp(1.7rem, 3vw, 3rem);
+}
+
+.page-intro,
+.section-heading {
+  gap: 0.65rem;
+  max-width: 76rem;
+}
+
+h1 {
+  font-size: clamp(3.05rem, 6.9vw, 5.95rem);
+  line-height: 0.96;
+  letter-spacing: 0.01em;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: clamp(1.9rem, 4.4vw, 3.35rem);
+  line-height: 1.03;
+  text-wrap: balance;
+}
+
+h3 {
+  line-height: 1.12;
+}
+
+.lede,
+.section-heading p,
+.page-section p {
+  max-width: 82ch;
+}
+
+.header-inner {
+  gap: clamp(0.45rem, 1vw, 0.85rem);
+  padding: 0.28rem 0;
+}
+
+.brand-lockup {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 0.65rem;
+}
+
+.brand-emblem {
+  width: clamp(2.75rem, 3.2vw, 3.45rem) !important;
+  height: clamp(2.75rem, 3.2vw, 3.45rem) !important;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0.45rem 1rem rgba(0, 0, 0, 0.28));
+}
+
+.site-header.is-compact .brand-emblem {
+  width: 2.35rem !important;
+  height: 2.35rem !important;
+}
+
+.site-header .brand-mark {
+  font-size: clamp(1rem, 1.55vw, 1.38rem);
+}
+
+.site-header .brand-subtitle {
+  font-size: clamp(0.62rem, 0.82vw, 0.78rem);
+  line-height: 1.15;
+}
+
+.site-nav {
+  gap: 0.35rem;
+  padding-bottom: 0.35rem;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.site-nav::-webkit-scrollbar {
+  display: block;
+  height: 0.38rem;
+}
+
+.site-nav::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: var(--radius-pill);
+}
+
+.site-nav .nav-link-pill,
+.nav-link-pill,
+.button-primary,
+.button-secondary {
+  min-height: 2.55rem;
+  padding: 0.55rem 0.9rem;
+}
+
+.piece-card-body,
+.shop-card-body,
+.journal-card,
+.service-card,
+.review-card,
+.studio-panel,
+.request-panel,
+.notice-panel,
+.cart-line,
+.profile-card,
+.project-card {
+  padding: clamp(1rem, 1.8vw, 1.45rem);
+}
+
+.service-grid,
+.piece-grid,
+.profile-grid,
+.review-grid,
+.search-results,
+.admin-summary-grid,
+.page-grid,
+.studio-grid,
+.contact-grid,
+.account-layout,
+.cart-layout,
+.request-grid,
+.visualizer-layout {
+  gap: clamp(0.8rem, 1.55vw, 1.15rem);
+}
+
+.request-form,
+.compact-form,
+.field-grid,
+.studio-panel,
+.cart-summary,
+.visualizer-sidebar,
+.estimate-panel {
+  gap: 0.7rem;
+}
+
+input,
+textarea,
+select {
+  padding: 0.52rem 0.72rem;
+  border-radius: 14px;
+}
+
+textarea {
+  min-height: 6rem;
+  max-height: min(38vh, 22rem);
+  line-height: 1.35;
+  resize: vertical;
+}
+
+textarea[name="detailsText"],
+textarea[name="pieceDividerNames"],
+textarea[name="mediaPathsText"] {
+  max-height: 10rem;
+}
+
+.studio-workspace-nav {
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.35rem;
+}
+
+.studio-workspace-pill {
+  min-height: 2.25rem;
+  padding: 0.48rem 0.78rem;
+}
+
+.studio-editor-card {
+  scroll-margin-top: 5rem;
+}
+
+.studio-media-card {
+  display: grid;
+  grid-template-columns: minmax(8rem, 0.58fr) minmax(0, 1.92fr);
+  gap: 0.8rem;
+  align-items: start;
+  scroll-margin-top: 6.5rem;
+}
+
+.studio-media-card[data-media-active="true"] {
+  outline: 2px solid color-mix(in srgb, var(--accent) 64%, transparent);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 32%, transparent), var(--shadow);
+}
+
+.studio-media-preview {
+  position: sticky;
+  top: 5.2rem;
+  align-self: start;
+  max-height: min(58vh, 34rem);
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.studio-media-preview img {
+  width: 100%;
+  height: 100%;
+  max-height: min(58vh, 34rem);
+  object-fit: cover;
+}
+
+.studio-media-body {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
+}
+
+.studio-media-body .field-grid,
+.studio-media-body .compact-grid {
+  gap: 0.5rem;
+}
+
+.studio-media-body label span {
+  margin-bottom: 0.25rem;
+}
+
+.studio-inline-form {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.media-verification-queue,
+.project-media-strip {
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+}
+
+.project-media-strip a,
+.candidate-assignment-form button {
+  min-height: 4.9rem;
+}
+
+.shop-detail-list,
+.estimate-list {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.shop-detail-list > div,
+.estimate-list > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.fulfillment-note {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  padding: 0.75rem 0.9rem;
+}
+
+.inline-edit-hint,
+.studio-media-hotkeys {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  z-index: 90;
+  max-width: min(32rem, calc(100vw - 2rem));
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--bg-elevated) 94%, transparent);
+  box-shadow: var(--shadow);
+}
+
+.studio-media-hotkeys {
+  left: 1rem;
+  right: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  max-width: min(52rem, calc(100vw - 2rem));
+  font-size: 0.86rem;
+}
+
+.studio-media-hotkeys strong {
+  white-space: nowrap;
+}
+
+.inline-editable-active {
+  border-radius: 0.35rem;
+  outline: 1px dashed color-mix(in srgb, var(--accent) 62%, transparent);
+  outline-offset: 0.18rem;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+@media (max-width: 980px) {
+  .header-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .site-nav {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+
+  .studio-media-card,
+  .account-layout,
+  .cart-layout,
+  .visualizer-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .studio-media-preview {
+    position: relative;
+    top: auto;
+    max-height: 22rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(100vw - 1rem, 1220px);
+  }
+
+  h1 {
+    font-size: clamp(2.65rem, 15vw, 4.25rem);
+  }
+
+  .piece-grid,
+  .service-grid,
+  .profile-grid,
+  .review-grid,
+  .search-results,
+  .admin-summary-grid,
+  .page-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .piece-card,
+  .service-card {
+    grid-column: auto;
+  }
+
+  .studio-media-hotkeys {
+    display: none;
+  }
+}

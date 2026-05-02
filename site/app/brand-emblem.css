@@ -1,0 +1,14 @@
+.brand-emblem {
+  background-image: url("/icon.svg");
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+}
+
+.brand-emblem > * {
+  opacity: 0;
+}
+
+html[data-theme="light"] .brand-emblem {
+  background-image: url("/icon-light");
+}
