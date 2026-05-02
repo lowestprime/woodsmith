@@ -1,5 +1,5 @@
 import { cookies } from "next/headers";
-import { removeCartItemAction, startCheckoutAction } from "@/lib/actions";
+import { removeCartItemAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { getDisplayMediaPaths, getFulfillmentSummary } from "@/lib/catalog";
 import { getPiece, getSiteSettings, listCartItems } from "@/lib/db";
@@ -7,8 +7,8 @@ import { calculateCheckoutTotals } from "@/lib/payments";
 import { formatMoney, toMediaUrl } from "@/lib/format";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
-export default async function CartPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
-  const { error } = await searchParams;
+export default async function CartPage({ searchParams }: { searchParams: Promise<{ error?: string; checkout?: string; order?: string; summary?: string }> }) {
+  const { error, checkout, order, summary } = await searchParams;
   const cookieStore = await cookies();
   const cartToken = cookieStore.get("beaman-cart")?.value || "";
   const user = await getCurrentUser();
@@ -16,9 +16,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const cartItems = listCartItems(cartToken, user?.email ?? null);
   const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
-    if (!piece || piece.priceCents == null) {
-      return [];
-    }
+    if (!piece || piece.priceCents == null) return [];
     return [{ item, piece }];
   });
   const totals = calculateCheckoutTotals({
@@ -35,6 +33,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
       <PageSection editHref="/studio?panel=orders">
         <PageIntro eyebrow="Cart" title="Your ledger" copy="Reserve pieces, confirm pickup or local drop-off eligibility, and request shipping only when the piece explicitly supports it." />
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
+        {checkout === "local-review" && order ? <div className="notice-panel" role="status"><p>Local pickup/drop-off review was created for order <strong>{order}</strong>.</p>{summary ? <p className="muted-copy">{summary}</p> : null}</div> : null}
         <div className="cart-layout">
           <div className="cart-items">
             {lines.length > 0 ? lines.map(({ item, piece }) => (
@@ -65,7 +64,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
               <div><dt>Total before final logistics</dt><dd>{formatMoney(totals.totalCents)}</dd></div>
             </dl>
             <p className="fulfillment-note">Address details are collected only to determine pickup/drop-off eligibility and buyer consent. The woodshop address remains private until a pickup or drop-off is approved.</p>
-            <form action={startCheckoutAction} className="request-form compact-form">
+            <form action="/api/shop/local-reservation" className="request-form compact-form" method="post">
               <label>
                 <span>Email</span>
                 <input defaultValue={user?.email ?? ""} name="email" required type="email" />
