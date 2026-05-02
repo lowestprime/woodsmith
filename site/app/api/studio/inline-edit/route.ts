@@ -100,7 +100,7 @@ function applyPatch(patch: InlinePatch) {
     if (!id) throw new Error("Home-section inline edit is missing a section key.");
     if (!homeText.has(field) || mode !== "update") throw new Error(`Home section field '${field}' is not inline editable for '${mode}'.`);
     const settings = getSiteSettings();
-    const homeSections = settings.homeSections.map((section) => section.key === id ? updateHomeSection(section, field, value) : section) as typeof settings.homeSections;
+    const homeSections = settings.homeSections.map((section) => section.key === id ? updateHomeSection(section, field, value) : section) as unknown as typeof settings.homeSections;
     saveSiteSettings({ ...settings, homeSections });
     refresh(resource, id);
     return { resource, field, id, mode };
