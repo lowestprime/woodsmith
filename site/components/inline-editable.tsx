@@ -7,6 +7,7 @@ export type InlineEditTarget = {
   field: string;
   id?: string;
   index?: number;
+  urlField?: string;
 };
 
 export function inlineEditAttrs(target?: InlineEditTarget): HTMLAttributes<HTMLElement> {
@@ -15,7 +16,8 @@ export function inlineEditAttrs(target?: InlineEditTarget): HTMLAttributes<HTMLE
     "data-inline-edit-resource": target.resource,
     "data-inline-edit-field": target.field,
     ...(target.id ? { "data-inline-edit-id": target.id } : {}),
-    ...(typeof target.index === "number" ? { "data-inline-edit-index": String(target.index) } : {})
+    ...(typeof target.index === "number" ? { "data-inline-edit-index": String(target.index) } : {}),
+    ...(target.urlField ? { "data-inline-edit-url-field": target.urlField } : {})
   } as HTMLAttributes<HTMLElement>;
 }
 
