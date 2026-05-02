@@ -2,8 +2,8 @@ import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { createDraftOrder, getPiece, getSiteSettings, listCartItems } from "@/lib/db";
+import { getDropoffDriveMinutes, getFulfillmentSummary, getWoodshopZip, pieceShippingEnabled } from "@/lib/catalog";
 import { calculateCheckoutTotals } from "@/lib/payments";
-import { getFulfillmentSummary, getWoodshopZip, getDropoffDriveMinutes, pieceShippingEnabled } from "@/lib/catalog";
 
 function redirectTo(path: string, request: Request) {
   return NextResponse.redirect(new URL(path, request.url));
@@ -94,6 +94,5 @@ export async function POST(request: Request) {
   });
 
   const summaries = pieces.map(({ piece }) => `${piece.title}: ${getFulfillmentSummary(piece)}`).join(" | ");
-  const separator = orderNumber.includes("?") ? "&" : "?";
-  return redirectTo(`/shop/cart?checkout=local-review&order=${encodeURIComponent(orderNumber)}&summary=${encodeURIComponent(summaries.slice(0, 180))}${separator}`.replace(`${separator}`, ""), request);
+  return redirectTo(`/shop/cart?checkout=local-review&order=${encodeURIComponent(orderNumber)}&summary=${encodeURIComponent(summaries.slice(0, 180))}`, request);
 }
