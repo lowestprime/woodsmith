@@ -59,7 +59,7 @@ export function InlineEditAssistant() {
   const [message, setMessage] = useState<string | null>(null);
   const [editableCount, setEditableCount] = useState(0);
   const [editingSection, setEditingSection] = useState<HTMLElement | null>(null);
-  const help = useMemo(() => "Only highlighted mapped fields save permanently. Links, buttons, forms, prices, dates, and generated metrics stay read-only to avoid corrupting structured data.", []);
+  const help = useMemo(() => "Highlighted mapped page text, including mapped anchor text, saves permanently. Buttons, forms, prices, dates, generated metrics, and unmapped links stay read-only to avoid corrupting structured data.", []);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
