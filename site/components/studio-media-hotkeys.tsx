@@ -129,7 +129,7 @@ export function StudioMediaHotkeys() {
 
       if (key === "s") {
         event.preventDefault();
-        const saveButton = Array.from(card.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find((button) => /save media/i.test(button.textContent || ""));
+        const saveButton = Array.from(card.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find((button) => /save media/i.test(button.textContent || "")) ?? null;
         if (submitFirst(saveButton)) setNotice("Saving active media metadata...");
         return;
       }
