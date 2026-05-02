@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
-import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, pieceShippingEnabled } from "@/lib/catalog";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
 import { getPage, listPieces, listPosts } from "@/lib/db";
 import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
@@ -22,12 +22,14 @@ export default async function ShopPage() {
   return (
     <Shell>
       <PageSection editHref="/studio?panel=pieces">
-        <PageIntro eyebrow="Shop" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop."} />
+        <PageIntro eyebrow="Shop" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work, asking prices, local pickup/drop-off review, and behind-the-scenes notes from the woodshop."} />
         {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
+        <p className="fulfillment-note">Most pieces default to in-person pickup near the woodshop or local drop-off review. Shipping appears only when explicitly enabled for a piece.</p>
         <div className="shop-grid">
           {pieces.map((piece) => {
             const firstImage = getDisplayMediaPaths(piece)[0];
             const fulfillment = getFulfillmentOptions(piece);
+            const shippingEnabled = pieceShippingEnabled(piece);
 
             return (
               <article className="shop-card" key={piece.slug}>
@@ -39,11 +41,13 @@ export default async function ShopPage() {
                   <dl className="shop-detail-list">
                     <div><dt>Asking price</dt><dd>{piece.priceCents == null ? "Available by request" : formatMoney(piece.priceCents)}</dd></div>
                     <div><dt>Lead time</dt><dd>{formatLeadTime(piece.leadTimeDays)}</dd></div>
-                    <div><dt>Delivery</dt><dd>{fulfillment.join(" / ")}</dd></div>
+                    <div><dt>Fulfillment</dt><dd>{fulfillment.join(" / ")}</dd></div>
+                    <div><dt>Shipping</dt><dd>{shippingEnabled ? "Enabled for this piece" : "Disabled by default"}</dd></div>
                     <div><dt>Tax</dt><dd>Calculated at checkout or on invoice</dd></div>
                   </dl>
+                  <p className="muted-copy">{getFulfillmentSummary(piece)}</p>
                   <div className="shop-card-price-row">
-                    <span className="muted-copy">Materials and delivery are reviewed before final payment.</span>
+                    <span className="muted-copy">Exact pickup/drop-off details stay private until buyer eligibility and consent are confirmed.</span>
                     <form action={addToCartAction}>
                       <input name="pieceSlug" type="hidden" value={piece.slug} />
                       <input name="quantity" type="hidden" value="1" />
