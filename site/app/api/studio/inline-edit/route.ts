@@ -36,13 +36,14 @@ const settingsText = new Set([
   "developerEmail",
   "supportEmail",
   "notificationForwardEmail",
+  "repoLabel",
   "repoUrl"
 ]);
-const homeText = new Set(["eyebrow", "title", "copy", "primaryCta.label", "secondaryCta.label"]);
+const homeText = new Set(["eyebrow", "title", "copy", "primaryCta.label", "primaryCta.href", "secondaryCta.label", "secondaryCta.href"]);
 const pageText = new Set(["title", "navLabel", "intro", "body"]);
 const pieceText = new Set(["title", "subtitle", "summary", "story", "availabilityLabel"]);
 const pieceLists = new Set(["details", "materials", "tags"]);
-const postText = new Set(["title", "excerpt", "body", "sourceLabel"]);
+const postText = new Set(["title", "excerpt", "body", "sourceLabel", "sourceUrl"]);
 const postLists = new Set(["tags"]);
 const userText = new Set(["displayName", "headline", "bio"]);
 
@@ -57,6 +58,30 @@ function cleanIndex(value: unknown) {
 
 function responseError(message: string, status = 400, details?: unknown) {
   return NextResponse.json({ ok: false, message, details }, { status });
+}
+
+function safeUrl(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return trimmed;
+  if (trimmed.startsWith("mailto:")) {
+    const address = trimmed.slice("mailto:".length).split("?")[0] ?? "";
+    if (/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(address)) return trimmed;
+    throw new Error("mailto: links must contain a valid email address.");
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") return parsed.toString();
+  } catch {
+    // handled below
+  }
+  throw new Error("Inline URL must be https, http, mailto, or a root-relative /path.");
+}
+
+function normalizeFieldValue(field: string, value: string) {
+  if (field === "repoUrl" || field === "sourceUrl" || field.endsWith(".href") || field.endsWith(".url")) {
+    return safeUrl(value);
+  }
+  return value;
 }
 
 function splitLines(value: string) {
@@ -90,21 +115,30 @@ function editLinkLabels<T extends { label: string }>(current: T[], mode: InlineM
   return next;
 }
 
+function editNavigationUrls(current: Array<{ label: string; href: string }>, index: number | null, value: string) {
+  if (index == null || index >= current.length) throw new Error("A valid navigation index is required for this URL edit.");
+  return current.map((item, itemIndex) => itemIndex === index ? { ...item, href: safeUrl(value) } : item);
+}
+
+function editSocialUrls(current: Array<{ label: string; url: string }>, index: number | null, value: string) {
+  if (index == null || index >= current.length) throw new Error("A valid social-link index is required for this URL edit.");
+  return current.map((item, itemIndex) => itemIndex === index ? { ...item, url: safeUrl(value) } : item);
+}
+
 function refresh(resource: string, id?: string) {
   revalidatePath("/", "layout");
-  for (const route of ["/", "/portfolio", "/shop", "/process", "/about", "/contact", "/studio"]) {
-    revalidatePath(route);
-  }
+  for (const route of ["/", "/portfolio", "/shop", "/process", "/about", "/contact", "/studio"]) revalidatePath(route);
   if (resource === "page" && id) revalidatePath(id === "home" ? "/" : `/${id}`);
   if (resource === "piece" && id) revalidatePath(`/portfolio/${id}`);
   if (resource === "post" && id) revalidatePath(`/process/${id}`);
 }
 
 function updateHomeSection(section: Record<string, unknown>, field: string, value: string) {
-  if (field === "primaryCta.label" || field === "secondaryCta.label") {
+  if (field.startsWith("primaryCta.") || field.startsWith("secondaryCta.")) {
     const ctaKey = field.startsWith("primary") ? "primaryCta" : "secondaryCta";
+    const ctaField = field.endsWith(".href") ? "href" : "label";
     const current = typeof section[ctaKey] === "object" && section[ctaKey] ? section[ctaKey] as Record<string, unknown> : {};
-    return { ...section, [ctaKey]: { ...current, label: value } };
+    return { ...section, [ctaKey]: { ...current, [ctaField]: normalizeFieldValue(field, value) } };
   }
   return { ...section, [field]: value };
 }
@@ -113,12 +147,13 @@ function applyPatch(patch: InlinePatch) {
   const resource = clean(patch.resource);
   const field = clean(patch.field);
   const id = clean(patch.id);
-  const value = clean(patch.value);
+  const rawValue = clean(patch.value);
   const index = cleanIndex(patch.index);
   const mode: InlineMode = patch.mode === "add" || patch.mode === "cut" ? patch.mode : "update";
 
   if (!resource || !field) throw new Error("Inline edit target is missing resource or field metadata.");
-  if (!value && mode !== "cut") throw new Error("Inline edit value cannot be empty.");
+  if (!rawValue && mode !== "cut") throw new Error("Inline edit value cannot be empty.");
+  const value = normalizeFieldValue(field, rawValue);
 
   if (resource === "settings") {
     const settings = getSiteSettings();
@@ -126,8 +161,14 @@ function applyPatch(patch: InlinePatch) {
       saveSiteSettings({ ...settings, pieceDividerNames: editList([...settings.pieceDividerNames], mode, index, value) });
     } else if (field === "navigation") {
       saveSiteSettings({ ...settings, navigation: editLinkLabels([...settings.navigation], mode, index, value) });
+    } else if (field === "navigation.href") {
+      if (mode !== "update") throw new Error("Navigation URLs can only be updated inline.");
+      saveSiteSettings({ ...settings, navigation: editNavigationUrls([...settings.navigation], index, value) });
     } else if (field === "socialLinks") {
       saveSiteSettings({ ...settings, socialLinks: editLinkLabels([...settings.socialLinks], mode, index, value) });
+    } else if (field === "socialLinks.url") {
+      if (mode !== "update") throw new Error("Social link URLs can only be updated inline.");
+      saveSiteSettings({ ...settings, socialLinks: editSocialUrls([...settings.socialLinks], index, value) });
     } else {
       if (!settingsText.has(field) || mode !== "update") throw new Error(`Settings field '${field}' is not inline editable for '${mode}'.`);
       saveSiteSettings({ ...settings, [field]: value });
