@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { removeCartItemAction, startCheckoutAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
-import { getDisplayMediaPaths } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentSummary } from "@/lib/catalog";
 import { getPiece, getSiteSettings, listCartItems } from "@/lib/db";
 import { calculateCheckoutTotals } from "@/lib/payments";
 import { formatMoney, toMediaUrl } from "@/lib/format";
@@ -24,8 +24,8 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const totals = calculateCheckoutTotals({
     lines: lines.map(({ item, piece }) => ({ slug: piece.slug, title: piece.title, quantity: item.quantity, unitAmountCents: piece.priceCents!, description: piece.subtitle })),
     couponCodes: [...site.couponCodes],
-    shippingBaseCents: site.shippingBaseCents,
-    shippingPerItemCents: site.shippingPerItemCents,
+    shippingBaseCents: 0,
+    shippingPerItemCents: 0,
     taxRate: site.localTaxRate,
     couponCode: null
   });
@@ -33,7 +33,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   return (
     <Shell>
       <PageSection editHref="/studio?panel=orders">
-        <PageIntro eyebrow="Cart" title="Your ledger" copy="Review reserved pieces, shipping estimate, taxes, coupon handling, and checkout before payment capture." />
+        <PageIntro eyebrow="Cart" title="Your ledger" copy="Reserve pieces, confirm pickup or local drop-off eligibility, and request shipping only when the piece explicitly supports it." />
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         <div className="cart-layout">
           <div className="cart-items">
@@ -43,6 +43,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>
+                  <p className="muted-copy">{getFulfillmentSummary(piece)}</p>
                   <strong>{formatMoney(piece.priceCents)}</strong>
                 </div>
                 <div className="cart-line-actions">
@@ -56,14 +57,14 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
             )) : <p className="muted-copy">Your cart is empty.</p>}
           </div>
           <div className="cart-summary studio-panel">
-            <h2>Checkout</h2>
+            <h2>Reserve and review</h2>
             <dl className="estimate-list">
               <div><dt>Subtotal</dt><dd>{formatMoney(totals.subtotalCents)}</dd></div>
-              <div><dt>Shipping</dt><dd>{formatMoney(totals.shippingCents)}</dd></div>
-              <div><dt>Tax</dt><dd>{formatMoney(totals.taxCents)}</dd></div>
-              <div><dt>Total</dt><dd>{formatMoney(totals.totalCents)}</dd></div>
+              <div><dt>Fulfillment</dt><dd>Pickup/drop-off review</dd></div>
+              <div><dt>Tax estimate</dt><dd>{formatMoney(totals.taxCents)}</dd></div>
+              <div><dt>Total before final logistics</dt><dd>{formatMoney(totals.totalCents)}</dd></div>
             </dl>
-            <p className="muted-copy">Coupon discounts are applied at checkout.</p>
+            <p className="fulfillment-note">Address details are collected only to determine pickup/drop-off eligibility and buyer consent. The woodshop address remains private until a pickup or drop-off is approved.</p>
             <form action={startCheckoutAction} className="request-form compact-form">
               <label>
                 <span>Email</span>
@@ -74,19 +75,20 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
                 <input name="couponCode" type="text" />
               </label>
               <label>
-                <span>Shipping name</span>
+                <span>Buyer name</span>
                 <input name="shippingName" required type="text" />
               </label>
               <label>
-                <span>Street</span>
+                <span>Pickup/drop-off address or nearest cross-streets</span>
                 <input name="shippingStreet1" required type="text" />
               </label>
               <div className="field-grid three-up compact-grid">
                 <label><span>City</span><input name="shippingCity" required type="text" /></label>
-                <label><span>State</span><input name="shippingState" required type="text" /></label>
+                <label><span>State</span><input defaultValue="CA" name="shippingState" required type="text" /></label>
                 <label><span>ZIP</span><input name="shippingZip" required type="text" /></label>
               </div>
-              <button className="button-primary full-width" type="submit">Secure checkout</button>
+              <label className="checkbox-row"><input name="pickupConsent" required type="checkbox" value="1" /><span>I understand fulfillment defaults to in-person pickup or local drop-off review unless shipping is explicitly enabled.</span></label>
+              <button className="button-primary full-width" type="submit">Continue logistics review</button>
             </form>
           </div>
         </div>
@@ -94,4 +96,3 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
     </Shell>
   );
 }
-
