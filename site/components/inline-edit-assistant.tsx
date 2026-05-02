@@ -5,10 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 type InlineMode = "update" | "add" | "cut";
 type EditablePatch = { resource: string; id?: string; field: string; index?: number; value: string; mode?: InlineMode };
 type EditableSnapshot = EditablePatch & { text: string };
+type UrlDraft = { resource: string; id?: string; field: string; value: string };
 
 function editableElements(root: ParentNode) {
   return Array.from(root.querySelectorAll<HTMLElement>("[data-inline-edit-resource][data-inline-edit-field]")).filter((element) => {
-    if (element.closest("form,button,.section-edit-link,.inline-edit-hint")) return false;
+    if (element.closest("form,button,.section-edit-link,.inline-edit-hint,.inline-url-dialog")) return false;
     return Boolean(element.textContent?.trim());
   });
 }
@@ -45,6 +46,19 @@ function setEditableState(root: ParentNode, enabled: boolean) {
   });
 }
 
+function validateUrl(value: string) {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("/") && !trimmed.startsWith("//")) return { ok: true as const, value: trimmed };
+  if (trimmed.startsWith("mailto:") && trimmed.includes("@")) return { ok: true as const, value: trimmed };
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "https:" || parsed.protocol === "http:") return { ok: true as const, value: parsed.toString() };
+    return { ok: false as const, message: "Use http, https, mailto, or a root-relative /path." };
+  } catch {
+    return { ok: false as const, message: "Enter a valid http, https, mailto, or root-relative /path URL." };
+  }
+}
+
 export function InlineEditAssistant() {
   const [active, setActive] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -54,7 +68,9 @@ export function InlineEditAssistant() {
   const [editingSection, setEditingSection] = useState<HTMLElement | null>(null);
   const [selectedElement, setSelectedElement] = useState<HTMLElement | null>(null);
   const [addValue, setAddValue] = useState("");
-  const help = useMemo(() => "Highlighted mapped text, mapped anchors, and mapped list items save permanently. Use Add item or Remove selected for supported arrays.", []);
+  const [urlDraft, setUrlDraft] = useState<UrlDraft | null>(null);
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const help = useMemo(() => "Highlighted mapped text, mapped anchors, and mapped list items save permanently. Use Add item or Remove selected for supported arrays. URL editing is available only for mapped URL fields.", []);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -132,6 +148,24 @@ export function InlineEditAssistant() {
     await sendPatches([{ ...patch, value: "", mode: "cut" }], "Removed mapped inline item. Refreshing current view...");
   }
 
+  function openUrlEditor() {
+    const element = selectedElement;
+    if (!(element instanceof HTMLAnchorElement)) { setMessage("Select a mapped anchor before editing its URL."); return; }
+    const field = element.dataset.inlineEditUrlField;
+    if (!field) { setMessage("This anchor has editable text only; its URL is not mapped for inline URL editing."); return; }
+    const resource = element.dataset.inlineEditResource;
+    if (!resource) { setMessage("Selected anchor is missing inline resource metadata."); return; }
+    setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), value: element.getAttribute("href") ?? "" });
+    setUrlError(null);
+  }
+
+  async function saveUrlEditor() {
+    if (!urlDraft) return;
+    const validation = validateUrl(urlDraft.value);
+    if (!validation.ok) { setUrlError(validation.message); return; }
+    await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), value: validation.value }], "Saved mapped URL. Refreshing current view...");
+  }
+
   function cancelInlineEditing() {
     const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
     root?.querySelectorAll<HTMLElement>(".inline-editable-active").forEach((element) => {
@@ -142,23 +176,25 @@ export function InlineEditAssistant() {
       element.removeEventListener("click", preventAnchorNavigation, true);
     });
     document.querySelectorAll<HTMLElement>("section[data-inline-editing='true']").forEach((section) => delete section.dataset.inlineEditing);
-    setActive(false); setEditingSection(null); setSelectedElement(null);
+    setActive(false); setEditingSection(null); setSelectedElement(null); setUrlDraft(null);
   }
 
   return (
-    <div className="inline-edit-hint" role="status">
-      <strong>Inline editing</strong>
-      <p>{message}</p>
-      <p className="muted-copy">{help}</p>
-      <label className="inline-add-field"><span>Add item</span><input value={addValue} onChange={(event) => setAddValue(event.target.value)} placeholder="New detail, tag, material, or divider" /></label>
-      <div className="hero-actions">
-        <button className="button-primary" disabled={saving || editableCount === 0} type="button" onClick={saveInlineEdits}>{saving ? "Saving..." : "Save inline edits"}</button>
-        <button className="button-secondary" disabled={saving} type="button" onClick={addInlineItem}>Add item</button>
-        <button className="button-secondary" disabled={saving} type="button" onClick={removeSelectedItem}>Remove selected</button>
-        <button className="button-secondary" type="button" onClick={copySnapshot}>Copy JSON</button>
-        {advancedHref ? <a className="button-secondary" href={advancedHref}>Full editor</a> : null}
-        <button className="button-secondary" type="button" onClick={cancelInlineEditing}>Cancel</button>
+    <>
+      <div className="inline-edit-hint" role="status">
+        <strong>Inline editing</strong><p>{message}</p><p className="muted-copy">{help}</p>
+        <label className="inline-add-field"><span>Add item</span><input value={addValue} onChange={(event) => setAddValue(event.target.value)} placeholder="New detail, tag, material, or divider" /></label>
+        <div className="hero-actions">
+          <button className="button-primary" disabled={saving || editableCount === 0} type="button" onClick={saveInlineEdits}>{saving ? "Saving..." : "Save inline edits"}</button>
+          <button className="button-secondary" disabled={saving} type="button" onClick={addInlineItem}>Add item</button>
+          <button className="button-secondary" disabled={saving} type="button" onClick={removeSelectedItem}>Remove selected</button>
+          <button className="button-secondary" disabled={saving} type="button" onClick={openUrlEditor}>Edit URL</button>
+          <button className="button-secondary" type="button" onClick={copySnapshot}>Copy JSON</button>
+          {advancedHref ? <a className="button-secondary" href={advancedHref}>Full editor</a> : null}
+          <button className="button-secondary" type="button" onClick={cancelInlineEditing}>Cancel</button>
+        </div>
       </div>
-    </div>
+      {urlDraft ? <div className="inline-url-dialog" role="dialog" aria-label="Edit URL"><strong>Edit URL</strong><p className="muted-copy">Allowed: http, https, mailto, or root-relative /paths.</p><input value={urlDraft.value} onChange={(event) => { setUrlDraft({ ...urlDraft, value: event.target.value }); setUrlError(null); }} />{urlError ? <p className="error-copy">{urlError}</p> : null}<div className="hero-actions"><button className="button-primary" type="button" onClick={saveUrlEditor}>Save URL</button><button className="button-secondary" type="button" onClick={() => setUrlDraft(null)}>Cancel</button></div></div> : null}
+    </>
   );
 }
