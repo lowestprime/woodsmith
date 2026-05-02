@@ -30,6 +30,11 @@ export default async function HomePage() {
             eyebrow={String(hero?.eyebrow ?? home?.title ?? site.brandName)}
             title={String(hero?.title ?? site.brandTagline)}
             copy={heroCopy}
+            targets={{
+              eyebrow: { resource: "homeSection", id: "hero", field: "eyebrow" },
+              title: { resource: "homeSection", id: "hero", field: "title" },
+              copy: { resource: "page", id: "home", field: "intro" }
+            }}
           />
           <div className="hero-actions">
             <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
@@ -55,6 +60,11 @@ export default async function HomePage() {
             eyebrow="Woodshop services"
             title={String(services?.title ?? "From available work to room-specific custom builds")}
             copy={servicesCopy}
+            targets={{
+              eyebrow: { resource: "homeSection", id: "services", field: "eyebrow" },
+              title: { resource: "homeSection", id: "services", field: "title" },
+              copy: { resource: "page", id: "home", field: "body" }
+            }}
           />
           <div className="service-grid">
             <article className="service-card"><h3>Portfolio</h3><p>Finished work with verified photography, materials, and dimensional notes.</p></article>
@@ -80,4 +90,3 @@ export default async function HomePage() {
     </>
   );
 }
-
