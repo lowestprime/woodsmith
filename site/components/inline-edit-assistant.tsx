@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 type InlineMode = "update" | "add" | "cut";
 type EditablePatch = { resource: string; id?: string; field: string; index?: number; value: string; mode?: InlineMode };
 type EditableSnapshot = EditablePatch & { text: string };
-type UrlDraft = { resource: string; id?: string; field: string; value: string };
+type UrlDraft = { resource: string; id?: string; field: string; index?: number; value: string };
 
 function editableElements(root: ParentNode) {
   return Array.from(root.querySelectorAll<HTMLElement>("[data-inline-edit-resource][data-inline-edit-field]")).filter((element) => {
@@ -155,7 +155,9 @@ export function InlineEditAssistant() {
     if (!field) { setMessage("This anchor has editable text only; its URL is not mapped for inline URL editing."); return; }
     const resource = element.dataset.inlineEditResource;
     if (!resource) { setMessage("Selected anchor is missing inline resource metadata."); return; }
-    setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), value: element.getAttribute("href") ?? "" });
+    const indexRaw = element.dataset.inlineEditIndex;
+    const index = indexRaw == null || indexRaw === "" ? undefined : Number(indexRaw);
+    setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(Number.isInteger(index) && index >= 0 ? { index } : {}), value: element.getAttribute("href") ?? "" });
     setUrlError(null);
   }
 
@@ -163,7 +165,7 @@ export function InlineEditAssistant() {
     if (!urlDraft) return;
     const validation = validateUrl(urlDraft.value);
     if (!validation.ok) { setUrlError(validation.message); return; }
-    await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), value: validation.value }], "Saved mapped URL. Refreshing current view...");
+    await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), ...(urlDraft.index != null ? { index: urlDraft.index } : {}), value: validation.value }], "Saved mapped URL. Refreshing current view...");
   }
 
   function cancelInlineEditing() {
