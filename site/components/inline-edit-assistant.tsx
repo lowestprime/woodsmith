@@ -14,14 +14,20 @@ function editableElements(root: ParentNode) {
   });
 }
 
+function getInlineIndex(element: HTMLElement) {
+  const indexRaw = element.dataset.inlineEditIndex;
+  if (indexRaw == null || indexRaw === "") return undefined;
+  const parsed = Number(indexRaw);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function patchFromElement(element: HTMLElement, mode: InlineMode = "update"): EditablePatch | null {
   const resource = element.dataset.inlineEditResource;
   const field = element.dataset.inlineEditField;
   const value = element.textContent?.replace(/\u00a0/g, " ").trim() ?? "";
   if (!resource || !field || (!value && mode !== "cut")) return null;
-  const indexRaw = element.dataset.inlineEditIndex;
-  const index = indexRaw == null || indexRaw === "" ? undefined : Number(indexRaw);
-  return { resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(Number.isInteger(index) && index >= 0 ? { index } : {}), value, ...(mode !== "update" ? { mode } : {}) };
+  const index = getInlineIndex(element);
+  return { resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(index !== undefined ? { index } : {}), value, ...(mode !== "update" ? { mode } : {}) };
 }
 
 function collectEditableText(root: ParentNode): EditableSnapshot[] {
@@ -155,9 +161,8 @@ export function InlineEditAssistant() {
     if (!field) { setMessage("This anchor has editable text only; its URL is not mapped for inline URL editing."); return; }
     const resource = element.dataset.inlineEditResource;
     if (!resource) { setMessage("Selected anchor is missing inline resource metadata."); return; }
-    const indexRaw = element.dataset.inlineEditIndex;
-    const index = indexRaw == null || indexRaw === "" ? undefined : Number(indexRaw);
-    setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(Number.isInteger(index) && index >= 0 ? { index } : {}), value: element.getAttribute("href") ?? "" });
+    const index = getInlineIndex(element);
+    setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(index !== undefined ? { index } : {}), value: element.getAttribute("href") ?? "" });
     setUrlError(null);
   }
 
