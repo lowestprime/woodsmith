@@ -6,6 +6,7 @@ import "./refinements.css";
 import "./brand-emblem.css";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { VisitorTracker } from "@/components/visitor-tracker";
+import { InlineEditAssistant } from "@/components/inline-edit-assistant";
 
 const mackintosh = localFont({
   variable: "--font-mackintosh",
@@ -83,6 +84,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <div className="site-backdrop" />
         <VisitorTracker />
         <SiteHeader />
+        <InlineEditAssistant />
         <main>{children}</main>
         <SiteFooter />
       </body>
