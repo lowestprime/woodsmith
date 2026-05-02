@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import localFont from "next/font/local";
 import "./globals.css";
 import "./refinements.css";
+import "./brand-emblem.css";
 import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { VisitorTracker } from "@/components/visitor-tracker";
 
