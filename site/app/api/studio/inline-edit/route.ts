@@ -2,13 +2,11 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/auth";
 import {
-  getCommissionType,
   getPage,
   getPiece,
   getPost,
   getSiteSettings,
   getUserByEmail,
-  saveCommissionType,
   savePage,
   savePiece,
   savePost,
@@ -43,7 +41,6 @@ const PIECE_FIELDS = new Set(["title", "subtitle", "summary", "story", "availabi
 const PIECE_ARRAY_FIELDS = new Set(["details", "materials", "tags"]);
 const POST_FIELDS = new Set(["title", "excerpt", "body", "sourceLabel"]);
 const USER_FIELDS = new Set(["displayName", "headline", "bio"]);
-const COMMISSION_TYPE_FIELDS = new Set(["label", "description"]);
 
 function cleanText(value: unknown) {
   return String(value ?? "").replace(/\u00a0/g, " ").replace(/[ \t]+\n/g, "\n").trim();
@@ -161,16 +158,6 @@ function applyPatch(patch: InlinePatch) {
     const user = getUserByEmail(id);
     if (!user) throw new Error(`Profile '${id}' was not found.`);
     saveUserProfile({ ...user, [field]: value });
-    revalidateEditedSurfaces(resource, id);
-    return { resource, field, id, index: null };
-  }
-
-  if (resource === "commissionType") {
-    if (!id) throw new Error("Commission-type inline edit is missing a slug.");
-    if (!COMMISSION_TYPE_FIELDS.has(field)) throw new Error(`Commission type field '${field}' is not inline editable.`);
-    const item = getCommissionType(id);
-    if (!item) throw new Error(`Commission type '${id}' was not found.`);
-    saveCommissionType({ ...item, [field]: value });
     revalidateEditedSurfaces(resource, id);
     return { resource, field, id, index: null };
   }
