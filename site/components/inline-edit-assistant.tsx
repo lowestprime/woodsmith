@@ -39,11 +39,16 @@ function collectEditableText(root: ParentNode): EditableSnapshot[] {
 
 function preventAnchorNavigation(event: Event) { event.preventDefault(); }
 
+function clearSelected(root: ParentNode = document) {
+  root.querySelectorAll<HTMLElement>(".inline-editable-active-selected").forEach((element) => element.classList.remove("inline-editable-active-selected"));
+}
+
 function setEditableState(root: ParentNode, enabled: boolean) {
   editableElements(root).forEach((element) => {
     element.contentEditable = enabled ? "true" : "false";
     element.spellcheck = enabled;
     element.classList.toggle("inline-editable-active", enabled);
+    element.classList.remove("inline-editable-active-selected");
     element.dataset.inlineEditOriginal = enabled ? element.textContent?.trim() ?? "" : element.dataset.inlineEditOriginal ?? "";
     if (element instanceof HTMLAnchorElement) {
       if (enabled) element.addEventListener("click", preventAnchorNavigation, true);
@@ -76,7 +81,7 @@ export function InlineEditAssistant() {
   const [addValue, setAddValue] = useState("");
   const [urlDraft, setUrlDraft] = useState<UrlDraft | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const help = useMemo(() => "Highlighted mapped text, mapped anchors, and mapped list items save permanently. Use Add item or Remove selected for supported arrays. URL editing is available only for mapped URL fields.", []);
+  const help = useMemo(() => "Select highlighted text or a mapped link, then save text edits or use Edit URL for mapped destinations. Add/remove is limited to mapped arrays.", []);
 
   useEffect(() => {
     function handleClick(event: MouseEvent) {
@@ -87,13 +92,14 @@ export function InlineEditAssistant() {
       if (!section) return;
       event.preventDefault();
       document.querySelectorAll<HTMLElement>("section[data-inline-editing='true']").forEach((openSection) => { setEditableState(openSection, false); delete openSection.dataset.inlineEditing; });
+      clearSelected();
       const count = editableElements(section).length;
       setActive(true);
       setEditingSection(section);
       setAdvancedHref(editLink.href);
       setEditableCount(count);
       setSelectedElement(null);
-      setMessage(count === 0 ? "This section has no safe persistent inline fields yet. Use the full editor for structured fields." : `Inline edit mode enabled for ${count} mapped field${count === 1 ? "" : "s"}. Edit highlighted text, then Save inline edits.`);
+      setMessage(count === 0 ? "This section has no safe persistent inline fields yet. Use the full editor for structured fields." : `Inline edit mode enabled for ${count} mapped field${count === 1 ? "" : "s"}. Select highlighted text or a mapped link before URL edits.`);
       section.dataset.inlineEditing = "true";
       setEditableState(section, true);
       section.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -101,12 +107,17 @@ export function InlineEditAssistant() {
     function handleSelect(event: MouseEvent) {
       const target = event.target as HTMLElement | null;
       const element = target?.closest<HTMLElement>(".inline-editable-active");
-      if (element) setSelectedElement(element);
+      if (!element) return;
+      clearSelected(editingSection ?? document);
+      element.classList.add("inline-editable-active-selected");
+      setSelectedElement(element);
+      if (element instanceof HTMLAnchorElement && element.dataset.inlineEditUrlField) setMessage("Mapped link selected. Edit its visible text directly, or use Edit URL for its destination.");
+      else setMessage(element.dataset.inlineEditIndex ? "Mapped list item selected. Edit text, add a new item, or remove the selected item." : "Mapped text selected. Edit directly, then save inline edits.");
     }
     document.addEventListener("click", handleClick);
     document.addEventListener("click", handleSelect);
     return () => { document.removeEventListener("click", handleClick); document.removeEventListener("click", handleSelect); };
-  }, []);
+  }, [editingSection]);
 
   if (!active) return null;
 
@@ -178,7 +189,7 @@ export function InlineEditAssistant() {
     root?.querySelectorAll<HTMLElement>(".inline-editable-active").forEach((element) => {
       if (element.dataset.inlineEditOriginal != null) element.textContent = element.dataset.inlineEditOriginal;
       element.contentEditable = "false";
-      element.classList.remove("inline-editable-active");
+      element.classList.remove("inline-editable-active", "inline-editable-active-selected");
       delete element.dataset.inlineEditOriginal;
       element.removeEventListener("click", preventAnchorNavigation, true);
     });
