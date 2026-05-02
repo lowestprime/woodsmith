@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
 import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, pieceShippingEnabled } from "@/lib/catalog";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPieces, listPosts } from "@/lib/db";
 import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
 
@@ -22,8 +23,16 @@ export default async function ShopPage() {
   return (
     <Shell>
       <PageSection editHref="/studio?panel=pieces">
-        <PageIntro eyebrow="Shop" title={page?.title ?? "Shop"} copy={page?.intro ?? "Available work, asking prices, local pickup/drop-off review, and behind-the-scenes notes from the woodshop."} />
-        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
+        <PageIntro
+          eyebrow="Shop"
+          title={page?.title ?? "Shop"}
+          copy={page?.intro ?? "Available work, asking prices, local pickup/drop-off review, and behind-the-scenes notes from the woodshop."}
+          targets={{
+            title: { resource: "page", id: "shop", field: "title" },
+            copy: { resource: "page", id: "shop", field: "intro" }
+          }}
+        />
+        {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "shop", field: "body" })}>{page.body}</p> : null}
         <p className="fulfillment-note">Most pieces default to in-person pickup near the woodshop or local drop-off review. Shipping appears only when explicitly enabled for a piece.</p>
         <div className="shop-grid">
           {pieces.map((piece) => {
@@ -36,8 +45,8 @@ export default async function ShopPage() {
                 {firstImage ? <img alt={piece.title} className="shop-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
                 <div className="shop-card-body">
                   <div className="piece-card-meta"><span>{piece.category}</span><span>{piece.inventoryCount} available</span></div>
-                  <h2><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>
-                  <p>{piece.summary}</p>
+                  <h2 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>
+                  <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
                   <dl className="shop-detail-list">
                     <div><dt>Asking price</dt><dd>{piece.priceCents == null ? "Available by request" : formatMoney(piece.priceCents)}</dd></div>
                     <div><dt>Lead time</dt><dd>{formatLeadTime(piece.leadTimeDays)}</dd></div>
