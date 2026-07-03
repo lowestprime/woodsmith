@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { connection } from "next/server";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { AvatarBadge } from "@/components/avatar-badge";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { readAvatarGradient } from "@/lib/avatar";
 import { getPage, getSiteSettings, listPublicProfiles } from "@/lib/db";
 
@@ -20,8 +21,8 @@ export default async function AboutPage() {
   return (
     <Shell>
       <PageSection editHref="/studio?panel=pages&page=about#page-about">
-        <PageIntro eyebrow="About & contact" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet the master builder and the developer behind the platform."} />
-        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
+        <PageIntro eyebrow="About & contact" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet the master builder and the developer behind the platform."} targets={{ title: { resource: "page", id: "about", field: "title" }, copy: { resource: "page", id: "about", field: "intro" } }} />
+        {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "about", field: "body" })}>{page.body}</p> : null}
         <div className="profile-grid">
           {profiles.map((profile) => (
             <article className="profile-card" key={profile.email}>
@@ -34,9 +35,9 @@ export default async function AboutPage() {
                 seed={profile.email || profile.displayName}
               />
               <div>
-                <p className="eyebrow">{profile.headline}</p>
-                <h2>{profile.displayName}</h2>
-                <p>{profile.bio}</p>
+                <p className="eyebrow" {...inlineEditAttrs({ resource: "user", id: profile.email, field: "headline" })}>{profile.headline}</p>
+                <h2 {...inlineEditAttrs({ resource: "user", id: profile.email, field: "displayName" })}>{profile.displayName}</h2>
+                <p {...inlineEditAttrs({ resource: "user", id: profile.email, field: "bio" })}>{profile.bio}</p>
                 <div className="share-links">
                   {profile.links.map((link) => <a href={link.url} key={link.url} rel="noreferrer" target="_blank">{link.label}</a>)}
                   {profile.email ? <a href={`mailto:${profile.email}`}>{profile.email}</a> : null}

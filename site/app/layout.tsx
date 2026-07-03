@@ -20,7 +20,7 @@ const mackintosh = localFont({
   ]
 });
 
-const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://www.woodmat.ch";
+const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://woodmat.ch";
 
 export const metadata: Metadata = {
   title: {

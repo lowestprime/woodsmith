@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import { CategoryIcon, DividerBand, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
+import { CategoryIcon, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
-import { portfolioCategories, type PortfolioCategoryKey, getPiecePortfolioCategory } from "@/lib/catalog";
-import { getPage, listPieces } from "@/lib/db";
+import { getPiecePortfolioCategory, getPortfolioCategories } from "@/lib/catalog";
+import { getPage, getSiteSettings, listPieces } from "@/lib/db";
 
 export const metadata: Metadata = {
   title: "Portfolio",
@@ -16,12 +16,14 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   await connection();
   const { category } = await searchParams;
   const page = getPage("portfolio");
-  const selectedCategory = portfolioCategories.some((item) => item.key === category) ? (category as PortfolioCategoryKey) : "all";
+  const categories = getPortfolioCategories(getSiteSettings().pieceCategories);
+  const portfolioCategories = [{ key: "all", label: "All pieces", icon: "all" as const, aliases: [] }, ...categories];
+  const selectedCategory = portfolioCategories.some((item) => item.key === category) ? String(category) : "all";
   const allPieces = listPieces();
-  const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece) === selectedCategory);
-  const counts = new Map<PortfolioCategoryKey, number>(portfolioCategories.map((item) => [item.key, item.key === "all" ? allPieces.length : 0]));
+  const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece, categories) === selectedCategory);
+  const counts = new Map<string, number>(portfolioCategories.map((item) => [item.key, item.key === "all" ? allPieces.length : 0]));
   for (const piece of allPieces) {
-    const key = getPiecePortfolioCategory(piece);
+    const key = getPiecePortfolioCategory(piece, categories);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
@@ -50,17 +52,16 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
                   href={href}
                   key={item.key}
                 >
-                  <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item.key} /></span>
+                  <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item.key} icon={item.icon} /></span>
                   <span>{item.label}</span>
                   <strong>{counts.get(item.key) ?? 0}</strong>
                 </Link>
               );
             })}
           </nav>
-          <div className="piece-grid portfolio-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
+          <div className="piece-grid portfolio-grid">{pieces.map((piece) => <PieceCard categories={categories} key={piece.slug} piece={piece} />)}</div>
         </PageSection>
       </Shell>
-      <DividerBand />
     </>
   );
 }

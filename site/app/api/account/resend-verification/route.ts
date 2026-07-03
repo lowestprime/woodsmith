@@ -1,34 +1,21 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { setEmailVerificationToken } from "@/lib/db";
-import { sendNotificationEmail } from "@/lib/notifications";
+import { getUserByEmail, setEmailVerificationToken } from "@/lib/db";
+import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 
 function resolveBaseUrl() {
   return process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://127.0.0.1:3002";
 }
 
-function summarizeEmailFailure(reason: unknown) {
-  const text = String(reason || "Unknown email transport error").replace(/\s+/g, " ").trim();
-  if (/SMTP not configured/i.test(text)) {
-    return "SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD in the deployment environment, then recreate the container.";
-  }
-  if (/auth|credential|login|password|535|534/i.test(text)) {
-    return "SMTP authentication failed. Verify SMTP_USER and SMTP_PASSWORD/app-password in .env, then recreate the container.";
-  }
-  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|connect/i.test(text)) {
-    return "SMTP connection failed. Verify SMTP_HOST, SMTP_PORT, SMTP_SECURE, DNS, and firewall egress from the NAS/container.";
-  }
-  return text.length > 240 ? `${text.slice(0, 237)}...` : text;
-}
-
-export async function POST() {
-  const user = await getCurrentUser();
-  if (!user) {
-    return NextResponse.json({ ok: false, error: "Sign in before resending verification email." }, { status: 401 });
-  }
+export async function POST(request: Request) {
+  const currentUser = await getCurrentUser();
+  const body = await request.json().catch(() => ({})) as { email?: string };
+  const requestedEmail = String(body.email ?? "").trim().toLowerCase();
+  const user = currentUser ?? (requestedEmail ? getUserByEmail(requestedEmail) : null);
+  if (!user) return NextResponse.json({ ok: true, message: "If that account requires verification, a new link has been requested." });
 
   if (user.emailVerified) {
-    return NextResponse.json({ ok: true, alreadyVerified: true, message: "Email is already verified." });
+    return NextResponse.json({ ok: true, alreadyVerified: true, message: "If that account requires verification, a new link has been requested." });
   }
 
   const verificationToken = crypto.randomUUID();
@@ -48,5 +35,5 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: summarizeEmailFailure(result.reason), notificationId: result.notification.id }, { status: 503 });
   }
 
-  return NextResponse.json({ ok: true, message: `Verification email sent to ${user.email}.`, notificationId: result.notification.id });
+  return NextResponse.json({ ok: true, message: `SMTP accepted the verification email for ${user.email}.`, notificationId: result.notification.id });
 }

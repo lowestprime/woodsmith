@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import { DividerBand, PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
+import { PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
+import { getPortfolioCategories } from "@/lib/catalog";
 
 export const metadata: Metadata = {
   title: "Beaman Woodworks | Handcrafted Hardwood Furniture",
@@ -14,6 +15,7 @@ export const metadata: Metadata = {
 export default async function HomePage() {
   await connection();
   const site = getSiteSettings();
+  const categories = getPortfolioCategories(site.pieceCategories);
   const home = getPage("home");
   const featuredSlugs = new Set<string>([...site.homepageFeaturedPieceSlugs]);
   const pieces = listPieces().filter((piece) => featuredSlugs.has(piece.slug)).sort((left, right) => left.featuredRank - right.featuredRank);
@@ -44,7 +46,6 @@ export default async function HomePage() {
         </PageSection>
       </Shell>
 
-      <DividerBand />
 
       <Shell>
         <PageSection editHref="/studio?panel=pieces">
@@ -53,7 +54,7 @@ export default async function HomePage() {
             title="Current collection and established build patterns"
             copy="Public piece pages stay selective and accurate. Available work can be reserved from the shop, while custom work starts with a direct contact request."
           />
-          <div className="piece-grid">{pieces.map((piece) => <PieceCard key={piece.slug} piece={piece} />)}</div>
+          <div className="piece-grid">{pieces.map((piece) => <PieceCard categories={categories} key={piece.slug} piece={piece} />)}</div>
         </PageSection>
 
         <PageSection editHref="/studio?panel=pages&page=home#page-home">
@@ -79,11 +80,11 @@ export default async function HomePage() {
           <SectionHeading
             eyebrow="Behind the scenes"
             title="Process notes and references that stay close to the work"
-            copy="Recent process notes now sit beside the shop, so buyers can move from finished pieces to making details without leaving the site."
+            copy="Recent process notes and reference material remain available in the dedicated Process archive."
           />
           <div className="journal-rail">{processNotes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
           <div className="hero-actions">
-            <Link className="button-secondary" href="/shop#process">Read more process notes</Link>
+            <Link className="button-secondary" href="/process">Read more process notes</Link>
             <Link className="button-primary" href="/contact">Ask about a custom piece</Link>
           </div>
         </PageSection>

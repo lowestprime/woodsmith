@@ -1,12 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-
-function isMediaPanel() {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  return params.get("panel") === "media";
-}
+import { useSearchParams } from "next/navigation";
 
 function isTypingTarget(target: EventTarget | null) {
   const element = target as HTMLElement | null;
@@ -16,7 +11,7 @@ function isTypingTarget(target: EventTarget | null) {
 }
 
 function mediaCards() {
-  return Array.from(document.querySelectorAll<HTMLElement>(".studio-media-card"));
+  return Array.from(document.querySelectorAll<HTMLButtonElement>(".studio-media-browser-card"));
 }
 
 function setActiveCard(index: number) {
@@ -25,8 +20,9 @@ function setActiveCard(index: number) {
   const nextIndex = Math.max(0, Math.min(cards.length - 1, index));
   cards.forEach((card, i) => {
     card.dataset.mediaActive = i === nextIndex ? "true" : "false";
-    card.tabIndex = 0;
+    card.tabIndex = i === nextIndex ? 0 : -1;
   });
+  cards[nextIndex]?.click();
   cards[nextIndex]?.scrollIntoView({ block: "center", behavior: "smooth" });
   cards[nextIndex]?.focus({ preventScroll: true });
   return nextIndex;
@@ -54,14 +50,16 @@ function submitFirst(buttonOrForm: HTMLButtonElement | HTMLFormElement | null) {
 }
 
 export function StudioMediaHotkeys() {
-  const [enabled, setEnabled] = useState(false);
+  const searchParams = useSearchParams();
+  const enabled = searchParams.get("panel") === "media";
   const [active, setActive] = useState(0);
-  const [notice, setNotice] = useState("J/K move · S save · R reviewed · P piece · F filter · ? help");
+  const [notice, setNotice] = useState("J/K move · S save · R reviewed · P piece · U unassign · F filter · ? help");
   const help = useMemo(() => [
     "J / K: next or previous media card",
     "S: save the active media metadata form",
     "R: toggle Reviewed for public use on the active card",
     "P: focus the Piece assignment select on the active card",
+    "U: clear the Piece assignment on the active card",
     "F: focus the media filter box",
     "G: return to top of media panel",
     "Shift+G: jump to final visible media card",
@@ -69,14 +67,10 @@ export function StudioMediaHotkeys() {
   ], []);
 
   useEffect(() => {
-    setEnabled(isMediaPanel());
-  }, []);
-
-  useEffect(() => {
     if (!enabled) return;
     const cards = mediaCards();
     cards.forEach((card, index) => {
-      card.tabIndex = 0;
+      card.tabIndex = index === 0 ? 0 : -1;
       card.dataset.mediaIndex = String(index + 1);
     });
     setActive(setActiveCard(0));
@@ -117,7 +111,8 @@ export function StudioMediaHotkeys() {
 
       if (key === "f") {
         event.preventDefault();
-        const input = document.querySelector<HTMLInputElement>('form input[name="media"]');
+        const input = document.querySelector<HTMLInputElement>('[data-media-local-filter="true"]')
+          ?? document.querySelector<HTMLInputElement>('form input[name="media"]');
         input?.focus();
         input?.select();
         setNotice("Filter focused.");
@@ -125,18 +120,19 @@ export function StudioMediaHotkeys() {
       }
 
       const card = activeCard();
-      if (!card) return;
+      const inspector = document.querySelector<HTMLElement>(".studio-media-inspector");
+      if (!card || !inspector) return;
 
       if (key === "s") {
         event.preventDefault();
-        const saveButton = Array.from(card.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find((button) => /save media/i.test(button.textContent || "")) ?? null;
+        const saveButton = Array.from(inspector.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find((button) => /save media/i.test(button.textContent || "")) ?? null;
         if (submitFirst(saveButton)) setNotice("Saving active media metadata...");
         return;
       }
 
       if (key === "r") {
         event.preventDefault();
-        const reviewed = Array.from(card.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) => input.name === "reviewed");
+        const reviewed = Array.from(inspector.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) => input.name === "reviewed");
         if (reviewed) {
           reviewed.checked = !reviewed.checked;
           reviewed.dispatchEvent(new Event("change", { bubbles: true }));
@@ -147,15 +143,26 @@ export function StudioMediaHotkeys() {
 
       if (key === "p") {
         event.preventDefault();
-        const pieceSelect = card.querySelector<HTMLSelectElement>('select[name="pieceSlug"]');
+        const pieceSelect = inspector.querySelector<HTMLSelectElement>('select[name="pieceSlug"]');
         pieceSelect?.focus();
         setNotice("Piece selector focused. Choose a piece, then press S after leaving the select.");
         return;
       }
 
+      if (key === "u") {
+        event.preventDefault();
+        const pieceSelect = inspector.querySelector<HTMLSelectElement>('select[name="pieceSlug"]');
+        if (pieceSelect) {
+          pieceSelect.value = "";
+          pieceSelect.dispatchEvent(new Event("change", { bubbles: true }));
+          setNotice("Piece assignment cleared. Press S to save and remove the image from that piece.");
+        }
+        return;
+      }
+
       if (key === "?") {
         event.preventDefault();
-        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J / K move · S save · R reviewed · P piece · F filter · ? help");
+        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J / K move · S save · R reviewed · P piece · U unassign · F filter · ? help");
       }
     }
 

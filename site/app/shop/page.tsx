@@ -3,9 +3,9 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
 import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, pieceShippingEnabled } from "@/lib/catalog";
-import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
+import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
-import { getPage, listPieces, listPosts } from "@/lib/db";
+import { getPage, listPieces } from "@/lib/db";
 import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
@@ -18,7 +18,6 @@ export default async function ShopPage() {
   await connection();
   const page = getPage("shop");
   const pieces = listPieces().filter((piece) => piece.status === "inventory");
-  const posts = listPosts();
 
   return (
     <Shell>
@@ -26,7 +25,7 @@ export default async function ShopPage() {
         <PageIntro
           eyebrow="Shop"
           title={page?.title ?? "Shop"}
-          copy={page?.intro ?? "Available work, asking prices, local pickup/drop-off review, and behind-the-scenes notes from the woodshop."}
+          copy={page?.intro ?? "Available work, asking prices, pickup, delivery, and shipping options from the woodshop."}
           targets={{
             title: { resource: "page", id: "shop", field: "title" },
             copy: { resource: "page", id: "shop", field: "intro" }
@@ -68,11 +67,6 @@ export default async function ShopPage() {
             );
           })}
         </div>
-      </PageSection>
-
-      <PageSection editHref="/studio?panel=process" id="process">
-        <PageIntro eyebrow="Process" title="Behind the scenes" copy="Selected notes from the woodshop, including build decisions, materials, and a few outside references worth keeping close to the bench." />
-        <div className="journal-listing">{posts.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>
     </Shell>
   );

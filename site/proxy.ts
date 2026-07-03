@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-const CANONICAL_ORIGIN = "https://www.woodmat.ch";
-const LEGACY_HOSTS = new Set(["ws.lowestprime.synology.me", "woodmat.ch"]);
+const CANONICAL_ORIGIN = "https://woodmat.ch";
+const LEGACY_HOSTS = new Set(["www.woodmat.ch"]);
 
 export function proxy(request: NextRequest) {
   const host = request.headers.get("host")?.toLowerCase();

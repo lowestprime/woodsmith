@@ -1,30 +1,15 @@
 import type { PieceRecord } from "@/lib/db";
+import { defaultPieceCategories, normalizePieceCategories, pieceCategoryKey, type PieceCategoryDefinition } from "@/lib/categories";
 
-export const portfolioCategories = [
-  { key: "all", label: "All pieces" },
-  { key: "tables", label: "Tables" },
-  { key: "benches", label: "Benches" },
-  { key: "stepstools", label: "Stepstools" },
-  { key: "cabinets", label: "Cabinets" },
-  { key: "objects", label: "Objects" }
-] as const;
-
-export type PortfolioCategoryKey = (typeof portfolioCategories)[number]["key"];
-
-export function normalizePortfolioCategory(value: string | null | undefined): PortfolioCategoryKey {
-  const normalized = (value || "").toLowerCase().trim();
-
-  if (normalized.includes("bench")) return "benches";
-  if (normalized.includes("step") || normalized.includes("stool")) return "stepstools";
-  if (normalized.includes("cabinet") || normalized.includes("rack")) return "cabinets";
-  if (normalized.includes("table") || normalized.includes("desk")) return "tables";
-  if (normalized.includes("tray") || normalized.includes("object")) return "objects";
-
-  return "all";
+export function getPortfolioCategories(value?: unknown) {
+  return normalizePieceCategories(value ?? defaultPieceCategories);
 }
 
-export function getPiecePortfolioCategory(piece: Pick<PieceRecord, "category">): PortfolioCategoryKey {
-  return normalizePortfolioCategory(piece.category);
+export function getPiecePortfolioCategory(
+  piece: Pick<PieceRecord, "category">,
+  categories: PieceCategoryDefinition[] = defaultPieceCategories
+) {
+  return pieceCategoryKey(piece.category, categories);
 }
 
 export function getDisplayMediaPaths(piece: Pick<PieceRecord, "mediaPaths" | "metadata" | "status">) {

@@ -24,6 +24,7 @@ import {
   getUserByEmail,
   getUserByVerificationToken,
   listCartItems,
+  listPieces,
   markEmailVerified,
   refreshMediaLibrary,
   removeCartItem,
@@ -53,8 +54,9 @@ import {
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
 import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMediaAsset, resolveMediaPath } from "@/lib/media";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
-import { sendNotificationEmail } from "@/lib/notifications";
+import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
+import { categoryKey, normalizePieceCategories, type PieceCategoryIcon } from "@/lib/categories";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
   revalidatePath("/");
@@ -113,6 +115,26 @@ function revalidateMediaSurfaces(affected?: {
 
   for (const slug of affected.pageSlugs) {
     revalidatePath(slug === "home" ? "/" : `/${slug}`);
+  }
+}
+
+function syncPieceMediaMembership(relativePath: string, previousPieceSlug: string | null | undefined, nextPieceSlug: string | null | undefined, publishable: boolean) {
+  const touched = new Set([previousPieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)));
+  for (const slug of touched) {
+    const piece = getPiece(slug);
+    if (!piece) continue;
+    const withoutPath = piece.mediaPaths.filter((path) => path !== relativePath);
+    const shouldInclude = slug === nextPieceSlug && publishable;
+    savePiece({
+      ...piece,
+      mediaPaths: shouldInclude ? [...withoutPath, relativePath] : withoutPath,
+      metadata: slug === nextPieceSlug
+        ? {
+            ...piece.metadata,
+            ...(publishable ? { verifiedMedia: true, mediaReviewRequired: false } : { mediaReviewRequired: true })
+          }
+        : piece.metadata
+    });
   }
 }
 
@@ -200,6 +222,10 @@ export async function loginAction(formData: FormData) {
     redirect(`/account/login?error=invalid&email=${encodeURIComponent(email)}`);
   }
 
+  if (user.role === "customer" && !user.emailVerified) {
+    redirect(`/account/login?error=verify&email=${encodeURIComponent(email)}`);
+  }
+
   await createSession(user);
   redirect(redirectTo);
 }
@@ -253,16 +279,20 @@ export async function signupAction(formData: FormData) {
 
   const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(verificationToken)}`;
 
+  let verificationSent = false;
+  let verificationError = "";
   try {
-    await sendNotificationEmail({
+    const delivery = await sendNotificationEmail({
       category: "signup",
       to: email,
       subject: "Confirm your Beaman Woodworks email",
       text: `Welcome to Beaman Woodworks.\n\nConfirm your email address to finish activating your buyer account:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
       html: `<p>Welcome to Beaman Woodworks.</p><p>Confirm your email address to finish activating your buyer account:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
     });
-  } catch {
-    // Notification is best-effort; signup must not fail when email transport is unavailable.
+    verificationSent = delivery.sent;
+    if (!delivery.sent) verificationError = summarizeEmailFailure(delivery.reason);
+  } catch (error) {
+    verificationError = summarizeEmailFailure(error);
   }
 
   const user = await verifyLogin(email, password);
@@ -285,34 +315,8 @@ export async function signupAction(formData: FormData) {
     // Notification is best-effort; signup must not fail when email transport is unavailable.
   }
 
-  redirect("/account/profile?created=1&verify=sent");
-}
-
-export async function resendVerificationAction() {
-  const user = await requireUser();
-  if (user.emailVerified) {
-    redirect("/account/profile?verify=already");
-  }
-
-  const verificationToken = crypto.randomUUID();
-  const verificationExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 48).toISOString();
-  setEmailVerificationToken(user.email, verificationToken, verificationExpiresAt);
-
-  const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(verificationToken)}`;
-
-  try {
-    await sendNotificationEmail({
-      category: "signup",
-      to: user.email,
-      subject: "Confirm your Beaman Woodworks email",
-      text: `Confirm your email address:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
-      html: `<p>Confirm your email address:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
-    });
-  } catch {
-    // Notification is best-effort; resending must not throw to the user.
-  }
-
-  redirect("/account/profile?verify=sent");
+  const verifyState = verificationSent ? "sent" : "failed";
+  redirect(`/account/profile?created=1&verify=${verifyState}${verificationError ? `&verificationError=${encodeURIComponent(verificationError)}` : ""}`);
 }
 
 export async function verifyEmailAction(token: string) {
@@ -751,7 +755,6 @@ export async function saveSiteSettingsAction(formData: FormData) {
         notificationForwardEmail: optionalField(formData.get("notificationForwardEmail")) || existing.notificationForwardEmail,
         repoUrl: optionalField(formData.get("repoUrl")) || existing.repoUrl,
         siteAnnouncement: optionalField(formData.get("siteAnnouncement")) || existing.siteAnnouncement,
-        pieceDividerNames: parseListField(formData.get("pieceDividerNames")).length > 0 ? parseListField(formData.get("pieceDividerNames")) : existing.pieceDividerNames,
         homepageFeaturedPieceSlugs: parseListField(formData.get("homepageFeaturedPieceSlugs")).length > 0
           ? parseListField(formData.get("homepageFeaturedPieceSlugs")).map((slug) => slug.trim()).filter(Boolean)
           : existing.homepageFeaturedPieceSlugs,
@@ -802,6 +805,84 @@ export async function saveSiteSettingsAction(formData: FormData) {
   revalidatePath("/portfolio");
   revalidatePath("/process");
   redirect("/studio?panel=settings&saved=settings");
+}
+
+export async function savePieceCategoryAction(formData: FormData) {
+  await requireAdmin();
+  const settings = getSiteSettings();
+  const originalKey = categoryKey(optionalField(formData.get("originalKey")));
+  const label = requiredField(formData.get("label"), "Category label");
+  const key = categoryKey(optionalField(formData.get("key")) || label);
+  const allowedIcons = new Set<PieceCategoryIcon>(["tables", "benches", "stepstools", "cabinets", "objects"]);
+  const requestedIcon = optionalField(formData.get("icon")) as PieceCategoryIcon;
+  const icon = allowedIcons.has(requestedIcon) ? requestedIcon : "objects";
+  const aliases = parseListField(formData.get("aliasesText"));
+
+  if (!key || key === "all") {
+    redirect("/studio?panel=categories&error=category-key");
+  }
+
+  const categories = normalizePieceCategories(settings.pieceCategories);
+  const existingIndex = categories.findIndex((category) => category.key === originalKey || category.key === key);
+  const previous = existingIndex >= 0 ? categories[existingIndex] : null;
+  const nextCategory = { key, label, icon, aliases };
+  const nextCategories = existingIndex >= 0
+    ? categories.map((category, index) => index === existingIndex ? nextCategory : category)
+    : [...categories, nextCategory];
+
+  saveSiteSettings({ ...settings, pieceCategories: nextCategories });
+
+  if (previous && (previous.key !== key || previous.label !== label)) {
+    for (const piece of listPieces(true)) {
+      const currentCategory = piece.category.trim().toLowerCase();
+      if (currentCategory === previous.key.toLowerCase() || currentCategory === previous.label.toLowerCase()) {
+        savePiece({ ...piece, category: label });
+        revalidatePieceSurfaces(piece.slug);
+      }
+    }
+  }
+
+  revalidatePath("/portfolio");
+  revalidatePath("/studio");
+  redirect(`/studio?panel=categories&saved=category&category=${encodeURIComponent(key)}`);
+}
+
+export async function deletePieceCategoryAction(formData: FormData) {
+  await requireAdmin();
+  const settings = getSiteSettings();
+  const key = categoryKey(requiredField(formData.get("key"), "Category key"));
+  const categories = normalizePieceCategories(settings.pieceCategories);
+  if (categories.length <= 1) {
+    redirect("/studio?panel=categories&error=category-last");
+  }
+
+  const category = categories.find((entry) => entry.key === key);
+  if (!category) {
+    redirect("/studio?panel=categories&error=category-missing");
+  }
+
+  const replacementKey = categoryKey(optionalField(formData.get("replacementKey")));
+  const replacement = categories.find((entry) => entry.key === replacementKey && entry.key !== key) ?? null;
+  const affectedPieces = listPieces(true).filter((piece) => {
+    const current = piece.category.trim().toLowerCase();
+    return current === category.key.toLowerCase() || current === category.label.toLowerCase();
+  });
+
+  if (affectedPieces.length > 0 && !replacement) {
+    redirect(`/studio?panel=categories&error=category-in-use&category=${encodeURIComponent(key)}`);
+  }
+
+  if (replacement) {
+    for (const piece of affectedPieces) {
+      savePiece({ ...piece, category: replacement.label });
+      revalidatePieceSurfaces(piece.slug);
+    }
+  }
+
+  saveSiteSettings({ ...settings, pieceCategories: categories.filter((entry) => entry.key !== key) });
+  revalidatePath("/portfolio");
+  revalidatePath("/studio");
+  redirect("/studio?panel=categories&deleted=category");
 }
 
 export async function savePageAction(formData: FormData) {
@@ -1163,17 +1244,9 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
     }
   });
 
-  savePiece({
-    ...piece,
-    mediaPaths: piece.mediaPaths.includes(relativePath) ? piece.mediaPaths : [...piece.mediaPaths, relativePath],
-    metadata: {
-      ...piece.metadata,
-      verifiedMedia: true,
-      mediaReviewRequired: false
-    }
-  });
+  syncPieceMediaMembership(relativePath, media.pieceSlug, pieceSlug, true);
 
-  revalidateMediaSurfaces({ pieceSlugs: [pieceSlug], postSlugs: [], pageSlugs: [] });
+  revalidateMediaSurfaces({ pieceSlugs: [...new Set([media.pieceSlug, pieceSlug].filter((slug): slug is string => Boolean(slug)))], postSlugs: [], pageSlugs: [] });
   return { ok: true, kind: "assign", relativePath, pieceSlug };
 }
 
@@ -1239,13 +1312,15 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
   const mediaJson = optionalField(formData.get("mediaJson"));
   const existing = getMedia(relativePath);
   const visualLabels = parseListField(formData.get("visualLabelsText"));
+  const nextPieceSlug = optionalField(formData.get("pieceSlug")) || null;
+  const reviewed = parseBooleanField(formData.get("reviewed"));
   const metadata = {
     ...(existing?.metadata ?? {}),
     cleanupMode: optionalField(formData.get("cleanupMode")) || existing?.metadata.cleanupMode || "original",
     photoQuality: optionalField(formData.get("photoQuality")) || existing?.metadata.photoQuality || "unrated",
     displayOrder: parseInteger(formData.get("displayOrder"), Number(existing?.metadata.displayOrder ?? 0)),
     sourceCredit: optionalField(formData.get("sourceCredit")) || existing?.metadata.sourceCredit || "",
-    verifiedPieceSlug: optionalField(formData.get("verifiedPieceSlug")) || existing?.metadata.verifiedPieceSlug || "",
+    verifiedPieceSlug: optionalField(formData.get("verifiedPieceSlug")),
     cropAspect: optionalField(formData.get("cropAspect")) || existing?.metadata.cropAspect || "free",
     cropNote: optionalField(formData.get("cropNote")) || existing?.metadata.cropNote || "",
     visualLabels: visualLabels.length > 0 ? visualLabels : Array.isArray(existing?.metadata.visualLabels) ? existing.metadata.visualLabels : []
@@ -1263,7 +1338,7 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
     : {
         relativePath,
         altText: optionalField(formData.get("altText")),
-        pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+        pieceSlug: nextPieceSlug,
         postSlug: optionalField(formData.get("postSlug")) || null,
         pageSlug: optionalField(formData.get("pageSlug")) || null,
         projectReference: optionalField(formData.get("projectReference")) || null,
@@ -1271,11 +1346,16 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
         focalX: parseInteger(formData.get("focalX"), 50),
         focalY: parseInteger(formData.get("focalY"), 50),
         zoom: Number(formData.get("zoom")?.toString() || "1") || 1,
-        reviewed: parseBooleanField(formData.get("reviewed")),
+        reviewed,
         tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
         metadata
       });
-  revalidateMediaSurfaces();
+  syncPieceMediaMembership(relativePath, existing?.pieceSlug, nextPieceSlug, reviewed);
+  revalidateMediaSurfaces({
+    pieceSlugs: [...new Set([existing?.pieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)))],
+    postSlugs: [...new Set([existing?.postSlug, optionalField(formData.get("postSlug"))].filter((slug): slug is string => Boolean(slug)))],
+    pageSlugs: [...new Set([existing?.pageSlug, optionalField(formData.get("pageSlug"))].filter((slug): slug is string => Boolean(slug)))]
+  });
   return { ok: true, kind: "save", relativePath };
 }
 

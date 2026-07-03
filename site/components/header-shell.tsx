@@ -9,6 +9,8 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     const el = ref.current;
     if (!el) return;
     let lastY = window.scrollY;
+    let direction: "up" | "down" | null = null;
+    let directionStartY = lastY;
     let ticking = false;
 
     function update() {
@@ -16,8 +18,14 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       if (!el) return;
       const y = window.scrollY;
       const delta = y - lastY;
-      const goingDown = delta > 4;
-      const goingUp = delta < -4;
+
+      if (delta > 0 && direction !== "down") {
+        direction = "down";
+        directionStartY = lastY;
+      } else if (delta < 0 && direction !== "up") {
+        direction = "up";
+        directionStartY = lastY;
+      }
 
       if (y > 64) {
         el.classList.add("is-compact");
@@ -25,9 +33,11 @@ export function HeaderShell({ children }: { children: ReactNode }) {
         el.classList.remove("is-compact");
       }
 
-      if (y > 200 && goingDown) {
+      if (y > 200 && direction === "down" && y - directionStartY > 12) {
         el.classList.add("is-hidden");
-      } else if (goingUp || y < 64) {
+      } else if (direction === "up" && directionStartY - y > 12) {
+        el.classList.remove("is-hidden");
+      } else if (y < 64) {
         el.classList.remove("is-hidden");
       }
 

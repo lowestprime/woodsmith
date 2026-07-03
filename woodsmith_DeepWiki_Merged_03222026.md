@@ -26,7 +26,7 @@ Beaman Woodworks is a self-hosted Next.js 16 application with a SQLite-backed co
 Routes under `site/app/` provide:
 
 - home page
-- categorized portfolio index and piece detail pages
+- dynamically categorized portfolio index and piece detail pages
 - shop index and cart
 - process index and individual process notes
 - custom work contact page and project-status lookup
@@ -48,6 +48,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - site settings
 - pages
 - portfolio and shop pieces
+- portfolio category labels, matching rules, icons, and safe reassignment
 - custom work types
 - users and public profiles
 - process notes
@@ -59,7 +60,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - buyer email verification at `/account/verify`
 - visitor-session logging endpoint at `/api/visits`
 
-Admins signed into the public site also get pencil edit entrypoints on supported sections. Those links jump into the matching dashboard workspace rather than exposing raw JSON or code editing on the public pages.
+Admins signed into the public site get pencil controls on supported sections. Mapped text and link destinations save through `/api/studio/inline-edit` without a route change or full-page reload. Structural changes use the explicit full-editor link; no raw JSON editor is exposed.
 
 ## Database model
 
@@ -80,9 +81,9 @@ The SQLite schema includes these primary tables:
 - `reviews`
 - `notifications`
 
-Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases with an older seeded version are upgraded to the current v4 seed set without deleting runtime orders, projects, users, or media metadata. The current migration also normalizes legacy developer-email references from `lowestprime@proton.me` to `cooperbeaman@proton.me` in seeded settings and profile data.
+Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v5 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. The migrations normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
-User records now keep buyer email-verification state inside `metadata_json`, and visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
+User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
 
 ## Media system
 
@@ -94,15 +95,16 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - filters Synology and OS sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and `._*`
 - stores alt text, clustering, associations, focal data, zoom, cleanup mode, visual labels, source credit, display order, review state, and tags in SQLite
 - can upload, rename, delete, and assign files in the mounted media root
+- synchronizes reviewed piece assignments with public piece galleries while keeping unreviewed assignments private
 - can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
 
-Current clustering is heuristic and based on folder, filename, and date-like patterns. The media verification queue suggests candidates but does not assign them automatically. Manual dashboard assignments take priority and are the source of truth for published piece-media identity.
+Current credential-free clustering is heuristic and based on folder, filename, and date-like patterns. The compact media desk includes server and instant filters, assignment-state filters, one active inspector, a verification queue, and J/K/F/P/U/R/S keyboard controls. Suggestions never publish a guessed identity; manual reviewed assignments remain the source of truth.
 
 ## Commerce and operations
 
 The commerce layer supports inventory items in the shop, asking-price presentation, cart totals, coupon handling, tax estimate, pickup/delivery/shipping labels, Stripe Checkout Session creation, Stripe invoice creation from the dashboard, and EasyPost label requests from the dashboard.
 
-Payment capture, invoice delivery, shipping labels, and outbound email degrade safely when provider environment variables are missing.
+Payment capture, invoice delivery, shipping labels, and outbound email degrade safely when provider environment variables are missing. SMTP success requires acceptance of the primary recipient; transport failures are surfaced to the verification UI.
 
 ## Custom work workflow
 
@@ -131,7 +133,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - local Mackintosh typography throughout the site
 - rounded controls, larger form fields, and more legible button language
 - categorized portfolio tabs with icon-like labels
-- shop-first Process section replacing Journal
+- dedicated Process archive replacing Journal without duplicating Process inside Shop
 - account button as a rounded profile badge
 - full-size lightbox overlays with zoom, pan, arrows, close button, and `Esc` support
 - private dashboard media preview cards with crop/focal controls, cleanup modes, project media strips, and verification candidates
@@ -151,12 +153,15 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/actions.ts`: server actions for auth, checkout, content editing, custom work, media, projects, and orders
 - `site/lib/seed.ts`: initial content, settings, and v3 content truth
 - `site/lib/catalog.ts`: portfolio categories, media display rules, and fulfillment labels
+- `site/lib/categories.ts`: persisted category normalization, matching rules, and icon definitions
 - `site/lib/media.ts`: media scanning, upload, rename, delete, sidecar filtering, and path resolution
 - `site/lib/ai-services.ts`: optional OpenAI image generation, image edit, and embedding helpers with disabled-by-default feature gates
 - `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notifications.ts`: SMTP and notification queue handling
-- `site/components/forms.tsx`: public, account, profile, resend-verification, and custom work forms
+- `site/components/forms.tsx`: public, account, profile, and custom work forms
+- `site/components/inline-edit-assistant.tsx`: capture-phase in-place editing and structural-editor handoff
+- `site/components/verification-resend-panel.tsx`: email-based verification resend with accurate delivery status
 - `site/components/site-chrome.tsx`: header, footer, cards, shared layout pieces, and account badge
 - `site/components/header-shell.tsx`: client scroll-state wrapper that compacts and hides the header chrome during downward scrolling
 - `site/components/media-picker.tsx`: visual library picker used by page, piece, and process editors

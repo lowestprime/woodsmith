@@ -48,8 +48,8 @@ Start from `.env.example` and fill at least:
 ```dotenv
 PUID=1026
 PGID=100
-SITE_URL=https://www.woodmat.ch
-NEXT_PUBLIC_SITE_URL=https://www.woodmat.ch
+SITE_URL=https://woodmat.ch
+NEXT_PUBLIC_SITE_URL=https://woodmat.ch
 MEDIA_ROOT=/app/pics
 STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
@@ -66,6 +66,8 @@ SMTP_PORT=465
 SMTP_SECURE=true
 SMTP_USER=
 SMTP_PASSWORD=
+SMTP_FROM_NAME=Beaman Woodworks
+SMTP_FROM_ADDRESS=
 SHIP_FROM_NAME=Beaman Woodworks
 SHIP_FROM_STREET1=
 SHIP_FROM_CITY=
@@ -77,9 +79,11 @@ OPENAI_IMAGE_MODEL=gpt-image-1.5
 OPENAI_IMAGE_SIZE=1024x1024
 OPENAI_IMAGE_QUALITY=high
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+OPENAI_VISION_MODEL=gpt-4o-mini
 ENABLE_PUBLIC_AI_RENDERING=false
 ENABLE_AI_BACKGROUND_CLEANUP=false
 ENABLE_EMBEDDING_SEARCH=false
+ENABLE_AI_MEDIA_ANALYSIS=false
 ```
 
 ## Compose file
@@ -93,7 +97,7 @@ ENABLE_EMBEDDING_SEARCH=false
 - loopback-only port binding on `127.0.0.1:3002`
 - optional OpenAI feature flags remain disabled unless a server-side API key is provided
 
-The `/app/pics` mount is intentionally read-write. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
+The `/app/pics` mount is intentionally read-write. `MEDIA_ROOT` must be absolute. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
 
 The image now normalizes ownership and read permissions for bundled runtime assets under `/app/site/public` and `/_next/static` so the app still boots correctly when `docker-compose.synology.yml` runs the container as the NAS `PUID:PGID` user instead of the image-default `nextjs` user.
 
@@ -132,7 +136,7 @@ cd /volume2/docker_ssd/woodsmith
 docker compose -f docker-compose.synology.yml up -d
 ```
 
-The startup path for this branch includes the current seed upgrade. On first boot after deploy, persisted legacy developer-contact data is normalized from `lowestprime@proton.me` to `cooperbeaman@proton.me`.
+The startup path includes seed migration v5. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process seed wording.
 
 ## Reverse proxy
 
@@ -144,7 +148,7 @@ Configure Synology Reverse Proxy with:
 
 The public source host should match `SITE_URL` and `NEXT_PUBLIC_SITE_URL`.
 
-The app now treats `https://www.woodmat.ch` as canonical. Requests arriving on `woodmat.ch` or the retired `ws.lowestprime.synology.me` host are redirected by the Next `proxy.ts` boundary to the canonical origin.
+The app treats `https://woodmat.ch` as canonical. Requests arriving on `www.woodmat.ch` are redirected by the Next `proxy.ts` boundary to the canonical origin.
 
 ## Cloudflare visitor-location headers
 
@@ -181,7 +185,8 @@ Missing or removed files must return **404** (not a broken stream). Stale `media
 
 ### Woodshop dashboard (`/studio`) and large libraries
 
-- The dashboard **paginates media** (48 items per page) and caps verification-candidate scans. Use **Filter** and **Next page** for very large `pics/` trees.
+- The dashboard paginates the thumbnail browser at 48 items per page while keeping the complete indexed library available to assignment and verification tools. Use the server filter, instant page filter, assignment filters, and **Next** for very large media trees.
+- Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
 - After upgrading the app image, use **Refresh library** once so the scanner skips Synology **`@eaDir`** folders and **`SYNOFILE_THUMB*`** files; those paths are also excluded from SQL media lists.
 - If logs show `ENOENT` for profile or generated paths, fix the file on disk or clear the bad path in SQLite / re-upload.
 
@@ -218,5 +223,6 @@ A SQLite backup without the matching media tree is no longer sufficient for full
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
+- Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews, AI cleaned image copies, and embedding re-ranking are optional OpenAI-backed features and remain disabled by default.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

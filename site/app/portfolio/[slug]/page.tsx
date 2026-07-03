@@ -3,10 +3,12 @@ import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { MediaLightbox } from "@/components/lightbox";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
 import { PageSection, ShareLinks, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
-import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/format";
+import { addToCartAction } from "@/lib/actions";
+import { formatDate, formatDimensions, formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -54,20 +56,34 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
       <PageSection className="piece-detail-grid" editHref={`/studio?panel=pieces&piece=${encodeURIComponent(piece.slug)}#piece-${piece.slug}`}>
         <div>
           <p className="eyebrow">{piece.category}</p>
-          <h1>{piece.title}</h1>
-          <p className="lede">{piece.summary}</p>
+          <h1 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h1>
+          <p className="lede" {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
           <div className="detail-stack">
-            <p>{piece.story}</p>
-            <ul className="detail-bullets">{piece.details.map((detail) => <li key={detail}>{detail}</li>)}</ul>
+            <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "story" })}>{piece.story}</p>
+            <ul className="detail-bullets">{piece.details.map((detail, index) => <li key={`${detail}-${index}`} {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "details", index })}>{detail}</li>)}</ul>
           </div>
           <div className="meta-grid">
-            <div><span>Status</span><strong>{piece.availabilityLabel}</strong></div>
+            <div><span>Status</span><strong {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</strong></div>
             <div><span>Dimensions</span><strong>{formatDimensions(piece.dimensions)}</strong></div>
-            <div><span>Materials</span><strong>{piece.materials.join(" / ")}</strong></div>
+            <div><span>Materials</span><strong className="inline-list">{piece.materials.map((material, index) => <span key={`${material}-${index}`} {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "materials", index })}>{material}</span>)}</strong></div>
             <div><span>Lead time</span><strong>{formatLeadTime(piece.leadTimeDays)}</strong></div>
             <div><span>Fulfillment</span><strong>{fulfillment.join(" / ")}</strong></div>
             <div><span>Updated</span><strong>{formatDate(piece.updatedAt)}</strong></div>
           </div>
+          {piece.status === "inventory" ? (
+            <div className="piece-reserve-panel">
+              <div>
+                <span>Asking price</span>
+                <strong>{piece.priceCents == null ? "Available by request" : formatMoney(piece.priceCents)}</strong>
+                <small>{Math.max(0, piece.inventoryCount)} available</small>
+              </div>
+              <form action={addToCartAction}>
+                <input name="pieceSlug" type="hidden" value={piece.slug} />
+                <input name="quantity" type="hidden" value="1" />
+                <button className="button-primary" disabled={piece.inventoryCount < 1} type="submit">Reserve piece</button>
+              </form>
+            </div>
+          ) : null}
           <ShareLinks title={piece.title} url={`${siteUrl}/portfolio/${piece.slug}`} />
         </div>
         <div>

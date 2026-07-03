@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { ActionForm } from "@/components/action-form";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { toMediaUrl } from "@/lib/format";
@@ -17,8 +18,9 @@ type StudioOption = {
 type VerificationEntry = {
   pieceSlug: string;
   pieceTitle: string;
+  assignedCount: number;
   needsReview: boolean;
-  suggestions: Array<{ relativePath: string; score: number }>;
+  suggestions: Array<{ item: MediaRecord; score: number }>;
 };
 
 type StudioMediaWorkspaceProps = {
@@ -75,19 +77,6 @@ function assignmentBadge(item: MediaRecord, pieces: StudioOption[], posts: Studi
   return "Unassigned";
 }
 
-function selectedCandidateCount(items: MediaRecord[], pieceSlug: string) {
-  return items.filter((item) => item.pieceSlug === pieceSlug).length;
-}
-
-function verificationSuggestions(items: MediaRecord[], entry: VerificationEntry) {
-  return entry.suggestions
-    .map((candidate) => ({
-      item: items.find((item) => item.relativePath === candidate.relativePath),
-      score: candidate.score
-    }))
-    .filter((candidate): candidate is { item: MediaRecord; score: number } => Boolean(candidate.item));
-}
-
 function UploadMediaPanel({
   uploadAction,
   onUploaded,
@@ -98,8 +87,8 @@ function UploadMediaPanel({
   onRefresh: () => void;
 }) {
   return (
-    <article className="studio-panel studio-media-utility-panel">
-      <h3>Upload media</h3>
+    <details className="studio-panel studio-media-utility-panel">
+      <summary>Upload media</summary>
       <ActionForm action={uploadAction} className="request-form compact-form" onSuccess={(result, context) => {
         if (result.kind === "upload") {
           onUploaded(result, context.formData);
@@ -120,7 +109,7 @@ function UploadMediaPanel({
           <button className="button-secondary" onClick={onRefresh} type="button">Reload list</button>
         </div>
       </ActionForm>
-    </article>
+    </details>
   );
 }
 
@@ -230,57 +219,60 @@ function MediaInspector({
           <label><span>Project reference</span><input defaultValue={item.projectReference ?? ""} name="projectReference" type="text" /></label>
         </div>
         <label><span>Tags</span><textarea defaultValue={item.tags.join(", ")} name="tagsText" rows={2} /></label>
-        <label><span>Visual search labels</span><textarea defaultValue={visualLabels.join(", ")} name="visualLabelsText" rows={2} /></label>
-        <div className="field-grid three-up compact-grid">
-          <label>
-            <span>Cleanup mode</span>
-            <select defaultValue={cleanupMode} name="cleanupMode">
-              <option value="original">Original</option>
-              <option value="soft-matte">Soft matte</option>
-              <option value="warm-crop">Warm crop</option>
-              <option value="subject-isolate">Subject isolate</option>
-            </select>
-          </label>
-          <label>
-            <span>Photo quality</span>
-            <select defaultValue={String(item.metadata.photoQuality ?? "unrated")} name="photoQuality">
-              <option value="unrated">Unrated</option>
-              <option value="shop-ready">Shop ready</option>
-              <option value="portfolio-ready">Portfolio ready</option>
-              <option value="background-distracting">Background distracting</option>
-              <option value="needs-reshoot">Needs reshoot</option>
-            </select>
-          </label>
-          <label><span>Display order</span><input defaultValue={Number(item.metadata.displayOrder ?? 0)} name="displayOrder" type="number" /></label>
-        </div>
-        <div className="field-grid two-up compact-grid">
-          <label><span>Source credit</span><input defaultValue={String(item.metadata.sourceCredit ?? "")} name="sourceCredit" type="text" /></label>
-          <label><span>Verified piece slug</span><input defaultValue={String(item.metadata.verifiedPieceSlug ?? "")} name="verifiedPieceSlug" type="text" /></label>
-        </div>
-        {item.kind === "image" ? (
-          <MediaCropEditor
-            altText={item.altText}
-            cleanupMode={cleanupMode}
-            cropAspect={String(item.metadata.cropAspect ?? "free")}
-            focalX={item.focalX}
-            focalY={item.focalY}
-            relativePath={item.relativePath}
-            zoom={item.zoom}
-          />
-        ) : (
+        <details className="media-inspector-advanced">
+          <summary>Crop, quality, credit, and search metadata</summary>
+          <label><span>Visual search labels</span><textarea defaultValue={visualLabels.join(", ")} name="visualLabelsText" rows={2} /></label>
           <div className="field-grid three-up compact-grid">
-            <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
-            <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
-            <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+            <label>
+              <span>Cleanup mode</span>
+              <select defaultValue={cleanupMode} name="cleanupMode">
+                <option value="original">Original</option>
+                <option value="soft-matte">Soft matte</option>
+                <option value="warm-crop">Warm crop</option>
+                <option value="subject-isolate">Subject isolate</option>
+              </select>
+            </label>
+            <label>
+              <span>Photo quality</span>
+              <select defaultValue={String(item.metadata.photoQuality ?? "unrated")} name="photoQuality">
+                <option value="unrated">Unrated</option>
+                <option value="shop-ready">Shop ready</option>
+                <option value="portfolio-ready">Portfolio ready</option>
+                <option value="background-distracting">Background distracting</option>
+                <option value="needs-reshoot">Needs reshoot</option>
+              </select>
+            </label>
+            <label><span>Display order</span><input defaultValue={Number(item.metadata.displayOrder ?? 0)} name="displayOrder" type="number" /></label>
           </div>
-        )}
-        <label><span>Crop note</span><input defaultValue={String(item.metadata.cropNote ?? "")} name="cropNote" type="text" /></label>
+          <div className="field-grid two-up compact-grid">
+            <label><span>Source credit</span><input defaultValue={String(item.metadata.sourceCredit ?? "")} name="sourceCredit" type="text" /></label>
+            <label><span>Verified piece slug</span><input defaultValue={String(item.metadata.verifiedPieceSlug ?? "")} name="verifiedPieceSlug" type="text" /></label>
+          </div>
+          {item.kind === "image" ? (
+            <MediaCropEditor
+              altText={item.altText}
+              cleanupMode={cleanupMode}
+              cropAspect={String(item.metadata.cropAspect ?? "free")}
+              focalX={item.focalX}
+              focalY={item.focalY}
+              relativePath={item.relativePath}
+              zoom={item.zoom}
+            />
+          ) : (
+            <div className="field-grid three-up compact-grid">
+              <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
+              <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
+              <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+            </div>
+          )}
+          <label><span>Crop note</span><input defaultValue={String(item.metadata.cropNote ?? "")} name="cropNote" type="text" /></label>
+        </details>
         <label className="checkbox-row"><input defaultChecked={item.reviewed} name="reviewed" type="checkbox" value="1" /><span>Reviewed for public use</span></label>
         <button className="button-primary" type="submit">Save media</button>
       </ActionForm>
 
       {item.kind === "image" ? (
-        <ActionForm action={cleanupAction} className="request-form compact-form ai-cleanup-form" onSuccess={(result, context) => {
+        <details className="media-inspector-advanced"><summary>AI background cleanup</summary><ActionForm action={cleanupAction} className="request-form compact-form ai-cleanup-form" onSuccess={(result, context) => {
           if (result.kind === "cleanup") {
             onCleanup(result, context.formData);
           }
@@ -296,7 +288,7 @@ function MediaInspector({
           </label>
           <label><span>Cleanup prompt</span><textarea defaultValue="Remove distracting background clutter while preserving the woodworking piece, joinery, wood color, proportions, and natural shadows." name="cleanupPrompt" rows={2} /></label>
           <button className="button-secondary" type="submit">Generate cleaned copy</button>
-        </ActionForm>
+        </ActionForm></details>
       ) : null}
     </article>
   );
@@ -316,10 +308,37 @@ export function StudioMediaWorkspace({
   assignAction,
   refreshAction
 }: StudioMediaWorkspaceProps) {
+  const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [selectedPath, setSelectedPath] = useState(initialItems[0]?.relativePath ?? "");
+  const [query, setQuery] = useState("");
+  const [assignmentFilter, setAssignmentFilter] = useState<"all" | "unassigned" | "assigned" | "review">("all");
+  const [candidateAssignments, setCandidateAssignments] = useState<Record<string, string>>({});
+  const [automationMessage, setAutomationMessage] = useState<string | null>(null);
+  const [isRefreshing, startRefresh] = useTransition();
+  const deferredQuery = useDeferredValue(query.trim().toLowerCase());
 
-  const selectedItem = items.find((item) => item.relativePath === selectedPath) ?? items[0] ?? null;
+  useEffect(() => {
+    setItems(initialItems);
+    setSelectedPath((current) => initialItems.some((item) => item.relativePath === current) ? current : initialItems[0]?.relativePath ?? "");
+  }, [initialItems]);
+
+  const filteredItems = useMemo(() => items.filter((item) => {
+    const assignmentMatches = assignmentFilter === "all"
+      || (assignmentFilter === "unassigned" && !item.pieceSlug && !item.postSlug && !item.pageSlug && !item.projectReference)
+      || (assignmentFilter === "assigned" && Boolean(item.pieceSlug || item.postSlug || item.pageSlug || item.projectReference))
+      || (assignmentFilter === "review" && !item.reviewed);
+    if (!assignmentMatches) return false;
+    if (!deferredQuery) return true;
+    const searchText = [item.fileName, item.relativePath, item.altText, item.clusterKey, item.pieceSlug, item.postSlug, item.pageSlug, item.tags.join(" ")].filter(Boolean).join(" ").toLowerCase();
+    return searchText.includes(deferredQuery);
+  }), [assignmentFilter, deferredQuery, items]);
+
+  const selectedItem = filteredItems.find((item) => item.relativePath === selectedPath) ?? filteredItems[0] ?? null;
+
+  useEffect(() => {
+    if (selectedItem && selectedItem.relativePath !== selectedPath) setSelectedPath(selectedItem.relativePath);
+  }, [selectedItem, selectedPath]);
 
   function updateItem(relativePath: string, updater: (current: MediaRecord) => MediaRecord) {
     setItems((current) => current.map((item) => (item.relativePath === relativePath ? updater(item) : item)));
@@ -328,17 +347,35 @@ export function StudioMediaWorkspace({
   const verificationCards = useMemo(() => verificationQueue
     .map((entry) => ({
       ...entry,
-      assignedCount: selectedCandidateCount(items, entry.pieceSlug),
-      suggestions: verificationSuggestions(items, entry)
+      assignedCount: entry.assignedCount + Object.values(candidateAssignments).filter((pieceSlug) => pieceSlug === entry.pieceSlug).length,
+      suggestions: entry.suggestions.filter(({ item }) => !candidateAssignments[item.relativePath])
     }))
-    .filter((entry) => entry.suggestions.length > 0 || entry.needsReview), [items, verificationQueue]);
+    .filter((entry) => entry.suggestions.length > 0 || entry.needsReview), [candidateAssignments, verificationQueue]);
+
+  async function runAutomation(action: "analyze" | "cluster" | "match") {
+    setAutomationMessage(`Running ${action}...`);
+    try {
+      const response = await fetch("/api/media-analysis", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) });
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown> & { error?: string };
+      if (!response.ok) {
+        setAutomationMessage(payload.error || `Automation failed with HTTP ${response.status}.`);
+        return;
+      }
+      setAutomationMessage(`${action.charAt(0).toUpperCase() + action.slice(1)} complete. Candidate data is refreshing.`);
+      startRefresh(() => router.refresh());
+    } catch (error) {
+      setAutomationMessage(error instanceof Error ? error.message : "Media automation request failed.");
+    }
+  }
 
   return (
     <div className="studio-media-workspace">
       <div className="studio-media-sidebar">
         <UploadMediaPanel
           onRefresh={() => {
-            void refreshAction().then(() => window.location.reload());
+            void refreshAction().then((result) => {
+              if (result.ok) startRefresh(() => router.refresh());
+            });
           }}
           onUploaded={(result, formData) => {
             const nextItem: MediaRecord = {
@@ -374,9 +411,20 @@ export function StudioMediaWorkspace({
           uploadAction={uploadAction}
         />
 
+        <details className="studio-panel studio-media-utility-panel media-automation-panel">
+          <summary>Automation tools</summary>
+          <p className="muted-copy">Rebuild tags and ranked candidates. Suggested matches still require manual confirmation.</p>
+          <div className="button-row compact-button-row">
+            <button className="button-secondary" disabled={isRefreshing} onClick={() => void runAutomation("analyze")} type="button">Analyze</button>
+            <button className="button-secondary" disabled={isRefreshing} onClick={() => void runAutomation("cluster")} type="button">Cluster</button>
+            <button className="button-secondary" disabled={isRefreshing} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
+          </div>
+          {automationMessage ? <p className="studio-inline-notice" role="status">{automationMessage}</p> : null}
+        </details>
+
         {verificationCards.length > 0 ? (
-          <article className="studio-panel studio-media-utility-panel">
-            <h3>Verification queue</h3>
+          <details className="studio-panel studio-media-utility-panel" open>
+            <summary>Verification queue</summary>
             <p className="muted-copy">Assign photo candidates without publishing guesses. Manual verification always wins.</p>
             <div className="studio-verification-list">
               {verificationCards.slice(0, 12).map((entry) => (
@@ -395,6 +443,7 @@ export function StudioMediaWorkspace({
                         className="candidate-assignment-form"
                         key={item.relativePath}
                         onSuccess={() => {
+                          setCandidateAssignments((current) => ({ ...current, [item.relativePath]: entry.pieceSlug }));
                           updateItem(item.relativePath, (current) => ({
                             ...current,
                             pieceSlug: entry.pieceSlug,
@@ -415,22 +464,35 @@ export function StudioMediaWorkspace({
                 </section>
               ))}
             </div>
-          </article>
+          </details>
         ) : null}
       </div>
 
       <div className="studio-media-browser">
+        <div className="studio-media-browser-toolbar">
+          <label><span className="sr-only">Filter loaded media</span><input data-media-local-filter="true" onChange={(event) => setQuery(event.target.value)} placeholder="Filter this page" type="search" value={query} /></label>
+          <div aria-label="Assignment filter" className="studio-media-filter-pills" role="group">
+            {(["all", "unassigned", "assigned", "review"] as const).map((filter) => (
+              <button aria-pressed={assignmentFilter === filter} className={assignmentFilter === filter ? "is-active" : ""} key={filter} onClick={() => setAssignmentFilter(filter)} type="button">
+                {filter === "review" ? "Needs review" : filter.charAt(0).toUpperCase() + filter.slice(1)}
+              </button>
+            ))}
+          </div>
+          <span className="muted-copy">{filteredItems.length} / {items.length}</span>
+        </div>
         <div className="studio-media-browser-grid">
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <button
               className={`studio-media-browser-card${item.relativePath === selectedItem?.relativePath ? " is-active" : ""}`}
+              data-media-active={item.relativePath === selectedItem?.relativePath ? "true" : "false"}
+              data-media-path={item.relativePath}
               key={item.relativePath}
               onClick={() => setSelectedPath(item.relativePath)}
               type="button"
             >
               <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
                 {item.kind === "image"
-                  ? <img alt={item.altText || item.fileName} src={toMediaUrl(item.relativePath)} />
+                  ? <img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} />
                   : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
               </div>
               <div className="studio-media-browser-body">
@@ -449,6 +511,7 @@ export function StudioMediaWorkspace({
             cleanupAction={cleanupAction}
             deleteAction={deleteAction}
             item={selectedItem}
+            key={selectedItem.relativePath}
             onCleanup={(result, formData) => {
               const nextItem: MediaRecord = {
                 ...selectedItem,

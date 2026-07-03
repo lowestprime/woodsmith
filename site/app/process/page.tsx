@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
 import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
+import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPosts } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -19,8 +20,8 @@ export default async function ProcessPage() {
   return (
     <Shell>
       <PageSection editHref="/studio?panel=process">
-        <PageIntro eyebrow="Process" title={page?.title ?? "Process"} copy={page?.intro ?? "Behind-the-scenes notes, material observations, and selected outside references."} />
-        {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
+        <PageIntro eyebrow="Process" title={page?.title ?? "Process"} copy={page?.intro ?? "Behind-the-scenes notes, material observations, and selected outside references."} targets={{ title: { resource: "page", id: "process", field: "title" }, copy: { resource: "page", id: "process", field: "intro" } }} />
+        {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "process", field: "body" })}>{page.body}</p> : null}
         <div className="journal-listing">{notes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>
       {highlights.length > 0 ? (

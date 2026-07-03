@@ -8,11 +8,11 @@ import { listProjectsForEmail } from "@/lib/db";
 export default async function ProfilePage({
   searchParams
 }: {
-  searchParams: Promise<{ created?: string; reset?: string; verify?: string }>;
+  searchParams: Promise<{ created?: string; reset?: string; verify?: string; verificationError?: string }>;
 }) {
   const user = await requireUser();
   const projects = listProjectsForEmail(user.email);
-  const { verify } = await searchParams;
+  const { verify, verificationError } = await searchParams;
 
   return (
     <Shell>
@@ -21,6 +21,8 @@ export default async function ProfilePage({
         {verify === "already" ? (
           <p className="notice-panel" role="status">Your email is already verified.</p>
         ) : null}
+        {verify === "sent" ? <p className="notice-panel" role="status">SMTP accepted the verification email. Check your inbox and spam folder for the activation link.</p> : null}
+        {verify === "failed" ? <div className="notice-panel danger" role="alert"><strong>Verification email was not sent.</strong><p>{verificationError || "The mail backend did not accept the message. Review the notification log for details."}</p></div> : null}
         {!user.emailVerified ? <VerificationResendPanel email={user.email} /> : null}
         <div className="account-layout">
           <ProfileForm user={user} />

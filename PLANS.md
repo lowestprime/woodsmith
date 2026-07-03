@@ -2,9 +2,25 @@
 
 ## Beaman Woodworks 3.0 Completion Pass
 
-- Status: SOURCE UPDATED; live deployment still requires redeploy to match this branch
-- Last updated: 2026-04-19
-- Branch: `codex/live-audit-hardening-20260411`
+- Status: SOURCE UPDATED AND LOCALLY VERIFIED; live Synology deployment still requires rebuild/redeploy
+- Last updated: 2026-07-02
+- Branch: `codex/woodsmith-feature-queue-20260702`
+
+## 2026-07-02 Feature Queue Completion and Verification
+
+| ID | Status | Verified outcome |
+|----|--------|------------------|
+| 1. Public navigation and Process/Shop separation | DONE | Removed Process from seeded and rendered primary navigation, removed the Process/behind-the-scenes block from Shop, preserved the dedicated `/process` archive and legacy Journal redirects, and added seed v5 exact-string cleanup for persisted legacy copy. |
+| 2. Buyer email verification | DONE / CONFIGURATION REQUIRED | New accounts receive expiring verification tokens, unverified customer login is rejected, resend accepts an email without an authenticated session, SMTP acceptance is checked for the primary recipient, and UI errors distinguish configuration/authentication/sender/connection failures. Live dispatch still requires valid `SMTP_*` credentials and sender values. |
+| 3. Direct visual editing | DONE | Admin pencil controls intercept in capture phase and edit mapped public text/URLs in place without navigation or full-page refresh. Route changes clear stale editor state; structural edits use the explicit full-editor handoff. No raw JSON control is exposed. |
+| 4. Compact media assignment desk | DONE | Replaced the long media editor stack with a bounded three-pane workspace: utility tools, 48-item thumbnail browser, and one active inspector. Added instant/server/assignment filters, collapsed upload/automation/crop sections, and in-place action state. |
+| 5. Media assignment integrity | DONE | Reviewed assignments now remove stale old-piece gallery membership and add new-piece membership. Unreviewed assignments remain private. Refresh/cluster tools run locally without AI credentials; the AI route requires admin authentication. |
+| 6. Keyboard media workflow | DONE | J/K navigate visible media, F focuses the instant filter, P focuses piece assignment, U clears it, R toggles review state, S saves, and roving tab stops keep one active thumbnail keyboard-focusable. |
+| 7. Editable portfolio categories | DONE | Added persisted category definitions with icon styles and matching aliases. Studio supports add, rename, save, safe delete/reassign, and the portfolio and piece editor consume the same normalized definitions. |
+| 8. Shop reserve coverage | DONE | Available inventory now exposes the asking price and Reserve action on both Shop cards and portfolio piece detail pages; portfolio index cards remain price-free. |
+| 9. Visual and operational cleanup | DONE | Removed decorative divider bands and the obsolete divider-name setting, enlarged the brand emblem, standardized scrollbars, tightened responsive page/admin grids, and compacted the Studio command header. |
+
+Verification for this pass: `npm run typecheck`, `npm run lint`, and `npm run build` pass on Next.js 16.2.10. `npm audit` reports zero known vulnerabilities after updating Nodemailer/ESLint and overriding Next's same-major PostCSS pin to 8.5.16. Authenticated browser QA covered desktop/mobile public navigation, header scroll behavior, Shop separation, piece-detail reservation, category management, compact media layout, and J/K keyboard navigation. The user-referenced development transcript was not present in the workspace or the supplied local paths, so no claims from that transcript were used.
 
 ## 2026-04-19 Verification + No-Jump Studio + Ranked Review Queue
 

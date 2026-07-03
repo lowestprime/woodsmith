@@ -21,6 +21,23 @@ function createTransport() {
   });
 }
 
+export function summarizeEmailFailure(reason: unknown) {
+  const text = String(reason || "Unknown email transport error").replace(/\s+/g, " ").trim();
+  if (/SMTP not configured/i.test(text)) {
+    return "SMTP is not configured. Set SMTP_HOST, SMTP_USER, and SMTP_PASSWORD, then recreate the application container.";
+  }
+  if (/auth|credential|login|password|535|534/i.test(text)) {
+    return "SMTP authentication failed. Verify SMTP_USER and SMTP_PASSWORD or app password, then recreate the application container.";
+  }
+  if (/sender|from|envelope|550|553/i.test(text)) {
+    return "SMTP rejected the sender address. Set SMTP_FROM_ADDRESS to an address authorized by the configured SMTP account.";
+  }
+  if (/ECONNREFUSED|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|connect/i.test(text)) {
+    return "SMTP connection failed. Verify SMTP_HOST, SMTP_PORT, SMTP_SECURE, DNS, and outbound firewall access from the container.";
+  }
+  return text.length > 240 ? `${text.slice(0, 237)}...` : text;
+}
+
 export async function sendNotificationEmail(input: {
   category: string;
   to: string | string[];
@@ -45,8 +62,8 @@ export async function sendNotificationEmail(input: {
   }
 
   try {
-    await transport.sendMail({
-      from: `${site.email.fromName} <${site.email.fromAddress}>`,
+    const result = await transport.sendMail({
+      from: `${process.env.SMTP_FROM_NAME || site.email.fromName} <${process.env.SMTP_FROM_ADDRESS || site.email.fromAddress}>`,
       to: input.to,
       cc: input.cc,
       bcc: [site.email.forwardTo, input.bcc].flat().filter((value): value is string => Boolean(value)),
@@ -55,8 +72,17 @@ export async function sendNotificationEmail(input: {
       text: input.text,
       html: input.html
     });
+    const accepted = Array.isArray(result.accepted) ? result.accepted.map((value) => String(value).toLowerCase()) : [];
+    const requested = (Array.isArray(input.to) ? input.to : [input.to]).map((value) => value.toLowerCase());
+    const primaryAccepted = requested.every((recipient) => accepted.some((value) => value.includes(recipient)));
+    if (!primaryAccepted) {
+      const rejected = Array.isArray(result.rejected) ? result.rejected.map(String).join(", ") : "recipient not accepted";
+      const reason = `SMTP did not accept the verification recipient (${rejected || "recipient not accepted"}).`;
+      updateNotificationStatus(notification.id, "failed", reason);
+      return { queued: true, sent: false, reason, notification, accepted, rejected: result.rejected ?? [] };
+    }
     updateNotificationStatus(notification.id, "sent", null);
-    return { queued: true, sent: true, notification };
+    return { queued: true, sent: true, notification, accepted, rejected: result.rejected ?? [], messageId: String(result.messageId || "") };
   } catch (error) {
     updateNotificationStatus(notification.id, "failed", error instanceof Error ? error.message : "Unknown email transport error");
     return { queued: true, sent: false, reason: error instanceof Error ? error.message : "Unknown email transport error", notification };

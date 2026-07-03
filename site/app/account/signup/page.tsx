@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { ResendVerificationForm, SignupForm } from "@/components/forms";
+import { SignupForm } from "@/components/forms";
+import { VerificationResendPanel } from "@/components/verification-resend-panel";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ error?: string; verify?: string; email?: string }> }) {
@@ -15,12 +16,12 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
             <p>
               {verify === "sent"
                 ? `A verification link was sent to ${email || "your email address"}. Open it before you log in.`
-                : `The account was created for ${email || "that email"}, but SMTP is not currently configured to send the verification email automatically. Use the resend form below after email delivery is configured.`}
+                : `The account was created for ${email || "that email"}, but the mail backend did not accept the verification email. Use the resend control below for the current backend summary.`}
             </p>
           </div>
         ) : null}
         <SignupForm />
-        {verify ? <ResendVerificationForm email={email} /> : null}
+        {verify ? <VerificationResendPanel email={email} /> : null}
         <p className="muted-copy">Already registered? <Link href="/account/login">Log in here.</Link></p>
       </PageSection>
     </Shell>

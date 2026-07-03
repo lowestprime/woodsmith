@@ -20,12 +20,12 @@ function safeEquals(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-export function userEmailVerified(user: Pick<UserRecord, "role" | "metadata">) {
+export function userEmailVerified(user: Pick<UserRecord, "role" | "emailVerified">) {
   if (user.role !== "customer") {
     return true;
   }
 
-  return user.metadata.emailVerified !== false;
+  return user.emailVerified;
 }
 
 export function createPasswordHash(password: string) {
@@ -99,13 +99,11 @@ export async function getCurrentUser() {
 
   const session = getSessionRecord(hashToken(token));
   if (!session) {
-    cookieStore.delete(COOKIE_NAME);
     return null;
   }
 
   const user = getUserByEmail(session.userEmail);
   if (!user) {
-    cookieStore.delete(COOKIE_NAME);
     return null;
   }
   return user;

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAiServiceStatus } from "@/lib/ai-services";
+import { getCurrentUser } from "@/lib/auth";
 import { listMedia, listPieces, refreshMediaLibrary } from "@/lib/db";
 import {
   autoAnalyzeUntaggedMedia,
@@ -12,19 +13,23 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user || user.role !== "admin") {
+    return NextResponse.json({ error: "Admin authentication is required for media analysis." }, { status: 401 });
+  }
+
   const status = getAiServiceStatus();
   const body = await request.json().catch(() => ({})) as { action?: string };
   const action = body.action ?? "full";
-
-  if (!status.embeddingSearch && !status.mediaAnalysis) {
-    return NextResponse.json({
-      error: "AI media analysis requires at least one of ENABLE_EMBEDDING_SEARCH or ENABLE_AI_MEDIA_ANALYSIS to be enabled with a valid OPENAI_API_KEY."
-    }, { status: 503 });
+  if (!["full", "analyze", "embed", "cluster", "match"].includes(action)) {
+    return NextResponse.json({ error: "Unsupported media-analysis action." }, { status: 400 });
   }
 
   const pieces = listPieces(true);
-  const media = listMedia({ includeUnreviewed: true });
   const results: Record<string, unknown> = { action, timestamp: new Date().toISOString() };
+  const locallyRefreshed = action === "full" || action === "cluster" || action === "match";
+  const media = locallyRefreshed ? refreshMediaLibrary() : listMedia({ includeUnreviewed: true });
+  if (locallyRefreshed) results.localIndex = { refreshed: media.length, method: "folder-filename-date-metadata" };
 
   if (action === "full" || action === "analyze") {
     if (status.mediaAnalysis) {
@@ -38,8 +43,7 @@ export async function POST(request: Request) {
   if (action === "full" || action === "embed") {
     if (status.embeddingSearch) {
       const piecesEmbedded = await computePieceEmbeddings(pieces).catch(() => 0);
-      const refreshedMedia = refreshMediaLibrary();
-      const mediaEmbedded = await computeMediaEmbeddings(refreshedMedia).catch(() => 0);
+      const mediaEmbedded = await computeMediaEmbeddings(media).catch(() => 0);
       results.embeddings = { piecesEmbedded, mediaEmbedded };
     } else {
       results.embeddings = { skipped: true, reason: "ENABLE_EMBEDDING_SEARCH is not enabled" };

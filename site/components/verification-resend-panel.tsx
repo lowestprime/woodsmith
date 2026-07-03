@@ -16,7 +16,11 @@ export function VerificationResendPanel({ email }: VerificationResendPanelProps)
     setError(null);
     startTransition(async () => {
       try {
-        const response = await fetch("/api/account/resend-verification", { method: "POST" });
+        const response = await fetch("/api/account/resend-verification", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email })
+        });
         const payload = await response.json().catch(() => ({})) as { ok?: boolean; message?: string; error?: string; notificationId?: string };
         if (!response.ok || !payload.ok) {
           setError(payload.error || `Email verification could not be sent. Backend returned HTTP ${response.status}.`);

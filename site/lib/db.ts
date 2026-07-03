@@ -3,7 +3,6 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
-  pieceDividerNames,
   seedCommissionTypes,
   seedPages,
   seedPieces,
@@ -12,6 +11,7 @@ import {
   siteSettingsSeed
 } from "@/lib/seed";
 import { scanMediaLibrary } from "@/lib/media";
+import { normalizePieceCategories } from "@/lib/categories";
 
 export type UserRole = "admin" | "woodworker" | "customer";
 export type PublicationStatus = "published" | "draft" | "archived";
@@ -19,9 +19,7 @@ export type PieceStatus = "inventory" | "commission" | "archive";
 export type ProjectKind = "commission" | "purchase";
 export type ProjectVisibility = "public" | "private";
 
-export type SiteSettings = typeof siteSettingsSeed & {
-  pieceDividerNames: string[];
-};
+export type SiteSettings = typeof siteSettingsSeed;
 
 export type UserRecord = {
   id: string;
@@ -655,8 +653,8 @@ function clearUserEmailReferences(db: DatabaseSync, email: string) {
 function seedDefaultContent(db: DatabaseSync) {
   const seededVersion = getSeededVersion(db);
   if (seededVersion === 0) {
-    upsertSetting(db, "site", { ...siteSettingsSeed, pieceDividerNames });
-    upsertSetting(db, "seededVersion", { version: 4, updatedAt: nowIso() });
+    upsertSetting(db, "site", siteSettingsSeed);
+    upsertSetting(db, "seededVersion", { version: 5, updatedAt: nowIso() });
   }
 
   for (const profile of seedProfiles) {
@@ -921,7 +919,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   if (seededVersion > 0 && seededVersion < 3) {
-    saveSiteSettings({ ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
+    saveSiteSettings({ ...siteSettingsSeed });
 
     for (const profile of seedProfiles) {
       saveUserProfile({
@@ -1013,7 +1011,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   if (seededVersion > 0 && seededVersion < 4) {
-    const currentSite = getSetting<SiteSettings>("site", { ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
+    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
     const nextSite: SiteSettings = {
       ...currentSite,
       developerName: siteSettingsSeed.developerName,
@@ -1077,6 +1075,44 @@ function seedDefaultContent(db: DatabaseSync) {
     db.prepare(`UPDATE posts SET author_email = ? WHERE lower(author_email) = lower(?)`).run("cooperbeaman@proton.me", "lowestprime@proton.me");
 
     upsertSetting(db, "seededVersion", { version: 4, updatedAt: nowIso() });
+  }
+
+  if (seededVersion > 0 && seededVersion < 5) {
+    const timestamp = nowIso();
+    const legacyPageCopy = [
+      {
+        slug: "shop",
+        field: "intro",
+        from: "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop.",
+        to: "Available work, asking prices, pickup, delivery, and shipping options from the woodshop."
+      },
+      {
+        slug: "process",
+        field: "body",
+        from: "Process writing and outside references live beside the shop so buyers can move from finished work to the making process without switching systems.",
+        to: "Process writing and outside references remain available at their existing routes."
+      },
+      {
+        slug: "journal",
+        field: "body",
+        from: "Journal content now lives under Process and is surfaced from the shop.",
+        to: "Journal links now redirect to the dedicated Process archive."
+      }
+    ] as const;
+
+    for (const replacement of legacyPageCopy) {
+      db.prepare(`UPDATE pages SET ${replacement.field} = ?, updated_at = ? WHERE slug = ? AND ${replacement.field} = ?`)
+        .run(replacement.to, timestamp, replacement.slug, replacement.from);
+    }
+
+    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
+    const legacyNavigationHrefs = new Set(["/process", "/shop#process"]);
+    const navigation = currentSite.navigation.filter((item) => !legacyNavigationHrefs.has(String(item.href))) as unknown as SiteSettings["navigation"];
+    if (navigation.length !== currentSite.navigation.length) {
+      saveSiteSettings({ ...currentSite, navigation });
+    }
+
+    upsertSetting(db, "seededVersion", { version: 5, updatedAt: timestamp });
   }
 }
 
@@ -1422,7 +1458,16 @@ function mapNotification(row: Record<string, unknown>): NotificationRecord {
   };
 }
 export function getSiteSettings() {
-  return getSetting<SiteSettings>("site", { ...siteSettingsSeed, pieceDividerNames: [...pieceDividerNames] });
+  const fallback = { ...siteSettingsSeed };
+  const stored = getSetting<SiteSettings>("site", fallback);
+  const activeSettings = { ...(stored as SiteSettings & { pieceDividerNames?: unknown }) };
+  delete activeSettings.pieceDividerNames;
+  return {
+    ...fallback,
+    ...activeSettings,
+    navigation: Array.isArray(stored.navigation) ? stored.navigation : fallback.navigation,
+    pieceCategories: normalizePieceCategories((stored as SiteSettings & { pieceCategories?: unknown }).pieceCategories)
+  };
 }
 
 export function saveSiteSettings(input: SiteSettings) {

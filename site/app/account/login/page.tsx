@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { LoginForm, ResendVerificationForm } from "@/components/forms";
+import { LoginForm } from "@/components/forms";
+import { VerificationResendPanel } from "@/components/verification-resend-panel";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string; email?: string; redirectTo?: string; notice?: string }> }) {
@@ -24,12 +25,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 ? "A fresh verification email has been sent."
                 : notice === "verified"
                   ? "Your email address is verified. You can log in now."
-                  : "A fresh verification email was queued, but SMTP is not currently configured to send it automatically."}
+                  : "The mail backend did not accept the verification email. Use the resend control for the current backend summary."}
             </p>
           </div>
         ) : null}
         <LoginForm email={email} redirectTo={redirectTo} />
-        {error === "verify" ? <ResendVerificationForm email={email} /> : null}
+        {error === "verify" ? <VerificationResendPanel email={email} /> : null}
         <p className="muted-copy"><Link href="/account/signup">Create an account</Link> · <Link href="/account/forgot">Forgot password</Link></p>
       </PageSection>
     </Shell>

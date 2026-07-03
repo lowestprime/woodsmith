@@ -86,8 +86,7 @@ function applyPatch(patch: InlinePatch) {
 
   if (resource === "settings") {
     const settings = getSiteSettings();
-    if (field === "pieceDividerNames") saveSiteSettings({ ...settings, pieceDividerNames: editList([...settings.pieceDividerNames], mode, index, value) });
-    else if (field === "navigation") saveSiteSettings({ ...settings, navigation: editLabel([...settings.navigation] as unknown as NavLink[], mode, index, value) as unknown as typeof settings.navigation });
+    if (field === "navigation") saveSiteSettings({ ...settings, navigation: editLabel([...settings.navigation] as unknown as NavLink[], mode, index, value) as unknown as typeof settings.navigation });
     else if (field === "navigation.href") { if (mode !== "update") throw new Error("Navigation URLs can only be updated inline."); saveSiteSettings({ ...settings, navigation: editNavUrl([...settings.navigation] as unknown as NavLink[], index, value) as unknown as typeof settings.navigation }); }
     else if (field === "socialLinks") saveSiteSettings({ ...settings, socialLinks: editLabel([...settings.socialLinks] as unknown as SocialLink[], mode, index, value) as unknown as typeof settings.socialLinks });
     else if (field === "socialLinks.url") { if (mode !== "update") throw new Error("Social link URLs can only be updated inline."); saveSiteSettings({ ...settings, socialLinks: editSocialUrl([...settings.socialLinks] as unknown as SocialLink[], index, value) as unknown as typeof settings.socialLinks }); }

@@ -22,7 +22,11 @@ export type MediaScanRecord = {
 };
 
 export function getMediaRoot() {
-  return path.resolve(process.env.MEDIA_ROOT || DEFAULT_MEDIA_ROOT);
+  const configuredRoot = process.env.MEDIA_ROOT?.trim() || DEFAULT_MEDIA_ROOT;
+  if (!path.isAbsolute(configuredRoot)) {
+    throw new Error("MEDIA_ROOT must be an absolute filesystem path.");
+  }
+  return path.normalize(configuredRoot);
 }
 
 export function getMediaUrl(relativePath: string) {

@@ -69,17 +69,6 @@ export type SeedProfile = {
   metadata: Record<string, unknown>;
 };
 
-export const pieceDividerNames = [
-  "Dining Room Table",
-  "End Table",
-  "Scientists Desk",
-  "Footstool",
-  "Spice Rack",
-  "Pantry Cabinets",
-  "Pastry Table",
-  "Hallway Bench"
-];
-
 export const siteSettingsSeed = {
   brandName: "Beaman Woodworks",
   brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop.",
@@ -101,10 +90,10 @@ export const siteSettingsSeed = {
     { label: "Workshop", href: "/" },
     { label: "Portfolio", href: "/portfolio" },
     { label: "Shop", href: "/shop" },
-    { label: "Process", href: "/shop#process" },
     { label: "About", href: "/about" },
     { label: "Contact", href: "/contact" }
   ],
+  pieceCategories: defaultPieceCategories,
   homepageFeaturedMode: "manual",
   homepageFeaturedPieceSlugs: ["hallway-bench", "pastry-table", "pantry-cabinets", "footstool"],
   siteAnnouncement: "Lead times reflect the active build queue. Available work can be reserved online, and custom work starts with a direct contact request.",
@@ -560,7 +549,7 @@ export const seedPages: SeedPage[] = [
     title: "Shop",
     navLabel: "Shop",
     status: "published",
-    intro: "Available work, asking prices, delivery options, and behind-the-scenes notes from the woodshop.",
+    intro: "Available work, asking prices, pickup, delivery, and shipping options from the woodshop.",
     body: "Inventory counts, asking prices, pickup or shipping options, and order status are managed from the private dashboard and reflected live on the public shop page.",
     layout: "ledger",
     sections: []
@@ -571,7 +560,7 @@ export const seedPages: SeedPage[] = [
     navLabel: "Process",
     status: "published",
     intro: "Behind-the-scenes notes, material observations, and selected outside references.",
-    body: "Process writing and outside references live beside the shop so buyers can move from finished work to the making process without switching systems.",
+    body: "Process writing and outside references remain available at their existing routes.",
     layout: "process",
     sections: []
   },
@@ -581,7 +570,7 @@ export const seedPages: SeedPage[] = [
     navLabel: "Process",
     status: "draft",
     intro: "Legacy route retained for redirects.",
-    body: "Journal content now lives under Process and is surfaced from the shop.",
+    body: "Journal links now redirect to the dedicated Process archive.",
     layout: "redirect",
     sections: []
   },
@@ -644,3 +633,4 @@ export const seedProfiles: SeedProfile[] = [
     metadata: { showOnAboutPage: true, developer: true }
   }
 ];
+import { defaultPieceCategories } from "@/lib/categories";

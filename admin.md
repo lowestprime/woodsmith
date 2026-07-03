@@ -11,11 +11,11 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 ## Dashboard areas
 
-The dashboard now opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil links while you are signed in; those links jump straight into the matching dashboard workspace.
+The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; **Full editor** opens the matching dashboard workspace for structural changes.
 
 ### Settings
 
-The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, piece divider names, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
+The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
 
 ### Pages
 
@@ -26,6 +26,8 @@ Changes save into the mounted SQLite data store, revalidate the matching public 
 ### Portfolio and shop pieces
 
 The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, assign media paths, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified.
+
+The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Categories can be renamed safely; deletion requires that assigned pieces are either absent or reassigned to another category.
 
 Do not guess piece-to-photo identity. If a piece is not verified, leave media unassigned or keep it marked for review. Scientist Desk media must stay withheld until the correct black phenolic resin top, birds-eye maple rails, and white maple legs photos are verified.
 
@@ -47,7 +49,7 @@ It also supports:
 
 ### Process notes
 
-Process notes replace the old Journal surface. The editor supports title, excerpt, markdown body, publication state, cover media, tags, and source-credit links for outside references or inspiration.
+Process notes replace the old Journal surface and remain in the dedicated `/process` archive rather than inside Shop. The editor supports title, excerpt, markdown body, publication state, cover media, tags, and source-credit links for outside references or inspiration.
 
 ### Media library
 
@@ -64,6 +66,8 @@ The media section operates against the NAS photo library mounted directly to `/a
 - generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
 - delete files
 - refresh the indexed library
+
+The desk keeps one active inspector beside the thumbnail browser. `J`/`K` move between visible records, `F` focuses the instant page filter, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, and `S` saves. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering. The verification queue suggests candidates from filenames, tags, folders, and metadata but never auto-assigns a piece.
 
@@ -92,7 +96,7 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-Password resets, project updates, contact requests, and commerce emails queue notification records. If SMTP is missing, notifications stay in the database and show the send failure instead of pretending delivery succeeded.
+Password resets, verification links, project updates, contact requests, and commerce emails queue notification records. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures are shown accurately instead of being reported as sent.
 
 ## Buyer-facing workflow
 
@@ -133,7 +137,7 @@ These features require server configuration before they work live:
 
 ### The site sent no email
 
-Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, and `SMTP_PASSWORD`, then review the Notifications section for queued or failed records. Buyer email verification and visitor-session alerts use the same outbound email transport.
+Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, and `SMTP_FROM_ADDRESS`, then review the Notifications section for queued or failed records. Buyer email verification and visitor-session alerts use the same outbound email transport.
 
 ### Checkout did not open Stripe
 

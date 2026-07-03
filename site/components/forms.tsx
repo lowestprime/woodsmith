@@ -1,7 +1,6 @@
 import {
   forgotPasswordAction,
   loginAction,
-  resendVerificationAction,
   resetPasswordAction,
   signupAction,
   studioLoginAction,
@@ -135,18 +134,6 @@ export function ForgotPasswordForm() {
         <input name="email" required type="email" />
       </label>
       <button className="button-secondary" type="submit">Send reset link</button>
-    </form>
-  );
-}
-
-export function ResendVerificationForm({ email = "" }: { email?: string }) {
-  return (
-    <form action={resendVerificationAction} className="request-form compact-form">
-      <label>
-        <span>Email</span>
-        <input defaultValue={email} name="email" required type="email" />
-      </label>
-      <button className="button-secondary" type="submit">Resend verification link</button>
     </form>
   );
 }

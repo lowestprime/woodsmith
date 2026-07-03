@@ -6,7 +6,8 @@ import { HeaderSearch } from "@/components/header-search";
 import { HeaderShell } from "@/components/header-shell";
 import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
 import { avatarGradientStyle } from "@/lib/avatar";
-import { getDisplayMediaPaths, getPiecePortfolioCategory, hasVerifiedMedia } from "@/lib/catalog";
+import { getDisplayMediaPaths, hasVerifiedMedia } from "@/lib/catalog";
+import { pieceCategoryIcon, type PieceCategoryDefinition, type PieceCategoryIcon } from "@/lib/categories";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, listPages, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
@@ -40,8 +41,8 @@ function EditGlyph() {
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 16.8V20h3.2L18.7 8.5l-3.2-3.2L4 16.8Z" /><path d="m14.9 5.9 3.2 3.2" /></svg>;
 }
 
-export function CategoryIcon({ category }: { category: string }) {
-  const key = getPiecePortfolioCategory({ category } as Pick<PieceRecord, "category">);
+export function CategoryIcon({ category, icon }: { category: string; icon?: PieceCategoryIcon | "all" }) {
+  const key = icon ?? pieceCategoryIcon(category);
   if (key === "all") return <span className="category-icon all-icon" aria-hidden="true"><i /><i /><i /></span>;
   if (key === "tables") return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;
   if (key === "benches") return <span className="category-icon bench-icon" aria-hidden="true"><i /><i /><i /></span>;
@@ -76,7 +77,11 @@ export async function SiteHeader() {
           <span><EditableText as="span" className="brand-mark" target={{ resource: "settings", field: "brandName" }}>{site.brandName}</EditableText><EditableText as="span" className="brand-subtitle" target={{ resource: "settings", field: "brandTagline" }}>{site.brandTagline}</EditableText></span>
         </Link>
         <nav aria-label="Primary" className="site-nav">
-          {site.navigation.filter((item) => String(item.href) !== "/search").map((item, index) => <Link className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</Link>)}
+          {site.navigation.map((item, index) => ({ item, index })).filter(({ item }) => {
+            const href = String(item.href).toLowerCase();
+            const label = String(item.label).trim().toLowerCase();
+            return href !== "/search" && href !== "/process" && href !== "/shop#process" && label !== "process";
+          }).map(({ item, index }) => <Link className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</Link>)}
           {dynamicPages.map((item) => <Link className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "page", id: item.slug, field: "navLabel" })}>{item.label}</Link>)}
           <HeaderSearch />
         </nav>
@@ -105,15 +110,11 @@ export function PageIntro({ eyebrow, title, copy, targets }: { eyebrow: string; 
 export function SectionHeading({ eyebrow, title, copy, targets }: { eyebrow: string; title: string; copy: string; targets?: Partial<Record<"eyebrow" | "title" | "copy", InlineEditTarget>> }) {
   return <div className="section-heading"><p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p><h2 {...inlineEditAttrs(targets?.title)}>{title}</h2><p {...inlineEditAttrs(targets?.copy)}>{copy}</p></div>;
 }
-export function DividerBand() {
-  const site = getSiteSettings();
-  return <div aria-label="Piece divider list" className="divider-band">{site.pieceDividerNames.map((name, index) => <span key={`${name}-${index}`} {...inlineEditAttrs({ resource: "settings", field: "pieceDividerNames", index })}>{name}</span>)}</div>;
-}
-export function PieceCard({ piece }: { piece: PieceRecord }) {
+export function PieceCard({ piece, categories }: { piece: PieceRecord; categories?: PieceCategoryDefinition[] }) {
   const firstImage = getDisplayMediaPaths(piece)[0];
   const verified = hasVerifiedMedia(piece);
   const media = firstImage ? getMedia(firstImage) : null;
-  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><CategoryIcon category={piece.category} />{piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
+  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><CategoryIcon category={piece.category} icon={pieceCategoryIcon(piece.category, categories)} />{piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
 }
 export function PostCard({ post }: { post: PostRecord }) {
   return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p></article>;
