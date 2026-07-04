@@ -11,6 +11,8 @@ import {
   deleteUserProfileAdminAction,
   deleteCommissionTypeAction,
   deletePieceCategoryAction,
+  loadMediaPageAction,
+  loadMediaVerificationQueueAction,
   refreshMediaLibraryAction,
   renameMediaAction,
   saveCommissionTypeAction,
@@ -44,6 +46,8 @@ import {
   listReviews,
   listUsers,
   type CommissionTypeRecord,
+  type MediaAssignmentFilter,
+  type MediaKindFilter,
   type PageRecord,
   type PieceRecord,
   type PostRecord,
@@ -53,7 +57,6 @@ import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
 import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
-import { StudioMediaFilter } from "@/components/studio-media-filter";
 import { StudioScrollRestore } from "@/components/studio-form";
 import { StudioMediaWorkspace } from "@/components/studio-media-workspace";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
@@ -289,6 +292,8 @@ export default async function StudioPage({
     panel?: string;
     media?: string;
     mediaPage?: string;
+    mediaAssignment?: string;
+    mediaKind?: string;
     error?: string;
     cleaned?: string;
     assigned?: string;
@@ -314,6 +319,8 @@ export default async function StudioPage({
     panel: requestedPanel = "",
     media: mediaQuery = "",
     mediaPage: mediaPageRaw = "",
+    mediaAssignment: mediaAssignmentRaw = "",
+    mediaKind: mediaKindRaw = "",
     error = "",
     cleaned = "",
     assigned = "",
@@ -347,8 +354,13 @@ export default async function StudioPage({
                       : saved === "commission-type" || deleted === "commission-type" ? "custom"
                       : saved === "review" || deleted === "review" ? "reviews"
                         : "overview";
-  const mediaPage = Math.max(1, Number.parseInt(mediaPageRaw, 10) || 1);
-  const mediaOffset = (mediaPage - 1) * STUDIO_MEDIA_PAGE_SIZE;
+  const requestedMediaPage = Math.max(1, Number.parseInt(mediaPageRaw, 10) || 1);
+  const mediaAssignment: MediaAssignmentFilter = ["unassigned", "assigned", "review"].includes(mediaAssignmentRaw)
+    ? mediaAssignmentRaw as MediaAssignmentFilter
+    : "all";
+  const mediaKind: MediaKindFilter = ["image", "video"].includes(mediaKindRaw)
+    ? mediaKindRaw as MediaKindFilter
+    : "all";
   const summary = getStudioDashboardSummary();
   const queryOpt = mediaQuery.trim() || undefined;
   const settings = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettings() : null;
@@ -359,8 +371,12 @@ export default async function StudioPage({
   const posts = currentPanel === "process" || currentPanel === "media" ? listPosts(true) : [];
   const commissionTypes = currentPanel === "custom" ? listCommissionTypes(true) : [];
   const users = currentPanel === "people" ? listUsers() : [];
-  const mediaTotal = currentPanel === "media" ? countMedia({ includeUnreviewed: true, query: queryOpt }) : 0;
-  const media = currentPanel === "media" ? listMedia({ includeUnreviewed: true, query: queryOpt, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset }) : [];
+  const mediaFilters = { includeUnreviewed: true, query: queryOpt, assignment: mediaAssignment, kind: mediaKind } as const;
+  const allMediaTotal = currentPanel === "media" ? countMedia({ includeUnreviewed: true }) : 0;
+  const mediaTotal = currentPanel === "media" ? countMedia(mediaFilters) : 0;
+  const mediaPage = Math.min(Math.max(1, Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)), requestedMediaPage);
+  const mediaOffset = (mediaPage - 1) * STUDIO_MEDIA_PAGE_SIZE;
+  const media = currentPanel === "media" ? listMedia({ ...mediaFilters, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset }) : [];
   const verificationMedia = currentPanel === "media" ? listMedia({ includeUnreviewed: true }) : [];
   const verificationQueue = currentPanel === "media" ? buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image")) : [];
   const projects = currentPanel === "projects" ? listProjects(true).slice(0, 20) : [];
@@ -370,8 +386,10 @@ export default async function StudioPage({
   const notifications = currentPanel === "notifications" ? listNotifications().slice(0, 20) : [];
   const panelHref = (panel: StudioPanel, extras?: Record<string, string>) => {
     const params = new URLSearchParams({ panel });
-    if (panel === "media" && queryOpt) {
-      params.set("media", queryOpt);
+    if (panel === "media") {
+      if (queryOpt) params.set("media", queryOpt);
+      if (mediaAssignment !== "all") params.set("mediaAssignment", mediaAssignment);
+      if (mediaKind !== "all") params.set("mediaKind", mediaKind);
     }
     for (const [key, value] of Object.entries(extras ?? {})) {
       if (value) {
@@ -385,8 +403,12 @@ export default async function StudioPage({
     <Shell>
       <StudioScrollRestore />
       <div data-studio-root="true">
-      <PageSection className="studio-command-header">
-        <PageIntro eyebrow="Woodshop" title="Dashboard" copy="Switch between focused workspaces for pages, pieces, media, process notes, projects, orders, and profiles." />
+      <PageSection className={`studio-command-header${currentPanel === "overview" ? "" : " is-workspace"}`}>
+        {currentPanel === "overview" ? (
+          <PageIntro eyebrow="Woodshop" title="Dashboard" copy="Switch between focused workspaces for pages, pieces, media, process notes, projects, orders, and profiles." />
+        ) : (
+          <div className="studio-workspace-title"><p className="eyebrow">Woodshop dashboard</p><h1>{currentPanel.charAt(0).toUpperCase() + currentPanel.slice(1)}</h1></div>
+        )}
         {error ? <p className="notice-panel danger">Dashboard action failed: {studioMessage(error)}</p> : null}
         {cleaned ? <p className="notice-panel">Cleaned media copy created: {cleaned}</p> : null}
         {assigned ? <p className="notice-panel">Media assigned and marked reviewed: {assigned}</p> : null}
@@ -395,14 +417,14 @@ export default async function StudioPage({
         {refreshed ? <p className="notice-panel">Media library refreshed.</p> : null}
         {saved ? <p className="notice-panel">{saved === "user" && email ? `Profile saved: ${email}` : `Saved: ${saved}`}</p> : null}
         {deleted ? <p className="notice-panel">{deleted === "user" && email ? `Profile deleted: ${email}` : `Deleted: ${deleted}`}</p> : null}
-        <div className="admin-summary-grid">
+        {currentPanel === "overview" ? <div className="admin-summary-grid">
           <article className="studio-panel"><span>{summary.bandwidth.bandwidthPercent}%</span><p>Capacity</p></article>
           <article className="studio-panel"><span>{summary.bandwidth.activeProjects}</span><p>Active projects</p></article>
           <article className="studio-panel"><span>{summary.publishedPieces}</span><p>Published pieces</p></article>
           <article className="studio-panel"><span>{summary.publishedPosts}</span><p>Process notes</p></article>
-          <article className="studio-panel"><span>{currentPanel === "media" ? mediaTotal : "Panel"}</span><p>{currentPanel === "media" ? "Indexed media" : currentPanel}</p></article>
+          <article className="studio-panel"><span>Overview</span><p>Panel</p></article>
           <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Revenue this month</p></article>
-        </div>
+        </div> : null}
         <nav aria-label="Studio workspaces" className="studio-workspace-nav">
           {STUDIO_PANELS.map((panel) => (
             <Link aria-current={panel === currentPanel ? "page" : undefined} className={`studio-workspace-pill ${panel === currentPanel ? "is-active" : ""}`.trim()} href={panelHref(panel)} key={panel}>
@@ -455,11 +477,7 @@ export default async function StudioPage({
         <div className="studio-media-page-head">
           <div className="section-heading"><p className="eyebrow">Media</p><h2>Library assignment desk</h2><p>Filter, inspect, assign, crop, tag, and verify one media record at a time without leaving the current position.</p></div>
           <div className="studio-media-page-tools">
-            <StudioMediaFilter defaultQuery={mediaQuery} />
-            <p className="muted-copy">{mediaTotal} indexed · showing {media.length === 0 ? 0 : mediaOffset + 1}–{mediaOffset + media.length} · {verificationQueue.filter((entry) => entry.needsReview).length} pieces need review</p>
-            {mediaTotal > STUDIO_MEDIA_PAGE_SIZE ? <nav aria-label="Media pagination" className="studio-media-pagination">{mediaPage > 1 ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage - 1) })} scroll={false}>Previous</Link> : <span />}
-              <span className="muted-copy">{mediaPage} / {Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)}</span>
-              {mediaOffset + media.length < mediaTotal ? <Link className="button-secondary" href={panelHref("media", { ...(queryOpt ? { media: queryOpt } : {}), mediaPage: String(mediaPage + 1) })} scroll={false}>Next</Link> : <span />}</nav> : null}
+            <p className="muted-copy">{allMediaTotal} indexed · {verificationQueue.filter((entry) => entry.needsReview).length} pieces need review</p>
           </div>
         </div>
         <StudioMediaWorkspace
@@ -467,6 +485,14 @@ export default async function StudioPage({
           cleanupAction={cleanupMediaBackgroundAction}
           deleteAction={deleteMediaAction}
           initialItems={media}
+          initialAssignment={mediaAssignment}
+          initialKind={mediaKind}
+          initialPage={mediaPage}
+          initialPageSize={STUDIO_MEDIA_PAGE_SIZE}
+          initialQuery={mediaQuery}
+          initialTotal={mediaTotal}
+          loadPageAction={loadMediaPageAction}
+          loadVerificationQueueAction={loadMediaVerificationQueueAction}
           pages={pages.map((page) => ({ slug: page.slug, title: page.title }))}
           pieces={pieces.map((piece) => ({ slug: piece.slug, title: piece.title }))}
           posts={posts.map((post) => ({ slug: post.slug, title: post.title }))}

@@ -57,33 +57,52 @@ function scoreCandidate(piece: PieceRecord, media: MediaRecord) {
   return score;
 }
 
-function embeddingScore(piece: PieceRecord, media: MediaRecord): number {
-  const pieceKey = `piece:${piece.slug}`;
-  const mediaKey = `media:${media.relativePath}`;
-  const pieceEntry = getEmbeddingCache(pieceKey);
-  const mediaEntry = getEmbeddingCache(mediaKey);
-
-  if (!pieceEntry?.embedding?.length || !mediaEntry?.embedding?.length) {
+function embeddingScore(piece: PieceRecord, media: MediaRecord, pieceEmbeddings: Map<string, number[]>, mediaEmbeddings: Map<string, number[]>): number {
+  const pieceEmbedding = pieceEmbeddings.get(piece.slug);
+  const mediaEmbedding = mediaEmbeddings.get(media.relativePath);
+  if (!pieceEmbedding?.length || !mediaEmbedding?.length) {
     return 0;
   }
-
-  return Math.round(Math.max(0, cosineSimilarity(pieceEntry.embedding, mediaEntry.embedding)) * 80);
+  return Math.round(Math.max(0, cosineSimilarity(pieceEmbedding, mediaEmbedding)) * 80);
 }
 
 export function buildMediaVerificationQueue(pieces: PieceRecord[], media: MediaRecord[]) {
+  const assignedByPiece = new Map<string, MediaRecord[]>();
+  for (const item of media) {
+    if (!item.pieceSlug) continue;
+    const assigned = assignedByPiece.get(item.pieceSlug) ?? [];
+    assigned.push(item);
+    assignedByPiece.set(item.pieceSlug, assigned);
+  }
+  const unassignedImages = media.filter((item) => item.kind === "image" && !item.pieceSlug);
+  const pieceEmbeddings = new Map(listEmbeddingsByKind("piece").map((entry) => [entry.key.replace("piece:", ""), entry.embedding]));
+  const mediaEmbeddings = new Map(listEmbeddingsByKind("media").map((entry) => [entry.key.replace("media:", ""), entry.embedding]));
+  const suggestionsByPiece = new Map<string, Array<{ item: MediaRecord; score: number }>>();
+
+  for (const item of unassignedImages) {
+    const ranked = pieces
+      .map((piece) => ({
+        piece,
+        score: scoreCandidate(piece, item) + embeddingScore(piece, item, pieceEmbeddings, mediaEmbeddings)
+      }))
+      .sort((left, right) => right.score - left.score || left.piece.slug.localeCompare(right.piece.slug));
+    const best = ranked[0];
+    const runnerUp = ranked[1];
+    if (!best || best.score < 18) continue;
+
+    const explicitlyVerified = item.metadata.verifiedPieceSlug === best.piece.slug;
+    if (!explicitlyVerified && runnerUp && best.score - runnerUp.score < 6) continue;
+
+    const suggestions = suggestionsByPiece.get(best.piece.slug) ?? [];
+    suggestions.push({ item, score: best.score });
+    suggestionsByPiece.set(best.piece.slug, suggestions);
+  }
+
   return pieces
     .map((piece) => {
-      const assigned = media.filter((item) => item.pieceSlug === piece.slug);
-      const suggestions = media
-        .filter((item) => item.kind === "image" && (!item.pieceSlug || item.pieceSlug === piece.slug))
-        .map((item) => {
-          const heuristicScore = scoreCandidate(piece, item);
-          const aiScore = embeddingScore(piece, item);
-          return { item, score: heuristicScore + aiScore };
-        })
-        .filter((candidate) => candidate.score > 0)
-        .sort((left, right) => right.score - left.score || left.item.relativePath.localeCompare(right.item.relativePath))
-        .slice(0, 8);
+      const assigned = assignedByPiece.get(piece.slug) ?? [];
+      const suggestions = (suggestionsByPiece.get(piece.slug) ?? [])
+        .sort((left, right) => right.score - left.score || left.item.relativePath.localeCompare(right.item.relativePath));
 
       return {
         piece,
@@ -258,7 +277,7 @@ export async function autoPieceToPhotoMatch(pieces: PieceRecord[], media: MediaR
 
       const similarity = cosineSimilarity(pieceEmb, mediaEmb);
       const heuristicScore = scoreCandidate(piece, item);
-      const combinedConfidence = Math.round((similarity * 60) + (Math.min(heuristicScore, 60)));
+      const combinedConfidence = Math.min(100, Math.round((similarity * 60) + Math.min(heuristicScore, 40)));
 
       if (combinedConfidence > 55) {
         matches.push({ pieceSlug: piece.slug, mediaPath: item.relativePath, confidence: combinedConfidence });

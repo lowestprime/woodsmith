@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useActionState, useEffect, useRef } from "react";
+import { type FormEventHandler, type ReactNode, useActionState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import type { MediaActionResult } from "@/lib/actions";
 
@@ -12,7 +12,9 @@ type ActionFormSuccessContext = {
 type ActionFormProps = {
   action: (state: MediaActionResult | null, formData: FormData) => Promise<MediaActionResult>;
   className?: string;
+  confirmMessage?: string;
   children: ReactNode;
+  onInput?: FormEventHandler<HTMLFormElement>;
   resetOnSuccess?: boolean;
   refreshOnSuccess?: boolean;
   onSuccess?: (result: Extract<MediaActionResult, { ok: true }>, context: ActionFormSuccessContext) => void;
@@ -33,23 +35,24 @@ function describe(result: Extract<MediaActionResult, { ok: true }>): string {
 export function ActionForm({
   action,
   className,
+  confirmMessage,
   children,
+  onInput,
   resetOnSuccess,
-  refreshOnSuccess = true,
+  refreshOnSuccess = false,
   onSuccess,
   successLabel,
 }: ActionFormProps) {
   const [state, formAction, isPending] = useActionState<MediaActionResult | null, FormData>(action, null);
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
-  const handledKey = useRef<string | null>(null);
+  const handledState = useRef<MediaActionResult | null>(null);
   const submittedDataRef = useRef<FormData | null>(null);
 
   useEffect(() => {
     if (!state || !state.ok) return;
-    const key = `${state.kind}:${"relativePath" in state ? state.relativePath : state.kind}:${Date.now()}`;
-    if (handledKey.current === key) return;
-    handledKey.current = key;
+    if (handledState.current === state) return;
+    handledState.current = state;
     onSuccess?.(state, { form: formRef.current, formData: submittedDataRef.current });
     if (resetOnSuccess && formRef.current) {
       formRef.current.reset();
@@ -68,9 +71,22 @@ export function ActionForm({
   return (
     <form
       action={formAction}
+      aria-busy={isPending}
       className={className}
-      onSubmit={() => {
-        submittedDataRef.current = formRef.current ? new FormData(formRef.current) : null;
+      onInput={onInput}
+      onSubmit={(event) => {
+        if (isPending) {
+          event.preventDefault();
+          return;
+        }
+        if (confirmMessage && !window.confirm(confirmMessage)) {
+          event.preventDefault();
+          return;
+        }
+        const submitter = (event.nativeEvent as SubmitEvent).submitter;
+        submittedDataRef.current = formRef.current
+          ? new FormData(formRef.current, submitter instanceof HTMLElement ? submitter : undefined)
+          : null;
       }}
       ref={formRef}
     >

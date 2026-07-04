@@ -18,6 +18,7 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const closeRef = useRef<HTMLButtonElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
 
   const activeItem = useMemo(() => (activeIndex == null ? null : items[activeIndex] ?? null), [activeIndex, items]);
 
@@ -36,10 +37,10 @@ export function MediaLightbox({ items, title, className = "gallery-grid" }: { it
 
   useEffect(() => {
     if (activeIndex == null) return;
+    returnFocusRef.current = document.activeElement as HTMLElement | null;
     closeRef.current?.focus();
 
-    const previouslyFocused = document.activeElement as HTMLElement | null;
-    return () => { previouslyFocused?.focus(); };
+    return () => { returnFocusRef.current?.focus(); };
   }, [activeIndex]);
 
   useEffect(() => {

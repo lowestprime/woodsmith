@@ -98,7 +98,7 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - synchronizes reviewed piece assignments with public piece galleries while keeping unreviewed assignments private
 - can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
 
-Current credential-free clustering is heuristic and based on folder, filename, and date-like patterns. The compact media desk includes server and instant filters, assignment-state filters, one active inspector, a verification queue, and J/K/F/P/U/R/S keyboard controls. Suggestions never publish a guessed identity; manual reviewed assignments remain the source of truth.
+Current credential-free clustering is heuristic and based on folder, filename, metadata, and date-like patterns. The compact media desk provides authenticated in-place whole-library search, assignment/review and type filters, selectable page sizes, one active inspector, an explicit verification queue, and J/K/F/P/U/R/S/Shift+S/A keyboard controls. Each unassigned image is proposed only to its best sufficiently separated piece match; ambiguous images stay unassigned, candidate inspection does not assign, and manual reviewed assignments remain the source of truth. Routine media actions update client state without revalidating the Studio route, while explicit rescans and automation reload both paged results and the verification queue through server actions.
 
 ## Commerce and operations
 

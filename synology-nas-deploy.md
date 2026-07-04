@@ -55,6 +55,8 @@ STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
 
+Wrap any literal secret containing `$` in single quotes in `.env` (for example, `STUDIO_PASSWORD='literal$value'`). Otherwise Docker Compose treats the dollar-prefixed text as variable interpolation and the container receives a different secret.
+
 Optional live services:
 
 ```dotenv
@@ -185,7 +187,9 @@ Missing or removed files must return **404** (not a broken stream). Stale `media
 
 ### Woodshop dashboard (`/studio`) and large libraries
 
-- The dashboard paginates the thumbnail browser at 48 items per page while keeping the complete indexed library available to assignment and verification tools. Use the server filter, instant page filter, assignment filters, and **Next** for very large media trees.
+- The dashboard pages the complete indexed library at 24, 48, 72, or 96 records per view. Whole-library search, assignment/review filters, media-type filters, and paging run in place through authenticated server actions and persist in the URL.
+- Routine media metadata saves, assignments, uploads, renames, and deletes do not refresh `/studio`. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
+- The verification queue proposes only one sufficiently separated best-piece match per unassigned image. It never assigns on preview; use the explicit **Assign** control after visual verification.
 - Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
 - After upgrading the app image, use **Refresh library** once so the scanner skips Synology **`@eaDir`** folders and **`SYNOFILE_THUMB*`** files; those paths are also excluded from SQL media lists.
 - If logs show `ENOENT` for profile or generated paths, fix the file on disk or clear the bad path in SQLite / re-upload.

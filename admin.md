@@ -56,20 +56,21 @@ Process notes replace the old Journal surface and remain in the dedicated `/proc
 The media section operates against the NAS photo library mounted directly to `/app/pics`:
 
 - upload files into a selected folder
-- filter all indexed media, not only recent files
+- search all indexed media by path, filename, alt text, tags, metadata, assignment, and project reference
+- filter by assignment/review state and media type, choose 24–96 records per page, and retain the view in the URL
 - browse a compact thumbnail workspace instead of a long full-page stack of editors
 - assign media to a piece, process note, page, or project
 - rename files in place
 - edit alt text, tags, focal X/Y, zoom, and reviewed status
 - use the visual crop editor to set focal point, zoom, crop frame, and crop notes through sliders and form controls
-- set cleanup mode, photo quality, source credit, verified piece slug, visual search labels, and display order
+- set cleanup mode, photo quality, source credit, visual search labels, and display order; verified-piece metadata is derived from the reviewed piece assignment
 - generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
 - delete files
 - refresh the indexed library
 
-The desk keeps one active inspector beside the thumbnail browser. `J`/`K` move between visible records, `F` focuses the instant page filter, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, and `S` saves. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
+The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
 
-Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and AppleDouble `._*` files are filtered during indexing. Manual media assignments take priority over heuristic clustering. The verification queue suggests candidates from filenames, tags, folders, and metadata but never auto-assigns a piece.
+Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, AppleDouble `._*`, `@eaDir`, and `SYNOFILE_THUMB*` files are filtered during indexing and querying. Manual media assignments take priority over heuristic clustering. The verification queue offers at most one sufficiently separated best-piece proposal per unassigned image; ambiguous matches remain in the library for manual review. Inspecting a candidate never assigns it.
 
 The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
 

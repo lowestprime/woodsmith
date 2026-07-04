@@ -1990,14 +1990,29 @@ export function deleteCommissionType(slug: string) {
 
 /** Synology @eaDir and thumbnail sidecars must never be served or indexed as primary media. */
 function mediaJunkPathClauses() {
-  return ["lower(relative_path) NOT LIKE '%@eadir%'", "lower(relative_path) NOT LIKE '%synofile_thumb%'"];
+  return [
+    "lower(relative_path) NOT LIKE '%@eadir%'",
+    "lower(relative_path) NOT LIKE '%synofile_thumb%'",
+    "lower(file_name) NOT IN ('synoindex_media_info', '.ds_store', 'thumbs.db')",
+    "lower(file_name) NOT LIKE '._%'"
+  ];
 }
 
-export function listMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean; limit?: number; offset?: number }) {
-  const db = getDatabase();
-  const clauses: string[] = [...mediaJunkPathClauses()];
-  const params: (string | number | null)[] = [];
+export type MediaAssignmentFilter = "all" | "unassigned" | "assigned" | "review";
+export type MediaKindFilter = "all" | "image" | "video";
 
+export type MediaListOptions = {
+  query?: string;
+  pieceSlug?: string | null;
+  postSlug?: string | null;
+  includeUnreviewed?: boolean;
+  assignment?: MediaAssignmentFilter;
+  kind?: MediaKindFilter;
+  limit?: number;
+  offset?: number;
+};
+
+function addMediaListFilters(clauses: string[], params: (string | number | null)[], options?: MediaListOptions) {
   if (!options?.includeUnreviewed) {
     clauses.push("reviewed = 1");
   }
@@ -2009,11 +2024,29 @@ export function listMedia(options?: { query?: string; pieceSlug?: string | null;
     clauses.push("post_slug = ?");
     params.push(options.postSlug);
   }
-  if (options?.query) {
-    clauses.push("(relative_path LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ?)");
-    const like = `%${options.query}%`;
-    params.push(like, like, like, like, like, like);
+  if (options?.assignment === "unassigned") {
+    clauses.push("piece_slug IS NULL AND post_slug IS NULL AND page_slug IS NULL AND project_reference IS NULL");
+  } else if (options?.assignment === "assigned") {
+    clauses.push("(piece_slug IS NOT NULL OR post_slug IS NOT NULL OR page_slug IS NOT NULL OR project_reference IS NOT NULL)");
+  } else if (options?.assignment === "review") {
+    clauses.push("reviewed = 0");
   }
+  if (options?.kind && options.kind !== "all") {
+    clauses.push("kind = ?");
+    params.push(options.kind);
+  }
+  if (options?.query) {
+    clauses.push("(relative_path LIKE ? OR file_name LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR metadata_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ? OR page_slug LIKE ? OR project_reference LIKE ?)");
+    const like = `%${options.query}%`;
+    params.push(like, like, like, like, like, like, like, like, like, like);
+  }
+}
+
+export function listMedia(options?: MediaListOptions) {
+  const db = getDatabase();
+  const clauses: string[] = [...mediaJunkPathClauses()];
+  const params: (string | number | null)[] = [];
+  addMediaListFilters(clauses, params, options);
 
   const where = `WHERE ${clauses.join(" AND ")}`;
   let sql = `
@@ -2040,27 +2073,11 @@ export function listMedia(options?: { query?: string; pieceSlug?: string | null;
   return rows.map(mapMedia);
 }
 
-export function countMedia(options?: { query?: string; pieceSlug?: string | null; postSlug?: string | null; includeUnreviewed?: boolean }) {
+export function countMedia(options?: Omit<MediaListOptions, "limit" | "offset">) {
   const db = getDatabase();
   const clauses: string[] = [...mediaJunkPathClauses()];
   const params: (string | number | null)[] = [];
-
-  if (!options?.includeUnreviewed) {
-    clauses.push("reviewed = 1");
-  }
-  if (options?.pieceSlug) {
-    clauses.push("piece_slug = ?");
-    params.push(options.pieceSlug);
-  }
-  if (options?.postSlug) {
-    clauses.push("post_slug = ?");
-    params.push(options.postSlug);
-  }
-  if (options?.query) {
-    clauses.push("(relative_path LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ?)");
-    const like = `%${options.query}%`;
-    params.push(like, like, like, like, like, like);
-  }
+  addMediaListFilters(clauses, params, options);
 
   const row = db.prepare(`SELECT COUNT(*) AS n FROM media_items WHERE ${clauses.join(" AND ")}`).get(...params) as { n: number };
   return Number(row?.n ?? 0);
@@ -2206,6 +2223,9 @@ function rewriteMediaReferences(previousPath: string, nextPath: string | null) {
 }
 
 export function renameMediaRecordAndReferences(previousPath: string, nextPath: string) {
+  if (previousPath === nextPath) {
+    return { pieceSlugs: [], postSlugs: [], pageSlugs: [] };
+  }
   const db = getDatabase();
   const previous = getMedia(previousPath);
 

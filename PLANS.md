@@ -2,9 +2,22 @@
 
 ## Beaman Woodworks 3.0 Completion Pass
 
-- Status: SOURCE UPDATED AND LOCALLY VERIFIED; live Synology deployment still requires rebuild/redeploy
-- Last updated: 2026-07-02
-- Branch: `codex/woodsmith-feature-queue-20260702`
+- Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY
+- Last updated: 2026-07-04
+- Branch: `codex/studio-media-audit-20260704`
+
+## 2026-07-04 Studio Media Integrity and Efficiency Audit
+
+| Area | Status | Verified outcome |
+|------|--------|------------------|
+| Whole-library navigation | DONE | Replaced route-submit pagination and page-only filtering with authenticated server-action paging, debounced whole-library search, assignment/type filters, selectable 24/48/72/96 page sizes, URL-restored filter state, and race-safe in-place results. |
+| No-refresh editing | DONE | Routine upload, rename, delete, assignment, metadata, and save/approve-next actions update local workspace state without `router.refresh()` or `/studio` revalidation. Scroll position and active workspace state remain intact. Explicit library rescans and automation refresh the page data and verification queue through server actions. |
+| Review queue accuracy | DONE | Candidate inspection no longer assigns automatically. Each unassigned image is proposed only to its best sufficiently separated piece match; ambiguous or weak matches remain unassigned. Off-page candidates open in a detached inspector, and assignment remains an explicit reviewed action. |
+| Metadata and gallery integrity | DONE | Piece membership is synchronized on assign, move, unreview, delete, upload, and display-order change. Stale piece/process/page options are rejected. Public approval requires alt text, and verified-piece metadata derives from the selected piece rather than a manually typed slug. |
+| File and index safety | DONE | Same-name rename is a no-op, collisions are rejected before overwrite, destructive delete requires confirmation, sidecar exclusions cover Synology, macOS, and Windows artifacts, and modern camera image extensions are indexed consistently. |
+| Inspector and keyboard workflow | DONE | Added full-resolution lightbox access, correct focus restoration, Save, Save & next, Approve & next, dynamic thumbnail roving focus, and `S` / `Shift+S` / `A` shortcuts. Thumbnails use optimized responsive image requests and offscreen rendering containment; narrow screens use a fixed-height Tools / Library / Inspector switcher instead of stacking three long panes. |
+
+Verification for this pass: `npm run typecheck`, `npm run lint`, and `npm run build` pass; `npm --prefix site audit --audit-level=high` reports zero vulnerabilities; Synology Compose configuration validates. Authenticated Playwright testing first used a disposable standalone SQLite copy for save-and-next persistence, then the final image was deployed to `woodmat.ch` and audited without mutating production records. Live evidence: 48/48 visible thumbnails loaded, zero broken images or console errors, 511 indexed records, zero duplicate candidate paths, in-place search produced seven matching records with one navigation entry, assignment/type/query state survived reload, candidate inspection remained unassigned, lightbox X/zoom/`Esc` and focus restoration passed, J/K navigation passed, desktop showed three panes with zero overflow, and mobile showed one 608px pane with automatic Inspector handoff and zero overflow. The NAS reported writable data/media/cache mounts and 3,653 source files. Release `woodsmith-prod-2026-07-04-020739.tar.gz` was integrity-checked before load; a pre-deploy SQLite backup was created at `site/data/backups/woodsmith-pre-media-audit-20260704-020829.sqlite`.
 
 ## 2026-07-02 Feature Queue Completion and Verification
 
@@ -13,9 +26,9 @@
 | 1. Public navigation and Process/Shop separation | DONE | Removed Process from seeded and rendered primary navigation, removed the Process/behind-the-scenes block from Shop, preserved the dedicated `/process` archive and legacy Journal redirects, and added seed v5 exact-string cleanup for persisted legacy copy. |
 | 2. Buyer email verification | DONE / CONFIGURATION REQUIRED | New accounts receive expiring verification tokens, unverified customer login is rejected, resend accepts an email without an authenticated session, SMTP acceptance is checked for the primary recipient, and UI errors distinguish configuration/authentication/sender/connection failures. Live dispatch still requires valid `SMTP_*` credentials and sender values. |
 | 3. Direct visual editing | DONE | Admin pencil controls intercept in capture phase and edit mapped public text/URLs in place without navigation or full-page refresh. Route changes clear stale editor state; structural edits use the explicit full-editor handoff. No raw JSON control is exposed. |
-| 4. Compact media assignment desk | DONE | Replaced the long media editor stack with a bounded three-pane workspace: utility tools, 48-item thumbnail browser, and one active inspector. Added instant/server/assignment filters, collapsed upload/automation/crop sections, and in-place action state. |
+| 4. Compact media assignment desk | DONE | Replaced the long media editor stack with a bounded three-pane workspace: utility tools, paged responsive thumbnail browser, and one active inspector. Added whole-library search, assignment/type filters, collapsed upload/automation/crop sections, and in-place action state. |
 | 5. Media assignment integrity | DONE | Reviewed assignments now remove stale old-piece gallery membership and add new-piece membership. Unreviewed assignments remain private. Refresh/cluster tools run locally without AI credentials; the AI route requires admin authentication. |
-| 6. Keyboard media workflow | DONE | J/K navigate visible media, F focuses the instant filter, P focuses piece assignment, U clears it, R toggles review state, S saves, and roving tab stops keep one active thumbnail keyboard-focusable. |
+| 6. Keyboard media workflow | DONE | J/K navigate visible media, F focuses whole-library search, P focuses piece assignment, U clears it, R toggles review state, S saves, Shift+S saves and advances, A approves and advances, and roving tab stops keep one active thumbnail keyboard-focusable. |
 | 7. Editable portfolio categories | DONE | Added persisted category definitions with icon styles and matching aliases. Studio supports add, rename, save, safe delete/reassign, and the portfolio and piece editor consume the same normalized definitions. |
 | 8. Shop reserve coverage | DONE | Available inventory now exposes the asking price and Reserve action on both Shop cards and portfolio piece detail pages; portfolio index cards remain price-free. |
 | 9. Visual and operational cleanup | DONE | Removed decorative divider bands and the obsolete divider-name setting, enlarged the brand emblem, standardized scrollbars, tightened responsive page/admin grids, and compacted the Studio command header. |

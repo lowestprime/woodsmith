@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
   appendProjectUpdate,
+  countMedia,
   countUsersByRole,
   createDraftOrder,
   createProject,
@@ -24,6 +25,7 @@ import {
   getUserByEmail,
   getUserByVerificationToken,
   listCartItems,
+  listMedia,
   listPieces,
   markEmailVerified,
   refreshMediaLibrary,
@@ -44,6 +46,9 @@ import {
   deleteMediaRecordAndReferences,
   renameMediaRecordAndReferences,
   type CommissionTypeRecord,
+  type MediaAssignmentFilter,
+  type MediaKindFilter,
+  type MediaRecord,
   type OrderRecord,
   type PageRecord,
   type PieceRecord,
@@ -56,6 +61,7 @@ import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMe
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
+import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryIcon } from "@/lib/categories";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
@@ -97,7 +103,6 @@ function revalidateMediaSurfaces(affected?: {
   postSlugs: string[];
   pageSlugs: string[];
 }) {
-  revalidatePath("/studio");
   revalidatePath("/portfolio");
   revalidatePath("/shop");
   revalidatePath("/process");
@@ -125,17 +130,32 @@ function syncPieceMediaMembership(relativePath: string, previousPieceSlug: strin
     if (!piece) continue;
     const withoutPath = piece.mediaPaths.filter((path) => path !== relativePath);
     const shouldInclude = slug === nextPieceSlug && publishable;
+    const nextPaths = shouldInclude ? [...withoutPath, relativePath] : withoutPath;
+    const orderByPath = new Map(nextPaths.map((path, index) => [path, {
+      index,
+      order: Number(getMedia(path)?.metadata.displayOrder ?? 0)
+    }]));
+    const orderedPaths = [...nextPaths].sort((left, right) => {
+      const leftOrder = orderByPath.get(left) ?? { index: 0, order: 0 };
+      const rightOrder = orderByPath.get(right) ?? { index: 0, order: 0 };
+      return leftOrder.order - rightOrder.order || leftOrder.index - rightOrder.index;
+    });
+    const hasPublishableMedia = orderedPaths.length > 0;
     savePiece({
       ...piece,
-      mediaPaths: shouldInclude ? [...withoutPath, relativePath] : withoutPath,
-      metadata: slug === nextPieceSlug
-        ? {
-            ...piece.metadata,
-            ...(publishable ? { verifiedMedia: true, mediaReviewRequired: false } : { mediaReviewRequired: true })
-          }
-        : piece.metadata
+      mediaPaths: orderedPaths,
+      metadata: {
+        ...piece.metadata,
+        verifiedMedia: hasPublishableMedia,
+        mediaReviewRequired: !hasPublishableMedia
+      }
     });
   }
+}
+
+function clampNumber(value: FormDataEntryValue | null, fallback: number, minimum: number, maximum: number) {
+  const parsed = Number(value?.toString() ?? "");
+  return Number.isFinite(parsed) ? Math.min(maximum, Math.max(minimum, parsed)) : fallback;
 }
 
 function requiredField(value: FormDataEntryValue | null, label: string) {
@@ -1163,207 +1183,327 @@ export type MediaActionResult =
   | { ok: true; kind: "refresh" }
   | { ok: false; kind: "error"; message: string };
 
-export async function uploadMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
+export type MediaPageRequest = {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  assignment?: MediaAssignmentFilter;
+  kind?: MediaKindFilter;
+};
+
+export type MediaPageResult = {
+  ok: true;
+  items: MediaRecord[];
+  total: number;
+  page: number;
+  pageSize: number;
+  query: string;
+  assignment: MediaAssignmentFilter;
+  kind: MediaKindFilter;
+};
+
+export type MediaVerificationEntry = {
+  pieceSlug: string;
+  pieceTitle: string;
+  assignedCount: number;
+  needsReview: boolean;
+  suggestions: Array<{ item: MediaRecord; score: number }>;
+};
+
+function mediaActionFailure(error: unknown, fallback: string): MediaActionResult {
+  return {
+    ok: false,
+    kind: "error",
+    message: error instanceof Error && error.message ? error.message : fallback
+  };
+}
+
+export async function loadMediaPageAction(request: MediaPageRequest): Promise<MediaPageResult> {
   await requireAdmin();
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) {
-    return { ok: false, kind: "error", message: "Please choose a non-empty file to upload." };
+  const pageSize = Math.round(clampNumber(String(request.pageSize ?? 48), 48, 12, 96));
+  const query = request.query?.trim().slice(0, 160) ?? "";
+  const assignment: MediaAssignmentFilter = ["unassigned", "assigned", "review"].includes(request.assignment ?? "")
+    ? request.assignment as MediaAssignmentFilter
+    : "all";
+  const kind: MediaKindFilter = ["image", "video"].includes(request.kind ?? "")
+    ? request.kind as MediaKindFilter
+    : "all";
+  const options = { includeUnreviewed: true, ...(query ? { query } : {}), assignment, kind } as const;
+  const total = countMedia(options);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(totalPages, Math.max(1, Math.round(Number(request.page) || 1)));
+  const items = listMedia({ ...options, limit: pageSize, offset: (page - 1) * pageSize });
+  return { ok: true, items, total, page, pageSize, query, assignment, kind };
+}
+
+export async function loadMediaVerificationQueueAction(): Promise<MediaVerificationEntry[]> {
+  await requireAdmin();
+  const pieces = listPieces(true);
+  const media = listMedia({ includeUnreviewed: true, kind: "image" });
+  return buildMediaVerificationQueue(pieces, media).map((entry) => ({
+    pieceSlug: entry.piece.slug,
+    pieceTitle: entry.piece.title,
+    assignedCount: entry.assigned.length,
+    needsReview: entry.needsReview,
+    suggestions: entry.suggestions
+  }));
+}
+
+export async function uploadMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
+  try {
+    await requireAdmin();
+    const file = formData.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      return { ok: false, kind: "error", message: "Please choose a non-empty file to upload." };
+    }
+    const pieceSlug = optionalField(formData.get("pieceSlug")) || null;
+    const postSlug = optionalField(formData.get("postSlug")) || null;
+    const pageSlug = optionalField(formData.get("pageSlug")) || null;
+    if (pieceSlug && !getPiece(pieceSlug)) {
+      return { ok: false, kind: "error", message: "The selected piece no longer exists." };
+    }
+    if (postSlug && !getPost(postSlug)) {
+      return { ok: false, kind: "error", message: "The selected process note no longer exists." };
+    }
+    if (pageSlug && !getPage(pageSlug)) {
+      return { ok: false, kind: "error", message: "The selected page no longer exists." };
+    }
+    const folder = optionalField(formData.get("folder")) || "Uploads";
+    const relativePath = await persistUploadedMedia(file, folder);
+    refreshMediaLibrary();
+    const reviewed = parseBooleanField(formData.get("reviewed"));
+    const tags = parseListField(formData.get("tagsText"));
+    saveMediaMetadata({
+      relativePath,
+      altText: optionalField(formData.get("altText")) || file.name,
+      pieceSlug,
+      postSlug,
+      pageSlug,
+      projectReference: optionalField(formData.get("projectReference")) || null,
+      userEmail: null,
+      focalX: 50,
+      focalY: 50,
+      zoom: 1,
+      reviewed,
+      tags: tags.length > 0 ? tags : parseJsonField<string[]>(formData.get("tagsJson"), []),
+      metadata: reviewed && pieceSlug ? { verifiedPieceSlug: pieceSlug, verifiedAt: new Date().toISOString(), verifiedBy: "woodshop-dashboard" } : {}
+    });
+    syncPieceMediaMembership(relativePath, null, pieceSlug, reviewed);
+    revalidateMediaSurfaces({ pieceSlugs: pieceSlug ? [pieceSlug] : [], postSlugs: postSlug ? [postSlug] : [], pageSlugs: pageSlug ? [pageSlug] : [] });
+    return { ok: true, kind: "upload", relativePath };
+  } catch (error) {
+    return mediaActionFailure(error, "Media upload failed.");
   }
-  const folder = optionalField(formData.get("folder")) || "Uploads";
-  const relativePath = await persistUploadedMedia(file, folder);
-  refreshMediaLibrary();
-  const pieceSlug = optionalField(formData.get("pieceSlug")) || null;
-  const postSlug = optionalField(formData.get("postSlug")) || null;
-  saveMediaMetadata({
-    relativePath,
-    altText: optionalField(formData.get("altText")) || file.name,
-    pieceSlug,
-    postSlug,
-    pageSlug: optionalField(formData.get("pageSlug")) || null,
-    projectReference: optionalField(formData.get("projectReference")) || null,
-    userEmail: null,
-    focalX: 50,
-    focalY: 50,
-    zoom: 1,
-    reviewed: true,
-    tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : parseJsonField<string[]>(formData.get("tagsJson"), [])
-  });
-  revalidateMediaSurfaces();
-  return { ok: true, kind: "upload", relativePath };
 }
 
 export async function renameMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
-  await requireAdmin();
-  const previousPath = requiredField(formData.get("relativePath"), "Media path");
-  const nextRelativePath = renameMediaAsset(
-    previousPath,
-    requiredField(formData.get("baseName"), "New name")
-  );
-  const affected = renameMediaRecordAndReferences(previousPath, nextRelativePath);
-  revalidateMediaSurfaces(affected);
-  return { ok: true, kind: "rename", previousPath, relativePath: nextRelativePath };
+  try {
+    await requireAdmin();
+    const previousPath = requiredField(formData.get("relativePath"), "Media path");
+    const nextRelativePath = renameMediaAsset(
+      previousPath,
+      requiredField(formData.get("baseName"), "New name")
+    );
+    const affected = renameMediaRecordAndReferences(previousPath, nextRelativePath);
+    revalidateMediaSurfaces(affected);
+    return { ok: true, kind: "rename", previousPath, relativePath: nextRelativePath };
+  } catch (error) {
+    return mediaActionFailure(error, "Media rename failed.");
+  }
 }
 
 export async function deleteMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
-  await requireAdmin();
-  const relativePath = requiredField(formData.get("relativePath"), "Media path");
-  deleteMediaAsset(relativePath);
-  const affected = deleteMediaRecordAndReferences(relativePath);
-  revalidateMediaSurfaces(affected);
-  return { ok: true, kind: "delete", relativePath };
+  try {
+    await requireAdmin();
+    const relativePath = requiredField(formData.get("relativePath"), "Media path");
+    deleteMediaAsset(relativePath);
+    const affected = deleteMediaRecordAndReferences(relativePath);
+    revalidateMediaSurfaces(affected);
+    return { ok: true, kind: "delete", relativePath };
+  } catch (error) {
+    return mediaActionFailure(error, "Media deletion failed.");
+  }
 }
 
 export async function assignMediaCandidateAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
-  await requireAdmin();
-  const relativePath = requiredField(formData.get("relativePath"), "Media path");
-  const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
-  const piece = getPiece(pieceSlug);
-  const media = getMedia(relativePath);
-  if (!piece || !media) {
-    return { ok: false, kind: "error", message: "Could not resolve piece or media for assignment." };
-  }
-
-  saveMediaMetadata({
-    relativePath,
-    altText: media.altText || piece.title,
-    pieceSlug,
-    postSlug: media.postSlug,
-    pageSlug: media.pageSlug,
-    projectReference: media.projectReference,
-    userEmail: media.userEmail,
-    focalX: media.focalX,
-    focalY: media.focalY,
-    zoom: media.zoom,
-    reviewed: true,
-    tags: [...new Set([...media.tags, pieceSlug, ...piece.tags])],
-    metadata: {
-      ...media.metadata,
-      verifiedPieceSlug: pieceSlug,
-      verifiedAt: new Date().toISOString(),
-      verifiedBy: "woodshop-dashboard"
+  try {
+    await requireAdmin();
+    const relativePath = requiredField(formData.get("relativePath"), "Media path");
+    const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
+    const piece = getPiece(pieceSlug);
+    const media = getMedia(relativePath);
+    if (!piece || !media) {
+      return { ok: false, kind: "error", message: "Could not resolve piece or media for assignment." };
     }
-  });
 
-  syncPieceMediaMembership(relativePath, media.pieceSlug, pieceSlug, true);
+    saveMediaMetadata({
+      relativePath,
+      altText: media.altText || piece.title,
+      pieceSlug,
+      postSlug: media.postSlug,
+      pageSlug: media.pageSlug,
+      projectReference: media.projectReference,
+      userEmail: media.userEmail,
+      focalX: media.focalX,
+      focalY: media.focalY,
+      zoom: media.zoom,
+      reviewed: true,
+      tags: [...new Set([...media.tags, pieceSlug, ...piece.tags])],
+      metadata: {
+        ...media.metadata,
+        verifiedPieceSlug: pieceSlug,
+        verifiedAt: new Date().toISOString(),
+        verifiedBy: "woodshop-dashboard"
+      }
+    });
 
-  revalidateMediaSurfaces({ pieceSlugs: [...new Set([media.pieceSlug, pieceSlug].filter((slug): slug is string => Boolean(slug)))], postSlugs: [], pageSlugs: [] });
-  return { ok: true, kind: "assign", relativePath, pieceSlug };
+    syncPieceMediaMembership(relativePath, media.pieceSlug, pieceSlug, true);
+
+    revalidateMediaSurfaces({ pieceSlugs: [...new Set([media.pieceSlug, pieceSlug].filter((slug): slug is string => Boolean(slug)))], postSlugs: [], pageSlugs: [] });
+    return { ok: true, kind: "assign", relativePath, pieceSlug };
+  } catch (error) {
+    return mediaActionFailure(error, "Media assignment failed.");
+  }
 }
 
 export async function cleanupMediaBackgroundAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
-  await requireAdmin();
-  const relativePath = requiredField(formData.get("relativePath"), "Media path");
-  const mode = optionalField(formData.get("cleanupMode")) || "soft-matte";
-  const prompt = optionalField(formData.get("cleanupPrompt"));
-  const media = getMedia(relativePath);
-  if (!media) {
-    return { ok: false, kind: "error", message: "Media not found for cleanup." };
-  }
-
-  if (!getAiServiceStatus().backgroundCleanup) {
-    return { ok: false, kind: "error", message: "AI background cleanup is not configured on this deployment." };
-  }
-
-  const generated = await createCleanedBackgroundVariant(relativePath, resolveMediaPath(relativePath), prompt);
-  let b64Json = generated.b64Json;
-  if (!b64Json && generated.url) {
-    const response = await fetch(generated.url);
-    if (!response.ok) {
-      return { ok: false, kind: "error", message: `Cleanup download failed (HTTP ${response.status}).` };
+  try {
+    await requireAdmin();
+    const relativePath = requiredField(formData.get("relativePath"), "Media path");
+    const mode = optionalField(formData.get("cleanupMode")) || "soft-matte";
+    const prompt = optionalField(formData.get("cleanupPrompt"));
+    const media = getMedia(relativePath);
+    if (!media) {
+      return { ok: false, kind: "error", message: "Media not found for cleanup." };
     }
-    b64Json = Buffer.from(await response.arrayBuffer()).toString("base64");
-  }
-  if (!b64Json) {
-    return { ok: false, kind: "error", message: "Cleanup service returned no image data." };
-  }
 
-  const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
-  const nextPath = persistGeneratedMedia(b64Json, "cleaned-media", stem, ".png");
-  refreshMediaLibrary();
-  saveMediaMetadata({
-    relativePath: nextPath,
-    altText: `${media.altText || media.fileName} cleaned background`,
-    pieceSlug: media.pieceSlug,
-    postSlug: media.postSlug,
-    pageSlug: media.pageSlug,
-    projectReference: media.projectReference,
-    userEmail: media.userEmail,
-    focalX: media.focalX,
-    focalY: media.focalY,
-    zoom: media.zoom,
-    reviewed: false,
-    tags: [...new Set([...media.tags, "cleaned-background", mode])],
-    metadata: {
-      ...media.metadata,
-      cleanupMode: mode,
-      cleanupGeneratedFrom: relativePath,
-      cleanupGeneratedAt: new Date().toISOString(),
-      cleanupProvider: getAiServiceStatus().imageModel
+    if (!getAiServiceStatus().backgroundCleanup) {
+      return { ok: false, kind: "error", message: "AI background cleanup is not configured on this deployment." };
     }
-  });
 
-  revalidateMediaSurfaces();
-  return { ok: true, kind: "cleanup", relativePath: nextPath };
+    const generated = await createCleanedBackgroundVariant(relativePath, resolveMediaPath(relativePath), prompt);
+    let b64Json = generated.b64Json;
+    if (!b64Json && generated.url) {
+      const response = await fetch(generated.url);
+      if (!response.ok) {
+        return { ok: false, kind: "error", message: `Cleanup download failed (HTTP ${response.status}).` };
+      }
+      b64Json = Buffer.from(await response.arrayBuffer()).toString("base64");
+    }
+    if (!b64Json) {
+      return { ok: false, kind: "error", message: "Cleanup service returned no image data." };
+    }
+
+    const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
+    const nextPath = persistGeneratedMedia(b64Json, "cleaned-media", stem, ".png");
+    refreshMediaLibrary();
+    saveMediaMetadata({
+      relativePath: nextPath,
+      altText: `${media.altText || media.fileName} cleaned background`,
+      pieceSlug: media.pieceSlug,
+      postSlug: media.postSlug,
+      pageSlug: media.pageSlug,
+      projectReference: media.projectReference,
+      userEmail: media.userEmail,
+      focalX: media.focalX,
+      focalY: media.focalY,
+      zoom: media.zoom,
+      reviewed: false,
+      tags: [...new Set([...media.tags, "cleaned-background", mode])],
+      metadata: {
+        ...media.metadata,
+        cleanupMode: mode,
+        cleanupGeneratedFrom: relativePath,
+        cleanupGeneratedAt: new Date().toISOString(),
+        cleanupProvider: getAiServiceStatus().imageModel
+      }
+    });
+
+    revalidateMediaSurfaces();
+    return { ok: true, kind: "cleanup", relativePath: nextPath };
+  } catch (error) {
+    return mediaActionFailure(error, "Background cleanup failed.");
+  }
 }
 
 export async function saveMediaMetadataAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
-  await requireAdmin();
-  const relativePath = requiredField(formData.get("relativePath"), "Media path");
-  const mediaJson = optionalField(formData.get("mediaJson"));
-  const existing = getMedia(relativePath);
-  const visualLabels = parseListField(formData.get("visualLabelsText"));
-  const nextPieceSlug = optionalField(formData.get("pieceSlug")) || null;
-  const reviewed = parseBooleanField(formData.get("reviewed"));
-  const metadata = {
-    ...(existing?.metadata ?? {}),
-    cleanupMode: optionalField(formData.get("cleanupMode")) || existing?.metadata.cleanupMode || "original",
-    photoQuality: optionalField(formData.get("photoQuality")) || existing?.metadata.photoQuality || "unrated",
-    displayOrder: parseInteger(formData.get("displayOrder"), Number(existing?.metadata.displayOrder ?? 0)),
-    sourceCredit: optionalField(formData.get("sourceCredit")) || existing?.metadata.sourceCredit || "",
-    verifiedPieceSlug: optionalField(formData.get("verifiedPieceSlug")),
-    cropAspect: optionalField(formData.get("cropAspect")) || existing?.metadata.cropAspect || "free",
-    cropNote: optionalField(formData.get("cropNote")) || existing?.metadata.cropNote || "",
-    visualLabels: visualLabels.length > 0 ? visualLabels : Array.isArray(existing?.metadata.visualLabels) ? existing.metadata.visualLabels : []
-  };
-  saveMediaMetadata(mediaJson
-    ? parseJsonField(formData.get("mediaJson"), {
-        relativePath,
-        altText: "",
-        focalX: 50,
-        focalY: 50,
-        zoom: 1,
-        reviewed: true,
-        tags: []
-      })
-    : {
-        relativePath,
-        altText: optionalField(formData.get("altText")),
-        pieceSlug: nextPieceSlug,
-        postSlug: optionalField(formData.get("postSlug")) || null,
-        pageSlug: optionalField(formData.get("pageSlug")) || null,
-        projectReference: optionalField(formData.get("projectReference")) || null,
-        userEmail: optionalField(formData.get("userEmail")) || null,
-        focalX: parseInteger(formData.get("focalX"), 50),
-        focalY: parseInteger(formData.get("focalY"), 50),
-        zoom: Number(formData.get("zoom")?.toString() || "1") || 1,
-        reviewed,
-        tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
-        metadata
-      });
-  syncPieceMediaMembership(relativePath, existing?.pieceSlug, nextPieceSlug, reviewed);
-  revalidateMediaSurfaces({
-    pieceSlugs: [...new Set([existing?.pieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)))],
-    postSlugs: [...new Set([existing?.postSlug, optionalField(formData.get("postSlug"))].filter((slug): slug is string => Boolean(slug)))],
-    pageSlugs: [...new Set([existing?.pageSlug, optionalField(formData.get("pageSlug"))].filter((slug): slug is string => Boolean(slug)))]
-  });
-  return { ok: true, kind: "save", relativePath };
+  try {
+    await requireAdmin();
+    const relativePath = requiredField(formData.get("relativePath"), "Media path");
+    const existing = getMedia(relativePath);
+    if (!existing) {
+      return { ok: false, kind: "error", message: "This media record no longer exists. Refresh the library before editing it." };
+    }
+    const visualLabels = parseListField(formData.get("visualLabelsText"));
+    const nextPieceSlug = optionalField(formData.get("pieceSlug")) || null;
+    const nextPostSlug = optionalField(formData.get("postSlug")) || null;
+    const nextPageSlug = optionalField(formData.get("pageSlug")) || null;
+    const submitIntent = optionalField(formData.get("submitIntent"));
+    const reviewed = parseBooleanField(formData.get("reviewed")) || submitIntent === "approve-next";
+    const altText = optionalField(formData.get("altText"));
+    if (nextPieceSlug && !getPiece(nextPieceSlug)) {
+      return { ok: false, kind: "error", message: "The selected piece no longer exists. Choose another assignment." };
+    }
+    if (nextPostSlug && !getPost(nextPostSlug)) {
+      return { ok: false, kind: "error", message: "The selected process note no longer exists. Choose another assignment." };
+    }
+    if (nextPageSlug && !getPage(nextPageSlug)) {
+      return { ok: false, kind: "error", message: "The selected page no longer exists. Choose another assignment." };
+    }
+    if (reviewed && !altText) {
+      return { ok: false, kind: "error", message: "Add accurate alt text before approving media for public use." };
+    }
+    const metadata = {
+      ...existing.metadata,
+      cleanupMode: optionalField(formData.get("cleanupMode")) || existing.metadata.cleanupMode || "original",
+      photoQuality: optionalField(formData.get("photoQuality")) || existing.metadata.photoQuality || "unrated",
+      displayOrder: Math.round(clampNumber(formData.get("displayOrder"), Number(existing.metadata.displayOrder ?? 0), 0, 9999)),
+      sourceCredit: formData.has("sourceCredit") ? optionalField(formData.get("sourceCredit")) : existing.metadata.sourceCredit || "",
+      verifiedPieceSlug: reviewed && nextPieceSlug ? nextPieceSlug : "",
+      verifiedAt: reviewed && nextPieceSlug ? new Date().toISOString() : "",
+      verifiedBy: reviewed && nextPieceSlug ? "woodshop-dashboard" : "",
+      cropAspect: optionalField(formData.get("cropAspect")) || existing.metadata.cropAspect || "free",
+      cropNote: formData.has("cropNote") ? optionalField(formData.get("cropNote")) : existing.metadata.cropNote || "",
+      visualLabels: formData.has("visualLabelsText")
+        ? visualLabels
+        : Array.isArray(existing.metadata.visualLabels) ? existing.metadata.visualLabels : []
+    };
+    saveMediaMetadata({
+      relativePath,
+      altText,
+      pieceSlug: nextPieceSlug,
+      postSlug: nextPostSlug,
+      pageSlug: nextPageSlug,
+      projectReference: optionalField(formData.get("projectReference")) || null,
+      userEmail: optionalField(formData.get("userEmail")) || null,
+      focalX: Math.round(clampNumber(formData.get("focalX"), existing.focalX, 0, 100)),
+      focalY: Math.round(clampNumber(formData.get("focalY"), existing.focalY, 0, 100)),
+      zoom: clampNumber(formData.get("zoom"), existing.zoom, 1, 4),
+      reviewed,
+      tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
+      metadata
+    });
+    syncPieceMediaMembership(relativePath, existing.pieceSlug, nextPieceSlug, reviewed);
+    revalidateMediaSurfaces({
+      pieceSlugs: [...new Set([existing.pieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)))],
+      postSlugs: [...new Set([existing.postSlug, nextPostSlug].filter((slug): slug is string => Boolean(slug)))],
+      pageSlugs: [...new Set([existing.pageSlug, nextPageSlug].filter((slug): slug is string => Boolean(slug)))]
+    });
+    return { ok: true, kind: "save", relativePath };
+  } catch (error) {
+    return mediaActionFailure(error, "Media metadata save failed.");
+  }
 }
 
 export async function refreshMediaLibraryAction(): Promise<MediaActionResult> {
-  await requireAdmin();
-  refreshMediaLibrary();
-  revalidateMediaSurfaces();
-  return { ok: true, kind: "refresh" };
+  try {
+    await requireAdmin();
+    refreshMediaLibrary();
+    revalidateMediaSurfaces();
+    return { ok: true, kind: "refresh" };
+  } catch (error) {
+    return mediaActionFailure(error, "Media library refresh failed.");
+  }
 }
 
 export async function saveProjectAction(formData: FormData) {

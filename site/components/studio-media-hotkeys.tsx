@@ -53,10 +53,12 @@ export function StudioMediaHotkeys() {
   const searchParams = useSearchParams();
   const enabled = searchParams.get("panel") === "media";
   const [active, setActive] = useState(0);
-  const [notice, setNotice] = useState("J/K move · S save · R reviewed · P piece · U unassign · F filter · ? help");
+  const [notice, setNotice] = useState("J/K move · S save · Shift+S save & next · A approve & next · F search · ? help");
   const help = useMemo(() => [
     "J / K: next or previous media card",
     "S: save the active media metadata form",
+    "Shift+S: save and move to the next media record",
+    "A: approve for public use and move to the next media record",
     "R: toggle Reviewed for public use on the active card",
     "P: focus the Piece assignment select on the active card",
     "U: clear the Piece assignment on the active card",
@@ -68,12 +70,19 @@ export function StudioMediaHotkeys() {
 
   useEffect(() => {
     if (!enabled) return;
-    const cards = mediaCards();
-    cards.forEach((card, index) => {
-      card.tabIndex = index === 0 ? 0 : -1;
-      card.dataset.mediaIndex = String(index + 1);
-    });
-    setActive(setActiveCard(0));
+    function synchronizeCards() {
+      const cards = mediaCards();
+      cards.forEach((card, index) => {
+        card.tabIndex = card.dataset.mediaActive === "true" || (index === 0 && !cards.some((entry) => entry.dataset.mediaActive === "true")) ? 0 : -1;
+        card.dataset.mediaIndex = String(index + 1);
+      });
+      setActive(Math.max(0, activeCardIndex()));
+    }
+    synchronizeCards();
+    const observer = new MutationObserver(synchronizeCards);
+    const browser = document.querySelector(".studio-media-browser-grid");
+    if (browser) observer.observe(browser, { childList: true });
+    return () => observer.disconnect();
   }, [enabled]);
 
   useEffect(() => {
@@ -125,8 +134,16 @@ export function StudioMediaHotkeys() {
 
       if (key === "s") {
         event.preventDefault();
-        const saveButton = Array.from(inspector.querySelectorAll<HTMLButtonElement>('button[type="submit"]')).find((button) => /save media/i.test(button.textContent || "")) ?? null;
-        if (submitFirst(saveButton)) setNotice("Saving active media metadata...");
+        const value = event.shiftKey ? "save-next" : "save";
+        const saveButton = inspector.querySelector<HTMLButtonElement>(`button[name="submitIntent"][value="${value}"]`);
+        if (submitFirst(saveButton)) setNotice(event.shiftKey ? "Saving and opening the next media record…" : "Saving active media metadata…");
+        return;
+      }
+
+      if (key === "a") {
+        event.preventDefault();
+        const approveButton = inspector.querySelector<HTMLButtonElement>('button[name="submitIntent"][value="approve-next"]');
+        if (submitFirst(approveButton)) setNotice("Approving and opening the next media record…");
         return;
       }
 
@@ -134,8 +151,7 @@ export function StudioMediaHotkeys() {
         event.preventDefault();
         const reviewed = Array.from(inspector.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')).find((input) => input.name === "reviewed");
         if (reviewed) {
-          reviewed.checked = !reviewed.checked;
-          reviewed.dispatchEvent(new Event("change", { bubbles: true }));
+          reviewed.click();
           setNotice(`Reviewed ${reviewed.checked ? "enabled" : "disabled"}. Press S to save.`);
         }
         return;
@@ -154,6 +170,7 @@ export function StudioMediaHotkeys() {
         const pieceSelect = inspector.querySelector<HTMLSelectElement>('select[name="pieceSlug"]');
         if (pieceSelect) {
           pieceSelect.value = "";
+          pieceSelect.dispatchEvent(new Event("input", { bubbles: true }));
           pieceSelect.dispatchEvent(new Event("change", { bubbles: true }));
           setNotice("Piece assignment cleared. Press S to save and remove the image from that piece.");
         }
@@ -162,7 +179,7 @@ export function StudioMediaHotkeys() {
 
       if (key === "?") {
         event.preventDefault();
-        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J / K move · S save · R reviewed · P piece · U unassign · F filter · ? help");
+        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J/K move · S save · Shift+S save & next · A approve & next · F search · ? help");
       }
     }
 

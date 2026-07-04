@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, write
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 
-const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".gif", ".svg", ".bmp"]);
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".svg", ".bmp", ".heic", ".heif", ".tif", ".tiff"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
 const IGNORED_MEDIA_FILE_NAMES = new Set(["synoindex_media_info", ".ds_store", "thumbs.db"]);
 const DEFAULT_MEDIA_ROOT = "/app/pics";
@@ -208,8 +208,14 @@ export function renameMediaAsset(relativePath: string, nextBaseName: string) {
   const parsed = path.parse(currentAbsolutePath);
   const baseName = slugify(nextBaseName) || `media-${randomUUID().slice(0, 8)}`;
   const targetAbsolutePath = path.join(parsed.dir, `${baseName}${parsed.ext.toLowerCase()}`);
-  renameSync(currentAbsolutePath, targetAbsolutePath);
   const mediaRoot = getMediaRoot();
+  if (path.resolve(targetAbsolutePath) === path.resolve(currentAbsolutePath)) {
+    return normalizeRelativePath(path.relative(mediaRoot, currentAbsolutePath));
+  }
+  if (existsSync(targetAbsolutePath)) {
+    throw new Error(`A media file named '${path.basename(targetAbsolutePath)}' already exists in this folder.`);
+  }
+  renameSync(currentAbsolutePath, targetAbsolutePath);
   return normalizeRelativePath(path.relative(mediaRoot, targetAbsolutePath));
 }
 
