@@ -2,7 +2,7 @@
 
 ## 2026-07-05 Local-First Media AI, Header, and Persistence Pass
 
-- Status: IMPLEMENTED; STATIC, SIDECAR, AND RENDERED PERSISTENCE TESTS PASS; LIVE DEPLOYMENT VALIDATION PENDING
+- Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY
 - Branch: `codex/local-first-media-ai-20260705`
 
 | Area | Status | Outcome |
@@ -18,6 +18,8 @@
 | Documentation and tests | DONE | Updated environment/deployment/admin/architecture docs, added weighted-scoring tests and sidecar scan/health tests, and documented Windows/WSL/GPU/manual-only operation. |
 
 Rendered verification used a disposable external `DATA_ROOT`: a Studio page edit survived a full browser reload and an application-process restart. At 390 x 844 the header rendered at 80px initially, compacted to 44px, moved fully off-screen on downward scroll, returned on upward scroll, and introduced no horizontal overflow. The Studio media workspace rendered its provider controls, paged cards, AI state, and inspector without horizontal overflow. Final static gates passed on Next.js 16.2.10: typecheck, three deterministic scoring tests, two Python sidecar tests, lint with no errors, production build, npm audit with zero known vulnerabilities, and Synology Compose validation.
+
+Live deployment verification completed on 2026-07-05. SQLite was backed up and passed `PRAGMA quick_check` at `site/data/backups/woodsmith-pre-local-ai-20260705-201844.sqlite`. Candidate image `sha256:8427c56b4a9e2f5c2f458bf87e6255f851360efd66d5bebb8e6c81615b987de3` passed isolated route, permission, and no-embedded-database checks before promotion; the previous image remains tagged `woodsmith:rollback-local-ai-20260705-202707`. The running container uses writable direct mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Internal and public checks passed for Workshop, Portfolio, Shop, Contact, Studio login, and a mounted full-resolution media path. `woodmat.ch` and `www.woodmat.ch` return 200. Live desktop/mobile testing confirmed compact auto-hide/reveal behavior, zero horizontal overflow at 390px, and no new browser-console or container errors.
 
 Current model configuration follows official provider documentation checked on 2026-07-05: Gemini 3.1 Flash-Lite is the stable cost-oriented multimodal fallback, Gemini Embedding 2 is the optional multimodal embedding model, Ollama structured vision accepts JSON schema, and SentenceTransformers documents `sentence-transformers/clip-ViT-B-32` for shared image/text search. These are environment defaults, not hard requirements; every cache key records provider/model/version and model changes require re-embedding.
 
