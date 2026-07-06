@@ -134,6 +134,8 @@ The local sidecar is deliberately separate from the NAS web container so model d
 
 Run the sidecar against the mapped photo library (`Y:\homes\Cooper\Photos\Dad_Woodworking_09262025` on Windows or its WSL mount). Bind to the laptop LAN interface, require `MEDIA_AI_SIDECAR_TOKEN`, and allow inbound TCP 8765 only from the NAS IP. Set `LOCAL_AI_SIDECAR_URL` in the NAS `.env` to that LAN address.
 
+Keep `MEDIA_AI_CACHE` on a local SSD outside the mapped photo tree. It contains the resumable file index, 768px generated review thumbnails, image/text embeddings, analyses, and cluster state. Repeated bounded runs continue uncached work; this cache can be backed up independently and must never be placed in `/app/pics`.
+
 ### B. Separate GPU host
 
 Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. CUDA is used automatically when the installed PyTorch build supports it; CPU remains a valid fallback.

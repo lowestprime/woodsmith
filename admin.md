@@ -78,14 +78,14 @@ Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`,
 
 ### Media automation providers
 
-The automation API supports **Status**, **Scan**, **Analyze**, **Embed**, **Cluster**, **Rank matches**, **Full run**, **Cancel**, and **Dry run**. Work is synchronous and bounded by `MEDIA_AI_MAX_BATCH`; no fake background job is presented. Safe mode is enabled in the browser by default and records nothing until it is switched off.
+The automation API supports **Status**, **Scan**, **Analyze**, **Embed**, **Cluster**, **Rank matches**, **Full run**, **Cancel**, and **Dry run**. Work is synchronous and bounded by `MEDIA_AI_MAX_BATCH`; no fake background job is presented. Safe mode is enabled in the browser by default and records nothing until it is switched off. **Next library batch** resumes with uncached work, while **Include reviewed media** is an explicit opt-in for page/library batches. Direct per-image Analyze/Embed actions remain intentional reprocessing actions even when that record is already reviewed.
 
 - `local-sidecar` is the default bulk path. It hashes source files, computes perceptual hashes and true image-pixel CLIP embeddings, caches outside `/app/pics`, and can run entirely on the Windows/WSL laptop or another GPU host.
 - Ollama is an optional local vision classifier for ambiguous images or explicit re-analysis. It is not called blindly for every near-duplicate.
 - Gemini 3.1 Flash-Lite and Gemini Embedding 2 are optional fallback/cloud-quality paths. Google quotas, pricing, and data terms apply and can change by project.
 - OpenAI remains backwards compatible only when explicitly selected and configured. ChatGPT Plus is a separate product and cannot authenticate this API.
 
-Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. Cluster IDs and membership are persisted to media metadata. A cluster can inform ranking, but only a manually reviewed representative can provide a verified propagation prior. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
+Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only a manually reviewed representative can provide a verified propagation prior. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
 
 The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
 

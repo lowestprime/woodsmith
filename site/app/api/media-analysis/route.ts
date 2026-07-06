@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAiProviderRuntimeStatus, getAiServiceStatus, runLocalSidecarAction, type AiProviderName } from "@/lib/ai-services";
 import { getCurrentUser } from "@/lib/auth";
-import { listMedia, listPieces, refreshMediaLibrary } from "@/lib/db";
+import { listEmbeddingsByKind, listMedia, listPieces, refreshMediaLibrary } from "@/lib/db";
 import { autoAnalyzeUntaggedMedia, autoClusterByEmbedding, autoPieceToPhotoMatch, computeMediaEmbeddings, computePieceEmbeddings } from "@/lib/media-audit";
 
 export const runtime = "nodejs";
@@ -52,6 +52,7 @@ async function execute(body: MediaAnalysisRequest) {
   const runId = randomUUID();
   const warnings: string[] = [];
   const errors: Array<{ stage: string; message: string; path?: string }> = [];
+  const skipped: Record<string, number> = {};
   const results: Record<string, unknown> = {
     action,
     effectiveAction,
@@ -65,7 +66,12 @@ async function execute(body: MediaAnalysisRequest) {
   if (effectiveAction === "status") {
     results.configuration = configured;
     results.providers = await getAiProviderRuntimeStatus();
-    results.cache = { note: "Embedding and analysis records are persisted in the mounted SQLite data volume; sidecar model/cache files stay outside the media tree." };
+    results.cache = {
+      available: true,
+      pieceEmbeddings: listEmbeddingsByKind("piece-visual").length,
+      mediaEmbeddings: listEmbeddingsByKind("media-visual").length,
+      note: "Embedding and analysis records are persisted in the mounted SQLite data volume; sidecar model/cache files stay outside the media tree."
+    };
   } else if (effectiveAction === "cancel") {
     try {
       results.cancel = await runLocalSidecarAction("cancel", {});
@@ -79,6 +85,17 @@ async function execute(body: MediaAnalysisRequest) {
     const selectedPaths = body.onlySelected || requestedPaths.length > 0 ? requestedPaths : undefined;
     const pieces = listPieces(true);
     const options = { provider, selectedPaths, limit, includeReviewed: Boolean(body.includeReviewed), dryRun, pieces };
+
+    if (body.onlySelected && requestedPaths.length === 0) {
+      warnings.push("No valid selected media paths were supplied; no library-wide fallback was run.");
+      skipped.selection = 1;
+      results.skipped = skipped;
+      results.warnings = warnings;
+      results.errors = errors;
+      results.durationMs = Math.round(performance.now() - started);
+      results.nextRecommendedAction = "Select one or more media cards, then run the selected action again.";
+      return results;
+    }
 
     if (["scan", "full"].includes(effectiveAction)) {
       if (!dryRun) {
@@ -99,12 +116,15 @@ async function execute(body: MediaAnalysisRequest) {
     if (["analyze", "full"].includes(effectiveAction)) {
       const analysis = await autoAnalyzeUntaggedMedia(options);
       results.analysis = analysis;
+      skipped.analysis = analysis.skipped;
       errors.push(...analysis.errors.map((entry) => ({ stage: "analysis", path: entry.path, message: entry.message })));
     }
 
     if (["embed", "full"].includes(effectiveAction)) {
       const [pieceResult, mediaResult] = await Promise.all([computePieceEmbeddings(pieces, options), computeMediaEmbeddings(media, options)]);
       results.embeddings = { pieces: pieceResult, media: mediaResult };
+      skipped.pieceEmbeddings = pieceResult.skipped;
+      skipped.mediaEmbeddings = mediaResult.skipped;
       errors.push(...pieceResult.errors.map((message) => ({ stage: "piece-embedding", message })));
       errors.push(...mediaResult.errors.map((entry) => ({ stage: "image-embedding", path: entry.path, message: entry.message })));
     }
@@ -118,12 +138,15 @@ async function execute(body: MediaAnalysisRequest) {
     }
 
     if (["match", "full"].includes(effectiveAction)) {
-      const matches = await autoPieceToPhotoMatch(pieces, media);
+      if (!dryRun && effectiveAction === "full") {
+        media = listMedia({ includeUnreviewed: true });
+      }
+      const matches = await autoPieceToPhotoMatch(pieces, media, options);
       results.matches = { count: matches.length, candidates: matches.slice(0, 100) };
     }
   }
 
-  results.skipped = errors.length;
+  results.skipped = skipped;
   results.warnings = warnings;
   results.errors = errors;
   results.durationMs = Math.round(performance.now() - started);

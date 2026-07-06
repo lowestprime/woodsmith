@@ -34,6 +34,7 @@ type AutomationResponse = {
   runId?: string;
   durationMs?: number;
   providers?: Record<string, ProviderState>;
+  cache?: { available?: boolean; pieceEmbeddings?: number; mediaEmbeddings?: number; note?: string };
   nextRecommendedAction?: string;
   warnings?: string[];
   errors?: Array<{ stage?: string; path?: string; message?: string }>;
@@ -78,6 +79,48 @@ function metadataStrings(item: MediaRecord, key: string) {
 
 function compactMetric(value: number) {
   return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
+}
+
+function automationSummary(result: AutomationResponse | null) {
+  if (!result) return [];
+  const record = (value: unknown) => value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const summary: string[] = [];
+  const localIndex = record(result.localIndex);
+  const analysis = record(result.analysis);
+  const embeddings = record(record(result.embeddings).media);
+  const clusters = record(result.clusters);
+  const matches = record(result.matches);
+  const skipped = record(result.skipped);
+  const add = (label: string, value: unknown) => {
+    const count = Number(value);
+    if (Number.isFinite(count) && count >= 0) summary.push(`${label} ${count}`);
+  };
+  add("Indexed", localIndex.refreshed ?? localIndex.indexed);
+  add("Analyzed", analysis.analyzed);
+  add("Embedded", embeddings.embedded);
+  add("Clusters", clusters.count);
+  add("Matches", matches.count);
+  const skippedTotal = Object.values(skipped).reduce<number>((total, value) => total + (Number(value) || 0), 0);
+  if (skippedTotal > 0) summary.push(`Skipped ${skippedTotal}`);
+  if (result.errors?.length) summary.push(`Errors ${result.errors.length}`);
+  if (typeof result.durationMs === "number") summary.push(`${result.durationMs} ms`);
+  return summary;
+}
+
+function analysisDisposition(item: MediaRecord) {
+  if (!item.metadata.aiAnalyzed) return { label: "Unanalyzed", className: "is-weak" };
+  const primary = String(item.metadata.aiPrimaryObject || "");
+  if (primary === "part-detail" || primary === "hardware-detail") return { label: "Detail-only", className: "is-moderate" };
+  if (["room-context", "process-workshop", "drawing-plan", "people-context"].includes(primary)) return { label: "Context image", className: "is-moderate" };
+  if (item.metadata.aiUnsafeToAutoAssignReason || Number(item.metadata.aiAmbiguity ?? 0) >= 0.3) return { label: "Ambiguous", className: "is-moderate" };
+  return confidenceForScore(Number(item.metadata.aiConfidence ?? 0) * 100);
+}
+
+function aiTimestamp(value: unknown) {
+  const text = String(value || "");
+  if (!text) return "not recorded";
+  const normalized = text.replace("T", " ").replace(/\.\d+Z$/, "Z");
+  return normalized.endsWith("Z") ? `${normalized.slice(0, 19)} UTC` : normalized.slice(0, 19);
 }
 
 function imageNeedsUnoptimized(relativePath: string) {
@@ -220,6 +263,9 @@ function MediaInspector({
   const topAiCandidate = aiCandidates[0];
   const aiConfidence = Number(item.metadata.aiConfidence ?? 0);
   const aiAmbiguity = Number(item.metadata.aiAmbiguity ?? 0);
+  const aiUncertainty = metadataStrings(item, "aiUncertainty");
+  const aiHardware = metadataStrings(item, "aiHardware");
+  const aiDisposition = analysisDisposition(item);
 
   function fillField(event: ReactMouseEvent<HTMLButtonElement>, name: "altText" | "tagsText", value: string, merge = false) {
     const field = event.currentTarget.closest("article")?.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
@@ -267,15 +313,21 @@ function MediaInspector({
       <section className="media-ai-notes" aria-label="AI review notes">
         <div className="studio-editor-head">
           <div><strong>AI review aid</strong><p className="muted-copy">{String(item.metadata.aiFurnitureClass || item.metadata.aiPrimaryObject || "Not analyzed")}</p></div>
-          <span className={`candidate-confidence ${confidenceForScore(aiConfidence * 100).className}`}>{item.metadata.aiAnalyzed ? confidenceForScore(aiConfidence * 100).label : "Unanalyzed"}</span>
+          <span className={`candidate-confidence ${aiDisposition.className}`}>{aiDisposition.label}</span>
         </div>
         {aiDescription ? <p>{aiDescription}</p> : <p className="muted-copy">Run Analyze for a local visual classification. Results never approve or publish media.</p>}
         <div className="media-ai-facts">
           <span>Provider: {String(item.metadata.aiProvider || "none")}</span>
+          <span>Model: {String(item.metadata.aiModel || "none")}</span>
           <span>Confidence: {compactMetric(aiConfidence)}</span>
           <span>Ambiguity: {compactMetric(aiAmbiguity)}</span>
           <span>Embedding: {item.metadata.aiEmbeddingHash ? "present" : "missing"}</span>
+          <span>Analyzed: {aiTimestamp(item.metadata.aiAnalyzedAt)}</span>
         </div>
+        {item.metadata.aiSpecificSubtype ? <p className="muted-copy">Subtype: {String(item.metadata.aiSpecificSubtype)}</p> : null}
+        {aiTags.length ? <p className="muted-copy">AI tags: {aiTags.join(", ")}</p> : null}
+        {item.metadata.aiJoinery || item.metadata.aiFinishDescription || aiHardware.length ? <p className="muted-copy">Visible details: {[item.metadata.aiJoinery, item.metadata.aiFinishDescription, ...aiHardware].filter(Boolean).map(String).join(" · ")}</p> : null}
+        {aiUncertainty.length ? <p className="muted-copy">Uncertainty: {aiUncertainty.join(" · ")}</p> : null}
         {topAiCandidate ? <p className="muted-copy">Candidate: {slugLabel(pieces, topAiCandidate.slug)} · {compactMetric(topAiCandidate.confidence)}{topAiCandidate.evidence.length ? ` · ${topAiCandidate.evidence.join(", ")}` : ""}</p> : null}
         {item.metadata.aiUnsafeToAutoAssignReason ? <p className="error-copy">{String(item.metadata.aiUnsafeToAutoAssignReason)}</p> : null}
         <div className="button-row media-ai-actions">
@@ -450,9 +502,12 @@ export function StudioMediaWorkspace({
   const [candidateAssignments, setCandidateAssignments] = useState<Record<string, string>>({});
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [automationResult, setAutomationResult] = useState<AutomationResponse | null>(null);
+  const [providerStatus, setProviderStatus] = useState<AutomationResponse["providers"]>(undefined);
+  const [cacheStatus, setCacheStatus] = useState<AutomationResponse["cache"]>(undefined);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [providerOverride, setProviderOverride] = useState<"local" | "ollama" | "gemini" | "openai" | "hybrid">("local");
   const [safeMode, setSafeMode] = useState(true);
+  const [includeReviewed, setIncludeReviewed] = useState(false);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
@@ -480,7 +535,11 @@ export function StudioMediaWorkspace({
     let active = true;
     void fetch("/api/media-analysis", { cache: "no-store" }).then(async (response) => {
       const payload = await response.json().catch(() => ({})) as AutomationResponse;
-      if (active && response.ok) setAutomationResult(payload);
+      if (active && response.ok) {
+        setAutomationResult(payload);
+        setProviderStatus(payload.providers);
+        setCacheStatus(payload.cache);
+      }
     }).catch(() => undefined);
     return () => { active = false; };
   }, []);
@@ -569,6 +628,7 @@ export function StudioMediaWorkspace({
       suggestions: entry.suggestions.filter(({ item }) => !candidateAssignments[item.relativePath])
     }))
     .filter((entry) => entry.suggestions.length > 0 || entry.needsReview), [candidateAssignments, queue]);
+  const runSummary = useMemo(() => automationSummary(automationResult), [automationResult]);
 
   async function refreshWorkspaceData(refreshIndex = true) {
     setPageMessage(refreshIndex ? "Scanning the mounted media library…" : "Refreshing media…");
@@ -603,7 +663,7 @@ export function StudioMediaWorkspace({
       const response = await fetch("/api/media-analysis", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, provider: providerOverride, limit: Math.min(96, Math.max(1, scopedPaths.length || pageSize)), onlySelected: scope !== "library", selectedPaths: scopedPaths, includeReviewed: false, dryRun: action === "dry-run" || safeMode })
+        body: JSON.stringify({ action, provider: providerOverride, limit: Math.min(96, Math.max(1, scopedPaths.length || pageSize)), onlySelected: scope !== "library", selectedPaths: scopedPaths, includeReviewed: explicitPaths?.length ? true : includeReviewed, dryRun: action === "dry-run" || safeMode })
       });
       const payload = await response.json().catch(() => ({})) as AutomationResponse & { error?: string };
       if (!response.ok) {
@@ -611,6 +671,8 @@ export function StudioMediaWorkspace({
         return;
       }
       setAutomationResult(payload);
+      if (payload.providers) setProviderStatus(payload.providers);
+      if (payload.cache) setCacheStatus(payload.cache);
       const errorCount = Array.isArray(payload.errors) ? payload.errors.length : 0;
       setAutomationMessage(`${action.charAt(0).toUpperCase() + action.slice(1)} finished in ${payload.durationMs ?? 0} ms${safeMode || action === "dry-run" ? " · dry run, no metadata changed" : ""}${errorCount ? ` · ${errorCount} item error${errorCount === 1 ? "" : "s"}` : ""}.`);
       if (!safeMode && action !== "dry-run" && action !== "status" && action !== "cancel") await refreshWorkspaceData(false);
@@ -678,6 +740,7 @@ export function StudioMediaWorkspace({
           <div className="field-grid two-up compact-grid media-automation-settings">
             <label><span>Provider</span><select onChange={(event) => setProviderOverride(event.target.value as typeof providerOverride)} value={providerOverride}><option value="local">Local sidecar</option><option value="ollama">Ollama</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="hybrid">Hybrid fallback</option></select></label>
             <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Safe mode (dry run)</span></label>
+            <label className="checkbox-row"><input checked={includeReviewed} onChange={(event) => setIncludeReviewed(event.target.checked)} type="checkbox" /><span>Include reviewed media in page/library batches</span></label>
           </div>
           <div className="button-row compact-button-row media-automation-actions">
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("status")} type="button">Status</button>
@@ -689,13 +752,16 @@ export function StudioMediaWorkspace({
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("cluster", "page")} type="button">Cluster page</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Full page run</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "library")} type="button">Next library batch</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("dry-run", "page")} type="button">Dry-run preview</button>
             <button className="button-secondary" disabled={!isAutomating} onClick={() => void runAutomation("cancel")} type="button">Cancel</button>
           </div>
           {isAutomating ? <progress aria-label="Media automation is running" className="media-automation-progress" /> : null}
-          {automationResult?.providers ? <div className="media-provider-grid">
-            {Object.entries(automationResult.providers).map(([name, provider]) => <article className={provider.available ? "is-available" : "is-unavailable"} key={name}><strong>{name.replace("-", " ")}</strong><span>{provider.available ? "Available" : provider.enabled ? "Unavailable" : "Not selected"}</span><small>{provider.model || provider.reason || "No model"}</small></article>)}
+          {providerStatus ? <div className="media-provider-grid">
+            {Object.entries(providerStatus).map(([name, provider]) => <article className={provider.available ? "is-available" : "is-unavailable"} key={name}><strong>{name.replace("-", " ")}</strong><span>{provider.available ? "Available" : provider.enabled ? "Unavailable" : "Not selected"}</span><small>{provider.model || provider.reason || "No model"}</small></article>)}
+            {cacheStatus ? <article className={cacheStatus.available ? "is-available" : "is-unavailable"}><strong>Embeddings cache</strong><span>{cacheStatus.available ? "Available" : "Unavailable"}</span><small>{cacheStatus.pieceEmbeddings ?? 0} pieces · {cacheStatus.mediaEmbeddings ?? 0} images</small></article> : null}
           </div> : null}
+          {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
           {automationResult?.nextRecommendedAction ? <p className="muted-copy"><strong>Next:</strong> {automationResult.nextRecommendedAction}</p> : null}
           {automationMessage ? <p aria-live="polite" className="studio-inline-notice" role="status">{automationMessage}</p> : null}
         </details>
@@ -780,6 +846,7 @@ export function StudioMediaWorkspace({
             const embedded = Boolean(item.metadata.aiEmbeddingHash);
             const clusterId = typeof item.metadata.aiClusterId === "string" ? item.metadata.aiClusterId : "";
             const highCandidate = Number(item.metadata.aiConfidence ?? 0) >= 0.82 && Number(item.metadata.aiAmbiguity ?? 1) < 0.3;
+            const disposition = analysisDisposition(item);
             return <div className={`studio-media-browser-card-wrap${selectedForAutomation ? " is-selected" : ""}`} key={item.relativePath}>
               <button
                 className={`studio-media-browser-card${item.relativePath === selectedItem?.relativePath ? " is-active" : ""}`}
@@ -796,7 +863,7 @@ export function StudioMediaWorkspace({
                     : item.kind === "video"
                       ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
-                  <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i><i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
+                  <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i>{analyzed ? <i>{disposition.label}</i> : null}<i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
                 </div>
                 <div className="studio-media-browser-body">
                   <strong>{item.fileName}</strong>

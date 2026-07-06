@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { cosineSimilarity, createImageEmbeddings, createTextEmbeddings, describeImageContent, getAiServiceStatus, runLocalSidecarAction, type AiProviderName, type ImageAnalysisResult, type ImageEmbeddingResult } from "@/lib/ai-services";
-import { type MediaRecord, type PieceRecord, getEmbeddingCache, saveEmbeddingCache, listEmbeddingsByKind, markMediaAiAnalyzed, listMediaWithoutAiTags, patchMediaMetadata } from "@/lib/db";
+import { type MediaRecord, type PieceRecord, getEmbeddingCache, saveEmbeddingCache, listEmbeddingsByKind, listMedia, markMediaAiAnalyzed, listMediaWithoutAiTags, patchMediaMetadata } from "@/lib/db";
 import { resolveMediaPath } from "@/lib/media";
 import { classifyMediaSuggestion, weightedMediaScore, type MediaScoreEvidence } from "@/lib/media-scoring";
 
@@ -160,9 +160,15 @@ export function buildMediaVerificationQueue(pieces: PieceRecord[], media: MediaR
 export async function computePieceEmbeddings(pieces: PieceRecord[], options: MediaAutomationOptions = {}) {
   const status = getAiServiceStatus();
   if (!status.embeddingSearch) return { embedded: 0, skipped: pieces.length, errors: [] as string[] };
-  const batch = pieces.slice(0, options.limit ?? status.maxBatch);
+  const provider = options.provider === "local" ? "local-sidecar" : !options.provider || options.provider === "hybrid" ? status.activeEmbeddingProvider : options.provider;
+  const pending = pieces.filter((piece) => {
+    const sourceText = pieceText(piece);
+    const key = `piece-visual:${provider}:${status.embeddingModel}:1:${piece.slug}`;
+    return getEmbeddingCache(key)?.sourceText !== sourceText;
+  });
+  const batch = pending.slice(0, options.limit ?? status.maxBatch);
   const texts = batch.map(pieceText);
-  const provider = options.provider === "local" ? "local-sidecar" : options.provider || status.activeEmbeddingProvider;
+  if (batch.length === 0) return { embedded: 0, skipped: pieces.length, errors: [] as string[] };
   const vectors = await createTextEmbeddings(texts, { provider }).catch(() => null);
   if (!vectors || vectors.length !== batch.length) return { embedded: 0, skipped: batch.length, errors: ["Embedding provider returned no compatible piece vectors."] };
   if (!options.dryRun) {
@@ -182,7 +188,12 @@ export async function computeMediaEmbeddings(media: MediaRecord[], options: Medi
   const status = getAiServiceStatus();
   if (!status.embeddingSearch) return { embedded: 0, skipped: media.length, errors: [] as Array<{ path: string; message: string }> };
   const selected = new Set(options.selectedPaths ?? []);
-  const candidates = media.filter((item) => item.kind === "image" && (selected.size === 0 || selected.has(item.relativePath)) && (options.includeReviewed || !item.reviewed)).slice(0, options.limit ?? status.maxBatch);
+  const requestedProvider = options.provider === "local" ? "local-sidecar" : options.provider === "hybrid" || !options.provider ? status.activeEmbeddingProvider : options.provider;
+  const candidates = media.filter((item) => item.kind === "image"
+    && (selected.size === 0 || selected.has(item.relativePath))
+    && (options.includeReviewed || !item.reviewed)
+    && (selected.size > 0 || !item.metadata.aiEmbeddingHash || item.metadata.aiEmbeddingProvider !== requestedProvider || item.metadata.aiEmbeddingModel !== status.embeddingModel)
+  ).slice(0, options.limit ?? status.maxBatch);
   const results: ImageEmbeddingResult[] = await createImageEmbeddings(candidates.map((item) => ({ absolutePath: resolveMediaPath(item.relativePath), relativePath: item.relativePath })), { provider: options.provider }).catch((error) => candidates.map((item): ImageEmbeddingResult => ({ path: item.relativePath, provider: "disabled", model: status.embeddingModel, version: "1", error: error instanceof Error ? error.message : "Embedding failed." })));
   let embedded = 0;
   const errors: Array<{ path: string; message: string }> = [];
@@ -214,11 +225,17 @@ function analysisMetadata(analysis: ImageAnalysisResult) {
     aiConstructionStage: analysis.constructionStage,
     aiWoodSpecies: analysis.woodSpecies,
     aiVisibleFeatures: analysis.visibleFeatures,
+    aiFinishDescription: analysis.finishDescription,
+    aiJoinery: analysis.joinery,
+    aiHardware: analysis.hardware,
+    aiShapeAndProportionNotes: analysis.shapeAndProportionNotes,
     aiCandidatePieceSlugs: analysis.candidatePieceSlugs,
     aiConfidence: analysis.confidence,
     aiAmbiguity: analysis.ambiguity,
     aiUncertainty: analysis.uncertainty,
     aiUnsafeToAutoAssignReason: analysis.unsafeToAutoAssignReason,
+    aiBoundingBoxes: analysis.boundingBoxes ?? [],
+    aiEmbeddingKeys: analysis.embeddingKeys ?? [],
     aiNeedsHumanReview: true,
     aiReviewReason: analysis.unsafeToAutoAssignReason || "AI analysis requires manual verification."
   };
@@ -227,7 +244,10 @@ function analysisMetadata(analysis: ImageAnalysisResult) {
 export async function autoAnalyzeUntaggedMedia(options: MediaAutomationOptions = {}) {
   const status = getAiServiceStatus();
   if (!status.mediaAnalysis) return { analyzed: 0, skipped: 0, errors: [{ message: "Media analysis is disabled." }] };
-  const source = options.selectedPaths?.length ? options.selectedPaths.map((relativePath) => ({ relativePath })) : listMediaWithoutAiTags();
+  const selected = new Set(options.selectedPaths ?? []);
+  const source = selected.size > 0
+    ? listMedia({ includeUnreviewed: true }).filter((item) => selected.has(item.relativePath) && item.kind === "image" && (options.includeReviewed || !item.reviewed))
+    : listMediaWithoutAiTags().filter((item) => options.includeReviewed || !item.reviewed);
   const candidates = source.slice(0, options.limit ?? status.maxBatch);
   const pieces = options.pieces ?? [];
   const errors: Array<{ path?: string; message: string }> = [];
@@ -253,7 +273,10 @@ function stableClusterId(paths: string[], model: string) {
 export async function autoClusterByEmbedding(media: MediaRecord[], options: MediaAutomationOptions = {}) {
   const status = getAiServiceStatus();
   const selected = new Set(options.selectedPaths ?? []);
-  const scoped = media.filter((item) => item.kind === "image" && (selected.size === 0 || selected.has(item.relativePath))).slice(0, options.limit ?? status.maxBatch);
+  const scoped = media.filter((item) => item.kind === "image"
+    && (selected.size === 0 || selected.has(item.relativePath))
+    && (selected.size > 0 || (item.metadata.aiEmbeddingHash && !item.metadata.aiClusterId))
+  ).slice(0, options.limit ?? status.maxBatch);
   let members: Array<{ clusterId: string; relativePath: string; representative: boolean; score: number; label?: string }> = [];
   if ((options.provider === "local" || options.provider === "local-sidecar" || (!options.provider && status.activeEmbeddingProvider === "local-sidecar"))) {
     try {
@@ -293,7 +316,9 @@ export async function autoClusterByEmbedding(media: MediaRecord[], options: Medi
   return { count: new Set(members.map((item) => item.clusterId)).size, members: members.length, groups: members };
 }
 
-export async function autoPieceToPhotoMatch(pieces: PieceRecord[], media: MediaRecord[]) {
-  const queue = buildMediaVerificationQueue(pieces, media);
+export async function autoPieceToPhotoMatch(pieces: PieceRecord[], media: MediaRecord[], options: MediaAutomationOptions = {}) {
+  const selected = new Set(options.selectedPaths ?? []);
+  const scoped = media.filter((item) => (selected.size === 0 || selected.has(item.relativePath)) && (options.includeReviewed || !item.reviewed));
+  const queue = buildMediaVerificationQueue(pieces, scoped);
   return queue.flatMap((entry) => entry.suggestions.map((candidate) => ({ pieceSlug: entry.piece.slug, mediaPath: candidate.item.relativePath, confidence: candidate.score, finalScore: candidate.finalScore, margin: candidate.margin, ambiguity: candidate.ambiguity, evidence: candidate.evidence, reasonCodes: candidate.reasonCodes, label: candidate.confidence }))).sort((left, right) => right.finalScore - left.finalScore).slice(0, 100);
 }

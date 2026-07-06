@@ -87,7 +87,10 @@ Local-first media AI configuration:
 - `OLLAMA_BASE_URL` and `OLLAMA_VISION_MODEL`
 - `ENABLE_AI_MEDIA_ANALYSIS`, `ENABLE_EMBEDDING_SEARCH`, and `ENABLE_LOCAL_IMAGE_EMBEDDINGS`
 - `MEDIA_AI_MAX_BATCH`, `MEDIA_AI_CONFIDENCE_HIGH`, `MEDIA_AI_CONFIDENCE_MIN`, and `MEDIA_AI_AMBIGUITY_DELTA`
+- sidecar-only `MEDIA_AI_MEDIA_ROOT`, `MEDIA_AI_CACHE`, `MEDIA_AI_SIDECAR_TOKEN`, `MEDIA_AI_USE_OLLAMA`, `MEDIA_AI_CLUSTER_SIMILARITY`, and `MEDIA_AI_DUPLICATE_HASH_DISTANCE`
 - optional `GEMINI_API_KEY`, `GEMINI_VISION_MODEL`, `GEMINI_EMBEDDING_MODEL`, and `ENABLE_GEMINI_FALLBACK`
+
+The sidecar processes bounded resumable batches: repeated **Scan**, **Analyze**, or **Next library batch** actions continue with changed or uncached files instead of restarting at the first path. It writes SHA-256/perceptual hashes, generated 768px review thumbnails, embeddings, analyses, and cluster state only to its configured cache directory outside the mounted photo tree. The Studio status panel reports provider health and persisted piece/image embedding counts.
 
 Required for optional live services:
 

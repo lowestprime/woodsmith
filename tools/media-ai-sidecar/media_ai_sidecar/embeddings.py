@@ -54,7 +54,7 @@ def embed_texts(texts: list[str], model_name: str) -> list[list[float]]:
 
 
 def embed_paths(root: Path, cache: SidecarCache, relative_paths: list[str], model_name: str, dry_run: bool) -> list[dict[str, Any]]:
-    from PIL import Image
+    from PIL import Image, ImageOps
     key_prefix = model_key(model_name)
     results: list[dict[str, Any]] = []
     pending: list[tuple[str, Path, dict[str, Any], str]] = []
@@ -73,9 +73,11 @@ def embed_paths(root: Path, cache: SidecarCache, relative_paths: list[str], mode
     if pending:
         images = []
         try:
-            for _, path, _, _ in pending:
-                with Image.open(path) as image:
-                    images.append(image.convert("RGB").copy())
+            for _, path, facts, _ in pending:
+                thumbnail = cache.resolve_thumbnail(str(facts.get("thumbnailPath") or ""))
+                source = thumbnail if thumbnail is not None and thumbnail.is_file() else path
+                with Image.open(source) as image:
+                    images.append(ImageOps.exif_transpose(image).convert("RGB").copy())
             vectors = get_model(model_name).encode(images, normalize_embeddings=True, show_progress_bar=False)
             for (relative_path, _, facts, cache_key), vector in zip(pending, vectors, strict=True):
                 normalized = normalize_vector(vector)

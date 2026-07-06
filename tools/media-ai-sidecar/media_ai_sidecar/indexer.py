@@ -43,17 +43,43 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
-def image_facts(path: Path) -> tuple[str | None, int | None, int | None, str | None]:
+def image_facts(path: Path, thumbnail_path: Path | None = None) -> tuple[str | None, int | None, int | None, bool, str | None]:
     try:
-        from PIL import Image
-        import imagehash
+        from PIL import Image, ImageOps
         with Image.open(path) as image:
-            width, height = image.size
-            perceptual = str(imagehash.phash(image.convert("RGB")))
-            thumbnail_error = None
-        return perceptual, width, height, thumbnail_error
+            oriented = ImageOps.exif_transpose(image)
+            width, height = oriented.size
+            rgb = oriented.convert("RGB")
+            if thumbnail_path is not None and not thumbnail_path.is_file():
+                thumbnail_path.parent.mkdir(parents=True, exist_ok=True)
+                thumbnail = rgb.copy()
+                thumbnail.thumbnail((768, 768), Image.Resampling.LANCZOS)
+                temporary = thumbnail_path.with_suffix(".tmp")
+                thumbnail.save(temporary, format="JPEG", quality=88, optimize=True)
+                os.replace(temporary, thumbnail_path)
+            thumbnail_available = thumbnail_path is not None and thumbnail_path.is_file()
+            try:
+                import imagehash
+                perceptual = str(imagehash.phash(rgb))
+                warning = None
+            except Exception as error:
+                perceptual = None
+                warning = f"Perceptual hash unavailable: {error}"
+        return perceptual, width, height, thumbnail_available, warning
     except Exception as error:  # Optional image dependencies or unsupported camera formats.
-        return None, None, None, str(error)
+        return None, None, None, False, str(error)
+
+
+def cached_thumbnail_current(cache: SidecarCache, existing: dict[str, Any] | None) -> bool:
+    if not existing:
+        return False
+    reference = existing.get("thumbnail_path")
+    if reference == "":
+        return True
+    if not isinstance(reference, str) or not reference:
+        return False
+    thumbnail = cache.resolve_thumbnail(reference)
+    return thumbnail is not None and thumbnail.is_file()
 
 
 def safe_media_path(root: Path, relative_path: str) -> Path:
@@ -71,7 +97,8 @@ def index_file(root: Path, path: Path, cache: SidecarCache, dry_run: bool = Fals
     relative_path = path.relative_to(root).as_posix()
     stat = path.stat()
     existing = cache.get_file(relative_path)
-    if existing and int(existing["size_bytes"]) == stat.st_size and int(existing["mtime_ns"]) == stat.st_mtime_ns:
+    current = existing and int(existing["size_bytes"]) == stat.st_size and int(existing["mtime_ns"]) == stat.st_mtime_ns
+    if current and cached_thumbnail_current(cache, existing):
         return {
             "relativePath": relative_path,
             "sizeBytes": stat.st_size,
@@ -80,30 +107,64 @@ def index_file(root: Path, path: Path, cache: SidecarCache, dry_run: bool = Fals
             "perceptualHash": existing["perceptual_hash"],
             "width": existing["width"],
             "height": existing["height"],
+            "thumbnailPath": existing["thumbnail_path"],
             "cached": True,
         }
-    perceptual, width, height, image_error = image_facts(path)
+    file_hash = str(existing["sha256"]) if current else sha256_file(path)
+    thumbnail_target, thumbnail_relative = cache.thumbnail_target(file_hash)
+    perceptual, width, height, thumbnail_available, image_warning = image_facts(path, None if dry_run else thumbnail_target)
     record = {
         "relativePath": relative_path,
         "sizeBytes": stat.st_size,
         "mtimeNs": stat.st_mtime_ns,
-        "sha256": sha256_file(path),
+        "sha256": file_hash,
         "perceptualHash": perceptual,
         "width": width,
         "height": height,
+        # Empty string records an attempted but unavailable thumbnail; NULL is reserved for legacy/unattempted rows.
+        "thumbnailPath": thumbnail_relative if thumbnail_available and not dry_run else (None if dry_run else ""),
         "updatedAt": now_iso(),
     }
     if not dry_run:
         cache.put_file(record)
-    return {**record, "cached": False, **({"warning": image_error} if image_error else {})}
+    return {**record, "cached": False, **({"warning": image_warning} if image_warning else {})}
 
 
 def scan(root: Path, cache: SidecarCache, selected_paths: list[str] | None, limit: int, dry_run: bool) -> dict[str, Any]:
-    paths = [safe_media_path(root, value) for value in selected_paths] if selected_paths else list(iter_media(root))
-    items, errors = [], []
-    for path in paths[:limit]:
+    paths: list[Path] = []
+    errors: list[dict[str, str]] = []
+    if selected_paths:
+        for value in selected_paths:
+            try:
+                paths.append(safe_media_path(root, value))
+            except Exception as error:
+                errors.append({"path": value, "message": str(error)})
+    else:
+        paths = list(iter_media(root))
+    pending = []
+    for path in paths:
+        try:
+            relative_path = path.relative_to(root).as_posix()
+            existing = cache.get_file(relative_path)
+            stat = path.stat()
+            if not existing or int(existing["size_bytes"]) != stat.st_size or int(existing["mtime_ns"]) != stat.st_mtime_ns or not cached_thumbnail_current(cache, existing):
+                pending.append(path)
+        except Exception as error:
+            errors.append({"path": str(path), "message": str(error)})
+    items = []
+    for path in pending[:limit]:
         try:
             items.append(index_file(root, path, cache, dry_run))
         except Exception as error:
             errors.append({"path": str(path), "message": str(error)})
-    return {"items": items, "scanned": len(items), "remaining": max(0, len(paths) - len(items)), "errors": errors, "dryRun": dry_run}
+    remaining = max(0, len(pending) - len(items))
+    return {
+        "items": items,
+        "scanned": len(items),
+        "total": len(paths),
+        "upToDate": len(paths) - len(pending),
+        "remaining": remaining,
+        "errors": errors,
+        "dryRun": dry_run,
+        "nextRecommendedAction": "Run Scan again to continue the remaining changed files." if remaining else "Index is current; continue with Embed or Analyze.",
+    }

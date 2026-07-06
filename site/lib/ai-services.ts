@@ -183,6 +183,11 @@ export async function createImageEmbeddings(inputs: ImageAnalysisInput[], select
   return errors.length ? errors : batch.map((input) => ({ path: input.relativePath, provider: "disabled", model: "none", version: "1", error: "No image embedding provider is available." }));
 }
 
+export async function createImageEmbedding(input: ImageAnalysisInput, selection: ProviderSelection = {}): Promise<number[] | null> {
+  const result = (await createImageEmbeddings([input], selection))[0];
+  return result?.embedding?.length ? result.embedding : null;
+}
+
 export async function describeImageContent(absolutePath: string, relativePath: string, selection: ProviderSelection = {}): Promise<ImageAnalysisResult | null> {
   const status = getAiServiceStatus();
   if (!status.mediaAnalysis) return null;

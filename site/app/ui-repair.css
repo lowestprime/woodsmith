@@ -721,6 +721,23 @@ body:has(.inline-edit-hint) main {
   font-size: 0.66rem;
 }
 
+.media-run-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.4rem;
+}
+
+.media-run-summary span {
+  padding: 0.18rem 0.42rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--muted);
+  font-size: 0.66rem;
+  white-space: nowrap;
+}
+
 .studio-media-browser {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);

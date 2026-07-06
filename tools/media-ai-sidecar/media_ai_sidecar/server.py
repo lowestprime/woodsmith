@@ -5,6 +5,7 @@ import json
 import os
 import platform
 import sys
+import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -15,7 +16,7 @@ from . import __version__
 from .cache import SidecarCache
 from .cluster import cluster_items
 from .embeddings import cosine, embed_paths, embed_texts, model_key, runtime_status
-from .indexer import index_file, iter_media, safe_media_path, scan
+from .indexer import cached_thumbnail_current, index_file, iter_media, safe_media_path, scan
 from .ollama_client import analyze as ollama_analyze, configured as ollama_configured, health as ollama_health
 from .gemini_client import analyze as gemini_analyze, configured as gemini_configured
 from .schemas import normalize_analysis, now_iso
@@ -44,6 +45,34 @@ class MediaAiService:
         self.cache = SidecarCache(cache_path)
         self.model_name = model_name
         self.max_batch = max(1, min(100, max_batch))
+        self.work_lock = threading.Lock()
+
+    def _all_relative_paths(self) -> list[str]:
+        return [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)]
+
+    def _pending_full_paths(self) -> list[str]:
+        pending = []
+        for relative_path in self._all_relative_paths():
+            path = safe_media_path(self.media_root, relative_path)
+            stat = path.stat()
+            cached = self.cache.get_file(relative_path)
+            current = cached and int(cached["size_bytes"]) == stat.st_size and int(cached["mtime_ns"]) == stat.st_mtime_ns and cached_thumbnail_current(self.cache, cached)
+            file_hash = str(cached["sha256"]) if current else None
+            if not current or not self.cache.has_embedding(relative_path, self.model_name, file_hash) or not self.cache.has_analysis(relative_path, file_hash):
+                pending.append(relative_path)
+        return pending
+
+    def _pending_analysis_paths(self) -> list[str]:
+        pending = []
+        for relative_path in self._all_relative_paths():
+            path = safe_media_path(self.media_root, relative_path)
+            stat = path.stat()
+            cached = self.cache.get_file(relative_path)
+            current = cached and int(cached["size_bytes"]) == stat.st_size and int(cached["mtime_ns"]) == stat.st_mtime_ns
+            file_hash = str(cached["sha256"]) if current else None
+            if not current or not self.cache.has_analysis(relative_path, file_hash):
+                pending.append(relative_path)
+        return pending
 
     def health(self) -> dict[str, Any]:
         embedding = runtime_status(self.model_name)
@@ -141,7 +170,7 @@ class MediaAiService:
         started = time.monotonic()
         selected = [str(item) for item in body.get("selectedPaths", [])] if isinstance(body.get("selectedPaths"), list) else []
         if not selected:
-            selected = [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)]
+            selected = self._pending_analysis_paths()
         pieces = [item for item in body.get("pieces", []) if isinstance(item, dict)] if isinstance(body.get("pieces"), list) else []
         dry_run = _truthy(body.get("dryRun"))
         items, errors = [], []
@@ -149,6 +178,11 @@ class MediaAiService:
             try:
                 path = safe_media_path(self.media_root, relative_path)
                 facts = index_file(self.media_root, path, self.cache, dry_run)
+                cached = None if _truthy(body.get("forceVision")) else self.cache.get_latest_analysis(relative_path, str(facts["sha256"]))
+                if cached:
+                    analysis = cached["analysis"]
+                    items.append({"relativePath": relative_path, "analysis": analysis, "provider": cached["provider"], "model": cached["model"], "hash": facts["sha256"], "cached": True})
+                    continue
                 analysis = self._local_analysis(relative_path, pieces, dry_run)
                 provider, model = "local-clip", self.model_name
                 should_arbitrate = analysis["confidence"] < 0.78 or analysis["ambiguity"] >= 0.3 or _truthy(body.get("forceVision"))
@@ -159,12 +193,9 @@ class MediaAiService:
                     analysis = gemini_analyze(path, pieces)
                     provider, model = "gemini", str(analysis.get("model") or os.getenv("GEMINI_VISION_MODEL", "gemini-3.1-flash-lite"))
                 cache_key = f"{provider}:{model}:{facts['sha256']}:woodsmith-media-v1"
-                cached = self.cache.get_analysis(cache_key)
-                if cached:
-                    analysis = cached["analysis"]
-                elif not dry_run:
+                if not dry_run:
                     self.cache.put_analysis({"cacheKey": cache_key, "relativePath": relative_path, "fileHash": facts["sha256"], "provider": provider, "model": model, "analysisJson": json.dumps(analysis), "analyzedAt": analysis["analyzedAt"]})
-                items.append({"relativePath": relative_path, "analysis": analysis, "provider": provider, "model": model, "hash": facts["sha256"], "cached": bool(cached)})
+                items.append({"relativePath": relative_path, "analysis": analysis, "provider": provider, "model": model, "hash": facts["sha256"], "cached": False})
             except Exception as error:
                 errors.append({"path": relative_path, "message": str(error)})
         return {"ok": True, "action": "analyze", "items": items, "analyzed": len(items), "errors": errors, "dryRun": dry_run, "durationMs": round((time.monotonic() - started) * 1000)}
@@ -183,7 +214,7 @@ class MediaAiService:
             enriched.append({**item, "perceptualHash": facts.get("perceptual_hash"), "width": facts.get("width"), "height": facts.get("height"), "sizeBytes": facts.get("size_bytes")})
         clusters = cluster_items(enriched, model_key(self.model_name), float(os.getenv("MEDIA_AI_CLUSTER_SIMILARITY", "0.84")), int(os.getenv("MEDIA_AI_DUPLICATE_HASH_DISTANCE", "8")))
         if not dry_run:
-            self.cache.replace_clusters(clusters, model_key(self.model_name), now_iso())
+            self.cache.replace_clusters(clusters, model_key(self.model_name), now_iso(), selected)
         return {"ok": True, "action": "cluster", "items": clusters, "clusters": len({item['clusterId'] for item in clusters}), "members": len(clusters), "errors": [item for item in embedded if item.get("error")], "dryRun": dry_run, "durationMs": round((time.monotonic() - started) * 1000)}
 
     def rank(self, body: dict[str, Any]) -> dict[str, Any]:
@@ -204,19 +235,28 @@ class MediaAiService:
         return {"ok": True, "action": "rank", "matches": matches, "count": len(matches), "errors": [item for item in media_items if item.get("error")], "dryRun": dry_run, "durationMs": round((time.monotonic() - started) * 1000)}
 
     def full(self, body: dict[str, Any]) -> dict[str, Any]:
-        selected = body.get("selectedPaths") if isinstance(body.get("selectedPaths"), list) else [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)][:self.max_batch]
+        requested = [str(item) for item in body.get("selectedPaths", [])] if isinstance(body.get("selectedPaths"), list) else []
+        pending = [] if requested else self._pending_full_paths()
+        selected = (requested or pending)[:_bounded_limit(body, self.max_batch)]
         scoped = {**body, "selectedPaths": selected}
-        return {"ok": True, "action": "full", "scan": self.scan(scoped), "embeddings": self.embed(scoped), "analysis": self.analyze(scoped), "clusters": self.cluster(scoped), "matches": self.rank(scoped)}
+        result = {"ok": True, "action": "full", "scan": self.scan(scoped), "embeddings": self.embed(scoped), "analysis": self.analyze(scoped), "clusters": self.cluster(scoped), "matches": self.rank(scoped)}
+        if not requested:
+            result["remaining"] = max(0, len(pending) - len(selected))
+            result["nextRecommendedAction"] = "Run Full again to continue the next uncached batch." if result["remaining"] else "Local embedding and analysis caches are current."
+        return result
 
     def dispatch(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
-        if action == "scan": return self.scan(body)
-        if action == "embed": return self.embed(body)
-        if action == "analyze": return self.analyze(body)
-        if action == "cluster": return self.cluster(body)
-        if action == "rank": return self.rank(body)
-        if action == "full": return self.full(body)
         if action == "cancel": return {"ok": True, "action": "cancel", "cancelled": False, "reason": "Runs are synchronous and no background job is active."}
-        raise ValueError(f"Unsupported action: {action}")
+        actions = {"scan": self.scan, "embed": self.embed, "analyze": self.analyze, "cluster": self.cluster, "rank": self.rank, "full": self.full}
+        handler = actions.get(action)
+        if handler is None:
+            raise ValueError(f"Unsupported action: {action}")
+        if not self.work_lock.acquire(blocking=False):
+            return {"ok": False, "action": action, "busy": True, "error": "Another media AI batch is already running."}
+        try:
+            return handler(body)
+        finally:
+            self.work_lock.release()
 
 
 def make_handler(service: MediaAiService, token: str | None):

@@ -1,6 +1,8 @@
 # Beaman media AI sidecar
 
-This optional local service computes image-pixel embeddings and review metadata without sending the bulk photo library to a paid API. It binds to `127.0.0.1` by default, keeps its SQLite/model cache outside the source media tree, and returns per-file errors so one unreadable photo does not stop a batch.
+This optional local service computes image-pixel embeddings and review metadata without sending the bulk photo library to a paid API. It binds to `127.0.0.1` by default, keeps its SQLite/model cache and generated 768px JPEG review thumbnails outside the source media tree, and returns per-file errors so one unreadable photo does not stop a batch.
+
+Scan, Analyze, and Full are resumable by file hash/cache state. Repeat the same bounded command to continue changed or uncached files; completed leading paths are not reprocessed forever. Partial cluster runs replace membership only for their scoped paths, so unrelated cached clusters remain intact.
 
 The Studio remains usable when this service is offline. Automation only proposes review evidence; it never marks an image reviewed, assigns it to a published piece, or replaces the manual alt-text gate.
 
@@ -68,6 +70,8 @@ Gemini fallback is also optional. Set `ENABLE_GEMINI_FALLBACK=true`, `GEMINI_API
 - `POST /cancel`
 
 POST bodies accept `selectedPaths`, `pieces`, `texts`, `limit`, and `dryRun` where relevant. Paths are resolved under `MEDIA_AI_MEDIA_ROOT`; traversal outside that root is rejected. Processing is synchronous and bounded by `MEDIA_AI_MAX_BATCH`, so `cancel` honestly reports that there is no fake background job to stop.
+
+Only one heavy batch runs at a time. Concurrent batch requests receive a structured `busy` response instead of starting duplicate model work or racing SQLite writes.
 
 Example health check:
 
