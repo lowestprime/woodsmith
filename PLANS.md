@@ -1,5 +1,26 @@
 # PLANS.md
 
+## 2026-07-05 Local-First Media AI, Header, and Persistence Pass
+
+- Status: IMPLEMENTED; STATIC, SIDECAR, AND RENDERED PERSISTENCE TESTS PASS; LIVE DEPLOYMENT VALIDATION PENDING
+- Branch: `codex/local-first-media-ai-20260705`
+
+| Area | Status | Outcome |
+|------|--------|---------|
+| Compact auto-hide header | DONE | Added a final CSS contract after all historical layers so the desktop header is one narrow row, responsive layouts use at most two compact rows, subtitle and oversized emblem overrides cannot return, scroll-down hides after a small threshold, scroll-up/focus reveals, and reduced motion is respected. |
+| Rebuild-safe page persistence | DONE | Added explicit absolute `DATA_ROOT`, wired `/app/site/data` through Compose, retained seed tombstones, fixed full-page forms so intentional empty values are saved instead of replaced by stale values, and kept route/layout revalidation. Deployment verification must confirm the mounted database rather than an image-local copy is active. |
+| Provider abstraction | DONE | Replaced the OpenAI-centered classification path with local-sidecar, Ollama, Gemini, and explicitly enabled OpenAI adapters behind one registry and honest per-provider runtime status. Public image generation/cleanup remains separately gated. |
+| Local pixel embeddings | DONE | Added a Python 3.11 sidecar with bounded/resumable scans, SHA-256/perceptual hashes, cache outside the media tree, true SentenceTransformers CLIP image/text vectors, CUDA/CPU fallback, path containment, optional bearer auth, and per-item errors. |
+| Rich analysis and persistence | DONE | Added the Woodsmith media schema and persisted provider/model/version/hash/time, object/class/context/stage, alt draft/tags, candidate evidence, uncertainty, unsafe reason, cluster membership/representative/score, and review reason in SQLite metadata. |
+| Deterministic matching safety | DONE | Added configurable weighted visual/VLM/lexical/cluster/folder/manual scoring, minimum score and runner-up margin, reviewer rejection memory, context/detail safety exclusion, and verified-representative-only cluster propagation. No automation path assigns or publishes media. |
+| Media API | DONE | `/api/media-analysis` now supports authenticated status, scan, analyze, embed, cluster, match, full, cancel, and dry-run actions with provider/scope/limit controls, run IDs, timing, warnings, per-item errors, and next-action guidance. Work is honestly synchronous and bounded. |
+| Compact Studio automation UX | DONE | Added provider cards, safe-mode toggle, selected/current-page actions, selection controls, AI-state filters, thumbnail overlays, evidence breakdowns, AI notes/draft-copy controls, cluster inspection, rejection controls, and I/E/C shortcuts while preserving existing panes, lightbox, dirty-state, paging, and save/approve workflow. |
+| Documentation and tests | DONE | Updated environment/deployment/admin/architecture docs, added weighted-scoring tests and sidecar scan/health tests, and documented Windows/WSL/GPU/manual-only operation. |
+
+Rendered verification used a disposable external `DATA_ROOT`: a Studio page edit survived a full browser reload and an application-process restart. At 390 x 844 the header rendered at 80px initially, compacted to 44px, moved fully off-screen on downward scroll, returned on upward scroll, and introduced no horizontal overflow. The Studio media workspace rendered its provider controls, paged cards, AI state, and inspector without horizontal overflow. Final static gates passed on Next.js 16.2.10: typecheck, three deterministic scoring tests, two Python sidecar tests, lint with no errors, production build, npm audit with zero known vulnerabilities, and Synology Compose validation.
+
+Current model configuration follows official provider documentation checked on 2026-07-05: Gemini 3.1 Flash-Lite is the stable cost-oriented multimodal fallback, Gemini Embedding 2 is the optional multimodal embedding model, Ollama structured vision accepts JSON schema, and SentenceTransformers documents `sentence-transformers/clip-ViT-B-32` for shared image/text search. These are environment defaults, not hard requirements; every cache key records provider/model/version and model changes require re-embedding.
+
 ## Beaman Woodworks 3.0 Completion Pass
 
 - Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY

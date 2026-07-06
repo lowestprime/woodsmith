@@ -1,13 +1,14 @@
 "use client";
 
 import Image from "next/image";
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition, type MouseEvent as ReactMouseEvent } from "react";
 import { ActionForm } from "@/components/action-form";
 import { MediaLightbox } from "@/components/lightbox";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { toMediaUrl } from "@/lib/format";
 import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
-import type { MediaAssignmentFilter, MediaKindFilter, MediaRecord } from "@/lib/db";
+import type { MediaAiFilter, MediaAssignmentFilter, MediaKindFilter, MediaRecord } from "@/lib/db";
+import type { MediaMatchCandidate } from "@/lib/media-audit";
 
 type MediaAction = (state: MediaActionResult | null, formData: FormData) => Promise<MediaActionResult>;
 
@@ -21,7 +22,22 @@ type VerificationEntry = {
   pieceTitle: string;
   assignedCount: number;
   needsReview: boolean;
-  suggestions: Array<{ item: MediaRecord; score: number }>;
+  suggestions: MediaMatchCandidate[];
+};
+
+type AutomationAction = "status" | "scan" | "analyze" | "embed" | "cluster" | "match" | "full" | "cancel" | "dry-run";
+type AutomationScope = "library" | "page" | "selected";
+type ProviderState = { provider: string; configured: boolean; enabled: boolean; available: boolean; model?: string; reason?: string; latencyMs?: number };
+type AutomationResponse = {
+  action?: string;
+  provider?: string;
+  runId?: string;
+  durationMs?: number;
+  providers?: Record<string, ProviderState>;
+  nextRecommendedAction?: string;
+  warnings?: string[];
+  errors?: Array<{ stage?: string; path?: string; message?: string }>;
+  [key: string]: unknown;
 };
 
 type StudioMediaWorkspaceProps = {
@@ -32,6 +48,7 @@ type StudioMediaWorkspaceProps = {
   initialTotal: number;
   initialAssignment: MediaAssignmentFilter;
   initialKind: MediaKindFilter;
+  initialAiFilter: MediaAiFilter;
   pieces: StudioOption[];
   posts: StudioOption[];
   pages: StudioOption[];
@@ -42,15 +59,25 @@ type StudioMediaWorkspaceProps = {
   saveAction: MediaAction;
   cleanupAction: MediaAction;
   assignAction: MediaAction;
+  rejectSuggestionAction: MediaAction;
   refreshAction: () => Promise<MediaActionResult>;
   loadPageAction: (request: MediaPageRequest) => Promise<MediaPageResult>;
   loadVerificationQueueAction: () => Promise<VerificationEntry[]>;
 };
 
 function confidenceForScore(score: number) {
-  if (score >= 100) return { label: "High", className: "is-strong" };
-  if (score >= 55) return { label: "Moderate", className: "is-moderate" };
-  return { label: "Low", className: "is-weak" };
+  if (score >= 82) return { label: "High confidence", className: "is-strong" };
+  if (score >= 58) return { label: "Needs review", className: "is-moderate" };
+  return { label: "Ambiguous", className: "is-weak" };
+}
+
+function metadataStrings(item: MediaRecord, key: string) {
+  const value = item.metadata[key];
+  return Array.isArray(value) ? value.map(String).filter(Boolean) : [];
+}
+
+function compactMetric(value: number) {
+  return `${Math.round(Math.max(0, Math.min(1, value)) * 100)}%`;
 }
 
 function imageNeedsUnoptimized(relativePath: string) {
@@ -148,11 +175,16 @@ function MediaInspector({
   deleteAction,
   saveAction,
   cleanupAction,
+  rejectSuggestionAction,
   onDelete,
   onRename,
   onSave,
   onCleanup,
-  onDirty
+  onDirty,
+  onAnalyze,
+  onEmbed,
+  onInspectCluster,
+  onRejected
 }: {
   item: MediaRecord;
   pieces: StudioOption[];
@@ -162,16 +194,41 @@ function MediaInspector({
   deleteAction: MediaAction;
   saveAction: MediaAction;
   cleanupAction: MediaAction;
+  rejectSuggestionAction: MediaAction;
   onDelete: (relativePath: string) => void;
   onRename: (result: Extract<MediaActionResult, { ok: true; kind: "rename" }>, formData: FormData | null) => void;
   onSave: (relativePath: string, formData: FormData | null) => void;
   onCleanup: (result: Extract<MediaActionResult, { ok: true; kind: "cleanup" }>, formData: FormData | null) => void;
   onDirty: () => void;
+  onAnalyze: (relativePath: string) => void;
+  onEmbed: (relativePath: string) => void;
+  onInspectCluster: (clusterId: string) => void;
+  onRejected: (relativePath: string, pieceSlug: string) => void;
 }) {
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.map(String) : [];
   const aiTags = Array.isArray(item.metadata.aiTags) ? item.metadata.aiTags.map(String) : [];
   const aiDescription = typeof item.metadata.aiDescription === "string" ? item.metadata.aiDescription : "";
+  const aiAltText = typeof item.metadata.aiAltTextDraft === "string" ? item.metadata.aiAltTextDraft : "";
+  const aiClusterId = typeof item.metadata.aiClusterId === "string" ? item.metadata.aiClusterId : "";
+  const aiCandidates = Array.isArray(item.metadata.aiCandidatePieceSlugs) ? item.metadata.aiCandidatePieceSlugs.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const record = candidate as Record<string, unknown>;
+    const slug = String(record.slug ?? "").trim();
+    return slug ? [{ slug, confidence: Number(record.confidence ?? 0), evidence: Array.isArray(record.evidence) ? record.evidence.map(String) : [] }] : [];
+  }) : [];
+  const topAiCandidate = aiCandidates[0];
+  const aiConfidence = Number(item.metadata.aiConfidence ?? 0);
+  const aiAmbiguity = Number(item.metadata.aiAmbiguity ?? 0);
+
+  function fillField(event: ReactMouseEvent<HTMLButtonElement>, name: "altText" | "tagsText", value: string, merge = false) {
+    const field = event.currentTarget.closest("article")?.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[name="${name}"]`);
+    if (!field || !value) return;
+    const current = merge ? parseList(field.value).concat(parseList(value)) : [];
+    field.value = merge ? [...new Set(current)].join(", ") : value;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+    onDirty();
+  }
 
   return (
     <article className="studio-panel studio-media-inspector" key={item.relativePath}>
@@ -206,6 +263,34 @@ function MediaInspector({
           <button className="button-secondary" type="submit">Delete</button>
         </ActionForm>
       </div>
+
+      <section className="media-ai-notes" aria-label="AI review notes">
+        <div className="studio-editor-head">
+          <div><strong>AI review aid</strong><p className="muted-copy">{String(item.metadata.aiFurnitureClass || item.metadata.aiPrimaryObject || "Not analyzed")}</p></div>
+          <span className={`candidate-confidence ${confidenceForScore(aiConfidence * 100).className}`}>{item.metadata.aiAnalyzed ? confidenceForScore(aiConfidence * 100).label : "Unanalyzed"}</span>
+        </div>
+        {aiDescription ? <p>{aiDescription}</p> : <p className="muted-copy">Run Analyze for a local visual classification. Results never approve or publish media.</p>}
+        <div className="media-ai-facts">
+          <span>Provider: {String(item.metadata.aiProvider || "none")}</span>
+          <span>Confidence: {compactMetric(aiConfidence)}</span>
+          <span>Ambiguity: {compactMetric(aiAmbiguity)}</span>
+          <span>Embedding: {item.metadata.aiEmbeddingHash ? "present" : "missing"}</span>
+        </div>
+        {topAiCandidate ? <p className="muted-copy">Candidate: {slugLabel(pieces, topAiCandidate.slug)} · {compactMetric(topAiCandidate.confidence)}{topAiCandidate.evidence.length ? ` · ${topAiCandidate.evidence.join(", ")}` : ""}</p> : null}
+        {item.metadata.aiUnsafeToAutoAssignReason ? <p className="error-copy">{String(item.metadata.aiUnsafeToAutoAssignReason)}</p> : null}
+        <div className="button-row media-ai-actions">
+          <button className="button-secondary" data-media-analyze-selected="true" onClick={() => onAnalyze(item.relativePath)} type="button">Analyze image</button>
+          <button className="button-secondary" data-media-embed-selected="true" onClick={() => onEmbed(item.relativePath)} type="button">Embed image</button>
+          <button className="button-secondary" disabled={!aiAltText} onClick={(event) => fillField(event, "altText", aiAltText)} type="button">Use AI alt draft</button>
+          <button className="button-secondary" disabled={aiTags.length === 0} onClick={(event) => fillField(event, "tagsText", aiTags.join(", "), true)} type="button">Merge AI tags</button>
+          <button className="button-secondary" data-media-inspect-cluster="true" disabled={!aiClusterId} onClick={() => onInspectCluster(aiClusterId)} type="button">Inspect cluster</button>
+        </div>
+        {topAiCandidate ? <ActionForm action={rejectSuggestionAction} className="media-ai-reject" onSuccess={() => onRejected(item.relativePath, topAiCandidate.slug)}>
+          <input name="relativePath" type="hidden" value={item.relativePath} />
+          <input name="pieceSlug" type="hidden" value={topAiCandidate.slug} />
+          <button className="text-button" type="submit">Mark “not {slugLabel(pieces, topAiCandidate.slug)}”</button>
+        </ActionForm> : null}
+      </section>
 
       <ActionForm action={renameAction} className="request-form compact-form studio-inline-form" onSuccess={(result, context) => {
         if (result.kind === "rename") {
@@ -335,6 +420,7 @@ export function StudioMediaWorkspace({
   initialTotal,
   initialAssignment,
   initialKind,
+  initialAiFilter,
   pieces,
   posts,
   pages,
@@ -345,6 +431,7 @@ export function StudioMediaWorkspace({
   saveAction,
   cleanupAction,
   assignAction,
+  rejectSuggestionAction,
   refreshAction,
   loadPageAction,
   loadVerificationQueueAction
@@ -358,9 +445,14 @@ export function StudioMediaWorkspace({
   const [query, setQuery] = useState(initialQuery);
   const [assignmentFilter, setAssignmentFilter] = useState<MediaAssignmentFilter>(initialAssignment);
   const [kindFilter, setKindFilter] = useState<MediaKindFilter>(initialKind);
+  const [aiFilter, setAiFilter] = useState<MediaAiFilter>(initialAiFilter);
   const [queue, setQueue] = useState(verificationQueue);
   const [candidateAssignments, setCandidateAssignments] = useState<Record<string, string>>({});
+  const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [automationResult, setAutomationResult] = useState<AutomationResponse | null>(null);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
+  const [providerOverride, setProviderOverride] = useState<"local" | "ollama" | "gemini" | "openai" | "hybrid">("local");
+  const [safeMode, setSafeMode] = useState(true);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
@@ -379,9 +471,19 @@ export function StudioMediaWorkspace({
     setTotal(initialTotal);
     setAssignmentFilter(initialAssignment);
     setKindFilter(initialKind);
+    setAiFilter(initialAiFilter);
     setQueue(verificationQueue);
     setSelectedPath((current) => initialItems.some((item) => item.relativePath === current) ? current : initialItems[0]?.relativePath ?? "");
-  }, [initialAssignment, initialItems, initialKind, initialPage, initialPageSize, initialQuery, initialTotal, verificationQueue]);
+  }, [initialAiFilter, initialAssignment, initialItems, initialKind, initialPage, initialPageSize, initialQuery, initialTotal, verificationQueue]);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/media-analysis", { cache: "no-store" }).then(async (response) => {
+      const payload = await response.json().catch(() => ({})) as AutomationResponse;
+      if (active && response.ok) setAutomationResult(payload);
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   const selectedItem = items.find((item) => item.relativePath === selectedPath)
     ?? (detachedItem?.relativePath === selectedPath ? detachedItem : null)
@@ -414,6 +516,7 @@ export function StudioMediaWorkspace({
       result.page > 1 ? params.set("mediaPage", String(result.page)) : params.delete("mediaPage");
       result.assignment !== "all" ? params.set("mediaAssignment", result.assignment) : params.delete("mediaAssignment");
       result.kind !== "all" ? params.set("mediaKind", result.kind) : params.delete("mediaKind");
+      result.aiFilter !== "all" ? params.set("mediaAi", result.aiFilter) : params.delete("mediaAi");
       window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
     } catch (error) {
       if (requestId === requestSequence.current) {
@@ -432,10 +535,10 @@ export function StudioMediaWorkspace({
       return;
     }
     const timeout = window.setTimeout(() => {
-      void fetchPage({ page, pageSize, query: deferredQuery, assignment: assignmentFilter, kind: kindFilter });
+      void fetchPage({ page, pageSize, query: deferredQuery, assignment: assignmentFilter, kind: kindFilter, aiFilter });
     }, 220);
     return () => window.clearTimeout(timeout);
-  }, [assignmentFilter, deferredQuery, fetchPage, isDirty, kindFilter, page, pageSize]);
+  }, [aiFilter, assignmentFilter, deferredQuery, fetchPage, isDirty, kindFilter, page, pageSize]);
 
   function updateItem(relativePath: string, updater: (current: MediaRecord) => MediaRecord) {
     setItems((current) => current.map((item) => (item.relativePath === relativePath ? updater(item) : item)));
@@ -478,7 +581,7 @@ export function StudioMediaWorkspace({
         }
       }
       const [, nextQueue] = await Promise.all([
-        fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter }),
+        fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter, aiFilter }),
         loadVerificationQueueAction()
       ]);
       setQueue(nextQueue);
@@ -487,23 +590,30 @@ export function StudioMediaWorkspace({
     }
   }
 
-  async function runAutomation(action: "analyze" | "cluster" | "match") {
-    if (isAutomating) return;
+  async function runAutomation(action: AutomationAction, scope: AutomationScope = "library", explicitPaths?: string[]) {
+    if (isAutomating && action !== "cancel") return;
+    const scopedPaths = explicitPaths ?? (scope === "selected" ? [...selectedPaths] : scope === "page" ? items.map((item) => item.relativePath) : []);
+    if (scope === "selected" && scopedPaths.length === 0) {
+      setAutomationMessage("Select one or more library cards first.");
+      return;
+    }
     setIsAutomating(true);
-    setAutomationMessage(`Running ${action}...`);
+    setAutomationMessage(`Running ${action}${scope === "library" ? "" : ` for ${scopedPaths.length} image${scopedPaths.length === 1 ? "" : "s"}`}…`);
     try {
-      const response = await fetch("/api/media-analysis", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action }) });
-      const payload = await response.json().catch(() => ({})) as Record<string, unknown> & { error?: string };
+      const response = await fetch("/api/media-analysis", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action, provider: providerOverride, limit: Math.min(96, Math.max(1, scopedPaths.length || pageSize)), onlySelected: scope !== "library", selectedPaths: scopedPaths, includeReviewed: false, dryRun: action === "dry-run" || safeMode })
+      });
+      const payload = await response.json().catch(() => ({})) as AutomationResponse & { error?: string };
       if (!response.ok) {
         setAutomationMessage(payload.error || `Automation failed with HTTP ${response.status}.`);
         return;
       }
-      const counts = Object.entries(payload)
-        .filter(([key, value]) => key !== "ok" && typeof value === "number")
-        .map(([key, value]) => `${key} ${value}`)
-        .join(" · ");
-      setAutomationMessage(`${action.charAt(0).toUpperCase() + action.slice(1)} complete${counts ? ` · ${counts}` : ""}.`);
-      await refreshWorkspaceData(false);
+      setAutomationResult(payload);
+      const errorCount = Array.isArray(payload.errors) ? payload.errors.length : 0;
+      setAutomationMessage(`${action.charAt(0).toUpperCase() + action.slice(1)} finished in ${payload.durationMs ?? 0} ms${safeMode || action === "dry-run" ? " · dry run, no metadata changed" : ""}${errorCount ? ` · ${errorCount} item error${errorCount === 1 ? "" : "s"}` : ""}.`);
+      if (!safeMode && action !== "dry-run" && action !== "status" && action !== "cancel") await refreshWorkspaceData(false);
     } catch (error) {
       setAutomationMessage(error instanceof Error ? error.message : "Media automation request failed.");
     } finally {
@@ -562,15 +672,32 @@ export function StudioMediaWorkspace({
           uploadAction={uploadAction}
         />
 
-        <details className="studio-panel studio-media-utility-panel media-automation-panel">
-          <summary>Automation tools</summary>
-          <p className="muted-copy">Rebuild tags and ranked candidates. Suggested matches still require manual confirmation.</p>
-          <div className="button-row compact-button-row">
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("analyze")} type="button">Analyze</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("cluster")} type="button">Cluster</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
+        <details className="studio-panel studio-media-utility-panel media-automation-panel" open>
+          <summary>Local-first automation</summary>
+          <p className="muted-copy">Visual analysis and ranking never assign or publish a photo. Every suggestion still requires a reviewed save.</p>
+          <div className="field-grid two-up compact-grid media-automation-settings">
+            <label><span>Provider</span><select onChange={(event) => setProviderOverride(event.target.value as typeof providerOverride)} value={providerOverride}><option value="local">Local sidecar</option><option value="ollama">Ollama</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="hybrid">Hybrid fallback</option></select></label>
+            <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Safe mode (dry run)</span></label>
           </div>
-          {automationMessage ? <p className="studio-inline-notice" role="status">{automationMessage}</p> : null}
+          <div className="button-row compact-button-row media-automation-actions">
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("status")} type="button">Status</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("scan")} type="button">Scan</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("analyze", "page")} type="button">Analyze page</button>
+            <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("analyze", "selected")} type="button">Analyze selected</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("embed", "page")} type="button">Embed page</button>
+            <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("embed", "selected")} type="button">Embed selected</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("cluster", "page")} type="button">Cluster page</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Full page run</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("dry-run", "page")} type="button">Dry-run preview</button>
+            <button className="button-secondary" disabled={!isAutomating} onClick={() => void runAutomation("cancel")} type="button">Cancel</button>
+          </div>
+          {isAutomating ? <progress aria-label="Media automation is running" className="media-automation-progress" /> : null}
+          {automationResult?.providers ? <div className="media-provider-grid">
+            {Object.entries(automationResult.providers).map(([name, provider]) => <article className={provider.available ? "is-available" : "is-unavailable"} key={name}><strong>{name.replace("-", " ")}</strong><span>{provider.available ? "Available" : provider.enabled ? "Unavailable" : "Not selected"}</span><small>{provider.model || provider.reason || "No model"}</small></article>)}
+          </div> : null}
+          {automationResult?.nextRecommendedAction ? <p className="muted-copy"><strong>Next:</strong> {automationResult.nextRecommendedAction}</p> : null}
+          {automationMessage ? <p aria-live="polite" className="studio-inline-notice" role="status">{automationMessage}</p> : null}
         </details>
 
         {verificationCards.length > 0 ? (
@@ -588,12 +715,15 @@ export function StudioMediaWorkspace({
                     {entry.needsReview ? <span className="eyebrow">Needs review</span> : null}
                   </div>
                   <div className="project-media-strip">
-                    {entry.suggestions.length > 0 ? entry.suggestions.map(({ item, score }) => (
+                    {entry.suggestions.length > 0 ? entry.suggestions.map((candidate) => {
+                      const { item, score, evidence, margin, reasonCodes } = candidate;
+                      return (
                       <div className="candidate-assignment-card" key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
                           <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
                         </button>
+                        <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster {compactMetric(evidence.clusterPropagation)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
                         <ActionForm action={assignAction} className="candidate-assignment-form" onSuccess={() => {
                           const assignedItem = { ...item, pieceSlug: entry.pieceSlug, reviewed: true, updatedAt: new Date().toISOString() };
                           setCandidateAssignments((current) => ({ ...current, [item.relativePath]: entry.pieceSlug }));
@@ -608,7 +738,7 @@ export function StudioMediaWorkspace({
                           <button className="candidate-assign-button" title={`Assign ${item.fileName} to ${entry.pieceTitle}`} type="submit">Assign</button>
                         </ActionForm>
                       </div>
-                    )) : <span className="muted-copy">No safe candidates yet.</span>}
+                    ); }) : <span className="muted-copy">No safe candidates yet.</span>}
                   </div>
                 </section>
               ))}
@@ -634,38 +764,49 @@ export function StudioMediaWorkspace({
               </button>
             ))}
           </div>
+          <label className="studio-media-ai-filter"><span className="sr-only">AI review filter</span><select aria-label="AI review filter" onChange={(event) => { setPage(1); setAiFilter(event.target.value as MediaAiFilter); }} value={aiFilter}><option value="all">All AI states</option><option value="high">High confidence</option><option value="ambiguous">Ambiguous</option><option value="details">Detail/context</option><option value="unanalyzed">Unanalyzed</option><option value="missing-alt">Missing alt text</option><option value="representatives">Cluster representatives</option></select></label>
           <div className="studio-media-pager">
             <button aria-label="Previous media page" className="button-secondary" disabled={page <= 1 || isPagePending} onClick={() => setPage((current) => Math.max(1, current - 1))} type="button">&#x2190;</button>
             <span>{page}/{totalPages}</span>
             <button aria-label="Next media page" className="button-secondary" disabled={page >= totalPages || isPagePending} onClick={() => setPage((current) => Math.min(totalPages, current + 1))} type="button">&#x2192;</button>
             <label><span className="sr-only">Media per page</span><select onChange={(event) => { setPage(1); setPageSize(Number(event.target.value)); }} value={pageSize}><option value="24">24</option><option value="48">48</option><option value="72">72</option><option value="96">96</option></select></label>
           </div>
-          <span aria-live="polite" className="muted-copy studio-media-result-count">{pageMessage ?? `${items.length} shown · ${total} indexed`}</span>
+          <span aria-live="polite" className="muted-copy studio-media-result-count">{pageMessage ?? `${items.length} shown · ${total} indexed`} · {selectedPaths.size} selected {selectedPaths.size > 0 ? <button className="text-button" onClick={() => setSelectedPaths(new Set())} type="button">Clear</button> : null}</span>
         </div>
         <div className="studio-media-browser-grid">
-          {items.map((item) => (
-            <button
-              className={`studio-media-browser-card${item.relativePath === selectedItem?.relativePath ? " is-active" : ""}`}
-              data-media-active={item.relativePath === selectedItem?.relativePath ? "true" : "false"}
-              data-media-path={item.relativePath}
-              key={item.relativePath}
-              onClick={() => selectItem(item.relativePath)}
-              type="button"
-            >
-              <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
-                {item.kind === "image"
-                  ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
-                  : item.kind === "video"
-                    ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
-                    : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
-              </div>
-              <div className="studio-media-browser-body">
-                <strong>{item.fileName}</strong>
-                <p>{assignmentBadge(item, pieces, posts, pages)}</p>
-                <small>{item.reviewed ? "Reviewed" : "Needs review"}</small>
-              </div>
-            </button>
-          ))}
+          {items.map((item, index) => {
+            const selectedForAutomation = selectedPaths.has(item.relativePath);
+            const analyzed = Boolean(item.metadata.aiAnalyzed);
+            const embedded = Boolean(item.metadata.aiEmbeddingHash);
+            const clusterId = typeof item.metadata.aiClusterId === "string" ? item.metadata.aiClusterId : "";
+            const highCandidate = Number(item.metadata.aiConfidence ?? 0) >= 0.82 && Number(item.metadata.aiAmbiguity ?? 1) < 0.3;
+            return <div className={`studio-media-browser-card-wrap${selectedForAutomation ? " is-selected" : ""}`} key={item.relativePath}>
+              <button
+                className={`studio-media-browser-card${item.relativePath === selectedItem?.relativePath ? " is-active" : ""}`}
+                data-media-active={item.relativePath === selectedItem?.relativePath ? "true" : "false"}
+                data-media-index={index + 1}
+                data-media-path={item.relativePath}
+                onClick={() => selectItem(item.relativePath)}
+                tabIndex={item.relativePath === selectedItem?.relativePath || (!selectedItem && index === 0) ? 0 : -1}
+                type="button"
+              >
+                <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
+                  {item.kind === "image"
+                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
+                    : item.kind === "video"
+                      ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
+                      : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
+                  <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i><i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
+                </div>
+                <div className="studio-media-browser-body">
+                  <strong>{item.fileName}</strong>
+                  <p>{assignmentBadge(item, pieces, posts, pages)}</p>
+                  <small>{item.reviewed ? "Reviewed" : "Needs review"}{clusterId ? ` · ${clusterId.slice(-6)}` : ""}</small>
+                </div>
+              </button>
+              <button aria-label={`${selectedForAutomation ? "Remove" : "Add"} ${item.fileName} ${selectedForAutomation ? "from" : "to"} automation selection`} aria-pressed={selectedForAutomation} className="media-card-select" onClick={() => setSelectedPaths((current) => { const next = new Set(current); if (next.has(item.relativePath)) next.delete(item.relativePath); else next.add(item.relativePath); return next; })} title="Select for batch automation" type="button">{selectedForAutomation ? "Selected" : "Select"}</button>
+            </div>;
+          })}
           {items.length === 0 ? <div className="studio-media-empty"><strong>No media found</strong><p>Clear a filter, rescan the mounted library, or upload a file.</p></div> : null}
         </div>
       </div>
@@ -677,7 +818,11 @@ export function StudioMediaWorkspace({
             deleteAction={deleteAction}
             item={selectedItem}
             key={selectedItem.relativePath}
+            onAnalyze={(relativePath) => void runAutomation("analyze", "selected", [relativePath])}
             onDirty={() => setIsDirty(true)}
+            onEmbed={(relativePath) => void runAutomation("embed", "selected", [relativePath])}
+            onInspectCluster={(clusterId) => { setPage(1); setQuery(clusterId); setMobilePane("browser"); }}
+            onRejected={(relativePath, pieceSlug) => updateItem(relativePath, (current) => ({ ...current, metadata: { ...current.metadata, aiRejectedPieceSlugs: [...new Set([...metadataStrings(current, "aiRejectedPieceSlugs"), pieceSlug])], aiNeedsHumanReview: true, aiReviewReason: `Reviewer rejected AI suggestion for ${pieceSlug}.` } }))}
             onCleanup={(result, formData) => {
               const nextItem: MediaRecord = {
                 ...selectedItem,
@@ -759,13 +904,14 @@ export function StudioMediaWorkspace({
                 setSelectedPath(nextPath);
               }
               if (assignmentFilter !== "all" || kindFilter !== "all" || query) {
-                void fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter });
+                void fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter, aiFilter });
               }
             }}
             pages={pages}
             pieces={pieces}
             posts={posts}
             renameAction={renameAction}
+            rejectSuggestionAction={rejectSuggestionAction}
             saveAction={saveAction}
           />
         ) : (

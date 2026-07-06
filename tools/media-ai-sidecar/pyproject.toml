@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beaman-media-ai-sidecar"
+version = "1.0.0"
+description = "Local-first image embedding and classification sidecar for Beaman Woodworks"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+ai = [
+  "Pillow>=10.4,<13",
+  "ImageHash>=4.3,<5",
+  "numpy>=1.26,<3",
+  "sentence-transformers[image]>=5.0,<6",
+]
+
+[project.scripts]
+beaman-media-ai = "media_ai_sidecar.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["media_ai_sidecar*"]

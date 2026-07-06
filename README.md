@@ -21,10 +21,10 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
 - Admin-only pencil controls that edit mapped public text and links in place, with an explicit full-editor link for structural work
-- A compact browser media desk with whole-library search, assignment/type filters, in-place paging and edits, explicit candidate review, upload/rename/delete safety, persistent piece assignment, tags, review state, visual crop/focal controls, optional AI-cleaned copies, display order, source credit, and zoom metadata against the writable NAS photo library
+- A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, batch selection, local image-pixel embeddings, durable visual clusters, provider/model evidence, upload/rename/delete safety, persistent assignment, crop/focal controls, and source credit against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
-- Keyword/metadata search plus browser-assisted visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. Optional OpenAI embeddings can re-rank results when enabled.
+- Keyword/metadata search plus visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. The optional local sidecar supplies shared image/text CLIP vectors; Gemini or OpenAI embeddings remain opt-in alternatives.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
@@ -37,11 +37,13 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - The public site exposes admin-only edit controls when an admin is signed in. Mapped text and link fields save in place without a page reload; structural changes remain available through the linked `/studio` editor.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
-- Payment capture, invoice delivery, shipping-label creation, outbound email, OpenAI image cleanup, photorealistic preview generation, and embedding re-ranking require environment configuration before they work live.
+- Payment capture, invoice delivery, shipping-label creation, outbound email, image cleanup, photorealistic preview generation, and AI media analysis require their documented runtime configuration before they work live.
+- ChatGPT Plus is not an API backend and does not include OpenAI API usage. The classification workflow is local-first; OpenAI remains an explicitly enabled compatibility option.
 
 ## 🖇️ Repository Architecture
 
 - `site/`: the Next.js application
+- `tools/media-ai-sidecar/`: optional Python service for local image hashes, pixel embeddings, zero-shot labels, deterministic clusters, and Ollama/Gemini arbitration
 - The repo-local `pics/` folder is legacy/ignored and should not be used as the source of truth. Production mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics`, and `MEDIA_ROOT` defaults to `/app/pics` rather than creating a local media folder.
 - `design/Beaman_Woodworks_V2_Google_Stitch_Beta/`: Beaman Woodworks 2.0 prototypes audited for layout, theme, and dashboard direction
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
@@ -62,6 +64,7 @@ Root scripts proxy into `site/`:
 - `npm run dev`
 - `npm run typecheck`
 - `npm run lint`
+- `npm run test`
 - `npm run build`
 - `npm run start`
 
@@ -75,6 +78,16 @@ Required for a secure deployment:
 - `SESSION_SECRET`
 - `SITE_URL`
 - `NEXT_PUBLIC_SITE_URL`
+- `DATA_ROOT` (production: `/app/site/data`)
+
+Local-first media AI configuration:
+
+- `AI_PROVIDER`, `AI_ANALYSIS_PROVIDER`, `AI_EMBEDDING_PROVIDER`, `AI_FALLBACK_PROVIDER`
+- `LOCAL_AI_SIDECAR_URL`, optional `LOCAL_AI_SIDECAR_TOKEN`, and `LOCAL_EMBEDDING_MODEL`
+- `OLLAMA_BASE_URL` and `OLLAMA_VISION_MODEL`
+- `ENABLE_AI_MEDIA_ANALYSIS`, `ENABLE_EMBEDDING_SEARCH`, and `ENABLE_LOCAL_IMAGE_EMBEDDINGS`
+- `MEDIA_AI_MAX_BATCH`, `MEDIA_AI_CONFIDENCE_HIGH`, `MEDIA_AI_CONFIDENCE_MIN`, and `MEDIA_AI_AMBIGUITY_DELTA`
+- optional `GEMINI_API_KEY`, `GEMINI_VISION_MODEL`, `GEMINI_EMBEDDING_MODEL`, and `ENABLE_GEMINI_FALLBACK`
 
 Required for optional live services:
 
@@ -101,7 +114,8 @@ Required for optional live services:
 - `OPENAI_EMBEDDING_MODEL`
 - `ENABLE_PUBLIC_AI_RENDERING`
 - `ENABLE_AI_BACKGROUND_CLEANUP`
-- `ENABLE_EMBEDDING_SEARCH`
+
+See [`tools/media-ai-sidecar/README.md`](tools/media-ai-sidecar/README.md) for Windows/WSL and GPU-host setup. If no sidecar or cloud provider is configured, the complete manual media workflow remains available.
 
 ## 🛣️ Main Routes
 

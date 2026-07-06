@@ -98,7 +98,9 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - synchronizes reviewed piece assignments with public piece galleries while keeping unreviewed assignments private
 - can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
 
-Current credential-free clustering is heuristic and based on folder, filename, metadata, and date-like patterns. The compact media desk provides authenticated in-place whole-library search, assignment/review and type filters, selectable page sizes, one active inspector, an explicit verification queue, and J/K/F/P/U/R/S/Shift+S/A keyboard controls. Each unassigned image is proposed only to its best sufficiently separated piece match; ambiguous images stay unassigned, candidate inspection does not assign, and manual reviewed assignments remain the source of truth. Routine media actions update client state without revalidating the Studio route, while explicit rescans and automation reload both paged results and the verification queue through server actions.
+Media automation is provider-agnostic and local-first. `tools/media-ai-sidecar/` scans the configured library, excludes Synology/hidden sidecars, stores SHA-256 and perceptual hashes outside the source tree, computes true image-pixel and text embeddings in a shared SentenceTransformers CLIP space, applies deterministic visual clustering, and can use Ollama or Gemini only for ambiguity arbitration. The compact media desk exposes status/scan/analyze/embed/cluster/rank/full/dry-run actions, current-page or selected scopes, AI-state filters, provider/model cards, evidence and margin breakdowns, rejection memory, and J/K/F/P/U/R/I/E/C/S/Shift+S/A keyboard controls.
+
+SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, and human-review reason. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate.
 
 ## Commerce and operations
 
@@ -120,7 +122,7 @@ Custom work type records still store default dimensions, material options, labor
 
 The search layer includes synonym expansion for common woodworking terms, material/color cues, cleanup labels, delivery, pickup, custom work, and Mackintosh or Stickley references. The browser-assisted visual search reads a reference image locally, derives color/material cues, and converts them into searchable tags.
 
-The `site/lib/search.ts` wrapper preserves the SQLite keyword/metadata search path and can optionally call OpenAI embeddings for semantic re-ranking when `ENABLE_EMBEDDING_SEARCH=true`. Without credentials, search falls back to local keyword, metadata, and browser-derived visual tags.
+The `site/lib/search.ts` wrapper preserves the SQLite keyword/metadata search path and can optionally use the configured local CLIP, Gemini, or OpenAI text embedding provider for semantic re-ranking. Without a reachable provider, search falls back to local keyword, metadata, and browser-derived visual tags.
 
 ## Theme and UI
 
@@ -144,7 +146,8 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - SQLite support still relies on Node's experimental `node:sqlite` API.
 - The visualizer is a procedural 3D scale preview unless optional OpenAI rendering is configured. Generated images are previews, not fabrication drawings.
 - Scientist Desk media is intentionally withheld until the correct images are verified.
-- Cleanup modes and browser-assisted visual search are implemented locally. OpenAI-backed rendering, cleaned image copies, and embedding re-ranking are integrated behind feature flags and stay off without credentials.
+- Local pixel embeddings require the optional sidecar model dependencies and a sidecar URL reachable from the web container. The manual workflow remains available when it is offline.
+- OpenAI-backed rendering and cleaned image copies remain separate explicit feature flags. ChatGPT Plus is not an API credential.
 - SMTP, Stripe, and EasyPost functionality remain configuration-dependent.
 
 ## Important files
@@ -155,7 +158,9 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/catalog.ts`: portfolio categories, media display rules, and fulfillment labels
 - `site/lib/categories.ts`: persisted category normalization, matching rules, and icon definitions
 - `site/lib/media.ts`: media scanning, upload, rename, delete, sidecar filtering, and path resolution
-- `site/lib/ai-services.ts`: optional OpenAI image generation, image edit, and embedding helpers with disabled-by-default feature gates
+- `site/lib/ai-services.ts` + `site/lib/ai/providers/`: provider registry and local/Ollama/Gemini/OpenAI capability adapters
+- `site/lib/media-audit.ts` + `site/lib/media-scoring.ts`: deterministic embedding persistence, clustering, weighted candidate evidence, thresholds, and human-review gating
+- `tools/media-ai-sidecar/`: local HTTP service, file/hash cache, CLIP image/text embeddings, structured analysis, clustering, and provider arbitration
 - `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notifications.ts`: SMTP and notification queue handling

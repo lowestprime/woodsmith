@@ -6,6 +6,7 @@
     "build": "npm --prefix site run build",
     "start": "npm --prefix site run start",
     "typecheck": "npm --prefix site run typecheck",
-    "lint": "npm --prefix site run lint"
+    "lint": "npm --prefix site run lint",
+    "test": "npm --prefix site run test"
   }
 }

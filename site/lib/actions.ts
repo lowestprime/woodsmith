@@ -28,6 +28,7 @@ import {
   listMedia,
   listPieces,
   markEmailVerified,
+  patchMediaMetadata,
   refreshMediaLibrary,
   removeCartItem,
   saveCommissionType,
@@ -47,6 +48,7 @@ import {
   renameMediaRecordAndReferences,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
+  type MediaAiFilter,
   type MediaKindFilter,
   type MediaRecord,
   type OrderRecord,
@@ -61,7 +63,7 @@ import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMe
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
-import { buildMediaVerificationQueue } from "@/lib/media-audit";
+import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryIcon } from "@/lib/categories";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
@@ -914,14 +916,14 @@ export async function savePageAction(formData: FormData) {
     ? parseJsonField<PageRecord>(formData.get("pageJson"), current!)
     : {
         slug,
-        title: optionalField(formData.get("title")) || current?.title || slug,
-        navLabel: optionalField(formData.get("navLabel")) || current?.navLabel || slug,
-        status: (optionalField(formData.get("status")) || current?.status || "draft") as PageRecord["status"],
-        intro: optionalField(formData.get("intro")) || current?.intro || "",
-        body: optionalField(formData.get("body")) || current?.body || "",
-        layout: optionalField(formData.get("layout")) || current?.layout || "document",
+        title: formData.has("title") ? requiredField(formData.get("title"), "Page title") : current?.title || slug,
+        navLabel: formData.has("navLabel") ? optionalField(formData.get("navLabel")) : current?.navLabel || slug,
+        status: (formData.has("status") ? optionalField(formData.get("status")) || "draft" : current?.status || "draft") as PageRecord["status"],
+        intro: formData.has("intro") ? optionalField(formData.get("intro")) : current?.intro || "",
+        body: formData.has("body") ? optionalField(formData.get("body")) : current?.body || "",
+        layout: formData.has("layout") ? optionalField(formData.get("layout")) || "document" : current?.layout || "document",
         sections: current?.sections || [],
-        heroMediaPath: optionalField(formData.get("heroMediaPath")) || current?.heroMediaPath || null
+        heroMediaPath: formData.has("heroMediaPath") ? optionalField(formData.get("heroMediaPath")) || null : current?.heroMediaPath || null
       });
   revalidatePagePaths(slug);
   redirect(`/studio?panel=pages&saved=page&page=${encodeURIComponent(slug)}`);
@@ -1189,6 +1191,7 @@ export type MediaPageRequest = {
   query?: string;
   assignment?: MediaAssignmentFilter;
   kind?: MediaKindFilter;
+  aiFilter?: MediaAiFilter;
 };
 
 export type MediaPageResult = {
@@ -1200,6 +1203,7 @@ export type MediaPageResult = {
   query: string;
   assignment: MediaAssignmentFilter;
   kind: MediaKindFilter;
+  aiFilter: MediaAiFilter;
 };
 
 export type MediaVerificationEntry = {
@@ -1207,7 +1211,7 @@ export type MediaVerificationEntry = {
   pieceTitle: string;
   assignedCount: number;
   needsReview: boolean;
-  suggestions: Array<{ item: MediaRecord; score: number }>;
+  suggestions: MediaMatchCandidate[];
 };
 
 function mediaActionFailure(error: unknown, fallback: string): MediaActionResult {
@@ -1228,12 +1232,15 @@ export async function loadMediaPageAction(request: MediaPageRequest): Promise<Me
   const kind: MediaKindFilter = ["image", "video"].includes(request.kind ?? "")
     ? request.kind as MediaKindFilter
     : "all";
-  const options = { includeUnreviewed: true, ...(query ? { query } : {}), assignment, kind } as const;
+  const aiFilter: MediaAiFilter = ["high", "ambiguous", "details", "unanalyzed", "missing-alt", "representatives"].includes(request.aiFilter ?? "")
+    ? request.aiFilter as MediaAiFilter
+    : "all";
+  const options = { includeUnreviewed: true, ...(query ? { query } : {}), assignment, kind, aiFilter } as const;
   const total = countMedia(options);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(totalPages, Math.max(1, Math.round(Number(request.page) || 1)));
   const items = listMedia({ ...options, limit: pageSize, offset: (page - 1) * pageSize });
-  return { ok: true, items, total, page, pageSize, query, assignment, kind };
+  return { ok: true, items, total, page, pageSize, query, assignment, kind, aiFilter };
 }
 
 export async function loadMediaVerificationQueueAction(): Promise<MediaVerificationEntry[]> {
@@ -1247,6 +1254,31 @@ export async function loadMediaVerificationQueueAction(): Promise<MediaVerificat
     needsReview: entry.needsReview,
     suggestions: entry.suggestions
   }));
+}
+
+export async function markMediaAiSuggestionWrongAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
+  try {
+    await requireAdmin();
+    const relativePath = requiredField(formData.get("relativePath"), "Media path");
+    const media = getMedia(relativePath);
+    if (!media) return { ok: false, kind: "error", message: "This media record no longer exists." };
+    const explicitPiece = optionalField(formData.get("pieceSlug"));
+    const topCandidate = Array.isArray(media.metadata.aiCandidatePieceSlugs)
+      ? media.metadata.aiCandidatePieceSlugs.find((entry) => entry && typeof entry === "object" && "slug" in entry) as Record<string, unknown> | undefined
+      : undefined;
+    const pieceSlug = explicitPiece || String(topCandidate?.slug ?? "").trim();
+    if (!pieceSlug) return { ok: false, kind: "error", message: "There is no AI piece suggestion to reject." };
+    const previous = Array.isArray(media.metadata.aiRejectedPieceSlugs) ? media.metadata.aiRejectedPieceSlugs.map(String) : [];
+    patchMediaMetadata(relativePath, {
+      aiRejectedPieceSlugs: [...new Set([...previous, pieceSlug])],
+      aiNeedsHumanReview: true,
+      aiReviewReason: `Reviewer rejected AI suggestion for ${pieceSlug}.`,
+      aiSuggestionRejectedAt: new Date().toISOString()
+    });
+    return { ok: true, kind: "save", relativePath };
+  } catch (error) {
+    return mediaActionFailure(error, "Could not reject the AI suggestion.");
+  }
 }
 
 export async function uploadMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {

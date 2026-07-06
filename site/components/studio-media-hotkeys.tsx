@@ -53,7 +53,7 @@ export function StudioMediaHotkeys() {
   const searchParams = useSearchParams();
   const enabled = searchParams.get("panel") === "media";
   const [active, setActive] = useState(0);
-  const [notice, setNotice] = useState("J/K move · S save · Shift+S save & next · A approve & next · F search · ? help");
+  const [notice, setNotice] = useState("J/K move · I analyze · E embed · C cluster · S save · A approve · F search · ? help");
   const help = useMemo(() => [
     "J / K: next or previous media card",
     "S: save the active media metadata form",
@@ -63,6 +63,9 @@ export function StudioMediaHotkeys() {
     "P: focus the Piece assignment select on the active card",
     "U: clear the Piece assignment on the active card",
     "F: focus the media filter box",
+    "I: analyze the active image",
+    "E: embed or re-embed the active image",
+    "C: inspect the active image cluster",
     "G: return to top of media panel",
     "Shift+G: jump to final visible media card",
     "?: show/hide this help"
@@ -132,6 +135,28 @@ export function StudioMediaHotkeys() {
       const inspector = document.querySelector<HTMLElement>(".studio-media-inspector");
       if (!card || !inspector) return;
 
+      if (key === "i") {
+        event.preventDefault();
+        const button = inspector.querySelector<HTMLButtonElement>('[data-media-analyze-selected="true"]');
+        if (button && !button.disabled) { button.click(); setNotice("Analyzing the active image…"); }
+        return;
+      }
+
+      if (key === "e") {
+        event.preventDefault();
+        const button = inspector.querySelector<HTMLButtonElement>('[data-media-embed-selected="true"]');
+        if (button && !button.disabled) { button.click(); setNotice("Embedding the active image…"); }
+        return;
+      }
+
+      if (key === "c") {
+        event.preventDefault();
+        const button = inspector.querySelector<HTMLButtonElement>('[data-media-inspect-cluster="true"]');
+        if (button && !button.disabled) { button.click(); setNotice("Filtering the library to this cluster."); }
+        else setNotice("The active image has no persisted cluster yet.");
+        return;
+      }
+
       if (key === "s") {
         event.preventDefault();
         const value = event.shiftKey ? "save-next" : "save";
@@ -179,7 +204,7 @@ export function StudioMediaHotkeys() {
 
       if (key === "?") {
         event.preventDefault();
-        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J/K move · S save · Shift+S save & next · A approve & next · F search · ? help");
+        setNotice((previous) => previous.startsWith("J / K") ? help.join(" · ") : "J/K move · I analyze · E embed · C cluster · S save · A approve · F search · ? help");
       }
     }
 

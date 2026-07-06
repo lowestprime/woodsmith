@@ -51,6 +51,7 @@ PGID=100
 SITE_URL=https://woodmat.ch
 NEXT_PUBLIC_SITE_URL=https://woodmat.ch
 MEDIA_ROOT=/app/pics
+DATA_ROOT=/app/site/data
 STUDIO_PASSWORD=replace-with-a-long-unique-password
 SESSION_SECRET=replace-with-a-long-random-secret
 ```
@@ -76,32 +77,72 @@ SHIP_FROM_CITY=
 SHIP_FROM_STATE=
 SHIP_FROM_ZIP=
 SHIP_FROM_COUNTRY=US
+AI_PROVIDER=local
+AI_ANALYSIS_PROVIDER=local-sidecar
+AI_EMBEDDING_PROVIDER=local-clip
+AI_FALLBACK_PROVIDER=disabled
+ENABLE_AI_MEDIA_ANALYSIS=true
+ENABLE_EMBEDDING_SEARCH=true
+ENABLE_LOCAL_IMAGE_EMBEDDINGS=true
+LOCAL_AI_SIDECAR_URL=http://192.168.1.50:8765
+LOCAL_AI_SIDECAR_TOKEN=
+LOCAL_EMBEDDING_MODEL=sentence-transformers/clip-ViT-B-32
+OLLAMA_BASE_URL=http://192.168.1.50:11434
+OLLAMA_VISION_MODEL=gemma4
+GEMINI_API_KEY=
+GEMINI_VISION_MODEL=gemini-3.1-flash-lite
+GEMINI_EMBEDDING_MODEL=gemini-embedding-2
+ENABLE_GEMINI_FALLBACK=false
+MEDIA_AI_MAX_BATCH=24
+MEDIA_AI_CONFIDENCE_HIGH=0.82
+MEDIA_AI_CONFIDENCE_MIN=0.58
+MEDIA_AI_AMBIGUITY_DELTA=0.08
 OPENAI_API_KEY=
-OPENAI_IMAGE_MODEL=gpt-image-1.5
+OPENAI_IMAGE_MODEL=gpt-image-2
 OPENAI_IMAGE_SIZE=1024x1024
 OPENAI_IMAGE_QUALITY=high
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-OPENAI_VISION_MODEL=gpt-4o-mini
+OPENAI_VISION_MODEL=gpt-5.4-nano
 ENABLE_PUBLIC_AI_RENDERING=false
 ENABLE_AI_BACKGROUND_CLEANUP=false
-ENABLE_EMBEDDING_SEARCH=false
-ENABLE_AI_MEDIA_ANALYSIS=false
 ```
+
+Replace the example `192.168.1.50` with the laptop/GPU-host address that is reachable from inside the container. Do not use `127.0.0.1` for a sidecar running on another machine. Leave `AI_ANALYSIS_PROVIDER=disabled` and `AI_EMBEDDING_PROVIDER=disabled` if the deployment should remain manual-only.
 
 ## Compose file
 
 `docker-compose.synology.yml` is the authoritative runtime definition. Important points:
 
 - `MEDIA_ROOT=/app/pics`
+- `DATA_ROOT=/app/site/data`
 - `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025:/app/pics:rw`
 - `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`
 - `/volume2/docker_ssd/woodsmith/cache/next-image:/app/site/.next/cache`
 - loopback-only port binding on `127.0.0.1:3002`
-- optional OpenAI feature flags remain disabled unless a server-side API key is provided
+- local media AI is optional and fails closed to the manual editor when its sidecar is unavailable
+- OpenAI image generation/cleanup remains disabled unless a server-side API key and explicit feature flag are provided
 
 The `/app/pics` mount is intentionally read-write. `MEDIA_ROOT` must be absolute. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
 
 The image now normalizes ownership and read permissions for bundled runtime assets under `/app/site/public` and `/_next/static` so the app still boots correctly when `docker-compose.synology.yml` runs the container as the NAS `PUID:PGID` user instead of the image-default `nextjs` user.
+
+## Local media AI deployment choices
+
+The local sidecar is deliberately separate from the NAS web container so model dependencies and GPU runtimes do not enlarge or destabilize the production image. Full setup is in `tools/media-ai-sidecar/README.md`.
+
+### A. Windows or WSL laptop
+
+Run the sidecar against the mapped photo library (`Y:\homes\Cooper\Photos\Dad_Woodworking_09262025` on Windows or its WSL mount). Bind to the laptop LAN interface, require `MEDIA_AI_SIDECAR_TOKEN`, and allow inbound TCP 8765 only from the NAS IP. Set `LOCAL_AI_SIDECAR_URL` in the NAS `.env` to that LAN address.
+
+### B. Separate GPU host
+
+Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. CUDA is used automatically when the installed PyTorch build supports it; CPU remains a valid fallback.
+
+### C. Manual workflow only
+
+Set `AI_ANALYSIS_PROVIDER=disabled`, `AI_EMBEDDING_PROVIDER=disabled`, `ENABLE_AI_MEDIA_ANALYSIS=false`, and `ENABLE_EMBEDDING_SEARCH=false`. Upload, crop, rename, tag, assign, review, and publish remain available.
+
+ChatGPT Plus is not an API backend. Gemini and OpenAI require their own API credentials and account billing/quota terms. Gemini is optional fallback only; no cloud free tier should be treated as unlimited.
 
 ## Build from WSL or another Docker host
 
@@ -188,6 +229,7 @@ Missing or removed files must return **404** (not a broken stream). Stale `media
 ### Woodshop dashboard (`/studio`) and large libraries
 
 - The dashboard pages the complete indexed library at 24, 48, 72, or 96 records per view. Whole-library search, assignment/review filters, media-type filters, and paging run in place through authenticated server actions and persist in the URL.
+- Media automation adds provider status, bounded scan/analyze/embed/cluster/rank/full/dry-run actions, selected/current-page scopes, persistent model/hash/cluster metadata, and explicit evidence. Suggested matches cannot publish or assign without a reviewed human action.
 - Routine media metadata saves, assignments, uploads, renames, and deletes do not refresh `/studio`. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
 - The verification queue proposes only one sufficiently separated best-piece match per unassigned image. It never assigns on preview; use the explicit **Assign** control after visual verification.
 - Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
@@ -228,5 +270,5 @@ A SQLite backup without the matching media tree is no longer sufficient for full
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
-- The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews, AI cleaned image copies, and embedding re-ranking are optional OpenAI-backed features and remain disabled by default.
+- The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

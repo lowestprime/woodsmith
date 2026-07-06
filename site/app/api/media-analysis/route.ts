@@ -1,72 +1,152 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { getAiServiceStatus } from "@/lib/ai-services";
+import { getAiProviderRuntimeStatus, getAiServiceStatus, runLocalSidecarAction, type AiProviderName } from "@/lib/ai-services";
 import { getCurrentUser } from "@/lib/auth";
 import { listMedia, listPieces, refreshMediaLibrary } from "@/lib/db";
-import {
-  autoAnalyzeUntaggedMedia,
-  autoClusterByEmbedding,
-  autoPieceToPhotoMatch,
-  computeMediaEmbeddings,
-  computePieceEmbeddings
-} from "@/lib/media-audit";
+import { autoAnalyzeUntaggedMedia, autoClusterByEmbedding, autoPieceToPhotoMatch, computeMediaEmbeddings, computePieceEmbeddings } from "@/lib/media-audit";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+const ACTIONS = new Set(["status", "scan", "analyze", "embed", "cluster", "match", "full", "cancel", "dry-run"]);
+const PROVIDERS = new Set(["local", "local-sidecar", "ollama", "gemini", "openai", "hybrid", "disabled"]);
+
+type MediaAnalysisRequest = {
+  action?: string;
+  provider?: AiProviderName | "local" | "hybrid";
+  limit?: number;
+  onlySelected?: boolean;
+  selectedPaths?: string[];
+  includeReviewed?: boolean;
+  dryRun?: boolean;
+};
+
+async function requireAdminResponse() {
+  const user = await getCurrentUser();
+  return user?.role === "admin" ? null : NextResponse.json({ error: "Admin authentication is required for media analysis." }, { status: 401 });
+}
+
+function requestLimit(value: unknown, maximum: number) {
+  const parsed = Number(value);
+  return Math.max(1, Math.min(maximum, Number.isFinite(parsed) ? Math.round(parsed) : maximum));
+}
+
+function summarizeNext(results: Record<string, unknown>) {
+  const embeddings = results.embeddings as { media?: { embedded?: number }; errors?: unknown[] } | undefined;
+  const analysis = results.analysis as { analyzed?: number; errors?: unknown[] } | undefined;
+  const clusters = results.clusters as { count?: number } | undefined;
+  if (!embeddings?.media?.embedded) return "Embed unreviewed images to enable visual matching.";
+  if (!analysis?.analyzed) return "Analyze selected or current-page images to add classification evidence.";
+  if (!clusters?.count) return "Cluster embedded images, then review representatives.";
+  return "Review ranked suggestions; assignment and publication still require manual confirmation.";
+}
+
+async function execute(body: MediaAnalysisRequest) {
+  const started = performance.now();
+  const configured = getAiServiceStatus();
+  const action = body.action ?? "status";
+  const dryRun = Boolean(body.dryRun || action === "dry-run");
+  const effectiveAction = action === "dry-run" ? "full" : action;
+  const limit = requestLimit(body.limit, configured.maxBatch);
+  const provider = body.provider;
+  const runId = randomUUID();
+  const warnings: string[] = [];
+  const errors: Array<{ stage: string; message: string; path?: string }> = [];
+  const results: Record<string, unknown> = {
+    action,
+    effectiveAction,
+    provider: provider || (effectiveAction === "analyze" ? configured.activeAnalysisProvider : configured.activeEmbeddingProvider),
+    runId,
+    dryRun,
+    limit,
+    timestamp: new Date().toISOString()
+  };
+
+  if (effectiveAction === "status") {
+    results.configuration = configured;
+    results.providers = await getAiProviderRuntimeStatus();
+    results.cache = { note: "Embedding and analysis records are persisted in the mounted SQLite data volume; sidecar model/cache files stay outside the media tree." };
+  } else if (effectiveAction === "cancel") {
+    try {
+      results.cancel = await runLocalSidecarAction("cancel", {});
+    } catch {
+      results.cancel = { cancelled: false, reason: "Runs are synchronous and no in-process background job is active." };
+    }
+  } else {
+    let media = listMedia({ includeUnreviewed: true });
+    const knownPaths = new Set(media.map((item) => item.relativePath));
+    const requestedPaths = Array.isArray(body.selectedPaths) ? [...new Set(body.selectedPaths.map(String).filter((item) => knownPaths.has(item)))].slice(0, limit) : [];
+    const selectedPaths = body.onlySelected || requestedPaths.length > 0 ? requestedPaths : undefined;
+    const pieces = listPieces(true);
+    const options = { provider, selectedPaths, limit, includeReviewed: Boolean(body.includeReviewed), dryRun, pieces };
+
+    if (["scan", "full"].includes(effectiveAction)) {
+      if (!dryRun) {
+        media = refreshMediaLibrary();
+        results.localIndex = { refreshed: media.length, method: "mounted-filesystem-index", persisted: true };
+      } else {
+        results.localIndex = { indexed: media.length, method: "mounted-filesystem-index", persisted: false };
+      }
+      if (configured.providers["local-sidecar"].enabled) {
+        try {
+          results.sidecarScan = await runLocalSidecarAction("scan", { selectedPaths, limit, dryRun });
+        } catch (error) {
+          warnings.push(error instanceof Error ? error.message : "Local AI sidecar scan was unavailable.");
+        }
+      }
+    }
+
+    if (["analyze", "full"].includes(effectiveAction)) {
+      const analysis = await autoAnalyzeUntaggedMedia(options);
+      results.analysis = analysis;
+      errors.push(...analysis.errors.map((entry) => ({ stage: "analysis", path: entry.path, message: entry.message })));
+    }
+
+    if (["embed", "full"].includes(effectiveAction)) {
+      const [pieceResult, mediaResult] = await Promise.all([computePieceEmbeddings(pieces, options), computeMediaEmbeddings(media, options)]);
+      results.embeddings = { pieces: pieceResult, media: mediaResult };
+      errors.push(...pieceResult.errors.map((message) => ({ stage: "piece-embedding", message })));
+      errors.push(...mediaResult.errors.map((entry) => ({ stage: "image-embedding", path: entry.path, message: entry.message })));
+    }
+
+    if (["cluster", "full"].includes(effectiveAction)) {
+      try {
+        results.clusters = await autoClusterByEmbedding(media, options);
+      } catch (error) {
+        errors.push({ stage: "clustering", message: error instanceof Error ? error.message : "Clustering failed." });
+      }
+    }
+
+    if (["match", "full"].includes(effectiveAction)) {
+      const matches = await autoPieceToPhotoMatch(pieces, media);
+      results.matches = { count: matches.length, candidates: matches.slice(0, 100) };
+    }
+  }
+
+  results.skipped = errors.length;
+  results.warnings = warnings;
+  results.errors = errors;
+  results.durationMs = Math.round(performance.now() - started);
+  results.nextRecommendedAction = summarizeNext(results);
+  return results;
+}
+
+export async function GET() {
+  const unauthorized = await requireAdminResponse();
+  if (unauthorized) return unauthorized;
+  return NextResponse.json(await execute({ action: "status" }), { headers: { "cache-control": "no-store" } });
+}
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser();
-  if (!user || user.role !== "admin") {
-    return NextResponse.json({ error: "Admin authentication is required for media analysis." }, { status: 401 });
+  const unauthorized = await requireAdminResponse();
+  if (unauthorized) return unauthorized;
+  const body = await request.json().catch(() => ({})) as MediaAnalysisRequest;
+  const action = body.action ?? "status";
+  if (!ACTIONS.has(action)) return NextResponse.json({ error: "Unsupported media-analysis action." }, { status: 400 });
+  if (body.provider && !PROVIDERS.has(body.provider)) return NextResponse.json({ error: "Unsupported media-analysis provider." }, { status: 400 });
+  try {
+    return NextResponse.json(await execute({ ...body, action }), { headers: { "cache-control": "no-store" } });
+  } catch (error) {
+    return NextResponse.json({ action, error: error instanceof Error ? error.message : "Media analysis failed.", durationMs: 0 }, { status: 500 });
   }
-
-  const status = getAiServiceStatus();
-  const body = await request.json().catch(() => ({})) as { action?: string };
-  const action = body.action ?? "full";
-  if (!["full", "analyze", "embed", "cluster", "match"].includes(action)) {
-    return NextResponse.json({ error: "Unsupported media-analysis action." }, { status: 400 });
-  }
-
-  const pieces = listPieces(true);
-  const results: Record<string, unknown> = { action, timestamp: new Date().toISOString() };
-  const locallyRefreshed = action === "full" || action === "cluster" || action === "match";
-  const media = locallyRefreshed ? refreshMediaLibrary() : listMedia({ includeUnreviewed: true });
-  if (locallyRefreshed) results.localIndex = { refreshed: media.length, method: "folder-filename-date-metadata" };
-
-  if (action === "full" || action === "analyze") {
-    if (status.mediaAnalysis) {
-      const analysis = await autoAnalyzeUntaggedMedia().catch(() => ({ analyzed: 0, tagged: 0 }));
-      results.analysis = analysis;
-    } else {
-      results.analysis = { skipped: true, reason: "ENABLE_AI_MEDIA_ANALYSIS is not enabled" };
-    }
-  }
-
-  if (action === "full" || action === "embed") {
-    if (status.embeddingSearch) {
-      const piecesEmbedded = await computePieceEmbeddings(pieces).catch(() => 0);
-      const mediaEmbedded = await computeMediaEmbeddings(media).catch(() => 0);
-      results.embeddings = { piecesEmbedded, mediaEmbedded };
-    } else {
-      results.embeddings = { skipped: true, reason: "ENABLE_EMBEDDING_SEARCH is not enabled" };
-    }
-  }
-
-  if (action === "full" || action === "cluster") {
-    if (status.embeddingSearch) {
-      const clusters = await autoClusterByEmbedding(media).catch(() => new Map());
-      results.clusters = { count: clusters.size, groups: Object.fromEntries(clusters) };
-    } else {
-      results.clusters = { skipped: true, reason: "Embeddings required for clustering" };
-    }
-  }
-
-  if (action === "full" || action === "match") {
-    if (status.embeddingSearch) {
-      const matches = await autoPieceToPhotoMatch(pieces, media).catch(() => []);
-      results.matches = { count: matches.length, candidates: matches.slice(0, 20) };
-    } else {
-      results.matches = { skipped: true, reason: "Embeddings required for matching" };
-    }
-  }
-
-  return NextResponse.json(results);
 }

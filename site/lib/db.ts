@@ -294,7 +294,11 @@ function getDatabase() {
     return database;
   }
 
-  const dataDir = path.resolve(process.cwd(), "data");
+  const configuredDataRoot = process.env.DATA_ROOT?.trim();
+  if (configuredDataRoot && !path.isAbsolute(configuredDataRoot)) {
+    throw new Error("DATA_ROOT must be an absolute filesystem path.");
+  }
+  const dataDir = configuredDataRoot || path.resolve(process.cwd(), "data");
   mkdirSync(dataDir, { recursive: true });
 
   database = new DatabaseSync(path.join(dataDir, "woodsmith.sqlite"));
@@ -2000,6 +2004,7 @@ function mediaJunkPathClauses() {
 
 export type MediaAssignmentFilter = "all" | "unassigned" | "assigned" | "review";
 export type MediaKindFilter = "all" | "image" | "video";
+export type MediaAiFilter = "all" | "high" | "ambiguous" | "details" | "unanalyzed" | "missing-alt" | "representatives";
 
 export type MediaListOptions = {
   query?: string;
@@ -2008,6 +2013,7 @@ export type MediaListOptions = {
   includeUnreviewed?: boolean;
   assignment?: MediaAssignmentFilter;
   kind?: MediaKindFilter;
+  aiFilter?: MediaAiFilter;
   limit?: number;
   offset?: number;
 };
@@ -2034,6 +2040,19 @@ function addMediaListFilters(clauses: string[], params: (string | number | null)
   if (options?.kind && options.kind !== "all") {
     clauses.push("kind = ?");
     params.push(options.kind);
+  }
+  if (options?.aiFilter === "high") {
+    clauses.push("CAST(COALESCE(json_extract(metadata_json, '$.aiConfidence'), 0) AS REAL) >= 0.82 AND CAST(COALESCE(json_extract(metadata_json, '$.aiAmbiguity'), 1) AS REAL) < 0.3");
+  } else if (options?.aiFilter === "ambiguous") {
+    clauses.push("(CAST(COALESCE(json_extract(metadata_json, '$.aiAmbiguity'), 0) AS REAL) >= 0.3 OR length(trim(COALESCE(json_extract(metadata_json, '$.aiUnsafeToAutoAssignReason'), ''))) > 0)");
+  } else if (options?.aiFilter === "details") {
+    clauses.push("COALESCE(json_extract(metadata_json, '$.aiPrimaryObject'), '') IN ('part-detail', 'hardware-detail', 'process-workshop', 'room-context', 'drawing-plan', 'people-context')");
+  } else if (options?.aiFilter === "unanalyzed") {
+    clauses.push("json_extract(metadata_json, '$.aiAnalyzed') IS NULL");
+  } else if (options?.aiFilter === "missing-alt") {
+    clauses.push("length(trim(alt_text)) = 0");
+  } else if (options?.aiFilter === "representatives") {
+    clauses.push("CAST(COALESCE(json_extract(metadata_json, '$.aiClusterRepresentative'), 0) AS INTEGER) = 1");
   }
   if (options?.query) {
     clauses.push("(relative_path LIKE ? OR file_name LIKE ? OR alt_text LIKE ? OR cluster_key LIKE ? OR tags_json LIKE ? OR metadata_json LIKE ? OR piece_slug LIKE ? OR post_slug LIKE ? OR page_slug LIKE ? OR project_reference LIKE ?)");
@@ -2388,6 +2407,15 @@ export function markMediaAiAnalyzed(relativePath: string, analysis: Record<strin
   const nextMetadata = { ...existing.metadata, aiAnalyzed: true, aiAnalyzedAt: nowIso(), ...analysis };
   db.prepare(`UPDATE media_items SET metadata_json = ?, updated_at = ? WHERE relative_path = ?`)
     .run(writeJson(nextMetadata), nowIso(), relativePath);
+}
+
+export function patchMediaMetadata(relativePath: string, patch: Record<string, unknown>) {
+  const db = getDatabase();
+  const existing = getMedia(relativePath);
+  if (!existing) return false;
+  db.prepare(`UPDATE media_items SET metadata_json = ?, updated_at = ? WHERE relative_path = ?`)
+    .run(writeJson({ ...existing.metadata, ...patch }), nowIso(), relativePath);
+  return true;
 }
 
 export function mergeMediaTags(relativePath: string, newTags: string[]) {

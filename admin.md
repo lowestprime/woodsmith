@@ -57,7 +57,7 @@ The media section operates against the NAS photo library mounted directly to `/a
 
 - upload files into a selected folder
 - search all indexed media by path, filename, alt text, tags, metadata, assignment, and project reference
-- filter by assignment/review state and media type, choose 24–96 records per page, and retain the view in the URL
+- filter by assignment/review state, media type, high-confidence/ambiguous/detail/unanalyzed/missing-alt/cluster-representative state, choose 24–96 records per page, and retain the view in the URL
 - browse a compact thumbnail workspace instead of a long full-page stack of editors
 - assign media to a piece, process note, page, or project
 - rename files in place
@@ -67,10 +67,25 @@ The media section operates against the NAS photo library mounted directly to `/a
 - generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
 - delete files
 - refresh the indexed library
+- select one or more cards for scoped analysis, embedding, clustering, or a full dry run
+- inspect provider/model status, visual/VLM/text/cluster evidence, runner-up margin, ambiguity, and persisted review reasons
+- copy an AI alt-text draft or merge AI tags into the editable fields without auto-approving them
+- reject a wrong piece suggestion so it is excluded from future rankings
 
-The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
+The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `I` analyzes, `E` embeds, `C` inspects the current cluster, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, AppleDouble `._*`, `@eaDir`, and `SYNOFILE_THUMB*` files are filtered during indexing and querying. Manual media assignments take priority over heuristic clustering. The verification queue offers at most one sufficiently separated best-piece proposal per unassigned image; ambiguous matches remain in the library for manual review. Inspecting a candidate never assigns it.
+
+### Media automation providers
+
+The automation API supports **Status**, **Scan**, **Analyze**, **Embed**, **Cluster**, **Rank matches**, **Full run**, **Cancel**, and **Dry run**. Work is synchronous and bounded by `MEDIA_AI_MAX_BATCH`; no fake background job is presented. Safe mode is enabled in the browser by default and records nothing until it is switched off.
+
+- `local-sidecar` is the default bulk path. It hashes source files, computes perceptual hashes and true image-pixel CLIP embeddings, caches outside `/app/pics`, and can run entirely on the Windows/WSL laptop or another GPU host.
+- Ollama is an optional local vision classifier for ambiguous images or explicit re-analysis. It is not called blindly for every near-duplicate.
+- Gemini 3.1 Flash-Lite and Gemini Embedding 2 are optional fallback/cloud-quality paths. Google quotas, pricing, and data terms apply and can change by project.
+- OpenAI remains backwards compatible only when explicitly selected and configured. ChatGPT Plus is a separate product and cannot authenticate this API.
+
+Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. Cluster IDs and membership are persisted to media metadata. A cluster can inform ranking, but only a manually reviewed representative can provide a verified propagation prior. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
 
 The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
 
@@ -122,7 +137,9 @@ These features require server configuration before they work live:
 - EasyPost labels: `EASYPOST_API_KEY` and `SHIP_FROM_*`
 - AI custom-work previews: `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true`
 - AI cleaned image copies: `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true`
-- Embedding search re-ranking: `OPENAI_API_KEY` and `ENABLE_EMBEDDING_SEARCH=true`
+- Local image/text embeddings: sidecar running at `LOCAL_AI_SIDECAR_URL` plus `ENABLE_EMBEDDING_SEARCH=true`
+- Optional Gemini fallback: `GEMINI_API_KEY` and `ENABLE_GEMINI_FALLBACK=true`
+- Optional OpenAI compatibility: `OPENAI_API_KEY` plus explicit OpenAI provider/feature flags
 
 ## Recommended operating routine
 
@@ -156,6 +173,10 @@ Check that `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` is mounted di
 
 The site can log sessions without location data, but the dashboard map needs Cloudflare visitor-location headers. Enable Cloudflare IP geolocation or the Add visitor location headers Managed Transform for the zone, then redeploy or reload the app.
 
-### AI preview, cleanup, or embedding search is unavailable
+### Media automation is unavailable
 
-Check `OPENAI_API_KEY` and the specific feature flag for the capability. The dashboard shows whether AI cleanup and embedding search are configured. Public custom-work preview generation intentionally returns a configuration-needed message instead of claiming image-model support when credentials are absent.
+Click **Status** in Media → Local-first automation. For the default provider, verify the sidecar is running, the URL is reachable from inside the NAS container, and `LOCAL_AI_SIDECAR_TOKEN` matches. If the sidecar runs on Windows/WSL, `127.0.0.1` inside the container is not the laptop; use the laptop LAN address and restrict the host firewall to the NAS. Provider failures are shown as unavailable/skipped while the manual editor remains functional. Public custom-work preview generation and OpenAI background cleanup still use their separate explicit OpenAI flags.
+
+### Page edits do not survive rebuilds
+
+Verify `DATA_ROOT=/app/site/data`, the Compose mount `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`, and write access for the configured `PUID:PGID`. The application rejects a relative `DATA_ROOT` so a changed working directory cannot silently create a second SQLite database. Back up `woodsmith.sqlite`, `woodsmith.sqlite-wal`, and `woodsmith.sqlite-shm` together or use SQLite's online backup command.

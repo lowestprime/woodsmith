@@ -8,16 +8,32 @@ export function HeaderShell({ children }: { children: ReactNode }) {
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    let lastY = window.scrollY;
+    let lastY = Math.max(0, window.scrollY);
     let direction: "up" | "down" | null = null;
     let directionStartY = lastY;
     let ticking = false;
 
+    function reveal() {
+      ref.current?.classList.remove("is-hidden");
+    }
+
     function update() {
       const el = ref.current;
       if (!el) return;
-      const y = window.scrollY;
+      const y = Math.max(0, window.scrollY);
       const delta = y - lastY;
+
+      if (y > 36) {
+        el.classList.add("is-compact");
+      } else {
+        el.classList.remove("is-compact");
+        el.classList.remove("is-hidden");
+      }
+
+      if (Math.abs(delta) < 2) {
+        ticking = false;
+        return;
+      }
 
       if (delta > 0 && direction !== "down") {
         direction = "down";
@@ -27,17 +43,12 @@ export function HeaderShell({ children }: { children: ReactNode }) {
         directionStartY = lastY;
       }
 
-      if (y > 64) {
-        el.classList.add("is-compact");
-      } else {
-        el.classList.remove("is-compact");
-      }
-
-      if (y > 200 && direction === "down" && y - directionStartY > 12) {
+      const headerHasFocus = el.contains(document.activeElement);
+      if (!headerHasFocus && y > 96 && direction === "down" && y - directionStartY > 16) {
         el.classList.add("is-hidden");
-      } else if (direction === "up" && directionStartY - y > 12) {
+      } else if (headerHasFocus || (direction === "up" && directionStartY - y > 48)) {
         el.classList.remove("is-hidden");
-      } else if (y < 64) {
+      } else if (y < 36) {
         el.classList.remove("is-hidden");
       }
 
@@ -53,8 +64,14 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("focusin", reveal);
+    window.addEventListener("pageshow", reveal);
     update();
-    return () => window.removeEventListener("scroll", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("focusin", reveal);
+      window.removeEventListener("pageshow", reveal);
+    };
   }, []);
 
   return (

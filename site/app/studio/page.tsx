@@ -13,6 +13,7 @@ import {
   deletePieceCategoryAction,
   loadMediaPageAction,
   loadMediaVerificationQueueAction,
+  markMediaAiSuggestionWrongAction,
   refreshMediaLibraryAction,
   renameMediaAction,
   saveCommissionTypeAction,
@@ -47,6 +48,7 @@ import {
   listUsers,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
+  type MediaAiFilter,
   type MediaKindFilter,
   type PageRecord,
   type PieceRecord,
@@ -294,6 +296,7 @@ export default async function StudioPage({
     mediaPage?: string;
     mediaAssignment?: string;
     mediaKind?: string;
+    mediaAi?: string;
     error?: string;
     cleaned?: string;
     assigned?: string;
@@ -321,6 +324,7 @@ export default async function StudioPage({
     mediaPage: mediaPageRaw = "",
     mediaAssignment: mediaAssignmentRaw = "",
     mediaKind: mediaKindRaw = "",
+    mediaAi: mediaAiRaw = "",
     error = "",
     cleaned = "",
     assigned = "",
@@ -361,6 +365,9 @@ export default async function StudioPage({
   const mediaKind: MediaKindFilter = ["image", "video"].includes(mediaKindRaw)
     ? mediaKindRaw as MediaKindFilter
     : "all";
+  const mediaAi: MediaAiFilter = ["high", "ambiguous", "details", "unanalyzed", "missing-alt", "representatives"].includes(mediaAiRaw)
+    ? mediaAiRaw as MediaAiFilter
+    : "all";
   const summary = getStudioDashboardSummary();
   const queryOpt = mediaQuery.trim() || undefined;
   const settings = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettings() : null;
@@ -371,7 +378,7 @@ export default async function StudioPage({
   const posts = currentPanel === "process" || currentPanel === "media" ? listPosts(true) : [];
   const commissionTypes = currentPanel === "custom" ? listCommissionTypes(true) : [];
   const users = currentPanel === "people" ? listUsers() : [];
-  const mediaFilters = { includeUnreviewed: true, query: queryOpt, assignment: mediaAssignment, kind: mediaKind } as const;
+  const mediaFilters = { includeUnreviewed: true, query: queryOpt, assignment: mediaAssignment, kind: mediaKind, aiFilter: mediaAi } as const;
   const allMediaTotal = currentPanel === "media" ? countMedia({ includeUnreviewed: true }) : 0;
   const mediaTotal = currentPanel === "media" ? countMedia(mediaFilters) : 0;
   const mediaPage = Math.min(Math.max(1, Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)), requestedMediaPage);
@@ -390,6 +397,7 @@ export default async function StudioPage({
       if (queryOpt) params.set("media", queryOpt);
       if (mediaAssignment !== "all") params.set("mediaAssignment", mediaAssignment);
       if (mediaKind !== "all") params.set("mediaKind", mediaKind);
+      if (mediaAi !== "all") params.set("mediaAi", mediaAi);
     }
     for (const [key, value] of Object.entries(extras ?? {})) {
       if (value) {
@@ -487,12 +495,14 @@ export default async function StudioPage({
           initialItems={media}
           initialAssignment={mediaAssignment}
           initialKind={mediaKind}
+          initialAiFilter={mediaAi}
           initialPage={mediaPage}
           initialPageSize={STUDIO_MEDIA_PAGE_SIZE}
           initialQuery={mediaQuery}
           initialTotal={mediaTotal}
           loadPageAction={loadMediaPageAction}
           loadVerificationQueueAction={loadMediaVerificationQueueAction}
+          rejectSuggestionAction={markMediaAiSuggestionWrongAction}
           pages={pages.map((page) => ({ slug: page.slug, title: page.title }))}
           pieces={pieces.map((piece) => ({ slug: piece.slug, title: piece.title }))}
           posts={posts.map((post) => ({ slug: post.slug, title: post.title }))}
@@ -502,7 +512,7 @@ export default async function StudioPage({
           uploadAction={uploadMediaAction}
           verificationQueue={verificationQueue.map((entry) => ({ pieceSlug: entry.piece.slug, pieceTitle: entry.piece.title, assignedCount: entry.assigned.length, needsReview: entry.needsReview, suggestions: entry.suggestions }))}
         />
-        <details className="studio-panel media-service-status"><summary>Automation and service status</summary><dl className="estimate-list compact-estimate"><div><dt>Background cleanup</dt><dd>{aiStatus?.backgroundCleanup ? `Enabled (${aiStatus.imageModel})` : "Not configured"}</dd></div><div><dt>Embedding search</dt><dd>{aiStatus?.embeddingSearch ? `Enabled (${aiStatus.embeddingModel})` : "Not configured"}</dd></div><div><dt>Media analysis</dt><dd>{aiStatus?.mediaAnalysis ? `Enabled (${aiStatus.visionModel})` : "Not configured"}</dd></div></dl><p className="muted-copy">Local folder, filename, date, tag, and metadata scoring always remains available. AI analysis stays optional and never auto-publishes an unverified match.</p></details>
+        <details className="studio-panel media-service-status"><summary>Automation configuration</summary><dl className="estimate-list compact-estimate"><div><dt>Analysis</dt><dd>{aiStatus?.mediaAnalysis ? `${aiStatus.activeAnalysisProvider} · ${aiStatus.visionModel}` : "Disabled"}</dd></div><div><dt>Visual embeddings</dt><dd>{aiStatus?.embeddingSearch ? `${aiStatus.activeEmbeddingProvider} · ${aiStatus.embeddingModel}` : "Disabled"}</dd></div><div><dt>Background cleanup</dt><dd>{aiStatus?.backgroundCleanup ? `OpenAI · ${aiStatus.imageModel}` : "Optional · not configured"}</dd></div></dl><p className="muted-copy">The local filesystem index and manual editor always remain available. Automation stores review evidence only; it cannot publish or silently assign media.</p></details>
       </PageSection>
       ) : null}
 
