@@ -8,6 +8,12 @@ site/.next
 .tanstack
 coverage
 site/coverage
+site/data/*.db
+site/data/*.db-*
+site/data/*.sqlite
+site/data/*.sqlite-*
+site/data/backups/
+site/data/media-ai-cache/
 .env
 .env.local
 .env.*.local

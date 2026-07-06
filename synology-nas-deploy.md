@@ -265,6 +265,8 @@ Because the dashboard can mutate the shared media library, back up these paths t
 
 A SQLite backup without the matching media tree is no longer sufficient for full recovery.
 
+The Docker build excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount.
+
 ## Current deployment caveats
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.

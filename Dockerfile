@@ -22,8 +22,9 @@ RUN useradd --system --uid 1001 --gid 1001 nextjs
 COPY --from=builder --chown=nextjs:nextjs /app/site/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/site/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nextjs /app/site/public ./public
-COPY --from=builder --chown=nextjs:nextjs /app/site/data ./data
-RUN chmod -R a+rX /app/site/public /app/site/.next/static
+RUN mkdir -p /app/site/data \
+  && chown nextjs:nextjs /app/site/data \
+  && chmod -R a+rX /app/site/public /app/site/.next/static
 
 USER nextjs
 EXPOSE 3002
