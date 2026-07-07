@@ -81,7 +81,7 @@ The SQLite schema includes these primary tables:
 - `reviews`
 - `notifications`
 
-Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v5 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. The migrations normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
+Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v5 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
 User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
 
@@ -98,9 +98,9 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - synchronizes reviewed piece assignments with public piece galleries while keeping unreviewed assignments private
 - can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
 
-Media automation is provider-agnostic and local-first. `tools/media-ai-sidecar/` scans the configured library, excludes Synology/hidden sidecars, stores SHA-256 and perceptual hashes plus generated 768px review thumbnails outside the source tree, computes true image-pixel and text embeddings in a shared SentenceTransformers CLIP space, applies deterministic visual clustering, and can use Ollama or Gemini only for ambiguity arbitration. Bounded Scan/Analyze/Full runs resume changed or uncached files, heavy work is serialized, and partial cluster updates preserve unrelated cluster state. The compact media desk exposes status/scan/analyze/embed/cluster/rank/full/dry-run actions, current-page, selected, or next-library-batch scopes, AI-state filters, provider/model/cache cards, evidence and margin breakdowns, rejection memory, and J/K/F/P/U/R/I/E/C/S/Shift+S/A keyboard controls.
+Media automation is provider-agnostic and local-first. `tools/media-ai-sidecar/` scans the configured library, excludes Synology/hidden sidecars, stores SHA-256 and perceptual hashes plus generated 768px review thumbnails outside the source tree, computes true image-pixel and text embeddings in a shared SentenceTransformers CLIP space, applies deterministic visual clustering, and can use Ollama or Gemini only for ambiguity arbitration. Bounded guided trainer runs resume changed or uncached files, heavy work is serialized, and partial cluster updates preserve unrelated cluster state. The compact media desk exposes Train selected, Improve page, and Continue library as the primary workflow, with raw scan/analyze/embed/cluster/rank/dry-run controls kept under Advanced actions. The status card shows provider/cache/training totals; AI-state filters, evidence and margin breakdowns, rejection memory, and J/K/F/P/U/R/I/E/C/S/Shift+S/A keyboard controls remain available.
 
-SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, and human-review reason. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate.
+SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, human-review reason, accepted training labels, and rejected training labels. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors, then subtracts negative reviewer signals. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate.
 
 ## Commerce and operations
 
@@ -133,7 +133,8 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - compact header shell that condenses on scroll and hides while scrolling down
 - repaired toggle track/thumb alignment and admin-aware account/profile badge resolution
 - local Mackintosh typography throughout the site
-- rounded controls, larger form fields, and more legible button language
+- rounded controls, compact dense form rhythm, and more legible button language
+- an auto-hiding compact header that stays narrow on desktop and reduces to two rows only when viewport width requires it
 - categorized portfolio tabs with icon-like labels
 - dedicated Process archive replacing Journal without duplicating Process inside Shop
 - account button as a rounded profile badge

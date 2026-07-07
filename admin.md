@@ -11,7 +11,7 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 ## Dashboard areas
 
-The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; **Full editor** opens the matching dashboard workspace for structural changes.
+The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; **Full editor** opens the matching dashboard workspace for structural changes. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again.
 
 ### Settings
 
@@ -21,7 +21,7 @@ The settings editor controls brand copy, homepage wording, contact email address
 
 The Pages section can create, edit, publish, archive, or delete page records. It now uses a compact record picker with one active editor at a time instead of rendering every page form in a long stack. Built-in public pages include home, portfolio, shop, process, custom work contact, about, and extra pages such as care or warranty. `/journal` is retained only as a redirect path to Process.
 
-Changes save into the mounted SQLite data store, revalidate the matching public routes immediately, and survive rebuilds as long as `site/data/` remains mounted persistently. On the home page record, `intro` feeds the hero copy and `body` feeds the secondary home copy block.
+Changes save into the mounted SQLite data store, revalidate the matching public routes immediately, and survive rebuilds as long as `site/data/` remains mounted persistently. The Studio overview shows the active data root, SQLite database health, journal mode, and seed version; use that card to confirm edits are going to `/app/site/data` before rebuilding. On the home page record, `intro` feeds the hero copy and `body` feeds the secondary home copy block.
 
 ### Portfolio and shop pieces
 
@@ -67,25 +67,27 @@ The media section operates against the NAS photo library mounted directly to `/a
 - generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
 - delete files
 - refresh the indexed library
-- select one or more cards for scoped analysis, embedding, clustering, or a full dry run
+- select one or more cards and run **Train selected**, **Improve page**, or **Continue library** without choosing individual scan/analyze/embed/cluster steps
 - inspect provider/model status, visual/VLM/text/cluster evidence, runner-up margin, ambiguity, and persisted review reasons
 - copy an AI alt-text draft or merge AI tags into the editable fields without auto-approving them
-- reject a wrong piece suggestion so it is excluded from future rankings
+- reject a wrong piece suggestion so it becomes a negative training label for future rankings
 
-The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `I` analyzes, `E` embeds, `C` inspects the current cluster, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved.
+The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `I` analyzes, `E` embeds, `C` inspects the current cluster, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved. Reviewed assignments, reviewer rejections, verified cluster neighbors, and same-folder review history are saved as training evidence and weighted into later candidate rankings.
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, AppleDouble `._*`, `@eaDir`, and `SYNOFILE_THUMB*` files are filtered during indexing and querying. Manual media assignments take priority over heuristic clustering. The verification queue offers at most one sufficiently separated best-piece proposal per unassigned image; ambiguous matches remain in the library for manual review. Inspecting a candidate never assigns it.
 
 ### Media automation providers
 
-The automation API supports **Status**, **Scan**, **Analyze**, **Embed**, **Cluster**, **Rank matches**, **Full run**, **Cancel**, and **Dry run**. Work is synchronous and bounded by `MEDIA_AI_MAX_BATCH`; no fake background job is presented. Safe mode is enabled in the browser by default and records nothing until it is switched off. **Next library batch** resumes with uncached work, while **Include reviewed media** is an explicit opt-in for page/library batches. Direct per-image Analyze/Embed actions remain intentional reprocessing actions even when that record is already reviewed.
+The normal automation surface is **Guided media trainer**. Use **Train selected** for hand-picked records, **Improve page** for the current filtered page, and **Continue library** for the next uncached batch. The card shows the active local provider, cache counts, indexed media, accepted/rejected training labels, analyzed files, vectors, and clusters in one place. **Preview only** performs a dry run without saving AI evidence; it is off by default because normal runs still cannot assign, approve, or publish media.
+
+Advanced actions expose **Rescan files**, **Analyze page**, **Analyze selected**, **Embed page**, **Embed selected**, **Cluster page**, **Rank matches**, and **Preview page run** for diagnostics. The underlying API still supports status, scan, analyze, embed, cluster, match, full, cancel, and dry-run. Work is synchronous and bounded by `MEDIA_AI_MAX_BATCH`; no fake background job is presented. **Continue library** resumes with uncached work, while **Include reviewed media** is an explicit opt-in for page/library batches. Direct per-image Analyze/Embed actions remain intentional reprocessing actions even when that record is already reviewed.
 
 - `local-sidecar` is the default bulk path. It hashes source files, computes perceptual hashes and true image-pixel CLIP embeddings, caches outside `/app/pics`, and can run entirely on the Windows/WSL laptop or another GPU host.
 - Ollama is an optional local vision classifier for ambiguous images or explicit re-analysis. It is not called blindly for every near-duplicate.
 - Gemini 3.1 Flash-Lite and Gemini Embedding 2 are optional fallback/cloud-quality paths. Google quotas, pricing, and data terms apply and can change by project.
 - OpenAI remains backwards compatible only when explicitly selected and configured. ChatGPT Plus is a separate product and cannot authenticate this API.
 
-Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only a manually reviewed representative can provide a verified propagation prior. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
+Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only manually reviewed labels provide the strongest propagation prior. Reviewer-rejected candidates and contradicted same-folder examples suppress later suggestions. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
 
 The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
 
@@ -175,8 +177,8 @@ The site can log sessions without location data, but the dashboard map needs Clo
 
 ### Media automation is unavailable
 
-Click **Status** in Media → Local-first automation. For the default provider, verify the sidecar is running, the URL is reachable from inside the NAS container, and `LOCAL_AI_SIDECAR_TOKEN` matches. If the sidecar runs on Windows/WSL, `127.0.0.1` inside the container is not the laptop; use the laptop LAN address and restrict the host firewall to the NAS. Provider failures are shown as unavailable/skipped while the manual editor remains functional. Public custom-work preview generation and OpenAI background cleanup still use their separate explicit OpenAI flags.
+Open Media → Guided media trainer and click **Refresh status**. For the default provider, verify the sidecar is running, the URL is reachable from inside the NAS container, and `LOCAL_AI_SIDECAR_TOKEN` matches. If the sidecar runs on Windows/WSL, `127.0.0.1` inside the container is not the laptop; use the laptop LAN address and restrict the host firewall to the NAS. Provider failures are shown as unavailable/skipped while the manual editor remains functional. Public custom-work preview generation and OpenAI background cleanup still use their separate explicit OpenAI flags.
 
 ### Page edits do not survive rebuilds
 
-Verify `DATA_ROOT=/app/site/data`, the Compose mount `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`, and write access for the configured `PUID:PGID`. The application rejects a relative `DATA_ROOT` so a changed working directory cannot silently create a second SQLite database. Back up `woodsmith.sqlite`, `woodsmith.sqlite-wal`, and `woodsmith.sqlite-shm` together or use SQLite's online backup command.
+Open Studio overview and check the Persistence card first. It should show a configured, writable `/app/site/data`, `quick_check=ok`, WAL journal mode, and the expected seed version. If it shows a different path or a warning, verify `DATA_ROOT=/app/site/data`, the Compose mount `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`, and write access for the configured `PUID:PGID`. The application rejects a relative `DATA_ROOT` so a changed working directory cannot silently create a second SQLite database, and seed upgrades no longer overwrite browser-edited pages or settings. Back up `woodsmith.sqlite`, `woodsmith.sqlite-wal`, and `woodsmith.sqlite-shm` together or use SQLite's online backup command.

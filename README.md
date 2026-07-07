@@ -21,17 +21,19 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
 - Admin-only pencil controls that edit mapped public text and links in place, with an explicit full-editor link for structural work
-- A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, batch selection, local image-pixel embeddings, durable visual clusters, provider/model evidence, upload/rename/delete safety, persistent assignment, crop/focal controls, and source credit against the writable NAS photo library
+- A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, guided local training actions, training-weighted visual ranking, upload/rename/delete safety, persistent assignment, crop/focal controls, and source credit against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
 - Keyword/metadata search plus visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. The optional local sidecar supplies shared image/text CLIP vectors; Gemini or OpenAI embeddings remain opt-in alternatives.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
+- Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
 
 ## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
+- Studio overview reports the active `DATA_ROOT`, SQLite `quick_check`, journal mode, and seed version so rebuild-safe persistence can be verified from the browser. Seed upgrades are non-destructive for existing Studio-edited records.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
 - The public site exposes admin-only edit controls when an admin is signed in. Mapped text and link fields save in place without a page reload; structural changes remain available through the linked `/studio` editor.
@@ -90,7 +92,7 @@ Local-first media AI configuration:
 - sidecar-only `MEDIA_AI_MEDIA_ROOT`, `MEDIA_AI_CACHE`, `MEDIA_AI_SIDECAR_TOKEN`, `MEDIA_AI_USE_OLLAMA`, `MEDIA_AI_CLUSTER_SIMILARITY`, and `MEDIA_AI_DUPLICATE_HASH_DISTANCE`
 - optional `GEMINI_API_KEY`, `GEMINI_VISION_MODEL`, `GEMINI_EMBEDDING_MODEL`, and `ENABLE_GEMINI_FALLBACK`
 
-The sidecar processes bounded resumable batches: repeated **Scan**, **Analyze**, or **Next library batch** actions continue with changed or uncached files instead of restarting at the first path. It writes SHA-256/perceptual hashes, generated 768px review thumbnails, embeddings, analyses, and cluster state only to its configured cache directory outside the mounted photo tree. The Studio status panel reports provider health and persisted piece/image embedding counts.
+The sidecar processes bounded resumable batches through the Studio trainer: **Train selected**, **Improve page**, and **Continue library** run scan/analyze/embed/cluster/rank steps in the correct order without requiring the woodshop user to manage those internals. Manual accepted assignments and rejected suggestions are persisted as training labels and influence later rankings; raw Scan/Analyze/Embed/Cluster actions remain available inside the Advanced section for diagnostics. The sidecar writes SHA-256/perceptual hashes, generated 768px review thumbnails, embeddings, analyses, and cluster state only to its configured cache directory outside the mounted photo tree.
 
 Required for optional live services:
 

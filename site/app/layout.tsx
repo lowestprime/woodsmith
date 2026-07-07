@@ -22,6 +22,8 @@ const mackintosh = localFont({
 
 const siteUrl = process.env.SITE_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://woodmat.ch";
 
+export const dynamic = "force-dynamic";
+
 export const metadata: Metadata = {
   title: {
     default: "Beaman Woodworks",

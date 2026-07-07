@@ -14,7 +14,10 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     let ticking = false;
 
     function reveal() {
-      ref.current?.classList.remove("is-hidden");
+      const current = ref.current;
+      if (!current) return;
+      current.classList.remove("is-hidden");
+      current.dataset.headerState = "revealed";
     }
 
     function update() {
@@ -23,11 +26,12 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       const y = Math.max(0, window.scrollY);
       const delta = y - lastY;
 
-      if (y > 36) {
+      if (y > 18) {
         el.classList.add("is-compact");
       } else {
         el.classList.remove("is-compact");
         el.classList.remove("is-hidden");
+        el.dataset.headerState = "top";
       }
 
       if (Math.abs(delta) < 2) {
@@ -44,12 +48,15 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       }
 
       const headerHasFocus = el.contains(document.activeElement);
-      if (!headerHasFocus && y > 96 && direction === "down" && y - directionStartY > 16) {
+      if (!headerHasFocus && y > 58 && direction === "down" && y - directionStartY > 10) {
         el.classList.add("is-hidden");
-      } else if (headerHasFocus || (direction === "up" && directionStartY - y > 48)) {
+        el.dataset.headerState = "hidden";
+      } else if (headerHasFocus || (direction === "up" && directionStartY - y > 14)) {
         el.classList.remove("is-hidden");
-      } else if (y < 36) {
+        el.dataset.headerState = "revealed";
+      } else if (y < 18) {
         el.classList.remove("is-hidden");
+        el.dataset.headerState = "top";
       }
 
       lastY = y;
@@ -66,11 +73,13 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     window.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("focusin", reveal);
     window.addEventListener("pageshow", reveal);
+    el.addEventListener("pointerenter", reveal);
     update();
     return () => {
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("focusin", reveal);
       window.removeEventListener("pageshow", reveal);
+      el.removeEventListener("pointerenter", reveal);
     };
   }, []);
 

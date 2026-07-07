@@ -121,6 +121,7 @@ Replace the example `192.168.1.50` with the laptop/GPU-host address that is reac
 - loopback-only port binding on `127.0.0.1:3002`
 - local media AI is optional and fails closed to the manual editor when its sidecar is unavailable
 - OpenAI image generation/cleanup remains disabled unless a server-side API key and explicit feature flag are provided
+- Studio overview includes a Persistence card that should report `/app/site/data`, `quick_check=ok`, WAL journal mode, and a writable data root before and after rebuilds.
 
 The `/app/pics` mount is intentionally read-write. `MEDIA_ROOT` must be absolute. The dashboard can upload, rename, delete, tag, and assign media directly inside that library. Do not mount `/volume2/docker_ssd/woodsmith/pics` into `/app/pics`; the attached Synology context shows that nested mount points under `docker_ssd` can make the share ineligible for Synology Drive Team Folder use.
 
@@ -231,7 +232,8 @@ Missing or removed files must return **404** (not a broken stream). Stale `media
 ### Woodshop dashboard (`/studio`) and large libraries
 
 - The dashboard pages the complete indexed library at 24, 48, 72, or 96 records per view. Whole-library search, assignment/review filters, media-type filters, and paging run in place through authenticated server actions and persist in the URL.
-- Media automation adds provider status, bounded scan/analyze/embed/cluster/rank/full/dry-run actions, selected/current-page scopes, persistent model/hash/cluster metadata, and explicit evidence. Suggested matches cannot publish or assign without a reviewed human action.
+- Media automation now centers on **Train selected**, **Improve page**, and **Continue library**. These guided actions run the bounded scan/analyze/embed/cluster/rank sequence for selected, current-page, or next-library-batch scopes while preserving persistent model/hash/cluster metadata and explicit evidence. Suggested matches cannot publish or assign without a reviewed human action.
+- The compact trainer status card should show the active local provider, cache totals, indexed media, accepted/rejected training labels, analyzed files, vectors, and clusters. Raw provider cards and individual scan/analyze/embed/cluster actions are intentionally tucked under Advanced actions for diagnostics.
 - Routine media metadata saves, assignments, uploads, renames, and deletes do not refresh `/studio`. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
 - The verification queue proposes only one sufficiently separated best-piece match per unassigned image. It never assigns on preview; use the explicit **Assign** control after visual verification.
 - Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
@@ -267,7 +269,7 @@ Because the dashboard can mutate the shared media library, back up these paths t
 
 A SQLite backup without the matching media tree is no longer sufficient for full recovery.
 
-The Docker build excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount.
+The Docker build excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 
 ## Current deployment caveats
 

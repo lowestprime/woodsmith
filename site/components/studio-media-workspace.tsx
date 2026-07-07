@@ -28,6 +28,16 @@ type VerificationEntry = {
 type AutomationAction = "status" | "scan" | "analyze" | "embed" | "cluster" | "match" | "full" | "cancel" | "dry-run";
 type AutomationScope = "library" | "page" | "selected";
 type ProviderState = { provider: string; configured: boolean; enabled: boolean; available: boolean; model?: string; reason?: string; latencyMs?: number };
+type TrainingSummary = {
+  indexed?: number;
+  reviewed?: number;
+  acceptedTrainingExamples?: number;
+  rejectedTrainingExamples?: number;
+  analyzed?: number;
+  embedded?: number;
+  clusters?: number;
+  needsReview?: number;
+};
 type AutomationResponse = {
   action?: string;
   provider?: string;
@@ -35,6 +45,8 @@ type AutomationResponse = {
   durationMs?: number;
   providers?: Record<string, ProviderState>;
   cache?: { available?: boolean; pieceEmbeddings?: number; mediaEmbeddings?: number; note?: string };
+  training?: TrainingSummary;
+  workflow?: { label?: string; summary?: string; training?: TrainingSummary };
   nextRecommendedAction?: string;
   warnings?: string[];
   errors?: Array<{ stage?: string; path?: string; message?: string }>;
@@ -121,6 +133,21 @@ function aiTimestamp(value: unknown) {
   if (!text) return "not recorded";
   const normalized = text.replace("T", " ").replace(/\.\d+Z$/, "Z");
   return normalized.endsWith("Z") ? `${normalized.slice(0, 19)} UTC` : normalized.slice(0, 19);
+}
+
+function countLabel(value: unknown) {
+  const count = Number(value);
+  return Number.isFinite(count) ? count.toLocaleString() : "0";
+}
+
+function providerKey(provider: string) {
+  return provider === "local" ? "local-sidecar" : provider;
+}
+
+function providerCopy(provider?: ProviderState) {
+  if (!provider) return "Status not checked yet.";
+  const availability = provider.available ? "available" : provider.enabled ? "unavailable" : "not selected";
+  return `${provider.provider.replace("-", " ")} ${availability}${provider.model ? ` · ${provider.model}` : ""}`;
 }
 
 function imageNeedsUnoptimized(relativePath: string) {
@@ -506,7 +533,7 @@ export function StudioMediaWorkspace({
   const [cacheStatus, setCacheStatus] = useState<AutomationResponse["cache"]>(undefined);
   const [automationMessage, setAutomationMessage] = useState<string | null>(null);
   const [providerOverride, setProviderOverride] = useState<"local" | "ollama" | "gemini" | "openai" | "hybrid">("local");
-  const [safeMode, setSafeMode] = useState(true);
+  const [safeMode, setSafeMode] = useState(false);
   const [includeReviewed, setIncludeReviewed] = useState(false);
   const [pageMessage, setPageMessage] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
@@ -629,6 +656,13 @@ export function StudioMediaWorkspace({
     }))
     .filter((entry) => entry.suggestions.length > 0 || entry.needsReview), [candidateAssignments, queue]);
   const runSummary = useMemo(() => automationSummary(automationResult), [automationResult]);
+  const trainingStatus = automationResult?.training ?? automationResult?.workflow?.training;
+  const selectedProvider = providerStatus?.[providerKey(providerOverride)];
+  const localProvider = providerStatus?.["local-sidecar"];
+  const workflowLabel = automationResult?.workflow?.label ?? (localProvider?.available ? "Local trainer ready" : "Manual review ready");
+  const workflowSummary = automationResult?.workflow?.summary ?? (localProvider?.available
+    ? "Run one guided training action, then accept or reject ranked suggestions. Manual labels change later ranking."
+    : "Start the local sidecar when you want embeddings and clusters; manual review remains available.");
 
   async function refreshWorkspaceData(refreshIndex = true) {
     setPageMessage(refreshIndex ? "Scanning the mounted media library…" : "Refreshing media…");
@@ -735,35 +769,59 @@ export function StudioMediaWorkspace({
         />
 
         <details className="studio-panel studio-media-utility-panel media-automation-panel" open>
-          <summary>Local-first automation</summary>
-          <p className="muted-copy">Visual analysis and ranking never assign or publish a photo. Every suggestion still requires a reviewed save.</p>
+          <summary>Guided media trainer</summary>
+          <p className="muted-copy">One guided run updates review evidence only. Every assignment, rejection, and public approval remains manual and persistent.</p>
+          <article className="media-training-card">
+            <div className="studio-editor-head">
+              <div>
+                <strong>{workflowLabel}</strong>
+                <p>{workflowSummary}</p>
+              </div>
+              <span className={`candidate-confidence ${localProvider?.available ? "is-strong" : "is-moderate"}`}>{localProvider?.available ? "Local" : "Manual"}</span>
+            </div>
+            <dl className="media-training-metrics" aria-label="Media training status">
+              <div><dt>Indexed</dt><dd>{countLabel(trainingStatus?.indexed ?? total)}</dd></div>
+              <div><dt>Reviewed labels</dt><dd>{countLabel(trainingStatus?.acceptedTrainingExamples ?? trainingStatus?.reviewed)}</dd></div>
+              <div><dt>Rejected labels</dt><dd>{countLabel(trainingStatus?.rejectedTrainingExamples)}</dd></div>
+              <div><dt>Analyzed</dt><dd>{countLabel(trainingStatus?.analyzed)}</dd></div>
+              <div><dt>Vectors</dt><dd>{countLabel(trainingStatus?.embedded ?? cacheStatus?.mediaEmbeddings)}</dd></div>
+              <div><dt>Clusters</dt><dd>{countLabel(trainingStatus?.clusters)}</dd></div>
+            </dl>
+            <p className="muted-copy">Provider: {providerCopy(selectedProvider ?? localProvider)}{cacheStatus ? ` · Cache ${countLabel(cacheStatus.pieceEmbeddings)} pieces / ${countLabel(cacheStatus.mediaEmbeddings)} images` : ""}</p>
+          </article>
           <div className="field-grid two-up compact-grid media-automation-settings">
             <label><span>Provider</span><select onChange={(event) => setProviderOverride(event.target.value as typeof providerOverride)} value={providerOverride}><option value="local">Local sidecar</option><option value="ollama">Ollama</option><option value="gemini">Gemini</option><option value="openai">OpenAI</option><option value="hybrid">Hybrid fallback</option></select></label>
-            <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Safe mode (dry run)</span></label>
+            <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Preview only, do not save AI evidence</span></label>
             <label className="checkbox-row"><input checked={includeReviewed} onChange={(event) => setIncludeReviewed(event.target.checked)} type="checkbox" /><span>Include reviewed media in page/library batches</span></label>
           </div>
-          <div className="button-row compact-button-row media-automation-actions">
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("status")} type="button">Status</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("scan")} type="button">Scan</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("analyze", "page")} type="button">Analyze page</button>
-            <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("analyze", "selected")} type="button">Analyze selected</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("embed", "page")} type="button">Embed page</button>
-            <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("embed", "selected")} type="button">Embed selected</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("cluster", "page")} type="button">Cluster page</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Full page run</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "library")} type="button">Next library batch</button>
-            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("dry-run", "page")} type="button">Dry-run preview</button>
-            <button className="button-secondary" disabled={!isAutomating} onClick={() => void runAutomation("cancel")} type="button">Cancel</button>
+          <div className="media-guided-actions" aria-label="Guided media trainer actions">
+            <button className="button-primary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("full", "selected", [...selectedPaths])} type="button">Train selected</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Improve page</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "library")} type="button">Continue library</button>
+            <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("status")} type="button">Refresh status</button>
+            {isAutomating ? <button className="button-secondary" onClick={() => void runAutomation("cancel")} type="button">Cancel run</button> : null}
           </div>
           {isAutomating ? <progress aria-label="Media automation is running" className="media-automation-progress" /> : null}
-          {providerStatus ? <div className="media-provider-grid">
-            {Object.entries(providerStatus).map(([name, provider]) => <article className={provider.available ? "is-available" : "is-unavailable"} key={name}><strong>{name.replace("-", " ")}</strong><span>{provider.available ? "Available" : provider.enabled ? "Unavailable" : "Not selected"}</span><small>{provider.model || provider.reason || "No model"}</small></article>)}
-            {cacheStatus ? <article className={cacheStatus.available ? "is-available" : "is-unavailable"}><strong>Embeddings cache</strong><span>{cacheStatus.available ? "Available" : "Unavailable"}</span><small>{cacheStatus.pieceEmbeddings ?? 0} pieces · {cacheStatus.mediaEmbeddings ?? 0} images</small></article> : null}
-          </div> : null}
           {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
           {automationResult?.nextRecommendedAction ? <p className="muted-copy"><strong>Next:</strong> {automationResult.nextRecommendedAction}</p> : null}
           {automationMessage ? <p aria-live="polite" className="studio-inline-notice" role="status">{automationMessage}</p> : null}
+          <details className="media-advanced-actions">
+            <summary>Advanced actions and provider details</summary>
+            <div className="button-row compact-button-row media-automation-actions">
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("scan")} type="button">Rescan files</button>
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("analyze", "page")} type="button">Analyze page</button>
+              <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("analyze", "selected")} type="button">Analyze selected</button>
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("embed", "page")} type="button">Embed page</button>
+              <button className="button-secondary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("embed", "selected")} type="button">Embed selected</button>
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("cluster", "page")} type="button">Cluster page</button>
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("match")} type="button">Rank matches</button>
+              <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("dry-run", "page")} type="button">Preview page run</button>
+            </div>
+            {providerStatus ? <div className="media-provider-grid">
+              {Object.entries(providerStatus).map(([name, provider]) => <article className={provider.available ? "is-available" : "is-unavailable"} key={name}><strong>{name.replace("-", " ")}</strong><span>{provider.available ? "Available" : provider.enabled ? "Unavailable" : "Not selected"}</span><small>{provider.model || provider.reason || "No model"}</small></article>)}
+              {cacheStatus ? <article className={cacheStatus.available ? "is-available" : "is-unavailable"}><strong>Embeddings cache</strong><span>{cacheStatus.available ? "Available" : "Unavailable"}</span><small>{cacheStatus.pieceEmbeddings ?? 0} pieces · {cacheStatus.mediaEmbeddings ?? 0} images</small></article> : null}
+            </div> : null}
+          </details>
         </details>
 
         {verificationCards.length > 0 ? (
@@ -789,7 +847,7 @@ export function StudioMediaWorkspace({
                           <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
                         </button>
-                        <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster {compactMetric(evidence.clusterPropagation)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
+                        <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster training {compactMetric(evidence.clusterPropagation)}</span><span>Folder training {compactMetric(evidence.folderDateContext)}</span><span>Manual label {compactMetric(evidence.manualPrior)}</span><span>Rejected signal {compactMetric(evidence.negativeReviewSignal)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
                         <ActionForm action={assignAction} className="candidate-assignment-form" onSuccess={() => {
                           const assignedItem = { ...item, pieceSlug: entry.pieceSlug, reviewed: true, updatedAt: new Date().toISOString() };
                           setCandidateAssignments((current) => ({ ...current, [item.relativePath]: entry.pieceSlug }));

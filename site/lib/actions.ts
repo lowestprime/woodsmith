@@ -74,6 +74,7 @@ function revalidatePagePaths(slug: string) {
   revalidatePath("/about");
   revalidatePath("/contact");
   revalidatePath("/commissions");
+  revalidatePath("/[slug]", "page");
   if (slug && slug !== "home") {
     revalidatePath(`/${slug}`);
   }
@@ -1269,8 +1270,13 @@ export async function markMediaAiSuggestionWrongAction(_: unknown, formData: For
     const pieceSlug = explicitPiece || String(topCandidate?.slug ?? "").trim();
     if (!pieceSlug) return { ok: false, kind: "error", message: "There is no AI piece suggestion to reject." };
     const previous = Array.isArray(media.metadata.aiRejectedPieceSlugs) ? media.metadata.aiRejectedPieceSlugs.map(String) : [];
+    const negativeTraining = Array.isArray(media.metadata.aiTrainingNegativePieceSlugs) ? media.metadata.aiTrainingNegativePieceSlugs.map(String) : [];
     patchMediaMetadata(relativePath, {
       aiRejectedPieceSlugs: [...new Set([...previous, pieceSlug])],
+      aiTrainingNegativePieceSlugs: [...new Set([...negativeTraining, pieceSlug])],
+      aiTrainingLabel: "rejected",
+      aiTrainingUpdatedAt: new Date().toISOString(),
+      aiTrainingSource: "woodshop-dashboard",
       aiNeedsHumanReview: true,
       aiReviewReason: `Reviewer rejected AI suggestion for ${pieceSlug}.`,
       aiSuggestionRejectedAt: new Date().toISOString()
@@ -1367,6 +1373,10 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
     if (!piece || !media) {
       return { ok: false, kind: "error", message: "Could not resolve piece or media for assignment." };
     }
+    const acceptedAt = new Date().toISOString();
+    const rejectedSlugs = Array.isArray(media.metadata.aiRejectedPieceSlugs)
+      ? media.metadata.aiRejectedPieceSlugs.map(String).filter((slug) => slug !== pieceSlug)
+      : [];
 
     saveMediaMetadata({
       relativePath,
@@ -1383,8 +1393,13 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
       tags: [...new Set([...media.tags, pieceSlug, ...piece.tags])],
       metadata: {
         ...media.metadata,
+        aiRejectedPieceSlugs: rejectedSlugs,
+        aiTrainingLabel: "accepted",
+        aiTrainingPieceSlug: pieceSlug,
+        aiTrainingUpdatedAt: acceptedAt,
+        aiTrainingSource: "woodshop-dashboard",
         verifiedPieceSlug: pieceSlug,
-        verifiedAt: new Date().toISOString(),
+        verifiedAt: acceptedAt,
         verifiedBy: "woodshop-dashboard"
       }
     });
@@ -1485,6 +1500,10 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
     if (reviewed && !altText) {
       return { ok: false, kind: "error", message: "Add accurate alt text before approving media for public use." };
     }
+    const acceptedAt = new Date().toISOString();
+    const rejectedSlugs = Array.isArray(existing.metadata.aiRejectedPieceSlugs)
+      ? existing.metadata.aiRejectedPieceSlugs.map(String).filter((slug) => slug && slug !== nextPieceSlug)
+      : [];
     const metadata = {
       ...existing.metadata,
       cleanupMode: optionalField(formData.get("cleanupMode")) || existing.metadata.cleanupMode || "original",
@@ -1492,8 +1511,13 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
       displayOrder: Math.round(clampNumber(formData.get("displayOrder"), Number(existing.metadata.displayOrder ?? 0), 0, 9999)),
       sourceCredit: formData.has("sourceCredit") ? optionalField(formData.get("sourceCredit")) : existing.metadata.sourceCredit || "",
       verifiedPieceSlug: reviewed && nextPieceSlug ? nextPieceSlug : "",
-      verifiedAt: reviewed && nextPieceSlug ? new Date().toISOString() : "",
+      verifiedAt: reviewed && nextPieceSlug ? acceptedAt : "",
       verifiedBy: reviewed && nextPieceSlug ? "woodshop-dashboard" : "",
+      aiRejectedPieceSlugs: reviewed && nextPieceSlug ? rejectedSlugs : Array.isArray(existing.metadata.aiRejectedPieceSlugs) ? existing.metadata.aiRejectedPieceSlugs : [],
+      aiTrainingLabel: reviewed && nextPieceSlug ? "accepted" : existing.metadata.aiTrainingLabel || "",
+      aiTrainingPieceSlug: reviewed && nextPieceSlug ? nextPieceSlug : existing.metadata.aiTrainingPieceSlug || "",
+      aiTrainingUpdatedAt: reviewed && nextPieceSlug ? acceptedAt : existing.metadata.aiTrainingUpdatedAt || "",
+      aiTrainingSource: reviewed && nextPieceSlug ? "woodshop-dashboard" : existing.metadata.aiTrainingSource || "",
       cropAspect: optionalField(formData.get("cropAspect")) || existing.metadata.cropAspect || "free",
       cropNote: formData.has("cropNote") ? optionalField(formData.get("cropNote")) : existing.metadata.cropNote || "",
       visualLabels: formData.has("visualLabelsText")

@@ -5,6 +5,30 @@
 - Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY
 - Branch: `codex/local-first-media-ai-20260705`
 
+### 2026-07-06 Compact Header, Dense Layout, and Page Persistence Hardening
+
+- Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY
+- Branch: `codex/local-first-media-ai-20260705`
+
+| Area | Status | Outcome |
+|------|--------|---------|
+| Header compactness | DONE / LIVE VERIFIED | Added a stricter final CSS contract and scroll controller thresholds so the global header stays narrow, hides on downward scroll, reveals on upward scroll/focus/pointer entry, suppresses the subtitle in the header, clips older oversized emblem overrides, and keeps scroll-restored Studio anchors below the compact header. Local and live browser verification measured a 50px initial desktop header, 41px compact revealed header, hidden top position at -45px after downward scroll, and zero horizontal overflow at 1280px. |
+| Dense spacing | DONE / LIVE VERIFIED | Tightened page sections, Studio command headers, dashboard metric cards, workspace pills, editor panels, form gaps, field heights, and grid gaps so public pages and Studio workspaces avoid unnecessary long-scroll layouts while preserving responsive wrapping. |
+| Rebuild-safe page edits | DONE / LIVE VERIFIED | Made the legacy v3 seed-upgrade path non-destructive for existing Studio-edited records, added an admin Persistence card with `DATA_ROOT`, SQLite `quick_check`, journal mode, seed version, and writable-state evidence, explicitly forced the app shell to dynamic rendering, and revalidated the dynamic `[slug]` route pattern after page saves. Local browser verification saved a disposable home-page edit into a copied SQLite database, saw it render on `/`, restarted the app with the same `DATA_ROOT`, and saw the edit persist. The live deploy uses the same mounted `/app/site/data` model; internal route and mount checks passed after redeploy. |
+
+Deployment evidence: release `releases/woodsmith-prod-2026-07-06-172702.tar.gz` passed gzip validation with SHA-256 `32CAF1F5FB55FACD28ED63557F49450E9A7844A405E2D516928CACE296DE8E0D`; pre-deploy backup `site/data/backups/woodsmith-pre-header-persistence-20260706-172702.sqlite` passed `PRAGMA quick_check`; Synology image ID is `sha256:5fd378749fce79998b7240423a7261278a143d850fbd10c4fdd49b3d297f5def`; writable data/media/cache and static asset checks passed; internal `/`, `/studio/login`, `/contact`, `/portfolio`, and `/shop` returned 200; public `https://woodmat.ch/` returned 200 and `https://www.woodmat.ch/studio/login` redirected to canonical `https://woodmat.ch/studio/login`.
+
+### 2026-07-06 Guided Trainer and Manual-Learning Hardening
+
+- Status: IN PROGRESS
+- Branch: `codex/local-first-media-ai-20260705`
+
+| Area | Status | Outcome |
+|------|--------|---------|
+| Studio trainer simplification | DONE / VALIDATION PENDING | Replaced the visible implementation button wall with a guided trainer card, **Train selected**, **Improve page**, **Continue library**, **Refresh status**, and an optional Cancel button while moving raw Scan/Analyze/Embed/Cluster/Rank/Preview controls under Advanced actions. The status card now explains local provider availability, cache totals, indexed media, accepted/rejected training labels, analyzed files, vectors, and clusters without requiring users to interpret separate provider cards. |
+| Manual-learning ranker | DONE / VALIDATION PENDING | Reviewer-accepted assignments, reviewer-rejected suggestions, verified cluster neighbors, and verified same-folder history are now first-class durable training signals. The ranker uses lower raw visual weight, stronger manual/cluster/folder priors, and a negative reviewer penalty so future suggestions improve from manual classification without enabling automatic assignment or publication. |
+| Persistence and documentation | DONE / VALIDATION PENDING | Accept/reject actions now persist training labels in SQLite metadata. README, admin manual, Synology deployment notes, sidecar README, and architecture docs describe the guided trainer and training-weighted ranking model. |
+
 | Area | Status | Outcome |
 |------|--------|---------|
 | Compact auto-hide header | DONE | Added a final CSS contract after all historical layers so the desktop header is one narrow row, responsive layouts use at most two compact rows, subtitle and oversized emblem overrides cannot return, scroll-down hides after a small threshold, scroll-up/focus reveals, and reduced motion is respected. |

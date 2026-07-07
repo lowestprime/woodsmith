@@ -35,6 +35,7 @@ import {
   countMedia,
   getSiteSettings,
   getStudioDashboardSummary,
+  getRuntimePersistenceStatus,
   listCommissionTypes,
   listMedia,
   listMediaForProjectReferences,
@@ -369,6 +370,7 @@ export default async function StudioPage({
     ? mediaAiRaw as MediaAiFilter
     : "all";
   const summary = getStudioDashboardSummary();
+  const persistence = getRuntimePersistenceStatus();
   const queryOpt = mediaQuery.trim() || undefined;
   const settings = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettings() : null;
   const categories = normalizePieceCategories(settings?.pieceCategories);
@@ -451,6 +453,16 @@ export default async function StudioPage({
             <Link className="studio-panel studio-workspace-card" href={panelHref("categories")}><p className="eyebrow">Categories</p><h3>{categories.length} portfolio groups</h3><p>Add, rename, reorder, or consolidate the public portfolio filters.</p></Link>
             <Link className="studio-panel studio-workspace-card" href={panelHref("media")}><p className="eyebrow">Media</p><h3>Mounted NAS library</h3><p>Upload, review, crop, assign, and verify piece accuracy.</p></Link>
             <Link className="studio-panel studio-workspace-card" href={panelHref("projects")}><p className="eyebrow">Projects</p><h3>{summary.bandwidth.activeProjects} active</h3><p>Lead time, queue visibility, notes, and project stages.</p></Link>
+            <article className={`studio-panel persistence-status-card${persistence.dataRootConfigured && persistence.dataRootWritable && persistence.quickCheck === "ok" ? " is-healthy" : " is-warning"}`}>
+              <p className="eyebrow">Persistence</p>
+              <h3>{persistence.dataRootConfigured && persistence.dataRootWritable ? "Mounted data store" : "Check data mount"}</h3>
+              <dl className="estimate-list compact-estimate">
+                <div><dt>Data root</dt><dd>{persistence.dataRoot}</dd></div>
+                <div><dt>SQLite</dt><dd>{persistence.quickCheck} · {persistence.journalMode}</dd></div>
+                <div><dt>Seed</dt><dd>v{persistence.seededVersion}</dd></div>
+              </dl>
+              <p className="muted-copy">Studio edits are written to this database path and reused by future container rebuilds when the Compose mount remains active.</p>
+            </article>
             {aiStatus ? <article className="studio-panel"><p className="eyebrow">AI services</p><h3>{aiStatus.backgroundCleanup || aiStatus.embeddingSearch || aiStatus.mediaAnalysis || aiStatus.publicRendering ? "Mixed availability" : "Credential-free mode"}</h3><p className="muted-copy">Optional AI services remain honest and off by default unless their environment configuration is present.</p></article> : null}
           </div>
         </PageSection>
@@ -473,7 +485,7 @@ export default async function StudioPage({
       </PageSection>
       ) : null}
 
-      {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} page={page} />)}</div></PageSection> : null}
+      {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media. Saving here writes to {persistence.databasePath} and revalidates the live route.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} page={page} />)}</div></PageSection> : null}
       {currentPanel === "pieces" ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor categories={categories} piece={pieceDraft(currentAdmin.email)} />{pieces.map((piece) => <PieceEditor categories={categories} highlight={piece.slug === pieceHighlight} key={piece.slug} piece={piece} />)}</div></PageSection> : null}
       {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Manage the category labels, matching terms, and icon styles used by the public portfolio and piece editor.</p></div><div className="studio-grid category-editor-grid"><PieceCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "objects", aliases: [] }} isNew />{categories.map((category) => <PieceCategoryEditor categories={categories} category={category} key={category.key} />)}</div></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}

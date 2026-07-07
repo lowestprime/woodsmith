@@ -684,6 +684,73 @@ body:has(.inline-edit-hint) main {
   margin-block: 0.45rem;
 }
 
+.media-training-card {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.62rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at top right, color-mix(in srgb, var(--accent) 12%, transparent), transparent 46%),
+    var(--bg-soft);
+}
+
+.media-training-card .studio-editor-head {
+  align-items: start;
+  margin-bottom: 0;
+}
+
+.media-training-card p {
+  margin: 0.18rem 0 0;
+}
+
+.media-training-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.28rem;
+  margin: 0;
+}
+
+.media-training-metrics div {
+  min-width: 0;
+  padding: 0.38rem 0.42rem;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg) 68%, transparent);
+}
+
+.media-training-metrics dt {
+  color: var(--muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.media-training-metrics dd {
+  margin: 0.08rem 0 0;
+  font-size: 0.96rem;
+}
+
+.media-guided-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.32rem;
+  margin-top: 0.5rem;
+}
+
+.media-guided-actions .button-primary {
+  grid-column: 1 / -1;
+}
+
+.media-advanced-actions {
+  margin-top: 0.45rem;
+}
+
+.media-advanced-actions > summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
 .media-automation-progress {
   width: 100%;
   height: 0.35rem;
@@ -1268,5 +1335,321 @@ body:has(.inline-edit-hint) main {
   .piece-reserve-panel {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+/* 2026-07 compactness contract: keep navigation present without letting it dominate the workspace. */
+:root {
+  --site-header-open: 3.15rem;
+  --site-header-compact: 2.55rem;
+  --studio-scroll-offset: 3.35rem;
+}
+
+.site-header {
+  z-index: 80;
+  min-height: 0 !important;
+  max-height: var(--site-header-open);
+  overflow: clip;
+  background: color-mix(in srgb, var(--bg) 91%, transparent) !important;
+  transition: transform 160ms ease, max-height 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+
+.site-header.is-compact {
+  max-height: var(--site-header-compact);
+}
+
+.site-header .header-inner {
+  grid-template-columns: minmax(11rem, 0.34fr) minmax(0, 1fr) auto !important;
+  gap: 0.28rem 0.42rem !important;
+  min-height: var(--site-header-open) !important;
+  padding-block: 0.18rem !important;
+  align-items: center !important;
+}
+
+.site-header.is-compact .header-inner {
+  min-height: var(--site-header-compact) !important;
+  padding-block: 0.08rem !important;
+}
+
+.site-header .brand-lockup {
+  grid-template-columns: auto minmax(0, 1fr) !important;
+  gap: 0.38rem !important;
+}
+
+.site-header .brand-emblem,
+.site-header.is-compact .brand-emblem {
+  width: 1.88rem !important;
+  height: 1.88rem !important;
+  filter: none !important;
+}
+
+.site-header .brand-mark,
+.site-header.is-compact .brand-mark {
+  font-size: clamp(0.88rem, 1.05vw, 1.04rem) !important;
+  line-height: 1 !important;
+  letter-spacing: 0.035em !important;
+}
+
+.site-header .brand-subtitle {
+  display: none !important;
+}
+
+.site-header .site-nav {
+  justify-content: center !important;
+  gap: 0.18rem !important;
+  padding-bottom: 0 !important;
+}
+
+.site-header .site-nav .nav-link-pill,
+.site-header .header-actions .nav-link-pill,
+.site-header .header-icon-button,
+.site-header .theme-toggle-icon,
+.site-header .account-link {
+  min-height: 1.86rem !important;
+}
+
+.site-header .site-nav .nav-link-pill,
+.site-header .header-actions .nav-link-pill {
+  padding: 0.22rem 0.5rem !important;
+  font-size: 0.72rem !important;
+}
+
+.site-header .header-search {
+  flex-basis: clamp(10rem, 16vw, 14rem) !important;
+  min-width: min(13rem, 100%) !important;
+}
+
+.site-header .header-search-input {
+  min-height: 1.86rem !important;
+  padding-block: 0.24rem !important;
+  font-size: 0.72rem !important;
+}
+
+.site-header .header-search-submit,
+.site-header .header-icon-button,
+.site-header .theme-toggle-icon,
+.site-header .account-link,
+.site-header .account-badge,
+.site-header .account-badge-avatar {
+  width: 1.86rem !important;
+  height: 1.86rem !important;
+}
+
+.site-header .header-actions {
+  gap: 0.2rem !important;
+}
+
+.site-header.is-hidden {
+  transform: translate3d(0, calc(-100% - 4px), 0) !important;
+}
+
+.site-header:focus-within {
+  max-height: var(--site-header-open);
+  transform: translate3d(0, 0, 0) !important;
+}
+
+.page-section {
+  padding-block: clamp(0.85rem, 1.8vw, 1.75rem) !important;
+}
+
+.hero-section {
+  padding-top: clamp(0.85rem, 1.6vw, 1.55rem) !important;
+}
+
+.section-heading,
+.page-intro {
+  gap: 0.42rem !important;
+}
+
+h1 {
+  font-size: clamp(2.15rem, 5vw, 4.15rem) !important;
+  line-height: 0.98 !important;
+}
+
+h2 {
+  font-size: clamp(1.45rem, 3vw, 2.35rem) !important;
+}
+
+.studio-command-header {
+  padding-block: 0.32rem !important;
+}
+
+.studio-command-header .page-intro {
+  grid-template-columns: auto auto minmax(0, 1fr) !important;
+  gap: 0.22rem 0.55rem !important;
+  align-items: baseline !important;
+  margin-bottom: 0.35rem !important;
+}
+
+.studio-command-header .page-intro h1,
+.studio-command-header.is-workspace .studio-workspace-title h1 {
+  max-width: none !important;
+  font-size: clamp(1.35rem, 2.4vw, 2.15rem) !important;
+}
+
+.studio-command-header .page-intro .lede {
+  font-size: 0.76rem !important;
+  line-height: 1.2 !important;
+}
+
+.studio-command-header .admin-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(8.25rem, 100%), 1fr)) !important;
+  gap: 0.34rem !important;
+}
+
+.studio-command-header .admin-summary-grid article {
+  min-height: 3.15rem !important;
+  padding: 0.42rem 0.58rem !important;
+  border-radius: 13px !important;
+}
+
+.studio-command-header .admin-summary-grid span {
+  font-size: clamp(1.02rem, 1.7vw, 1.42rem) !important;
+}
+
+.studio-command-header .admin-summary-grid p {
+  font-size: 0.66rem !important;
+}
+
+.studio-workspace-nav {
+  gap: 0.28rem !important;
+  padding-bottom: 0.12rem !important;
+}
+
+.studio-workspace-pill {
+  min-height: 1.9rem !important;
+  padding: 0.32rem 0.58rem !important;
+  font-size: 0.72rem !important;
+}
+
+.studio-grid,
+.service-grid,
+.piece-grid,
+.profile-grid,
+.review-grid,
+.search-results,
+.admin-summary-grid,
+.page-grid,
+.contact-grid,
+.account-layout,
+.cart-layout,
+.request-grid,
+.visualizer-layout {
+  gap: clamp(0.52rem, 1vw, 0.82rem) !important;
+}
+
+.piece-card-body,
+.shop-card-body,
+.journal-card,
+.service-card,
+.review-card,
+.studio-panel,
+.request-panel,
+.notice-panel,
+.cart-line,
+.profile-card,
+.project-card {
+  padding: clamp(0.72rem, 1.15vw, 1rem) !important;
+}
+
+.request-form,
+.compact-form,
+.field-grid,
+.studio-panel,
+.cart-summary,
+.visualizer-sidebar,
+.estimate-panel {
+  gap: 0.48rem !important;
+}
+
+input,
+textarea,
+select {
+  min-height: 2.05rem;
+  padding: 0.42rem 0.62rem !important;
+}
+
+textarea {
+  min-height: 4.5rem !important;
+  max-height: min(30vh, 16rem) !important;
+}
+
+.studio-editor-card,
+.studio-media-card,
+.highlight-card {
+  scroll-margin-top: var(--studio-scroll-offset) !important;
+}
+
+.persistence-status-card dl {
+  gap: 0.3rem;
+  margin-block: 0.35rem;
+}
+
+.persistence-status-card dd {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.persistence-status-card.is-healthy {
+  border-color: color-mix(in srgb, #60936a 52%, var(--line));
+}
+
+.persistence-status-card.is-warning {
+  border-color: color-mix(in srgb, var(--danger) 50%, var(--line));
+}
+
+@media (max-width: 1180px) {
+  :root {
+    --site-header-open: 4.95rem;
+    --site-header-compact: 2.55rem;
+  }
+
+  .site-header .header-inner {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas: "brand actions" "nav nav" !important;
+    row-gap: 0.12rem !important;
+  }
+
+  .site-header .brand-lockup { grid-area: brand; }
+  .site-header .site-nav { grid-area: nav; justify-content: flex-start !important; }
+  .site-header .header-actions { grid-area: actions; }
+  .site-header.is-compact .site-nav { display: none !important; }
+}
+
+@media (max-width: 720px) {
+  :root {
+    --site-header-open: 4.45rem;
+    --site-header-compact: 2.4rem;
+    --studio-scroll-offset: 2.8rem;
+  }
+
+  .site-header .header-search {
+    flex-basis: 10rem !important;
+    min-width: 9rem !important;
+  }
+
+  .site-header .brand-mark {
+    max-width: 46vw !important;
+  }
+
+  .studio-command-header .page-intro {
+    grid-template-columns: 1fr !important;
+  }
+
+  .studio-command-header .page-intro .lede {
+    display: none;
+  }
+}
+
+@media (max-width: 460px) {
+  .site-header .brand-mark {
+    font-size: 0.8rem !important;
+  }
+
+  .site-header .header-search {
+    flex-basis: 8.4rem !important;
+    min-width: 7.6rem !important;
   }
 }

@@ -62,6 +62,17 @@ function rejected(piece: PieceRecord, media: MediaRecord) {
   return Array.isArray(media.metadata.aiRejectedPieceSlugs) && media.metadata.aiRejectedPieceSlugs.map(String).includes(piece.slug);
 }
 
+function verifiedSlug(media: MediaRecord) {
+  const slug = typeof media.metadata.verifiedPieceSlug === "string" ? media.metadata.verifiedPieceSlug.trim() : "";
+  return media.reviewed && slug ? slug : "";
+}
+
+function rejectedPieceSlugs(media: MediaRecord) {
+  return Array.isArray(media.metadata.aiRejectedPieceSlugs)
+    ? new Set(media.metadata.aiRejectedPieceSlugs.map(String).filter(Boolean))
+    : new Set<string>();
+}
+
 function unsafeMediaReason(media: MediaRecord) {
   const primary = String(media.metadata.aiPrimaryObject ?? "");
   const reason = String(media.metadata.aiUnsafeToAutoAssignReason ?? "");
@@ -88,13 +99,22 @@ function activeVisualEmbeddings() {
 function clusterPrior(piece: PieceRecord, media: MediaRecord, mediaByCluster: Map<string, MediaRecord[]>) {
   const clusterId = typeof media.metadata.aiClusterId === "string" ? media.metadata.aiClusterId : "";
   if (!clusterId) return 0;
-  const verified = (mediaByCluster.get(clusterId) ?? []).find((item) => item.reviewed && item.pieceSlug === piece.slug && item.metadata.verifiedPieceSlug === piece.slug);
-  return verified ? 1 : 0;
+  const members = mediaByCluster.get(clusterId) ?? [];
+  const verified = members.filter((item) => verifiedSlug(item));
+  if (verified.length === 0) return 0;
+  const positives = verified.filter((item) => verifiedSlug(item) === piece.slug);
+  if (positives.length === 0) return 0;
+  const representativeBoost = positives.some((item) => item.metadata.aiClusterRepresentative) ? 0.14 : 0;
+  return Math.min(1, 0.42 + positives.length / Math.max(verified.length, 1) * 0.44 + representativeBoost);
 }
 
 function folderDatePrior(piece: PieceRecord, media: MediaRecord, mediaByFolder: Map<string, MediaRecord[]>) {
   const folderMembers = mediaByFolder.get(media.folder) ?? [];
-  if (folderMembers.some((item) => item.reviewed && item.pieceSlug === piece.slug)) return 1;
+  const verified = folderMembers.filter((item) => verifiedSlug(item));
+  if (verified.length > 0) {
+    const positives = verified.filter((item) => verifiedSlug(item) === piece.slug);
+    if (positives.length > 0) return Math.min(1, 0.34 + positives.length / Math.max(verified.length, 1) * 0.52);
+  }
   const folderTokens = new Set(tokensFor(media.folder));
   const pieceTokens = [...tokensFor(piece.slug), ...tokensFor(piece.title)];
   return pieceTokens.some((token) => folderTokens.has(token)) ? 0.7 : 0;
@@ -102,12 +122,32 @@ function folderDatePrior(piece: PieceRecord, media: MediaRecord, mediaByFolder: 
 
 function manualPrior(piece: PieceRecord, media: MediaRecord) {
   if (media.metadata.verifiedPieceSlug === piece.slug && media.reviewed) return 1;
+  if (media.metadata.aiTrainingPieceSlug === piece.slug && media.metadata.aiTrainingLabel === "accepted") return 0.85;
   if (media.pieceSlug === piece.slug) return media.reviewed ? 0.9 : 0.55;
   return 0;
 }
 
+function negativeReviewSignal(piece: PieceRecord, media: MediaRecord, mediaByCluster: Map<string, MediaRecord[]>, mediaByFolder: Map<string, MediaRecord[]>) {
+  if (rejected(piece, media)) return 1;
+  let signal = 0;
+  const clusterId = typeof media.metadata.aiClusterId === "string" ? media.metadata.aiClusterId : "";
+  const clusterMembers = clusterId ? mediaByCluster.get(clusterId) ?? [] : [];
+  if (clusterMembers.some((item) => rejectedPieceSlugs(item).has(piece.slug))) signal = Math.max(signal, 0.72);
+  const folderMembers = mediaByFolder.get(media.folder) ?? [];
+  const folderVerified = folderMembers.filter((item) => verifiedSlug(item));
+  if (folderVerified.length >= 2) {
+    const positives = folderVerified.filter((item) => verifiedSlug(item) === piece.slug);
+    if (positives.length === 0) signal = Math.max(signal, 0.42);
+  }
+  return signal;
+}
+
+function emptyEvidence(): CandidateEvidence {
+  return { visualSimilarity: 0, vlmConfidence: 0, lexicalScore: 0, clusterPropagation: 0, folderDateContext: 0, manualPrior: 0, negativeReviewSignal: 0 };
+}
+
 function scoreCandidate(piece: PieceRecord, media: MediaRecord, maps: ReturnType<typeof activeVisualEmbeddings>, mediaByCluster: Map<string, MediaRecord[]>, mediaByFolder: Map<string, MediaRecord[]>) {
-  if (rejected(piece, media)) return { finalScore: 0, evidence: { visualSimilarity: 0, vlmConfidence: 0, lexicalScore: 0, clusterPropagation: 0, folderDateContext: 0, manualPrior: 0 }, reasonCodes: ["rejected-by-reviewer"] };
+  if (rejected(piece, media)) return { finalScore: 0, evidence: emptyEvidence(), reasonCodes: ["rejected-by-reviewer"] };
   const pieceEmbedding = maps.pieceMap.get(piece.slug);
   const mediaEmbedding = maps.mediaMap.get(media.relativePath);
   const visualSimilarity = pieceEmbedding?.length && mediaEmbedding?.length ? Math.max(0, cosineSimilarity(pieceEmbedding, mediaEmbedding)) : 0;
@@ -117,10 +157,13 @@ function scoreCandidate(piece: PieceRecord, media: MediaRecord, maps: ReturnType
     lexicalScore: lexicalScore(piece, media),
     clusterPropagation: clusterPrior(piece, media, mediaByCluster),
     folderDateContext: folderDatePrior(piece, media, mediaByFolder),
-    manualPrior: manualPrior(piece, media)
+    manualPrior: manualPrior(piece, media),
+    negativeReviewSignal: negativeReviewSignal(piece, media, mediaByCluster, mediaByFolder)
   };
   const finalScore = weightedMediaScore(evidence);
-  const reasonCodes = Object.entries(evidence).filter(([, value]) => value > 0).map(([key]) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
+  const reasonCodes = Object.entries(evidence)
+    .filter(([, value]) => value > 0)
+    .map(([key]) => key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
   return { finalScore, evidence, reasonCodes };
 }
 

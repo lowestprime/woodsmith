@@ -21,6 +21,22 @@ type MediaAnalysisRequest = {
   dryRun?: boolean;
 };
 
+function mediaTrainingSummary(media = listMedia({ includeUnreviewed: true })) {
+  const accepted = media.filter((item) => item.reviewed && item.metadata.verifiedPieceSlug).length;
+  const rejected = media.reduce((total, item) => total + (Array.isArray(item.metadata.aiRejectedPieceSlugs) ? item.metadata.aiRejectedPieceSlugs.length : 0), 0);
+  const clusters = new Set(media.flatMap((item) => typeof item.metadata.aiClusterId === "string" && item.metadata.aiClusterId ? [item.metadata.aiClusterId] : []));
+  return {
+    indexed: media.length,
+    reviewed: media.filter((item) => item.reviewed).length,
+    acceptedTrainingExamples: accepted,
+    rejectedTrainingExamples: rejected,
+    analyzed: media.filter((item) => item.metadata.aiAnalyzed).length,
+    embedded: media.filter((item) => item.metadata.aiEmbeddingHash).length,
+    clusters: clusters.size,
+    needsReview: media.filter((item) => !item.reviewed).length
+  };
+}
+
 async function requireAdminResponse() {
   const user = await getCurrentUser();
   return user?.role === "admin" ? null : NextResponse.json({ error: "Admin authentication is required for media analysis." }, { status: 401 });
@@ -64,6 +80,7 @@ async function execute(body: MediaAnalysisRequest) {
   };
 
   if (effectiveAction === "status") {
+    const training = mediaTrainingSummary();
     results.configuration = configured;
     results.providers = await getAiProviderRuntimeStatus();
     results.cache = {
@@ -71,6 +88,14 @@ async function execute(body: MediaAnalysisRequest) {
       pieceEmbeddings: listEmbeddingsByKind("piece-visual").length,
       mediaEmbeddings: listEmbeddingsByKind("media-visual").length,
       note: "Embedding and analysis records are persisted in the mounted SQLite data volume; sidecar model/cache files stay outside the media tree."
+    };
+    results.training = training;
+    results.workflow = {
+      label: configured.providers["local-sidecar"].enabled ? "Local classifier ready" : "Manual workflow ready",
+      summary: configured.providers["local-sidecar"].enabled
+        ? "Use Train selected, Improve page, or Continue library. Manual accept/reject labels are persisted and influence later ranking."
+        : "The manual media desk remains available. Start the local sidecar to enable image embeddings and clustering.",
+      training
     };
   } else if (effectiveAction === "cancel") {
     try {
@@ -144,6 +169,7 @@ async function execute(body: MediaAnalysisRequest) {
       const matches = await autoPieceToPhotoMatch(pieces, media, options);
       results.matches = { count: matches.length, candidates: matches.slice(0, 100) };
     }
+    results.training = mediaTrainingSummary(listMedia({ includeUnreviewed: true }));
   }
 
   results.skipped = skipped;

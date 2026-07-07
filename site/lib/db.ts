@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { accessSync, constants as fsConstants, mkdirSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -264,6 +264,8 @@ export type StudioDashboardSummary = {
 
 let database: DatabaseSync | null = null;
 let initialized = false;
+let activeDataDir: string | null = null;
+let activeDatabasePath: string | null = null;
 
 function nowIso() {
   return new Date().toISOString();
@@ -300,8 +302,10 @@ function getDatabase() {
   }
   const dataDir = configuredDataRoot || path.resolve(process.cwd(), "data");
   mkdirSync(dataDir, { recursive: true });
+  activeDataDir = dataDir;
+  activeDatabasePath = path.join(dataDir, "woodsmith.sqlite");
 
-  database = new DatabaseSync(path.join(dataDir, "woodsmith.sqlite"));
+  database = new DatabaseSync(activeDatabasePath);
   database.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = OFF;
@@ -617,6 +621,43 @@ function getSeededVersion(db: DatabaseSync) {
   return Number(parsed.version ?? 0);
 }
 
+export type RuntimePersistenceStatus = {
+  dataRoot: string;
+  databasePath: string;
+  dataRootConfigured: boolean;
+  dataRootWritable: boolean;
+  quickCheck: string;
+  journalMode: string;
+  seededVersion: number;
+};
+
+export function getRuntimePersistenceStatus(): RuntimePersistenceStatus {
+  const db = getDatabase();
+  const configuredDataRoot = process.env.DATA_ROOT?.trim();
+  const dataRoot = activeDataDir ?? configuredDataRoot ?? path.resolve(process.cwd(), "data");
+  const databasePath = activeDatabasePath ?? path.join(dataRoot, "woodsmith.sqlite");
+  let dataRootWritable = false;
+  try {
+    accessSync(dataRoot, fsConstants.W_OK);
+    dataRootWritable = true;
+  } catch {
+    dataRootWritable = false;
+  }
+
+  const quickCheckRow = db.prepare(`PRAGMA quick_check`).get() as Record<string, unknown> | undefined;
+  const journalModeRow = db.prepare(`PRAGMA journal_mode`).get() as Record<string, unknown> | undefined;
+
+  return {
+    dataRoot,
+    databasePath,
+    dataRootConfigured: Boolean(configuredDataRoot),
+    dataRootWritable,
+    quickCheck: String(Object.values(quickCheckRow ?? {})[0] ?? "unknown"),
+    journalMode: String(Object.values(journalModeRow ?? {})[0] ?? "unknown"),
+    seededVersion: getSeededVersion(db)
+  };
+}
+
 function getSetting<T>(key: string, fallback: T): T {
   const db = getDatabase();
   const row = db.prepare(`SELECT value FROM settings WHERE key = ? LIMIT 1`).get(key) as { value?: string } | undefined;
@@ -923,95 +964,19 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   if (seededVersion > 0 && seededVersion < 3) {
-    saveSiteSettings({ ...siteSettingsSeed });
-
-    for (const profile of seedProfiles) {
-      saveUserProfile({
-        email: profile.email,
-        role: profile.role,
-        displayName: profile.displayName,
-        headline: profile.headline,
-        bio: profile.bio,
-        avatarPath: profile.avatarPath ?? null,
-        publicProfile: profile.publicProfile,
-        links: profile.links,
-        metadata: profile.metadata
-      });
-    }
-
-    for (const page of seedPages) {
-      if (isSeedTombstoned(db, "page", page.slug)) continue;
-      savePage({
-        slug: page.slug,
-        title: page.title,
-        navLabel: page.navLabel,
-        status: page.status,
-        intro: page.intro,
-        body: page.body,
-        layout: page.layout,
-        sections: page.sections,
-        heroMediaPath: page.heroMediaPath ?? null
-      });
-    }
-
-    for (const piece of seedPieces) {
-      if (isSeedTombstoned(db, "piece", piece.slug)) continue;
-      savePiece({
-        slug: piece.slug,
-        title: piece.title,
-        subtitle: piece.subtitle,
-        category: piece.category,
-        status: piece.status,
-        publicationStatus: piece.publicationStatus,
-        availabilityLabel: piece.availabilityLabel,
-        summary: piece.summary,
-        story: piece.story,
-        details: piece.details,
-        tags: piece.tags,
-        materials: piece.materials,
-        dimensions: piece.dimensions,
-        priceCents: piece.priceCents,
-        inventoryCount: piece.inventoryCount,
-        leadTimeDays: piece.leadTimeDays,
-        mediaPaths: piece.mediaPaths,
-        featuredRank: piece.featuredRank,
-        ownerEmail: "woodsmithbb@proton.me",
-        metadata: piece.metadata
-      });
-    }
-
-    for (const post of seedPosts) {
-      if (isSeedTombstoned(db, "post", post.slug)) continue;
-      savePost({
-        slug: post.slug,
-        title: post.title,
-        excerpt: post.excerpt,
-        body: post.body,
-        publicationStatus: post.publicationStatus,
-        publishedAt: post.publishedAt,
-        authorEmail: post.authorEmail,
-        coverMediaPath: post.coverMediaPath ?? null,
-        tags: post.tags,
-        sourceUrl: post.sourceUrl ?? null,
-        sourceLabel: post.sourceLabel ?? null
-      });
-    }
-
-    for (const commissionType of seedCommissionTypes) {
-      if (isSeedTombstoned(db, "commission_type", commissionType.slug)) continue;
-      saveCommissionType({
-        slug: commissionType.slug,
-        label: commissionType.label,
-        description: commissionType.description,
-        baseLaborHours: commissionType.baseLaborHours,
-        baseMarkupPercent: commissionType.baseMarkupPercent,
-        materialOptions: commissionType.materialOptions,
-        defaultDimensions: commissionType.defaultDimensions,
-        active: commissionType.active
-      });
-    }
-
-    upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso() });
+    // Older releases rewrote seeded records during this upgrade, which could
+    // erase Studio edits on a rebuilt container. Keep the version marker and
+    // backfill only missing settings arrays without replacing live records.
+    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
+    upsertSetting(db, "site", {
+      ...siteSettingsSeed,
+      ...currentSite,
+      navigation: currentSite.navigation?.length ? currentSite.navigation : siteSettingsSeed.navigation,
+      homeSections: currentSite.homeSections?.length ? currentSite.homeSections : siteSettingsSeed.homeSections,
+      socialLinks: currentSite.socialLinks?.length ? currentSite.socialLinks : siteSettingsSeed.socialLinks,
+      pieceCategories: currentSite.pieceCategories?.length ? currentSite.pieceCategories : siteSettingsSeed.pieceCategories
+    });
+    upsertSetting(db, "seededVersion", { version: 3, updatedAt: nowIso(), nonDestructive: true });
   }
 
   if (seededVersion > 0 && seededVersion < 4) {
