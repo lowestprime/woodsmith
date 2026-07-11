@@ -633,4 +633,4 @@ export const seedProfiles: SeedProfile[] = [
     metadata: { showOnAboutPage: true, developer: true }
   }
 ];
-import { defaultPieceCategories } from "@/lib/categories";
+import { defaultPieceCategories } from "./categories.ts";

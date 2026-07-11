@@ -64,13 +64,13 @@ export function detectMediaKind(fileName: string): MediaKind {
 
 function shouldIgnoreMediaEntry(name: string) {
   const normalized = name.toLowerCase();
-  if (IGNORED_MEDIA_FILE_NAMES.has(normalized) || normalized.startsWith("._")) {
+  if (IGNORED_MEDIA_FILE_NAMES.has(normalized) || normalized.startsWith("._") || normalized.startsWith("~rf")) {
     return true;
   }
-  if (normalized === "@eadir") {
+  if (normalized === "@eadir" || normalized === "@synoeastream" || normalized === ".woodsmith-trash") {
     return true;
   }
-  if (normalized.includes("synofile_thumb")) {
+  if (normalized.startsWith("synophoto_") || normalized.startsWith("synoindex_") || normalized.includes("synofile_thumb")) {
     return true;
   }
   return false;
@@ -136,7 +136,7 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
     const stats = statSync(absolutePath);
     const relativePath = normalizeRelativePath(path.relative(root, absolutePath));
     const rpLower = relativePath.toLowerCase();
-    if (rpLower.includes("@eadir") || rpLower.includes("synofile_thumb")) {
+    if (rpLower.includes("@eadir") || rpLower.includes("@synoeastream") || rpLower.includes("/.woodsmith-trash/") || rpLower.includes("synofile_thumb") || /(^|\/)synophoto_/i.test(relativePath) || /(^|\/)synoindex_/i.test(relativePath)) {
       continue;
     }
 
@@ -204,6 +204,11 @@ export function persistGeneratedMedia(base64Image: string, folder = "generated",
 }
 
 export function renameMediaAsset(relativePath: string, nextBaseName: string) {
+  const nextPath = previewMediaRenamePath(relativePath, nextBaseName);
+  return moveMediaAsset(relativePath, nextPath);
+}
+
+export function previewMediaRenamePath(relativePath: string, nextBaseName: string) {
   const currentAbsolutePath = resolveMediaPath(relativePath);
   const parsed = path.parse(currentAbsolutePath);
   const baseName = slugify(nextBaseName) || `media-${randomUUID().slice(0, 8)}`;
@@ -215,8 +220,33 @@ export function renameMediaAsset(relativePath: string, nextBaseName: string) {
   if (existsSync(targetAbsolutePath)) {
     throw new Error(`A media file named '${path.basename(targetAbsolutePath)}' already exists in this folder.`);
   }
-  renameSync(currentAbsolutePath, targetAbsolutePath);
   return normalizeRelativePath(path.relative(mediaRoot, targetAbsolutePath));
+}
+
+export function moveMediaAsset(relativePath: string, nextRelativePath: string) {
+  const currentAbsolutePath = resolveMediaPath(relativePath);
+  const targetAbsolutePath = resolveMediaPath(nextRelativePath);
+  if (path.resolve(targetAbsolutePath) === path.resolve(currentAbsolutePath)) return normalizeRelativePath(nextRelativePath);
+  if (existsSync(targetAbsolutePath)) throw new Error(`A media file named '${path.basename(targetAbsolutePath)}' already exists in this folder.`);
+  mkdirSync(path.dirname(targetAbsolutePath), { recursive: true });
+  renameSync(currentAbsolutePath, targetAbsolutePath);
+  return normalizeRelativePath(nextRelativePath);
+}
+
+export function stageMediaAssetDeletion(relativePath: string) {
+  const parsed = path.posix.parse(normalizeRelativePath(relativePath));
+  const stagedPath = `.woodsmith-trash/${randomUUID()}-${parsed.base}`;
+  moveMediaAsset(relativePath, stagedPath);
+  return { originalPath: normalizeRelativePath(relativePath), stagedPath };
+}
+
+export function restoreStagedMediaAsset(input: { originalPath: string; stagedPath: string }) {
+  return moveMediaAsset(input.stagedPath, input.originalPath);
+}
+
+export function finalizeStagedMediaDeletion(input: { stagedPath: string }) {
+  const absolutePath = resolveMediaPath(input.stagedPath);
+  rmSync(absolutePath, { force: true });
 }
 
 export function deleteMediaAsset(relativePath: string) {

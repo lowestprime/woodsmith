@@ -45,7 +45,9 @@ import {
   setPasswordResetToken,
   updateProject,
   deleteMediaRecordAndReferences,
+  finishMediaRenameHistory,
   renameMediaRecordAndReferences,
+  startMediaRenameHistory,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
   type MediaAiFilter,
@@ -59,12 +61,22 @@ import {
   type UserRecord
 } from "@/lib/db";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
-import { persistGeneratedMedia, persistUploadedMedia, renameMediaAsset, deleteMediaAsset, resolveMediaPath } from "@/lib/media";
+import {
+  finalizeStagedMediaDeletion,
+  moveMediaAsset,
+  persistGeneratedMedia,
+  persistUploadedMedia,
+  previewMediaRenamePath,
+  resolveMediaPath,
+  restoreStagedMediaAsset,
+  stageMediaAssetDeletion
+} from "@/lib/media";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryIcon } from "@/lib/categories";
+import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceCanEnterCart } from "@/lib/piece-model";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
   revalidatePath("/");
@@ -433,6 +445,10 @@ export async function addToCartAction(formData: FormData) {
   const user = await getCurrentUser();
   const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
   const quantity = Math.max(1, parseInteger(formData.get("quantity"), 1));
+  const piece = getPiece(pieceSlug);
+  if (!piece || !pieceCanEnterCart(piece) || quantity > piece.inventoryCount) {
+    redirect(`/shop?error=${encodeURIComponent("This piece is not available for fixed-price reservation.")}`);
+  }
   const { saveCartItem } = await import("@/lib/db");
   saveCartItem({ cartToken, userEmail: user?.email ?? null, pieceSlug, quantity, options: parseJsonField(formData.get("optionsJson"), {}) });
   revalidatePath("/shop");
@@ -456,7 +472,7 @@ export async function startCheckoutAction(formData: FormData) {
   const invalidItems: string[] = [];
   const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
-    if (!piece || piece.priceCents == null) {
+    if (!piece || !pieceCanEnterCart(piece) || piece.priceCents == null || item.quantity > piece.inventoryCount) {
       invalidItems.push(item.pieceSlug);
       return [];
     }
@@ -943,21 +959,24 @@ export async function savePieceAction(formData: FormData) {
   const slug = requiredField(formData.get("slug"), "Piece slug");
   const current = getPiece(slug);
   const pieceJson = optionalField(formData.get("pieceJson"));
+  const priceMode = (formData.has("priceMode") ? optionalField(formData.get("priceMode")) : current ? getPiecePriceMode(current) : "not-listed") as PieceRecord["priceMode"];
+  const inquiryMode = (formData.has("inquiryMode") ? optionalField(formData.get("inquiryMode")) : current ? getPieceInquiryMode(current) : "disabled") as PieceRecord["inquiryMode"];
+  const reviewsMode = (formData.has("reviewsMode") ? optionalField(formData.get("reviewsMode")) : current ? getPieceReviewsMode(current) : "hidden") as PieceRecord["reviewsMode"];
   savePiece(pieceJson
     ? parseJsonField<PieceRecord>(formData.get("pieceJson"), current!)
     : {
         slug,
-        title: optionalField(formData.get("title")) || current?.title || slug,
-        subtitle: optionalField(formData.get("subtitle")) || current?.subtitle || "",
+        title: formData.has("title") ? requiredField(formData.get("title"), "Piece title") : current?.title || slug,
+        subtitle: formData.has("subtitle") ? optionalField(formData.get("subtitle")) : current?.subtitle || "",
         category: optionalField(formData.get("category")) || current?.category || "Tables",
         status: (optionalField(formData.get("pieceStatus")) || current?.status || "commission") as PieceRecord["status"],
         publicationStatus: (optionalField(formData.get("publicationStatus")) || current?.publicationStatus || "draft") as PieceRecord["publicationStatus"],
-        availabilityLabel: optionalField(formData.get("availabilityLabel")) || current?.availabilityLabel || "",
-        summary: optionalField(formData.get("summary")) || current?.summary || "",
-        story: optionalField(formData.get("story")) || current?.story || "",
-        details: parseListField(formData.get("detailsText")).length > 0 ? parseListField(formData.get("detailsText")) : current?.details || [],
-        tags: parseListField(formData.get("tagsText")).length > 0 ? parseListField(formData.get("tagsText")) : current?.tags || [],
-        materials: parseListField(formData.get("materialsText")).length > 0 ? parseListField(formData.get("materialsText")) : current?.materials || [],
+        availabilityLabel: formData.has("availabilityLabel") ? optionalField(formData.get("availabilityLabel")) : current?.availabilityLabel || "",
+        summary: formData.has("summary") ? optionalField(formData.get("summary")) : current?.summary || "",
+        story: formData.has("story") ? optionalField(formData.get("story")) : current?.story || "",
+        details: formData.has("detailsText") ? parseListField(formData.get("detailsText")) : current?.details || [],
+        tags: formData.has("tagsText") ? parseListField(formData.get("tagsText")) : current?.tags || [],
+        materials: formData.has("materialsText") ? parseListField(formData.get("materialsText")) : current?.materials || [],
         dimensions: parseOptionalInteger(formData.get("width")) == null && parseOptionalInteger(formData.get("depth")) == null && parseOptionalInteger(formData.get("height")) == null
           ? current?.dimensions || null
           : {
@@ -966,17 +985,26 @@ export async function savePieceAction(formData: FormData) {
               height: parseOptionalInteger(formData.get("height")) ?? current?.dimensions?.height ?? 0,
               unit: "in" as const
             },
-        priceCents: parseOptionalInteger(formData.get("priceCents")) ?? current?.priceCents ?? null,
+        priceCents: formData.has("priceCents") ? parseOptionalInteger(formData.get("priceCents")) : current?.priceCents ?? null,
+        priceMode,
+        publicPriceLabel: formData.has("publicPriceLabel") ? optionalField(formData.get("publicPriceLabel")) || null : current?.publicPriceLabel ?? null,
+        internalEstimateCents: formData.has("internalEstimateCents") ? parseOptionalInteger(formData.get("internalEstimateCents")) : current?.internalEstimateCents ?? null,
+        inquiryMode,
+        reviewsMode,
+        processSectionTitle: formData.has("processSectionTitle") ? optionalField(formData.get("processSectionTitle")) || "Build record" : current?.processSectionTitle ?? "Build record",
+        processSectionIntro: formData.has("processSectionIntro") ? optionalField(formData.get("processSectionIntro")) : current?.processSectionIntro ?? "",
+        visualizerTemplate: formData.has("visualizerTemplate") ? optionalField(formData.get("visualizerTemplate")) || null : current?.visualizerTemplate ?? null,
+        commissionTypeSlug: formData.has("commissionTypeSlug") ? optionalField(formData.get("commissionTypeSlug")) || null : current?.commissionTypeSlug ?? null,
         inventoryCount: parseInteger(formData.get("inventoryCount"), current?.inventoryCount ?? 0),
         leadTimeDays: parseInteger(formData.get("leadTimeDays"), current?.leadTimeDays ?? 0),
-        mediaPaths: parseListField(formData.get("mediaPathsText")).length > 0 ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
+        mediaPaths: formData.has("mediaPathsText") ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
         featuredRank: parseInteger(formData.get("featuredRank"), current?.featuredRank ?? 99),
         ownerEmail: optionalField(formData.get("ownerEmail")) || current?.ownerEmail || "woodsmithbb@proton.me",
         metadata: {
           ...(current?.metadata || {}),
           verifiedMedia: parseBooleanField(formData.get("verifiedMedia")),
           publicMediaLimit: parseInteger(formData.get("publicMediaLimit"), Number(current?.metadata?.publicMediaLimit ?? 4)),
-          fulfillmentOptions: parseListField(formData.get("fulfillmentText")).length > 0 ? parseListField(formData.get("fulfillmentText")) : current?.metadata?.fulfillmentOptions ?? [],
+          fulfillmentOptions: formData.has("fulfillmentText") ? parseListField(formData.get("fulfillmentText")) : current?.metadata?.fulfillmentOptions ?? [],
           mediaReviewRequired: parseBooleanField(formData.get("mediaReviewRequired"))
         }
       });
@@ -1336,13 +1364,24 @@ export async function uploadMediaAction(_: unknown, formData: FormData): Promise
 
 export async function renameMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const previousPath = requiredField(formData.get("relativePath"), "Media path");
-    const nextRelativePath = renameMediaAsset(
-      previousPath,
-      requiredField(formData.get("baseName"), "New name")
-    );
-    const affected = renameMediaRecordAndReferences(previousPath, nextRelativePath);
+    const nextRelativePath = previewMediaRenamePath(previousPath, requiredField(formData.get("baseName"), "New name"));
+    if (nextRelativePath === previousPath) return { ok: true, kind: "rename", previousPath, relativePath: nextRelativePath };
+    const historyId = startMediaRenameHistory(previousPath, nextRelativePath, admin.email);
+    moveMediaAsset(previousPath, nextRelativePath);
+    let affected;
+    try {
+      affected = renameMediaRecordAndReferences(previousPath, nextRelativePath, { actorEmail: admin.email, historyId });
+    } catch (error) {
+      try {
+        moveMediaAsset(nextRelativePath, previousPath);
+        finishMediaRenameHistory(historyId, "rolled-back", error instanceof Error ? error.message : String(error));
+      } catch (rollbackError) {
+        finishMediaRenameHistory(historyId, "failed", `Reference update failed and file rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`);
+      }
+      throw error;
+    }
     revalidateMediaSurfaces(affected);
     return { ok: true, kind: "rename", previousPath, relativePath: nextRelativePath };
   } catch (error) {
@@ -1352,10 +1391,23 @@ export async function renameMediaAction(_: unknown, formData: FormData): Promise
 
 export async function deleteMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const relativePath = requiredField(formData.get("relativePath"), "Media path");
-    deleteMediaAsset(relativePath);
-    const affected = deleteMediaRecordAndReferences(relativePath);
+    const staged = stageMediaAssetDeletion(relativePath);
+    let affected;
+    try {
+      affected = deleteMediaRecordAndReferences(relativePath, admin.email);
+    } catch (error) {
+      restoreStagedMediaAsset(staged);
+      throw error;
+    }
+    try {
+      finalizeStagedMediaDeletion(staged);
+    } catch (error) {
+      restoreStagedMediaAsset(staged);
+      refreshMediaLibrary();
+      throw error;
+    }
     revalidateMediaSurfaces(affected);
     return { ok: true, kind: "delete", relativePath };
   } catch (error) {

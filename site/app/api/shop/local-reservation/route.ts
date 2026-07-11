@@ -4,6 +4,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { createDraftOrder, getPiece, getSiteSettings, listCartItems } from "@/lib/db";
 import { getDropoffDriveMinutes, getFulfillmentSummary, getWoodshopZip, pieceShippingEnabled } from "@/lib/catalog";
 import { calculateCheckoutTotals } from "@/lib/payments";
+import { pieceCanEnterCart } from "@/lib/piece-model";
 
 function redirectTo(path: string, request: Request) {
   return NextResponse.redirect(new URL(path, request.url));
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   const invalidItems: string[] = [];
   const pieces = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
-    if (!piece || piece.priceCents == null) {
+    if (!piece || !pieceCanEnterCart(piece) || piece.priceCents == null || item.quantity > piece.inventoryCount) {
       invalidItems.push(item.pieceSlug);
       return [];
     }

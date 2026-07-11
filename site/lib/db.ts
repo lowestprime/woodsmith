@@ -1,4 +1,4 @@
-import { accessSync, constants as fsConstants, mkdirSync } from "node:fs";
+import { accessSync, constants as fsConstants, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
@@ -9,9 +9,21 @@ import {
   seedPosts,
   seedProfiles,
   siteSettingsSeed
-} from "@/lib/seed";
-import { scanMediaLibrary } from "@/lib/media";
-import { normalizePieceCategories } from "@/lib/categories";
+} from "./seed.ts";
+import { scanMediaLibrary } from "./media.ts";
+import { normalizePieceCategories } from "./categories.ts";
+import { applySchemaMigrations } from "./database-migrations.ts";
+import {
+  getPieceInquiryMode,
+  getPiecePriceMode,
+  getPieceReviewsMode,
+  normalizeInquiryMode,
+  normalizePriceMode,
+  normalizeReviewsMode,
+  type InquiryMode,
+  type PriceMode,
+  type ReviewsMode
+} from "./piece-model.ts";
 
 export type UserRole = "admin" | "woodworker" | "customer";
 export type PublicationStatus = "published" | "draft" | "archived";
@@ -70,6 +82,15 @@ export type PieceRecord = {
   materials: string[];
   dimensions: { width: number; depth: number; height: number; unit: "in" } | null;
   priceCents: number | null;
+  priceMode?: PriceMode;
+  publicPriceLabel?: string | null;
+  internalEstimateCents?: number | null;
+  inquiryMode?: InquiryMode;
+  reviewsMode?: ReviewsMode;
+  processSectionTitle?: string;
+  processSectionIntro?: string;
+  visualizerTemplate?: string | null;
+  commissionTypeSlug?: string | null;
   inventoryCount: number;
   leadTimeDays: number;
   mediaPaths: string[];
@@ -78,6 +99,52 @@ export type PieceRecord = {
   metadata: Record<string, unknown>;
   createdAt: string;
   updatedAt: string;
+};
+
+export const PIECE_MEDIA_ROLES = ["hero", "gallery", "detail", "context", "process", "drawing", "plan", "installation", "source", "private-project"] as const;
+export type PieceMediaRole = (typeof PIECE_MEDIA_ROLES)[number];
+
+export type PieceMediaLinkRecord = {
+  id: string;
+  pieceSlug: string;
+  relativePath: string;
+  role: PieceMediaRole;
+  stage: string | null;
+  occurredAt: string | null;
+  title: string;
+  caption: string;
+  technicalNote: string;
+  altOverride: string | null;
+  displayOrder: number;
+  public: boolean;
+  legacySynced: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminEditAuditRecord = {
+  id: string;
+  actorEmail: string | null;
+  entityType: string;
+  entityKey: string;
+  operation: string;
+  before: unknown;
+  after: unknown;
+  requestId: string | null;
+  revertedById: string | null;
+  createdAt: string;
+};
+
+export type MediaRenameHistoryRecord = {
+  id: string;
+  previousPath: string;
+  nextPath: string | null;
+  status: "planned" | "completed" | "rolled-back" | "failed" | "deleted";
+  actorEmail: string | null;
+  error: string | null;
+  rollbackOf: string | null;
+  createdAt: string;
+  completedAt: string | null;
 };
 
 export type PostRecord = {
@@ -266,9 +333,29 @@ let database: DatabaseSync | null = null;
 let initialized = false;
 let activeDataDir: string | null = null;
 let activeDatabasePath: string | null = null;
+let transactionDepth = 0;
 
 function nowIso() {
   return new Date().toISOString();
+}
+
+export function withDatabaseTransaction<T>(work: (db: DatabaseSync) => T): T {
+  const db = getDatabase();
+  const depth = transactionDepth;
+  const savepoint = `woodsmith_${depth}`;
+  transactionDepth += 1;
+  db.exec(depth === 0 ? "BEGIN IMMEDIATE" : `SAVEPOINT ${savepoint}`);
+  try {
+    const result = work(db);
+    db.exec(depth === 0 ? "COMMIT" : `RELEASE SAVEPOINT ${savepoint}`);
+    return result;
+  } catch (error) {
+    db.exec(depth === 0 ? "ROLLBACK" : `ROLLBACK TO SAVEPOINT ${savepoint}`);
+    if (depth > 0) db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+    throw error;
+  } finally {
+    transactionDepth -= 1;
+  }
 }
 
 function toBoolean(value: unknown) {
@@ -304,11 +391,14 @@ function getDatabase() {
   mkdirSync(dataDir, { recursive: true });
   activeDataDir = dataDir;
   activeDatabasePath = path.join(dataDir, "woodsmith.sqlite");
+  const databaseExisted = existsSync(activeDatabasePath);
 
   database = new DatabaseSync(activeDatabasePath);
-  database.exec(`
+  try {
+    database.exec(`
     PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = OFF;
+    PRAGMA foreign_keys = ON;
+    PRAGMA busy_timeout = 5000;
 
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
@@ -561,16 +651,38 @@ function getDatabase() {
     CREATE INDEX IF NOT EXISTS idx_media_piece_slug ON media_items(piece_slug);
     CREATE INDEX IF NOT EXISTS idx_media_project_reference ON media_items(project_reference);
     CREATE INDEX IF NOT EXISTS idx_embedding_cache_kind ON embedding_cache(kind);
-  `);
+    `);
 
-  if (!initialized) {
-    ensureUserVerificationColumns(database);
-    seedDefaultContent(database);
-    syncMediaLibraryIntoDatabase(database);
-    initialized = true;
+    if (!initialized) {
+      ensureUserVerificationColumns(database);
+      const seededVersionBeforeInitialization = getSeededVersion(database);
+      seedDefaultContent(database);
+      syncMediaLibraryIntoDatabase(database, {
+        applySeedAssignments: !databaseExisted && seededVersionBeforeInitialization === 0
+      });
+      applySchemaMigrations(database);
+      initialized = true;
+    }
+
+    return database;
+  } catch (error) {
+    database.close();
+    database = null;
+    initialized = false;
+    activeDataDir = null;
+    activeDatabasePath = null;
+    throw error;
   }
+}
 
-  return database;
+export function closeDatabaseForTests() {
+  if (process.env.NODE_ENV !== "test") throw new Error("Database reset is available only in the test environment.");
+  database?.close();
+  database = null;
+  initialized = false;
+  activeDataDir = null;
+  activeDatabasePath = null;
+  transactionDepth = 0;
 }
 
 function ensureUserVerificationColumns(db: DatabaseSync) {
@@ -629,6 +741,7 @@ export type RuntimePersistenceStatus = {
   quickCheck: string;
   journalMode: string;
   seededVersion: number;
+  schemaVersion: number;
 };
 
 export function getRuntimePersistenceStatus(): RuntimePersistenceStatus {
@@ -646,6 +759,7 @@ export function getRuntimePersistenceStatus(): RuntimePersistenceStatus {
 
   const quickCheckRow = db.prepare(`PRAGMA quick_check`).get() as Record<string, unknown> | undefined;
   const journalModeRow = db.prepare(`PRAGMA journal_mode`).get() as Record<string, unknown> | undefined;
+  const schemaVersionRow = db.prepare(`SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations`).get() as { version?: unknown } | undefined;
 
   return {
     dataRoot,
@@ -654,7 +768,8 @@ export function getRuntimePersistenceStatus(): RuntimePersistenceStatus {
     dataRootWritable,
     quickCheck: String(Object.values(quickCheckRow ?? {})[0] ?? "unknown"),
     journalMode: String(Object.values(journalModeRow ?? {})[0] ?? "unknown"),
-    seededVersion: getSeededVersion(db)
+    seededVersion: getSeededVersion(db),
+    schemaVersion: Number(schemaVersionRow?.version ?? 0)
   };
 }
 
@@ -1085,7 +1200,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 }
 
-function syncMediaLibraryIntoDatabase(db: DatabaseSync) {
+function syncMediaLibraryIntoDatabase(db: DatabaseSync, options: { applySeedAssignments?: boolean } = {}) {
   const scanned = scanMediaLibrary();
 
   for (const media of scanned) {
@@ -1173,21 +1288,23 @@ function syncMediaLibraryIntoDatabase(db: DatabaseSync) {
     });
   }
 
-  for (const piece of seedPieces) {
-    for (const relativePath of piece.mediaPaths) {
-      db.prepare(`UPDATE media_items SET piece_slug = COALESCE(piece_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(piece.slug, relativePath);
+  if (options.applySeedAssignments) {
+    for (const piece of seedPieces) {
+      for (const relativePath of piece.mediaPaths) {
+        db.prepare(`UPDATE media_items SET piece_slug = COALESCE(piece_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(piece.slug, relativePath);
+      }
     }
-  }
 
-  for (const post of seedPosts) {
-    if (post.coverMediaPath) {
-      db.prepare(`UPDATE media_items SET post_slug = COALESCE(post_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(post.slug, post.coverMediaPath);
+    for (const post of seedPosts) {
+      if (post.coverMediaPath) {
+        db.prepare(`UPDATE media_items SET post_slug = COALESCE(post_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(post.slug, post.coverMediaPath);
+      }
     }
-  }
 
-  for (const page of seedPages) {
-    if (page.heroMediaPath) {
-      db.prepare(`UPDATE media_items SET page_slug = COALESCE(page_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(page.slug, page.heroMediaPath);
+    for (const page of seedPages) {
+      if (page.heroMediaPath) {
+        db.prepare(`UPDATE media_items SET page_slug = COALESCE(page_slug, ?), reviewed = 1 WHERE relative_path = ?`).run(page.slug, page.heroMediaPath);
+      }
     }
   }
 }
@@ -1230,6 +1347,17 @@ function mapPage(row: Record<string, unknown>): PageRecord {
 }
 
 function mapPiece(row: Record<string, unknown>): PieceRecord {
+  const metadata = readJson<Record<string, unknown>>(row.metadataJson, {});
+  const policySource = {
+    status: row.status as PieceStatus,
+    publicationStatus: row.publicationStatus as PublicationStatus,
+    availabilityLabel: String(row.availabilityLabel ?? ""),
+    priceCents: row.priceCents == null ? null : Number(row.priceCents),
+    priceMode: row.priceMode ? normalizePriceMode(row.priceMode) : null,
+    inquiryMode: row.inquiryMode ? normalizeInquiryMode(row.inquiryMode) : null,
+    reviewsMode: row.reviewsMode ? normalizeReviewsMode(row.reviewsMode) : null,
+    metadata
+  };
   return {
     slug: String(row.slug),
     title: String(row.title),
@@ -1244,13 +1372,22 @@ function mapPiece(row: Record<string, unknown>): PieceRecord {
     tags: readJson(row.tagsJson, []),
     materials: readJson(row.materialsJson, []),
     dimensions: readJson(row.dimensionsJson, null),
-    priceCents: row.priceCents == null ? null : Number(row.priceCents),
+    priceCents: policySource.priceCents != null && policySource.priceCents > 0 ? policySource.priceCents : null,
+    priceMode: getPiecePriceMode(policySource),
+    publicPriceLabel: row.publicPriceLabel ? String(row.publicPriceLabel) : null,
+    internalEstimateCents: row.internalEstimateCents == null ? null : Math.max(0, Number(row.internalEstimateCents)),
+    inquiryMode: getPieceInquiryMode(policySource),
+    reviewsMode: getPieceReviewsMode(policySource),
+    processSectionTitle: String(row.processSectionTitle ?? "Build record"),
+    processSectionIntro: String(row.processSectionIntro ?? ""),
+    visualizerTemplate: row.visualizerTemplate ? String(row.visualizerTemplate) : null,
+    commissionTypeSlug: row.commissionTypeSlug ? String(row.commissionTypeSlug) : null,
     inventoryCount: Number(row.inventoryCount ?? 0),
     leadTimeDays: Number(row.leadTimeDays ?? 0),
     mediaPaths: readJson(row.mediaPathsJson, []),
     featuredRank: Number(row.featuredRank ?? 999),
     ownerEmail: row.ownerEmail ? String(row.ownerEmail) : null,
-    metadata: readJson(row.metadataJson, {}),
+    metadata,
     createdAt: String(row.createdAt),
     updatedAt: String(row.updatedAt)
   };
@@ -1776,25 +1913,61 @@ export function deletePage(slug: string) {
 export function listPieces(includeDraft = false) {
   const db = getDatabase();
   const query = includeDraft
-    ? `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces ORDER BY featured_rank ASC, title ASC`
-    : `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces WHERE publication_status = 'published' ORDER BY featured_rank ASC, title ASC`;
+    ? `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, price_mode AS priceMode, public_price_label AS publicPriceLabel, internal_estimate_cents AS internalEstimateCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode, process_section_title AS processSectionTitle, process_section_intro AS processSectionIntro, visualizer_template AS visualizerTemplate, commission_type_slug AS commissionTypeSlug, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces ORDER BY featured_rank ASC, title ASC`
+    : `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, price_mode AS priceMode, public_price_label AS publicPriceLabel, internal_estimate_cents AS internalEstimateCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode, process_section_title AS processSectionTitle, process_section_intro AS processSectionIntro, visualizer_template AS visualizerTemplate, commission_type_slug AS commissionTypeSlug, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces WHERE publication_status = 'published' ORDER BY featured_rank ASC, title ASC`;
   return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPiece);
 }
 
 export function getPiece(slug: string) {
   const db = getDatabase();
-  const row = db.prepare(`SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces WHERE slug = ? LIMIT 1`).get(slug) as Record<string, unknown> | undefined;
+  const row = db.prepare(`SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, price_mode AS priceMode, public_price_label AS publicPriceLabel, internal_estimate_cents AS internalEstimateCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode, process_section_title AS processSectionTitle, process_section_intro AS processSectionIntro, visualizer_template AS visualizerTemplate, commission_type_slug AS commissionTypeSlug, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces WHERE slug = ? LIMIT 1`).get(slug) as Record<string, unknown> | undefined;
   return row ? mapPiece(row) : null;
 }
 
+function synchronizeLegacyPieceMediaLinks(db: DatabaseSync, pieceSlug: string, mediaPaths: string[], metadata: Record<string, unknown>) {
+  const paths = [...new Set(mediaPaths.map((value) => String(value).trim()).filter(Boolean))];
+  const timestamp = nowIso();
+  const isPublic = metadata.verifiedMedia !== false ? 1 : 0;
+  const exists = db.prepare("SELECT 1 AS present FROM media_items WHERE relative_path = ? LIMIT 1");
+
+  db.prepare("DELETE FROM piece_media_links WHERE piece_slug = ? AND legacy_synced = 1").run(pieceSlug);
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO piece_media_links (
+      id, piece_slug, relative_path, role, stage, occurred_at, title, caption,
+      technical_note, alt_override, display_order, is_public, legacy_synced, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, NULL, NULL, '', '', '', NULL, ?, ?, 1, ?, ?)
+  `);
+
+  paths.forEach((relativePath, index) => {
+    if (!exists.get(relativePath)) return;
+    insert.run(randomUUID(), pieceSlug, relativePath, index === 0 ? "hero" : "gallery", index, isPublic, timestamp, timestamp);
+  });
+}
+
 export function savePiece(input: Omit<PieceRecord, "createdAt" | "updatedAt">) {
-  const db = getDatabase();
+  return withDatabaseTransaction((db) => {
   const existing = getPiece(input.slug);
   const timestamp = nowIso();
+  const priceMode = normalizePriceMode(input.priceMode ?? input.metadata.priceMode, getPiecePriceMode(input));
+  const inquiryMode = normalizeInquiryMode(input.inquiryMode ?? input.metadata.inquiryMode, getPieceInquiryMode(input));
+  const reviewsMode = normalizeReviewsMode(input.reviewsMode ?? input.metadata.reviewsMode, getPieceReviewsMode(input));
+  const priceCents = priceMode === "fixed" && Number(input.priceCents) > 0 ? Math.round(Number(input.priceCents)) : null;
+  const publicPriceLabel = String(input.publicPriceLabel ?? input.metadata.publicPriceLabel ?? "").trim() || null;
+  const internalEstimateCents = input.internalEstimateCents == null
+    ? (Number.isInteger(Number(input.metadata.internalEstimateCents)) && Number(input.metadata.internalEstimateCents) >= 0 ? Number(input.metadata.internalEstimateCents) : null)
+    : Math.max(0, Math.round(Number(input.internalEstimateCents)));
+  const metadata = {
+    ...input.metadata,
+    priceMode,
+    inquiryMode,
+    reviewsMode,
+    ...(publicPriceLabel ? { publicPriceLabel } : {}),
+    ...(internalEstimateCents == null ? {} : { internalEstimateCents })
+  };
   clearSeedTombstone(db, "piece", input.slug);
   db.prepare(`
-    INSERT INTO pieces (slug, title, subtitle, category, status, publication_status, availability_label, summary, story, details_json, tags_json, materials_json, dimensions_json, price_cents, inventory_count, lead_time_days, media_paths_json, featured_rank, owner_email, metadata_json, created_at, updated_at)
-    VALUES (:slug, :title, :subtitle, :category, :status, :publicationStatus, :availabilityLabel, :summary, :story, :detailsJson, :tagsJson, :materialsJson, :dimensionsJson, :priceCents, :inventoryCount, :leadTimeDays, :mediaPathsJson, :featuredRank, :ownerEmail, :metadataJson, :createdAt, :updatedAt)
+    INSERT INTO pieces (slug, title, subtitle, category, status, publication_status, availability_label, summary, story, details_json, tags_json, materials_json, dimensions_json, price_cents, price_mode, public_price_label, internal_estimate_cents, inquiry_mode, reviews_mode, process_section_title, process_section_intro, visualizer_template, commission_type_slug, inventory_count, lead_time_days, media_paths_json, featured_rank, owner_email, metadata_json, created_at, updated_at)
+    VALUES (:slug, :title, :subtitle, :category, :status, :publicationStatus, :availabilityLabel, :summary, :story, :detailsJson, :tagsJson, :materialsJson, :dimensionsJson, :priceCents, :priceMode, :publicPriceLabel, :internalEstimateCents, :inquiryMode, :reviewsMode, :processSectionTitle, :processSectionIntro, :visualizerTemplate, :commissionTypeSlug, :inventoryCount, :leadTimeDays, :mediaPathsJson, :featuredRank, :ownerEmail, :metadataJson, :createdAt, :updatedAt)
     ON CONFLICT(slug) DO UPDATE SET
       title = excluded.title,
       subtitle = excluded.subtitle,
@@ -1809,6 +1982,15 @@ export function savePiece(input: Omit<PieceRecord, "createdAt" | "updatedAt">) {
       materials_json = excluded.materials_json,
       dimensions_json = excluded.dimensions_json,
       price_cents = excluded.price_cents,
+      price_mode = excluded.price_mode,
+      public_price_label = excluded.public_price_label,
+      internal_estimate_cents = excluded.internal_estimate_cents,
+      inquiry_mode = excluded.inquiry_mode,
+      reviews_mode = excluded.reviews_mode,
+      process_section_title = excluded.process_section_title,
+      process_section_intro = excluded.process_section_intro,
+      visualizer_template = excluded.visualizer_template,
+      commission_type_slug = excluded.commission_type_slug,
       inventory_count = excluded.inventory_count,
       lead_time_days = excluded.lead_time_days,
       media_paths_json = excluded.media_paths_json,
@@ -1830,23 +2012,190 @@ export function savePiece(input: Omit<PieceRecord, "createdAt" | "updatedAt">) {
     tagsJson: writeJson(input.tags),
     materialsJson: writeJson(input.materials),
     dimensionsJson: writeJson(input.dimensions),
-    priceCents: input.priceCents,
+    priceCents,
+    priceMode,
+    publicPriceLabel,
+    internalEstimateCents,
+    inquiryMode,
+    reviewsMode,
+    processSectionTitle: String(input.processSectionTitle ?? input.metadata.processSectionTitle ?? "Build record").trim() || "Build record",
+    processSectionIntro: String(input.processSectionIntro ?? input.metadata.processSectionIntro ?? ""),
+    visualizerTemplate: String(input.visualizerTemplate ?? input.metadata.visualizerTemplate ?? "").trim() || null,
+    commissionTypeSlug: String(input.commissionTypeSlug ?? input.metadata.commissionTypeSlug ?? "").trim() || null,
     inventoryCount: input.inventoryCount,
     leadTimeDays: input.leadTimeDays,
     mediaPathsJson: writeJson(input.mediaPaths),
     featuredRank: input.featuredRank,
     ownerEmail: input.ownerEmail ?? null,
-    metadataJson: writeJson(input.metadata),
+    metadataJson: writeJson(metadata),
     createdAt: existing?.createdAt ?? timestamp,
     updatedAt: timestamp
+  });
+  synchronizeLegacyPieceMediaLinks(db, input.slug, input.mediaPaths, metadata);
   });
 }
 
 export function deletePiece(slug: string) {
+  withDatabaseTransaction((db) => {
+    db.prepare(`DELETE FROM pieces WHERE slug = ?`).run(slug);
+    db.prepare(`UPDATE media_items SET piece_slug = NULL WHERE piece_slug = ?`).run(slug);
+    recordSeedTombstone(db, "piece", slug);
+  });
+}
+
+function mapPieceMediaLink(row: Record<string, unknown>): PieceMediaLinkRecord {
+  return {
+    id: String(row.id),
+    pieceSlug: String(row.pieceSlug),
+    relativePath: String(row.relativePath),
+    role: row.role as PieceMediaRole,
+    stage: row.stage ? String(row.stage) : null,
+    occurredAt: row.occurredAt ? String(row.occurredAt) : null,
+    title: String(row.title ?? ""),
+    caption: String(row.caption ?? ""),
+    technicalNote: String(row.technicalNote ?? ""),
+    altOverride: row.altOverride ? String(row.altOverride) : null,
+    displayOrder: Number(row.displayOrder ?? 0),
+    public: toBoolean(row.public),
+    legacySynced: toBoolean(row.legacySynced),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt)
+  };
+}
+
+export function listPieceMediaLinks(pieceSlug: string, options: { publicOnly?: boolean; roles?: PieceMediaRole[] } = {}) {
   const db = getDatabase();
-  db.prepare(`DELETE FROM pieces WHERE slug = ?`).run(slug);
-  db.prepare(`UPDATE media_items SET piece_slug = NULL WHERE piece_slug = ?`).run(slug);
-  recordSeedTombstone(db, "piece", slug);
+  const clauses = ["piece_slug = ?"];
+  const params: Array<string | number> = [pieceSlug];
+  if (options.publicOnly) clauses.push("is_public = 1");
+  if (options.roles?.length) {
+    clauses.push(`role IN (${options.roles.map(() => "?").join(", ")})`);
+    params.push(...options.roles);
+  }
+  const rows = db.prepare(`
+    SELECT id, piece_slug AS pieceSlug, relative_path AS relativePath, role, stage,
+           occurred_at AS occurredAt, title, caption, technical_note AS technicalNote,
+           alt_override AS altOverride, display_order AS displayOrder, is_public AS public,
+           legacy_synced AS legacySynced, created_at AS createdAt, updated_at AS updatedAt
+    FROM piece_media_links
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY CASE role WHEN 'hero' THEN 0 WHEN 'gallery' THEN 1 WHEN 'detail' THEN 2 WHEN 'context' THEN 3 ELSE 4 END,
+             display_order ASC, created_at ASC
+  `).all(...params) as Record<string, unknown>[];
+  return rows.map(mapPieceMediaLink);
+}
+
+export type PieceMediaLinkInput = Omit<PieceMediaLinkRecord, "id" | "pieceSlug" | "createdAt" | "updatedAt" | "legacySynced"> & {
+  id?: string;
+};
+
+export function replacePieceMediaLinks(pieceSlug: string, links: PieceMediaLinkInput[], actorEmail: string | null = null) {
+  return withDatabaseTransaction((db) => {
+    if (!getPiece(pieceSlug)) throw new Error(`Piece '${pieceSlug}' does not exist.`);
+    const before = listPieceMediaLinks(pieceSlug);
+    const mediaExists = db.prepare("SELECT 1 AS present FROM media_items WHERE relative_path = ? LIMIT 1");
+    const seen = new Set<string>();
+    for (const link of links) {
+      if (!PIECE_MEDIA_ROLES.includes(link.role)) throw new Error(`Unsupported piece media role '${link.role}'.`);
+      if (!mediaExists.get(link.relativePath)) throw new Error(`Media '${link.relativePath}' does not exist.`);
+      const identity = `${link.relativePath}\u0000${link.role}\u0000${link.stage ?? ""}`;
+      if (seen.has(identity)) throw new Error(`Duplicate media role '${link.role}' for '${link.relativePath}'.`);
+      seen.add(identity);
+    }
+
+    db.prepare("DELETE FROM piece_media_links WHERE piece_slug = ?").run(pieceSlug);
+    const insert = db.prepare(`
+      INSERT INTO piece_media_links (
+        id, piece_slug, relative_path, role, stage, occurred_at, title, caption,
+        technical_note, alt_override, display_order, is_public, legacy_synced, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+    `);
+    const timestamp = nowIso();
+    links.forEach((link, index) => {
+      insert.run(
+        link.id || randomUUID(), pieceSlug, link.relativePath, link.role, link.stage ?? null,
+        link.occurredAt ?? null, link.title ?? "", link.caption ?? "", link.technicalNote ?? "",
+        link.altOverride ?? null, Number.isFinite(link.displayOrder) ? Math.round(link.displayOrder) : index,
+        link.public ? 1 : 0, timestamp, timestamp
+      );
+      db.prepare("UPDATE media_items SET piece_slug = COALESCE(piece_slug, ?), updated_at = ? WHERE relative_path = ?")
+        .run(pieceSlug, timestamp, link.relativePath);
+    });
+
+    const legacyPaths = links
+      .filter((link) => link.public && ["hero", "gallery", "detail", "context"].includes(link.role))
+      .sort((left, right) => (left.role === "hero" ? -1 : right.role === "hero" ? 1 : left.displayOrder - right.displayOrder))
+      .map((link) => link.relativePath);
+    db.prepare("UPDATE pieces SET media_paths_json = ?, updated_at = ? WHERE slug = ?")
+      .run(writeJson([...new Set(legacyPaths)]), timestamp, pieceSlug);
+
+    const after = listPieceMediaLinks(pieceSlug);
+    recordAdminEditAudit({ actorEmail, entityType: "piece-media", entityKey: pieceSlug, operation: "replace", before, after });
+    return after;
+  });
+}
+
+export function recordAdminEditAudit(input: {
+  actorEmail?: string | null;
+  entityType: string;
+  entityKey: string;
+  operation: string;
+  before?: unknown;
+  after?: unknown;
+  requestId?: string | null;
+  revertedById?: string | null;
+}) {
+  const db = getDatabase();
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO admin_edit_audit (
+      id, actor_email, entity_type, entity_key, operation, before_json, after_json,
+      request_id, reverted_by_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.actorEmail?.toLowerCase() ?? null,
+    input.entityType,
+    input.entityKey,
+    input.operation,
+    writeJson(input.before ?? null),
+    writeJson(input.after ?? null),
+    input.requestId ?? null,
+    input.revertedById ?? null,
+    nowIso()
+  );
+  return id;
+}
+
+export function listAdminEditAudit(options: { entityType?: string; entityKey?: string; limit?: number } = {}) {
+  const db = getDatabase();
+  const clauses: string[] = [];
+  const params: Array<string | number> = [];
+  if (options.entityType) { clauses.push("entity_type = ?"); params.push(options.entityType); }
+  if (options.entityKey) { clauses.push("entity_key = ?"); params.push(options.entityKey); }
+  const limit = Math.max(1, Math.min(250, Math.round(options.limit ?? 50)));
+  params.push(limit);
+  const rows = db.prepare(`
+    SELECT id, actor_email AS actorEmail, entity_type AS entityType, entity_key AS entityKey,
+           operation, before_json AS beforeJson, after_json AS afterJson, request_id AS requestId,
+           reverted_by_id AS revertedById, created_at AS createdAt
+    FROM admin_edit_audit
+    ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(...params) as Record<string, unknown>[];
+  return rows.map((row): AdminEditAuditRecord => ({
+    id: String(row.id),
+    actorEmail: row.actorEmail ? String(row.actorEmail) : null,
+    entityType: String(row.entityType),
+    entityKey: String(row.entityKey),
+    operation: String(row.operation),
+    before: readJson(row.beforeJson, null),
+    after: readJson(row.afterJson, null),
+    requestId: row.requestId ? String(row.requestId) : null,
+    revertedById: row.revertedById ? String(row.revertedById) : null,
+    createdAt: String(row.createdAt)
+  }));
 }
 
 export function listPosts(includeDraft = false) {
@@ -1961,9 +2310,14 @@ export function deleteCommissionType(slug: string) {
 function mediaJunkPathClauses() {
   return [
     "lower(relative_path) NOT LIKE '%@eadir%'",
+    "lower(relative_path) NOT LIKE '%@synoeastream%'",
+    "lower(relative_path) NOT LIKE '%.woodsmith-trash%'",
     "lower(relative_path) NOT LIKE '%synofile_thumb%'",
     "lower(file_name) NOT IN ('synoindex_media_info', '.ds_store', 'thumbs.db')",
-    "lower(file_name) NOT LIKE '._%'"
+    "lower(file_name) NOT LIKE '._%'",
+    "lower(file_name) NOT LIKE 'synophoto_%'",
+    "lower(file_name) NOT LIKE 'synoindex_%'",
+    "lower(file_name) NOT LIKE '~rf%'"
   ];
 }
 
@@ -2159,7 +2513,67 @@ function replaceMediaPathInList(values: string[], previousPath: string, nextPath
   return [...new Set(nextValues)];
 }
 
-function rewriteMediaReferences(previousPath: string, nextPath: string | null) {
+function replaceMediaPathDeep(value: unknown, previousPath: string, nextPath: string | null): unknown {
+  if (typeof value === "string") return value === previousPath ? nextPath : value;
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => replaceMediaPathDeep(entry, previousPath, nextPath))
+      .filter((entry) => entry !== null);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).flatMap(([key, entry]) => {
+      const replaced = replaceMediaPathDeep(entry, previousPath, nextPath);
+      return replaced === null ? [] : [[key, replaced]];
+    }));
+  }
+  return value;
+}
+
+function rewriteJsonReferences(db: DatabaseSync, previousPath: string, nextPath: string | null) {
+  const specs = [
+    { table: "settings", key: "key", columns: ["value"] },
+    { table: "projects", key: "reference", columns: ["estimator_json", "options_json", "shipping_address_json", "billing_address_json"] },
+    { table: "project_updates", key: "id", columns: ["attachments_json"] },
+    { table: "media_items", key: "relative_path", columns: ["metadata_json"] },
+    { table: "embedding_cache", key: "key", columns: ["metadata_json"] }
+  ] as const;
+
+  for (const spec of specs) {
+    const rows = db.prepare(`SELECT ${spec.key} AS rowKey, ${spec.columns.join(", ")} FROM ${spec.table}`).all() as Record<string, unknown>[];
+    for (const row of rows) {
+      for (const column of spec.columns) {
+        const current = readJson<unknown>(row[column], null);
+        const next = replaceMediaPathDeep(current, previousPath, nextPath);
+        if (writeJson(next) === writeJson(current)) continue;
+        db.prepare(`UPDATE ${spec.table} SET ${column} = ? WHERE ${spec.key} = ?`).run(writeJson(next), String(row.rowKey));
+      }
+    }
+  }
+}
+
+function rewritePieceMediaLinkPaths(db: DatabaseSync, previousPath: string, nextPath: string | null) {
+  if (!nextPath) {
+    db.prepare("DELETE FROM piece_media_links WHERE relative_path = ?").run(previousPath);
+    return;
+  }
+
+  const rows = db.prepare(`
+    SELECT id, piece_slug AS pieceSlug, role, stage
+    FROM piece_media_links
+    WHERE relative_path = ?
+  `).all(previousPath) as Array<Record<string, unknown>>;
+  for (const row of rows) {
+    const duplicate = db.prepare(`
+      SELECT id FROM piece_media_links
+      WHERE piece_slug = ? AND relative_path = ? AND role = ? AND IFNULL(stage, '') = IFNULL(?, '')
+      LIMIT 1
+    `).get(String(row.pieceSlug), nextPath, String(row.role), row.stage == null ? null : String(row.stage)) as { id?: unknown } | undefined;
+    if (duplicate) db.prepare("DELETE FROM piece_media_links WHERE id = ?").run(String(row.id));
+    else db.prepare("UPDATE piece_media_links SET relative_path = ?, updated_at = ? WHERE id = ?").run(nextPath, nowIso(), String(row.id));
+  }
+}
+
+function rewriteMediaReferences(db: DatabaseSync, previousPath: string, nextPath: string | null) {
   const affectedPieceSlugs: string[] = [];
   const affectedPostSlugs: string[] = [];
   const affectedPageSlugs: string[] = [];
@@ -2167,37 +2581,30 @@ function rewriteMediaReferences(previousPath: string, nextPath: string | null) {
   for (const piece of listPieces(true)) {
     if (!piece.mediaPaths.includes(previousPath)) continue;
     const nextMediaPaths = replaceMediaPathInList(piece.mediaPaths, previousPath, nextPath);
-    savePiece({ ...piece, mediaPaths: nextMediaPaths });
+    db.prepare("UPDATE pieces SET media_paths_json = ?, updated_at = ? WHERE slug = ?").run(writeJson(nextMediaPaths), nowIso(), piece.slug);
     affectedPieceSlugs.push(piece.slug);
   }
 
+  rewritePieceMediaLinkPaths(db, previousPath, nextPath);
+
   for (const post of listPosts(true)) {
     if (post.coverMediaPath !== previousPath) continue;
-    savePost({ ...post, coverMediaPath: nextPath });
+    db.prepare("UPDATE posts SET cover_media_path = ?, updated_at = ? WHERE slug = ?").run(nextPath, nowIso(), post.slug);
     affectedPostSlugs.push(post.slug);
   }
 
   for (const page of listPages(true)) {
     if (page.heroMediaPath !== previousPath) continue;
-    savePage({ ...page, heroMediaPath: nextPath });
+    db.prepare("UPDATE pages SET hero_media_path = ?, updated_at = ? WHERE slug = ?").run(nextPath, nowIso(), page.slug);
     affectedPageSlugs.push(page.slug);
   }
 
   for (const user of listUsers()) {
     if (user.avatarPath !== previousPath) continue;
-    saveUserProfile({
-      originalEmail: user.email,
-      email: user.email,
-      role: user.role,
-      displayName: user.displayName,
-      headline: user.headline,
-      bio: user.bio,
-      avatarPath: nextPath,
-      publicProfile: user.publicProfile,
-      links: user.links,
-      metadata: user.metadata
-    });
+    db.prepare("UPDATE users SET avatar_path = ?, updated_at = ? WHERE lower(email) = lower(?)").run(nextPath, nowIso(), user.email);
   }
+
+  rewriteJsonReferences(db, previousPath, nextPath);
 
   return {
     pieceSlugs: [...new Set(affectedPieceSlugs)],
@@ -2206,17 +2613,54 @@ function rewriteMediaReferences(previousPath: string, nextPath: string | null) {
   };
 }
 
-export function renameMediaRecordAndReferences(previousPath: string, nextPath: string) {
+export function startMediaRenameHistory(previousPath: string, nextPath: string | null, actorEmail: string | null = null, status: MediaRenameHistoryRecord["status"] = "planned") {
+  const db = getDatabase();
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO media_rename_history (id, previous_path, next_path, status, actor_email, error, rollback_of, created_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?)
+  `).run(id, previousPath, nextPath, status, actorEmail?.toLowerCase() ?? null, nowIso(), status === "planned" ? null : nowIso());
+  return id;
+}
+
+export function finishMediaRenameHistory(id: string, status: MediaRenameHistoryRecord["status"], error: string | null = null) {
+  const db = getDatabase();
+  db.prepare("UPDATE media_rename_history SET status = ?, error = ?, completed_at = ? WHERE id = ?")
+    .run(status, error, nowIso(), id);
+}
+
+export function listMediaRenameHistory(limit = 100) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, previous_path AS previousPath, next_path AS nextPath, status, actor_email AS actorEmail,
+           error, rollback_of AS rollbackOf, created_at AS createdAt, completed_at AS completedAt
+    FROM media_rename_history ORDER BY created_at DESC LIMIT ?
+  `).all(Math.max(1, Math.min(500, Math.round(limit)))) as Record<string, unknown>[];
+  return rows.map((row): MediaRenameHistoryRecord => ({
+    id: String(row.id),
+    previousPath: String(row.previousPath),
+    nextPath: row.nextPath ? String(row.nextPath) : null,
+    status: row.status as MediaRenameHistoryRecord["status"],
+    actorEmail: row.actorEmail ? String(row.actorEmail) : null,
+    error: row.error ? String(row.error) : null,
+    rollbackOf: row.rollbackOf ? String(row.rollbackOf) : null,
+    createdAt: String(row.createdAt),
+    completedAt: row.completedAt ? String(row.completedAt) : null
+  }));
+}
+
+export function renameMediaRecordAndReferences(previousPath: string, nextPath: string, options: { actorEmail?: string | null; historyId?: string | null } = {}) {
   if (previousPath === nextPath) {
     return { pieceSlugs: [], postSlugs: [], pageSlugs: [] };
   }
-  const db = getDatabase();
-  const previous = getMedia(previousPath);
+  const historyId = options.historyId ?? startMediaRenameHistory(previousPath, nextPath, options.actorEmail ?? null);
+  try {
+    const affected = withDatabaseTransaction((db) => {
+      const previous = getMedia(previousPath);
+      syncMediaLibraryIntoDatabase(db);
+      if (!getMedia(nextPath)) throw new Error(`Renamed media '${nextPath}' was not found during reference synchronization.`);
 
-  syncMediaLibraryIntoDatabase(db);
-
-  if (previous) {
-    saveMediaMetadata({
+      if (previous) saveMediaMetadata({
       relativePath: nextPath,
       altText: previous.altText,
       pieceSlug: previous.pieceSlug,
@@ -2230,18 +2674,32 @@ export function renameMediaRecordAndReferences(previousPath: string, nextPath: s
       reviewed: previous.reviewed,
       tags: previous.tags,
       metadata: previous.metadata
-    });
-  }
+      });
 
-  db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(previousPath);
-  return rewriteMediaReferences(previousPath, nextPath);
+      const result = rewriteMediaReferences(db, previousPath, nextPath);
+      db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(previousPath);
+      return result;
+    });
+    finishMediaRenameHistory(historyId, "completed");
+    return affected;
+  } catch (error) {
+    finishMediaRenameHistory(historyId, "failed", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
-export function deleteMediaRecordAndReferences(relativePath: string) {
-  const db = getDatabase();
-  const affected = rewriteMediaReferences(relativePath, null);
-  db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(relativePath);
-  return affected;
+export function deleteMediaRecordAndReferences(relativePath: string, actorEmail: string | null = null) {
+  const historyId = startMediaRenameHistory(relativePath, null, actorEmail, "deleted");
+  try {
+    return withDatabaseTransaction((db) => {
+      const affected = rewriteMediaReferences(db, relativePath, null);
+      db.prepare(`DELETE FROM media_items WHERE relative_path = ?`).run(relativePath);
+      return affected;
+    });
+  } catch (error) {
+    finishMediaRenameHistory(historyId, "failed", error instanceof Error ? error.message : String(error));
+    throw error;
+  }
 }
 
 export function refreshMediaLibrary() {

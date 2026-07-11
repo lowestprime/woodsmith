@@ -1,4 +1,14 @@
-import type { PieceRecord } from "@/lib/db";
+import { listPieceMediaLinks, type PieceRecord } from "@/lib/db";
+import {
+  getPieceInquiryMode,
+  getPiecePriceMode,
+  getPiecePublicPriceLabel,
+  getPieceReviewsMode,
+  pieceAcceptsReviews,
+  pieceAllowsInquiry,
+  pieceCanEnterCart,
+  pieceDisplaysReviews
+} from "@/lib/piece-model";
 import { defaultPieceCategories, normalizePieceCategories, pieceCategoryKey, type PieceCategoryDefinition } from "@/lib/categories";
 
 export function getPortfolioCategories(value?: unknown) {
@@ -12,16 +22,33 @@ export function getPiecePortfolioCategory(
   return pieceCategoryKey(piece.category, categories);
 }
 
-export function getDisplayMediaPaths(piece: Pick<PieceRecord, "mediaPaths" | "metadata" | "status">) {
+export function getDisplayMediaPaths(piece: Pick<PieceRecord, "slug" | "mediaPaths" | "metadata" | "status">) {
   const preferredLimit = Number(piece.metadata?.publicMediaLimit ?? (piece.status === "inventory" ? 5 : 4));
   const safeLimit = Number.isFinite(preferredLimit) ? Math.max(1, Math.min(12, Math.round(preferredLimit))) : 4;
-  return piece.mediaPaths.slice(0, safeLimit);
+  const links = listPieceMediaLinks(piece.slug, { publicOnly: true, roles: ["hero", "gallery", "detail", "context"] });
+  const normalized = [...new Set(links.map((link) => link.relativePath))];
+  return (normalized.length > 0 ? normalized : piece.mediaPaths).slice(0, safeLimit);
 }
 
-export function hasVerifiedMedia(piece: Pick<PieceRecord, "mediaPaths" | "metadata">) {
-  if (piece.mediaPaths.length === 0) return false;
+export function getPieceProcessMediaLinks(piece: Pick<PieceRecord, "slug">) {
+  return listPieceMediaLinks(piece.slug, { publicOnly: true, roles: ["process", "drawing", "plan", "installation"] });
+}
+
+export function hasVerifiedMedia(piece: Pick<PieceRecord, "slug" | "mediaPaths" | "metadata" | "status">) {
+  if (getDisplayMediaPaths(piece).length === 0) return false;
   return piece.metadata?.verifiedMedia !== false;
 }
+
+export {
+  getPieceInquiryMode,
+  getPiecePriceMode,
+  getPiecePublicPriceLabel,
+  getPieceReviewsMode,
+  pieceAcceptsReviews,
+  pieceAllowsInquiry,
+  pieceCanEnterCart,
+  pieceDisplaysReviews
+};
 
 export function pieceShippingEnabled(piece: Pick<PieceRecord, "metadata">) {
   return Boolean(piece.metadata?.shippingEnabled || piece.metadata?.shipEligible || piece.metadata?.shippingAllowed);
