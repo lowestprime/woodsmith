@@ -69,6 +69,41 @@ export type SeedProfile = {
   metadata: Record<string, unknown>;
 };
 
+export type HomeServiceDefinition = {
+  id: string;
+  title: string;
+  body: string;
+  href: string;
+  linkLabel: string;
+  visible: boolean;
+  order: number;
+};
+
+export type FooterItemDefinition = {
+  id: string;
+  label: string;
+  value: string;
+  url: string;
+  type: "text" | "internal-link" | "external-link" | "email";
+  visible: boolean;
+  newTab: boolean;
+  order: number;
+};
+
+export type FooterGroupDefinition = {
+  id: string;
+  heading: string;
+  visible: boolean;
+  order: number;
+  items: FooterItemDefinition[];
+};
+
+export type FooterConfiguration = {
+  introHeading: string;
+  introBody: string;
+  groups: FooterGroupDefinition[];
+};
+
 export const siteSettingsSeed = {
   brandName: "Beaman Woodworks",
   brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop.",
@@ -93,6 +128,42 @@ export const siteSettingsSeed = {
     { label: "About", href: "/about" },
     { label: "Contact", href: "/contact" }
   ],
+  footer: {
+    introHeading: "Beaman Woodworks",
+    introBody: "Furniture, cabinetry, and small-batch work made in the Beaman woodshop.",
+    groups: [
+      {
+        id: "woodshop-contact",
+        heading: "Woodshop contact",
+        visible: true,
+        order: 10,
+        items: [
+          { id: "builder", label: "Master Builder", value: "William Beaman", url: "", type: "text", visible: true, newTab: false, order: 10 },
+          { id: "builder-email", label: "Email", value: "woodsmithbb@proton.me", url: "mailto:woodsmithbb@proton.me", type: "email", visible: true, newTab: false, order: 20 }
+        ]
+      },
+      {
+        id: "website-credit",
+        heading: "Website",
+        visible: true,
+        order: 20,
+        items: [
+          { id: "developer", label: "Design & development", value: "Cooper Beaman", url: "", type: "text", visible: true, newTab: false, order: 10 },
+          { id: "developer-email", label: "Email", value: "cooperbeaman@proton.me", url: "mailto:cooperbeaman@proton.me", type: "email", visible: true, newTab: false, order: 20 }
+        ]
+      },
+      {
+        id: "links",
+        heading: "Information",
+        visible: true,
+        order: 30,
+        items: [
+          { id: "care", label: "Care & warranty", value: "Care & warranty", url: "/care-and-warranty", type: "internal-link", visible: true, newTab: false, order: 10 },
+          { id: "repository", label: "Website source", value: "GitHub repository", url: "https://x.gd/woodsmith_git", type: "external-link", visible: true, newTab: true, order: 20 }
+        ]
+      }
+    ]
+  } as FooterConfiguration,
   pieceCategories: defaultPieceCategories,
   homepageFeaturedMode: "manual",
   homepageFeaturedPieceSlugs: ["hallway-bench", "pastry-table", "pantry-cabinets", "footstool"],
@@ -146,7 +217,13 @@ export const siteSettingsSeed = {
       title: "Lead time updates follow the live build queue.",
       copy: "Capacity, work in progress, and lead-time guidance update from active projects so buyers can see the current workload before reaching out."
     }
-  ]
+  ],
+  homeServices: [
+    { id: "portfolio", title: "Portfolio", body: "Finished pieces with verified photography, materials, dimensions, and build notes.", href: "/portfolio", linkLabel: "Browse finished work", visible: true, order: 10 },
+    { id: "shop", title: "Shop", body: "Available pieces with asking prices and clearly stated pickup, delivery, or shipping options.", href: "/shop", linkLabel: "See available pieces", visible: true, order: 20 },
+    { id: "custom", title: "Custom work", body: "Send room, use, size, material, and timing details for review before a quote is prepared.", href: "/contact", linkLabel: "Start an inquiry", visible: true, order: 30 },
+    { id: "care", title: "Care & warranty", body: "Practical finish care, repair support, and warranty information for completed work.", href: "/care-and-warranty", linkLabel: "Read care guidance", visible: true, order: 40 }
+  ] as HomeServiceDefinition[]
 } as const;
 
 const furniture = (file: string) => `Furniture/${file}`;

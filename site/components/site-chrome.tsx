@@ -46,12 +46,6 @@ export { CategoryIcon } from "@/components/category-icon";
 
 const RESERVED_NAV_SLUGS = new Set(["home", "portfolio", "shop", "journal", "process", "commissions", "requests", "studio", "about", "account", "search", "media", "contact"]);
 
-type RepoLabelSettings = { repoLabel?: unknown };
-
-function getRepoLabel(site: RepoLabelSettings) {
-  return typeof site.repoLabel === "string" && site.repoLabel.trim() ? site.repoLabel : "GitHub repository";
-}
-
 export async function SiteHeader() {
   const site = getSiteSettings();
   const user = await getViewer();
@@ -91,9 +85,27 @@ export async function SiteHeader() {
 
 export function SiteFooter() {
   const site = getSiteSettings();
-  const repoLabel = getRepoLabel(site as unknown as RepoLabelSettings);
+  const groups = [...site.footer.groups].filter((group) => group.visible).sort((left, right) => left.order - right.order);
   return (
-    <footer className="site-footer"><Shell className="footer-grid"><div><EditableText as="p" className="footer-title" target={{ resource: "settings", field: "brandName" }}>{site.brandName}</EditableText><EditableText as="p" className="footer-copy" target={{ resource: "settings", field: "siteAnnouncement" }}>{site.siteAnnouncement}</EditableText></div><div><p className="footer-title">Woodshop contact</p><p className="footer-copy"><EditableText target={{ resource: "settings", field: "builderName" }}>{site.builderName}</EditableText> · <a href={`mailto:${site.builderEmail}`} {...inlineEditAttrs({ resource: "settings", field: "builderEmail" })}>{site.builderEmail}</a></p><p className="footer-copy footer-small">Site design and development: <EditableText target={{ resource: "settings", field: "developerName" }}>{site.developerName}</EditableText> · <a href={`mailto:${site.developerEmail}`} {...inlineEditAttrs({ resource: "settings", field: "developerEmail" })}>{site.developerEmail}</a></p></div><div><p className="footer-title">Links</p><div className="footer-links">{site.socialLinks.filter((item) => item.url).map((item, index) => <a href={item.url} key={item.label} rel="noreferrer" target="_blank" {...inlineEditAttrs({ resource: "settings", field: "socialLinks", index, urlField: "socialLinks.url" })}>{item.label}</a>)}<a href={site.repoUrl} rel="noreferrer" target="_blank" {...inlineEditAttrs({ resource: "settings", field: "repoLabel", urlField: "repoUrl" })}>{repoLabel}</a><Link href="/care-and-warranty">Care &amp; warranty</Link></div></div></Shell></footer>
+    <footer className="site-footer">
+      <Shell className="footer-grid">
+        <section className="footer-intro"><p className="footer-title">{site.footer.introHeading}</p><p className="footer-copy">{site.footer.introBody}</p></section>
+        {groups.map((group) => (
+          <section className="footer-group" key={group.id}>
+            <p className="footer-title">{group.heading}</p>
+            <ul className="footer-item-list">
+              {[...group.items].filter((item) => item.visible).sort((left, right) => left.order - right.order).map((item) => {
+                const content = <><span>{item.label}</span><strong>{item.value}</strong></>;
+                if (item.type === "internal-link") return <li key={item.id}><Link href={item.url}>{content}</Link></li>;
+                if (item.type === "email") return <li key={item.id}><a href={item.url || `mailto:${item.value}`}>{content}</a></li>;
+                if (item.type === "external-link") return <li key={item.id}><a href={item.url} rel="noreferrer" target={item.newTab ? "_blank" : undefined}>{content}</a></li>;
+                return <li key={item.id}><span className="footer-static-item">{content}</span></li>;
+              })}
+            </ul>
+          </section>
+        ))}
+      </Shell>
+    </footer>
   );
 }
 

@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import { PageIntro, PageSection, PieceCard, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
+import { PageIntro, PageSection, PieceCard, SectionHeading, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
-import { getPage, getSiteSettings, listPieces, listPosts } from "@/lib/db";
+import { getPage, getSiteSettings, listPieces } from "@/lib/db";
 import { getPortfolioCategories } from "@/lib/catalog";
 
 export const metadata: Metadata = {
@@ -21,7 +21,7 @@ export default async function HomePage() {
   const pieces = listPieces().filter((piece) => featuredSlugs.has(piece.slug)).sort((left, right) => left.featuredRank - right.featuredRank);
   const hero = site.homeSections.find((section) => section.key === "hero") as Record<string, unknown> | undefined;
   const services = site.homeSections.find((section) => section.key === "services") as Record<string, unknown> | undefined;
-  const processNotes = listPosts().slice(0, 2);
+  const homeServices = [...site.homeServices].filter((service) => service.visible).sort((left, right) => left.order - right.order);
   const heroCopy = home?.intro || String(hero?.copy ?? "");
   const servicesCopy = home?.body || String(services?.copy ?? "The public site handles portfolio, shop, process notes, and buyer communication while the private dashboard manages content, media, project stages, inventory, invoices, and shipping workflows.");
 
@@ -69,23 +69,31 @@ export default async function HomePage() {
             }}
           />
           <div className="service-grid">
-            <article className="service-card"><h3>Portfolio</h3><p>Finished work with verified photography, materials, and dimensional notes.</p></article>
-            <article className="service-card"><h3>Shop</h3><p>Available pieces with asking prices, tax at checkout, and pickup, delivery, or shipping review.</p></article>
-            <article className="service-card"><h3>Custom work</h3><p>Contact-first intake, lead-time guidance, and project tracking once a request is accepted.</p></article>
-            <article className="service-card"><h3>Private dashboard</h3><p>Content, media, inventory, reviews, orders, and project updates managed from the browser.</p></article>
+            {homeServices.map((service, index) => (
+              <Link className="service-card service-card-link" href={service.href} key={service.id}>
+                <span className="service-card-index" aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                <h3>{service.title}</h3>
+                <p>{service.body}</p>
+                <span className="service-card-cta">{service.linkLabel}<span aria-hidden="true">→</span></span>
+              </Link>
+            ))}
           </div>
         </PageSection>
 
-        <PageSection editHref="/studio?panel=process">
+        <PageSection editHref="/studio?panel=custom">
           <SectionHeading
-            eyebrow="Behind the scenes"
-            title="Process notes and references that stay close to the work"
-            copy="Recent process notes and reference material remain available in the dedicated Process archive."
+            eyebrow="Commissioned builds"
+            title="Start with the room, the use, and the dimensions"
+            copy="A custom request begins with practical information. William reviews the brief, confirms current lead time, and follows up before any quote or build commitment is made."
           />
-          <div className="journal-rail">{processNotes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
+          <ol className="commission-path">
+            <li><span>01</span><div><h3>Send the brief</h3><p>Describe the intended use, room, approximate size, material preferences, and timing.</p></div></li>
+            <li><span>02</span><div><h3>Review the scope</h3><p>The woodshop confirms fit, current capacity, likely fulfillment method, and what still needs measuring.</p></div></li>
+            <li><span>03</span><div><h3>Approve the project</h3><p>A detailed estimate and project reference are prepared before the build enters the active queue.</p></div></li>
+          </ol>
           <div className="hero-actions">
-            <Link className="button-secondary" href="/process">Read more process notes</Link>
             <Link className="button-primary" href="/contact">Ask about a custom piece</Link>
+            <Link className="button-secondary" href="/commissions/status">Check a project</Link>
           </div>
         </PageSection>
       </Shell>

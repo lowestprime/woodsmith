@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
 import { MediaLightbox } from "@/components/lightbox";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
 import { inlineEditAttrs } from "@/components/inline-editable";
-import { getDisplayMediaPaths, getFulfillmentOptions } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentOptions, getPieceProcessMediaLinks, pieceAcceptsReviews, pieceAllowsInquiry, pieceDisplaysReviews } from "@/lib/catalog";
 import { PageSection, ShareLinks, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
-import { addToCartAction } from "@/lib/actions";
-import { formatDate, formatDimensions, formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
@@ -37,7 +37,10 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
 
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "http://127.0.0.1:3000").replace(/\/$/, "");
   const bandwidth = getBandwidthSnapshot();
-  const reviews = listReviews(piece.slug).filter((review) => review.status === "published");
+  const showReviews = pieceDisplaysReviews(piece);
+  const acceptReviews = pieceAcceptsReviews(piece);
+  const allowInquiry = pieceAllowsInquiry(piece);
+  const reviews = showReviews ? listReviews(piece.slug).filter((review) => review.status === "published") : [];
   const mediaItems = getDisplayMediaPaths(piece).map((path) => {
     const media = getMedia(path);
     return {
@@ -50,6 +53,12 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
     };
   });
   const fulfillment = getFulfillmentOptions(piece);
+  const processLinks = getPieceProcessMediaLinks(piece);
+  const processMediaItems = processLinks.flatMap((link) => {
+    const media = getMedia(link.relativePath);
+    if (!media) return [];
+    return [{ src: toMediaUrl(link.relativePath), alt: link.altOverride || media.altText || link.caption || piece.title, kind: media.kind === "video" ? "video" as const : "image" as const, focalX: media.focalX, focalY: media.focalY, zoom: media.zoom }];
+  });
 
   return (
     <Shell>
@@ -73,15 +82,11 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           {piece.status === "inventory" ? (
             <div className="piece-reserve-panel">
               <div>
-                <span>Asking price</span>
-                <strong>{piece.priceCents == null ? "Available by request" : formatMoney(piece.priceCents)}</strong>
+                <span>Availability</span>
+                <strong>{piece.availabilityLabel}</strong>
                 <small>{Math.max(0, piece.inventoryCount)} available</small>
               </div>
-              <form action={addToCartAction}>
-                <input name="pieceSlug" type="hidden" value={piece.slug} />
-                <input name="quantity" type="hidden" value="1" />
-                <button className="button-primary" disabled={piece.inventoryCount < 1} type="submit">Reserve piece</button>
-              </form>
+              <Link className="button-primary" href={`/shop#piece-${encodeURIComponent(piece.slug)}`}>View shop details</Link>
             </div>
           ) : null}
           <ShareLinks title={piece.title} url={`${siteUrl}/portfolio/${piece.slug}`} />
@@ -95,7 +100,15 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         </div>
       </PageSection>
 
-      <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>
+      {processLinks.length > 0 ? <PageSection className="piece-process-section" editHref={`/studio?panel=pieces&piece=${encodeURIComponent(piece.slug)}#piece-${piece.slug}`}>
+        <div className="section-heading"><p className="eyebrow">Build record</p><h2>{piece.processSectionTitle || "Build record"}</h2>{piece.processSectionIntro ? <p>{piece.processSectionIntro}</p> : null}</div>
+        <div className="piece-process-layout">
+          <ol className="piece-process-timeline">{processLinks.map((link, index) => <li key={link.id}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{link.stage || link.title || link.role.replace("-", " ")}</strong>{link.occurredAt ? <time dateTime={link.occurredAt}>{formatDate(link.occurredAt)}</time> : null}{link.caption ? <p>{link.caption}</p> : null}</div></li>)}</ol>
+          {processMediaItems.length > 0 ? <MediaLightbox className="piece-process-carousel" items={processMediaItems} title={`${piece.title} build record`} /> : null}
+        </div>
+      </PageSection> : null}
+
+      {allowInquiry ? <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>
         <div>
           <h2>{piece.status === "inventory" ? "Ask about this piece" : "Use this piece as the starting point for custom work"}</h2>
           <p>{piece.status === "inventory" ? "Use this contact form if you want to reserve the current build, confirm delivery options, or ask for a related variation. Checkout details stay in the shop." : "Custom work begins with a direct note about the room, intended use, timing, and material preferences. The private project workflow takes over after the initial review."}</p>
@@ -106,9 +119,9 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           piece={piece}
           queueCount={bandwidth.activeProjects}
         />
-      </PageSection>
+      </PageSection> : null}
 
-      <PageSection editHref={`/studio?panel=reviews&piece=${encodeURIComponent(piece.slug)}`}>
+      {showReviews ? <PageSection editHref={`/studio?panel=reviews&piece=${encodeURIComponent(piece.slug)}`}>
         <h2>Reviews</h2>
         <div className="review-grid">
           {reviews.length > 0 ? reviews.map((review) => (
@@ -119,8 +132,8 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
             </article>
           )) : <p className="muted-copy">No approved reviews are published for this piece yet.</p>}
         </div>
-        <ReviewForm piece={piece} />
-      </PageSection>
+        {acceptReviews ? <ReviewForm piece={piece} /> : null}
+      </PageSection> : null}
     </Shell>
   );
 }

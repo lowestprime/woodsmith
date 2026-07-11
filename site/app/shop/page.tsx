@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
-import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, pieceShippingEnabled } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, getPiecePublicPriceLabel, pieceAllowsInquiry, pieceCanEnterCart, pieceShippingEnabled } from "@/lib/catalog";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPieces } from "@/lib/db";
-import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { formatLeadTime, toMediaUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Shop",
@@ -38,16 +38,19 @@ export default async function ShopPage() {
             const firstImage = getDisplayMediaPaths(piece)[0];
             const fulfillment = getFulfillmentOptions(piece);
             const shippingEnabled = pieceShippingEnabled(piece);
+            const canAddToCart = pieceCanEnterCart(piece);
+            const priceLabel = getPiecePublicPriceLabel(piece);
+            const canAsk = pieceAllowsInquiry(piece);
 
             return (
-              <article className="shop-card" key={piece.slug}>
+              <article className="shop-card" id={`piece-${piece.slug}`} key={piece.slug}>
                 {firstImage ? <img alt={piece.title} className="shop-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
                 <div className="shop-card-body">
                   <div className="piece-card-meta"><span>{piece.category}</span><span>{piece.inventoryCount} available</span></div>
                   <h2 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>
                   <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
                   <dl className="shop-detail-list">
-                    <div><dt>Asking price</dt><dd>{piece.priceCents == null ? "Available by request" : formatMoney(piece.priceCents)}</dd></div>
+                    <div><dt>Asking price</dt><dd>{priceLabel ?? "Not publicly listed"}</dd></div>
                     <div><dt>Lead time</dt><dd>{formatLeadTime(piece.leadTimeDays)}</dd></div>
                     <div><dt>Fulfillment</dt><dd>{fulfillment.join(" / ")}</dd></div>
                     <div><dt>Shipping</dt><dd>{shippingEnabled ? "Enabled for this piece" : "Disabled by default"}</dd></div>
@@ -56,11 +59,11 @@ export default async function ShopPage() {
                   <p className="muted-copy">{getFulfillmentSummary(piece)}</p>
                   <div className="shop-card-price-row">
                     <span className="muted-copy">Exact pickup/drop-off details stay private until buyer eligibility and consent are confirmed.</span>
-                    <form action={addToCartAction}>
+                    {canAddToCart ? <form action={addToCartAction}>
                       <input name="pieceSlug" type="hidden" value={piece.slug} />
                       <input name="quantity" type="hidden" value="1" />
-                      <button className="button-primary" type="submit">Reserve piece</button>
-                    </form>
+                      <button className="button-primary" type="submit">Add to cart</button>
+                    </form> : canAsk ? <Link className="button-primary" href={`/contact?piece=${encodeURIComponent(piece.slug)}`}>Ask about this piece</Link> : <span className="muted-copy">Not accepting inquiries</span>}
                   </div>
                 </div>
               </article>

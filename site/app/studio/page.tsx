@@ -26,6 +26,7 @@ import {
   saveProjectAction,
   saveReviewAdminAction,
   saveSiteSettingsAction,
+  saveSiteStructureAction,
   saveUserProfileAdminAction,
   uploadMediaAction
 } from "@/lib/actions";
@@ -33,6 +34,7 @@ import { requireAdmin } from "@/lib/auth";
 import Link from "next/link";
 import {
   countMedia,
+  getMedia,
   getSiteSettings,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
@@ -42,6 +44,7 @@ import {
   listNotifications,
   listOrders,
   listPages,
+  listPieceMediaLinks,
   listPieces,
   listPosts,
   listProjects,
@@ -63,7 +66,12 @@ import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { StudioScrollRestore } from "@/components/studio-form";
 import { StudioMediaWorkspace } from "@/components/studio-media-workspace";
 import { StudioCategoryEditor } from "@/components/studio-category-editor";
+import { SiteStructureEditor } from "@/components/site-structure-editor";
+import { MediaPicker, type MediaPickerItem } from "@/components/media-picker";
+import { PieceMediaEditor } from "@/components/piece-media-editor";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
+import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode } from "@/lib/piece-model";
+import { visualAuditRequestAuthorized } from "@/lib/visual-audit";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "categories", "custom", "people", "process", "media", "projects", "orders", "reviews", "notifications"] as const;
@@ -86,6 +94,15 @@ function toDomId(prefix: string, value: string) {
   return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item"}`;
 }
 
+function StudioMasterList({ items, newHref, newLabel, selectedKey }: { items: Array<{ key: string; label: string; meta: string; href: string }>; newHref: string; newLabel: string; selectedKey: string }) {
+  return (
+    <nav aria-label="Content records" className="studio-master-list">
+      <Link className={`studio-master-create${selectedKey.startsWith("new-") ? " is-active" : ""}`} href={newHref}>+ {newLabel}</Link>
+      {items.map((item) => <Link aria-current={item.key === selectedKey ? "page" : undefined} className={`studio-master-item${item.key === selectedKey ? " is-active" : ""}`} href={item.href} key={item.key}><strong>{item.label}</strong><span>{item.meta}</span></Link>)}
+    </nav>
+  );
+}
+
 function studioMessage(code: string) {
   const messages: Record<string, string> = {
     "cannot-delete-current-user": "The profile currently signed in cannot be deleted.",
@@ -99,7 +116,7 @@ function studioMessage(code: string) {
   return messages[code] ?? code;
 }
 
-function PageEditor({ page, highlight = false }: { page: Omit<PageRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
+function PageEditor({ page, mediaItems, highlight = false }: { page: Omit<PageRecord, "createdAt" | "updatedAt">; mediaItems: MediaPickerItem[]; highlight?: boolean }) {
   return (
     <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("page", page.slug)}>
       <div className="studio-editor-head">
@@ -113,7 +130,7 @@ function PageEditor({ page, highlight = false }: { page: Omit<PageRecord, "creat
           <label><span>Status</span><select defaultValue={page.status} name="status"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
         </div>
         <Field label="Layout" name="layout" defaultValue={page.layout} />
-        <Field label="Hero media path" name="heroMediaPath" defaultValue={page.heroMediaPath ?? ""} />
+        <MediaPicker defaultValue={page.heroMediaPath} helperText="Choose one image or video from the mounted media library." items={mediaItems} label="Hero media" loadPageAction={loadMediaPageAction} name="heroMediaPath" />
         <Area label="Intro" name="intro" defaultValue={page.intro} rows={3} />
         <Area label="Body" name="body" defaultValue={page.body} rows={5} />
         <button className="button-primary" type="submit">Save page</button>
@@ -122,7 +139,7 @@ function PageEditor({ page, highlight = false }: { page: Omit<PageRecord, "creat
   );
 }
 
-function PieceEditor({ piece, categories, highlight = false }: { piece: Omit<PieceRecord, "createdAt" | "updatedAt">; categories: PieceCategoryDefinition[]; highlight?: boolean }) {
+function PieceEditor({ piece, categories, mediaItems, mediaLinks, highlight = false }: { piece: Omit<PieceRecord, "createdAt" | "updatedAt">; categories: PieceCategoryDefinition[]; mediaItems: MediaPickerItem[]; mediaLinks: ReturnType<typeof listPieceMediaLinks>; highlight?: boolean }) {
   const categoryValues = new Set(categories.map((category) => category.label));
   return (
     <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("piece", piece.slug)}>
@@ -141,13 +158,19 @@ function PieceEditor({ piece, categories, highlight = false }: { piece: Omit<Pie
           <label><span>Publication</span><select defaultValue={piece.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
           <Field label="Availability" name="availabilityLabel" defaultValue={piece.availabilityLabel} />
         </div>
+        <div className="field-grid three-up compact-grid">
+          <label><span>Price display</span><select defaultValue={getPiecePriceMode(piece)} name="priceMode"><option value="fixed">Fixed asking price</option><option value="contact-for-price">Contact for price</option><option value="not-listed">Not listed</option><option value="determined-after-approval">After project approval</option><option value="determined-at-order-completion">At order completion</option></select></label>
+          <label><span>Inquiry behavior</span><select defaultValue={getPieceInquiryMode(piece)} name="inquiryMode"><option value="exact-piece">Ask about this piece</option><option value="related-commission">Related custom work</option><option value="disabled">No inquiries</option></select></label>
+          <label><span>Reviews</span><select defaultValue={getPieceReviewsMode(piece)} name="reviewsMode"><option value="display-and-accept">Display and accept</option><option value="display-only">Display only</option><option value="hidden">Hidden</option></select></label>
+        </div>
         <Area label="Summary" name="summary" defaultValue={piece.summary} rows={3} />
         <Area label="Story" name="story" defaultValue={piece.story} rows={5} />
         <Area label="Details, one per line" name="detailsText" defaultValue={piece.details.join("\n")} rows={4} />
         <div className="field-grid two-up compact-grid"><Area label="Materials" name="materialsText" defaultValue={piece.materials.join("\n")} rows={4} /><Area label="Tags" name="tagsText" defaultValue={piece.tags.join(", ")} rows={4} /></div>
-        <Area label="Media paths, one per line" name="mediaPathsText" defaultValue={piece.mediaPaths.join("\n")} rows={4} />
+        <PieceMediaEditor items={mediaItems} legacyPaths={piece.mediaPaths} links={mediaLinks} loadPageAction={loadMediaPageAction} />
         <div className="field-grid three-up compact-grid"><Field label="Width" name="width" defaultValue={piece.dimensions?.width ?? ""} type="number" /><Field label="Depth" name="depth" defaultValue={piece.dimensions?.depth ?? ""} type="number" /><Field label="Height" name="height" defaultValue={piece.dimensions?.height ?? ""} type="number" /></div>
-        <div className="field-grid three-up compact-grid"><Field label="Asking price cents" name="priceCents" defaultValue={piece.priceCents ?? ""} type="number" /><Field label="Inventory" name="inventoryCount" defaultValue={piece.inventoryCount} type="number" /><Field label="Lead time days" name="leadTimeDays" defaultValue={piece.leadTimeDays} type="number" /></div>
+        <div className="field-grid three-up compact-grid"><Field label="Asking price cents" name="priceCents" defaultValue={piece.priceCents ?? ""} type="number" /><Field label="Internal estimate cents" name="internalEstimateCents" defaultValue={piece.internalEstimateCents ?? ""} type="number" /><Field label="Public price label" name="publicPriceLabel" defaultValue={piece.publicPriceLabel ?? ""} /></div>
+        <div className="field-grid three-up compact-grid"><Field label="Inventory" name="inventoryCount" defaultValue={piece.inventoryCount} type="number" /><Field label="Lead time days" name="leadTimeDays" defaultValue={piece.leadTimeDays} type="number" /><Field label="Commission type" name="commissionTypeSlug" defaultValue={piece.commissionTypeSlug ?? ""} /></div>
         <div className="field-grid two-up compact-grid"><Field label="Featured rank" name="featuredRank" defaultValue={piece.featuredRank} type="number" /><Field label="Media limit" name="publicMediaLimit" defaultValue={Number(piece.metadata.publicMediaLimit ?? 4)} type="number" /></div>
         <Area label="Fulfillment options" name="fulfillmentText" defaultValue={Array.isArray(piece.metadata.fulfillmentOptions) ? piece.metadata.fulfillmentOptions.join("\n") : ""} rows={3} />
         <div className="field-grid two-up compact-grid"><Check label="Verified media" name="verifiedMedia" defaultChecked={piece.metadata.verifiedMedia !== false} /><Check label="Media review required" name="mediaReviewRequired" defaultChecked={Boolean(piece.metadata.mediaReviewRequired)} /></div>
@@ -157,7 +180,7 @@ function PieceEditor({ piece, categories, highlight = false }: { piece: Omit<Pie
   );
 }
 
-function PostEditor({ post, highlight = false }: { post: Omit<PostRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
+function PostEditor({ post, mediaItems, highlight = false }: { post: Omit<PostRecord, "createdAt" | "updatedAt">; mediaItems: MediaPickerItem[]; highlight?: boolean }) {
   return (
     <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("post", post.slug)}>
       <div className="studio-editor-head">
@@ -168,7 +191,8 @@ function PostEditor({ post, highlight = false }: { post: Omit<PostRecord, "creat
         <div className="field-grid two-up compact-grid"><Field label="Slug" name="slug" defaultValue={post.slug} required /><Field label="Title" name="title" defaultValue={post.title} required /></div>
         <Area label="Excerpt" name="excerpt" defaultValue={post.excerpt} rows={3} />
         <Area label="Body" name="body" defaultValue={post.body} rows={8} />
-        <div className="field-grid two-up compact-grid"><Field label="Published at" name="publishedAt" defaultValue={post.publishedAt ?? ""} /><Field label="Cover media" name="coverMediaPath" defaultValue={post.coverMediaPath ?? ""} /></div>
+        <Field label="Published at" name="publishedAt" defaultValue={post.publishedAt ?? ""} />
+        <MediaPicker defaultValue={post.coverMediaPath} helperText="Choose a cover image from the mounted media library." items={mediaItems} label="Cover media" loadPageAction={loadMediaPageAction} name="coverMediaPath" />
         <div className="field-grid two-up compact-grid"><Field label="Source URL" name="sourceUrl" defaultValue={post.sourceUrl ?? ""} /><Field label="Source label" name="sourceLabel" defaultValue={post.sourceLabel ?? ""} /></div>
         <Area label="Tags" name="tagsText" defaultValue={post.tags.join(", ")} rows={2} />
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
@@ -295,6 +319,7 @@ export default async function StudioPage({
     user?: string;
     email?: string;
     category?: string;
+    audit?: string;
   }>;
 }) {
   const currentAdmin = await requireAdmin();
@@ -321,9 +346,13 @@ export default async function StudioPage({
     piece: pieceHighlight = "",
     post: postHighlight = "",
     user: userHighlight = "",
+    audit = "",
     email = "",
     category: categoryHighlight = ""
   } = await searchParams;
+  const includeAllAuditRecords =
+    audit === "all" &&
+    await visualAuditRequestAuthorized();
   const currentPanel: StudioPanel =
     STUDIO_PANELS.includes(requestedPanel as StudioPanel) ? requestedPanel as StudioPanel
       : cleaned || assigned || uploaded || renamed || refreshed || mediaQuery || saved === "media" || deleted === "media" || error.startsWith("media-") || error.startsWith("cleanup-") ? "media"
@@ -367,11 +396,64 @@ export default async function StudioPage({
   const media = currentPanel === "media" ? listMedia({ ...mediaFilters, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset }) : [];
   const verificationMedia = currentPanel === "media" ? listMedia({ includeUnreviewed: true }) : [];
   const verificationQueue = currentPanel === "media" ? buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image")) : [];
-  const projects = currentPanel === "projects" ? listProjects(true).slice(0, 20) : [];
-  const projectMedia = currentPanel === "projects" ? listMediaForProjectReferences(projects.map((p) => p.reference)) : [];
-  const orders = currentPanel === "orders" ? listOrders().slice(0, 20) : [];
-  const reviews = currentPanel === "reviews" ? listReviews().slice(0, 20) : [];
-  const notifications = currentPanel === "notifications" ? listNotifications().slice(0, 20) : [];
+  const projects = currentPanel === "projects"
+    ? (
+        includeAllAuditRecords
+          ? listProjects(true)
+          : listProjects(true).slice(0, 20)
+      )
+    : [];
+
+  const projectMedia = currentPanel === "projects"
+    ? listMediaForProjectReferences(
+        projects.map(project => project.reference)
+      )
+    : [];
+
+  const orders = currentPanel === "orders"
+    ? (
+        includeAllAuditRecords
+          ? listOrders()
+          : listOrders().slice(0, 20)
+      )
+    : [];
+
+  const reviews = currentPanel === "reviews"
+    ? (
+        includeAllAuditRecords
+          ? listReviews()
+          : listReviews().slice(0, 20)
+      )
+    : [];
+
+  const notifications = currentPanel === "notifications"
+    ? (
+        includeAllAuditRecords
+          ? listNotifications()
+          : listNotifications().slice(0, 20)
+      )
+    : [];
+  const editingPage = currentPanel === "pages"
+    ? pageHighlight === "new-page-draft" ? pageDraft() : pages.find((page) => page.slug === pageHighlight) ?? pages[0] ?? pageDraft()
+    : null;
+  const editingPiece = currentPanel === "pieces"
+    ? pieceHighlight === "new-piece-draft" ? pieceDraft(currentAdmin.email) : pieces.find((piece) => piece.slug === pieceHighlight) ?? pieces[0] ?? pieceDraft(currentAdmin.email)
+    : null;
+  const editingPost = currentPanel === "process"
+    ? postHighlight === "new-process-entry" ? postDraft(currentAdmin.email) : posts.find((post) => post.slug === postHighlight) ?? posts[0] ?? postDraft(currentAdmin.email)
+    : null;
+  const editingPieceLinks = editingPiece && editingPiece.slug !== "new-piece-draft"
+    ? listPieceMediaLinks(editingPiece.slug).filter((link) => link.role !== "private-project")
+    : [];
+  const linkedDisplayPaths = editingPieceLinks.filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role)).map((link) => link.relativePath);
+  const editingPiecePaths = linkedDisplayPaths.length > 0 ? linkedDisplayPaths : editingPiece?.mediaPaths ?? [];
+  const editingPieceMediaPaths = [...new Set([...editingPiecePaths, ...editingPieceLinks.map((link) => link.relativePath)])];
+  const editorMediaPaths = [...new Set([
+    ...(editingPage?.heroMediaPath ? [editingPage.heroMediaPath] : []),
+    ...editingPieceMediaPaths,
+    ...(editingPost?.coverMediaPath ? [editingPost.coverMediaPath] : [])
+  ])];
+  const editorMediaItems = editorMediaPaths.map((relativePath) => getMedia(relativePath)).filter((item): item is NonNullable<ReturnType<typeof getMedia>> => Boolean(item));
   const panelHref = (panel: StudioPanel, extras?: Record<string, string>) => {
     const params = new URLSearchParams({ panel });
     if (panel === "media") {
@@ -461,15 +543,16 @@ export default async function StudioPage({
             <button className="button-primary" type="submit">Save settings</button>
           </form>
         </article>
+        <SiteStructureEditor footer={settings.footer} homeServices={settings.homeServices} saveAction={saveSiteStructureAction} />
       </PageSection>
       ) : null}
 
-      {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media. Saving here writes to {persistence.databasePath} and revalidates the live route.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} page={page} />)}</div></PageSection> : null}
-      {currentPanel === "pieces" ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor categories={categories} piece={pieceDraft(currentAdmin.email)} />{pieces.map((piece) => <PieceEditor categories={categories} highlight={piece.slug === pieceHighlight} key={piece.slug} piece={piece} />)}</div></PageSection> : null}
+      {currentPanel === "pages" && editingPage ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Select one record, edit it in place, and choose hero media visually from the mounted library.</p></div><div className="studio-master-detail"><StudioMasterList items={pages.map((page) => ({ key: page.slug, label: page.title, meta: page.status, href: panelHref("pages", { page: page.slug }) }))} newHref={panelHref("pages", { page: "new-page-draft" })} newLabel="New page" selectedKey={editingPage.slug} /><PageEditor highlight mediaItems={editorMediaItems} page={editingPage} /></div></PageSection> : null}
+      {currentPanel === "pieces" && editingPiece ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Pricing, inquiry and review policies, inventory, fulfillment, and normalized visual media assignment.</p></div><div className="studio-master-detail"><StudioMasterList items={pieces.map((piece) => ({ key: piece.slug, label: piece.title, meta: `${piece.publicationStatus} · ${piece.status}`, href: panelHref("pieces", { piece: piece.slug }) }))} newHref={panelHref("pieces", { piece: "new-piece-draft" })} newLabel="New piece" selectedKey={editingPiece.slug} /><PieceEditor categories={categories} highlight mediaItems={editorMediaItems} mediaLinks={editingPieceLinks} piece={editingPiece} /></div></PageSection> : null}
       {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Choose a furniture icon, import a safe custom SVG, and control order and visibility without editing code.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} />{categories.map((category) => <StudioCategoryEditor categories={categories} category={category} deleteAction={deletePieceCategoryAction} key={category.key} saveAction={savePieceCategoryAction} />)}</div></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} user={user} />)}</div></PageSection> : null}
-      {currentPanel === "process" ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Markdown body, cover images, external links, and publication state.</p></div><div className="studio-grid two-column-grid"><PostEditor post={postDraft(currentAdmin.email)} />{posts.map((post) => <PostEditor highlight={post.slug === postHighlight} key={post.slug} post={post} />)}</div></PageSection> : null}
+      {currentPanel === "process" && editingPost ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Select one note, edit Markdown and source details, and choose its cover media visually.</p></div><div className="studio-master-detail"><StudioMasterList items={posts.map((post) => ({ key: post.slug, label: post.title, meta: post.publicationStatus, href: panelHref("process", { post: post.slug }) }))} newHref={panelHref("process", { post: "new-process-entry" })} newLabel="New process note" selectedKey={editingPost.slug} /><PostEditor highlight mediaItems={editorMediaItems} post={editingPost} /></div></PageSection> : null}
 
       {currentPanel === "media" ? (
       <PageSection className="studio-media-section">

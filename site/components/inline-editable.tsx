@@ -1,4 +1,4 @@
-import type { ElementType, HTMLAttributes, ReactNode } from "react";
+import { createElement, type ElementType, type HTMLAttributes, type ReactNode } from "react";
 
 export type InlineEditResource = "settings" | "homeSection" | "page" | "piece" | "post" | "user";
 
@@ -33,5 +33,5 @@ export function EditableText({
   target?: InlineEditTarget;
 }) {
   const props = inlineEditAttrs(target);
-  return <Component className={className} {...props}>{children}</Component>;
+  return createElement(Component, { ...props, className }, children);
 }

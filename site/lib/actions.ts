@@ -26,6 +26,7 @@ import {
   getUserByVerificationToken,
   listCartItems,
   listMedia,
+  listPieceMediaLinks,
   listPieces,
   markEmailVerified,
   patchMediaMetadata,
@@ -49,6 +50,7 @@ import {
   finishMediaRenameHistory,
   recordAdminEditAudit,
   renameMediaRecordAndReferences,
+  replacePieceMediaLinks,
   startMediaRenameHistory,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
@@ -79,7 +81,9 @@ import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-ser
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories } from "@/lib/categories";
 import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/category-icons";
-import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceCanEnterCart } from "@/lib/piece-model";
+import { normalizeFooterConfiguration, normalizeHomeServices } from "@/lib/site-structure";
+import { normalizePieceMediaLinks } from "@/lib/piece-media";
+import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceAcceptsReviews, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/piece-model";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
   revalidatePath("/");
@@ -564,11 +568,19 @@ export async function submitContactRequestAction(formData: FormData) {
   const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
   const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
 
+  const requestedPieceSlug = optionalField(formData.get("pieceSlug")) || null;
+  if (requestedPieceSlug) {
+    const requestedPiece = getPiece(requestedPieceSlug);
+    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) {
+      redirect(`/contact?error=${encodeURIComponent("This piece is not currently accepting inquiries.")}`);
+    }
+  }
+
   const reference = createProject({
     userEmail: user?.email ?? null,
     guestName,
     guestEmail,
-    pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+    pieceSlug: requestedPieceSlug,
     commissionTypeSlug: requestType || null,
     kind: "commission",
     status: "Request received",
@@ -665,11 +677,18 @@ export async function submitCommissionAction(formData: FormData) {
   const estimatedTotalCents = parseInteger(formData.get("estimatedTotalCents"), 0);
   const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
   const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
+  const requestedPieceSlug = optionalField(formData.get("pieceSlug")) || null;
+  if (requestedPieceSlug) {
+    const requestedPiece = getPiece(requestedPieceSlug);
+    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) {
+      redirect(`/commissions?error=${encodeURIComponent("This piece is not currently accepting custom requests.")}`);
+    }
+  }
   const reference = createProject({
     userEmail: user?.email ?? null,
     guestName,
     guestEmail,
-    pieceSlug: optionalField(formData.get("pieceSlug")) || null,
+    pieceSlug: requestedPieceSlug,
     commissionTypeSlug: optionalField(formData.get("commissionTypeSlug")) || null,
     kind: "commission",
     status: "Brief received",
@@ -762,6 +781,10 @@ export async function submitProjectReplyAction(formData: FormData) {
 
 export async function submitReviewAction(formData: FormData) {
   const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
+  const piece = getPiece(pieceSlug);
+  if (!piece || !pieceAcceptsReviews(piece)) {
+    redirect(`/portfolio/${encodeURIComponent(pieceSlug)}?error=${encodeURIComponent("Reviews are not open for this piece.")}`);
+  }
   const reviewerName = requiredField(formData.get("reviewerName"), "Your name");
   const rating = parseInteger(formData.get("rating"), 5);
   saveReview({
@@ -847,6 +870,34 @@ export async function saveSiteSettingsAction(formData: FormData) {
   revalidatePath("/portfolio");
   revalidatePath("/process");
   redirect("/studio?panel=settings&saved=settings");
+}
+
+export type SiteStructureActionState = { status: "idle" | "success" | "error"; message: string };
+
+export async function saveSiteStructureAction(_: SiteStructureActionState, formData: FormData): Promise<SiteStructureActionState> {
+  const currentAdmin = await requireAdmin();
+  const existing = getSiteSettings();
+  try {
+    const footer = normalizeFooterConfiguration(JSON.parse(requiredField(formData.get("footerJson"), "Footer configuration")) as unknown);
+    const homeServices = normalizeHomeServices(JSON.parse(requiredField(formData.get("homeServicesJson"), "Homepage services")) as unknown);
+    withDatabaseTransaction(() => {
+      saveSiteSettings({ ...existing, footer, homeServices });
+      recordAdminEditAudit({
+        actorEmail: currentAdmin.email,
+        entityType: "site-structure",
+        entityKey: "home-footer",
+        operation: "update",
+        before: { footer: existing.footer, homeServices: existing.homeServices },
+        after: { footer, homeServices }
+      });
+    });
+    revalidatePath("/", "layout");
+    revalidatePath("/");
+    revalidatePath("/studio");
+    return { status: "success", message: "Homepage links and footer saved." };
+  } catch (error) {
+    return { status: "error", message: error instanceof Error ? error.message : "Site structure could not be saved." };
+  }
 }
 
 export type CategoryActionState = { status: "idle" | "success" | "error"; message: string; categoryKey?: string };
@@ -1005,13 +1056,20 @@ export async function deletePageAction(formData: FormData) {
 }
 
 export async function savePieceAction(formData: FormData) {
-  await requireAdmin();
+  const currentAdmin = await requireAdmin();
   const slug = requiredField(formData.get("slug"), "Piece slug");
   const current = getPiece(slug);
   const pieceJson = optionalField(formData.get("pieceJson"));
+  const submittedMediaLinks = formData.has("mediaLinksJson")
+    ? normalizePieceMediaLinks(JSON.parse(requiredField(formData.get("mediaLinksJson"), "Piece media relations")) as unknown)
+    : null;
+  const selectedMediaPaths = submittedMediaLinks
+    ? submittedMediaLinks.filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role)).map((link) => link.relativePath)
+    : formData.has("mediaPathsText") ? [...new Set(parseListField(formData.get("mediaPathsText")))] : null;
   const priceMode = (formData.has("priceMode") ? optionalField(formData.get("priceMode")) : current ? getPiecePriceMode(current) : "not-listed") as PieceRecord["priceMode"];
   const inquiryMode = (formData.has("inquiryMode") ? optionalField(formData.get("inquiryMode")) : current ? getPieceInquiryMode(current) : "disabled") as PieceRecord["inquiryMode"];
   const reviewsMode = (formData.has("reviewsMode") ? optionalField(formData.get("reviewsMode")) : current ? getPieceReviewsMode(current) : "hidden") as PieceRecord["reviewsMode"];
+  withDatabaseTransaction(() => {
   savePiece(pieceJson
     ? parseJsonField<PieceRecord>(formData.get("pieceJson"), current!)
     : {
@@ -1047,7 +1105,7 @@ export async function savePieceAction(formData: FormData) {
         commissionTypeSlug: formData.has("commissionTypeSlug") ? optionalField(formData.get("commissionTypeSlug")) || null : current?.commissionTypeSlug ?? null,
         inventoryCount: parseInteger(formData.get("inventoryCount"), current?.inventoryCount ?? 0),
         leadTimeDays: parseInteger(formData.get("leadTimeDays"), current?.leadTimeDays ?? 0),
-        mediaPaths: formData.has("mediaPathsText") ? parseListField(formData.get("mediaPathsText")) : current?.mediaPaths || [],
+        mediaPaths: (selectedMediaPaths ?? current?.mediaPaths) || [],
         featuredRank: parseInteger(formData.get("featuredRank"), current?.featuredRank ?? 99),
         ownerEmail: optionalField(formData.get("ownerEmail")) || current?.ownerEmail || "woodsmithbb@proton.me",
         metadata: {
@@ -1058,6 +1116,39 @@ export async function savePieceAction(formData: FormData) {
           mediaReviewRequired: parseBooleanField(formData.get("mediaReviewRequired"))
         }
       });
+    if (submittedMediaLinks) {
+      const privateLinks = listPieceMediaLinks(slug).filter((link) => link.role === "private-project");
+      const gatedLinks = submittedMediaLinks.map((link) => {
+        const media = getMedia(link.relativePath);
+        if (!media) throw new Error(`Selected media '${link.relativePath}' is no longer indexed.`);
+        return { ...link, public: link.public && media.reviewed };
+      });
+      replacePieceMediaLinks(slug, [...gatedLinks, ...privateLinks], currentAdmin.email);
+    } else if (selectedMediaPaths) {
+      const preservedLinks = listPieceMediaLinks(slug).filter((link) => !["hero", "gallery", "detail", "context"].includes(link.role));
+      const currentDisplayLinks = listPieceMediaLinks(slug).filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role));
+      const publishRequested = parseBooleanField(formData.get("verifiedMedia"));
+      const displayLinks = selectedMediaPaths.map((relativePath, index) => {
+        const media = getMedia(relativePath);
+        if (!media) throw new Error(`Selected media '${relativePath}' is no longer indexed.`);
+        const role = index === 0 ? "hero" as const : "gallery" as const;
+        const existingLink = currentDisplayLinks.find((link) => link.relativePath === relativePath);
+        return {
+          relativePath,
+          role,
+          stage: null,
+          occurredAt: existingLink?.occurredAt ?? null,
+          title: existingLink?.title ?? "",
+          caption: existingLink?.caption ?? "",
+          technicalNote: existingLink?.technicalNote ?? "",
+          altOverride: existingLink?.altOverride ?? null,
+          displayOrder: index,
+          public: publishRequested && media.reviewed
+        };
+      });
+      replacePieceMediaLinks(slug, [...displayLinks, ...preservedLinks], currentAdmin.email);
+    }
+  });
   revalidatePieceSurfaces(slug);
   redirect(`/studio?panel=pieces&saved=piece&piece=${encodeURIComponent(slug)}`);
 }

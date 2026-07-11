@@ -12,6 +12,7 @@ import {
 } from "./seed.ts";
 import { scanMediaLibrary } from "./media.ts";
 import { normalizePieceCategories } from "./categories.ts";
+import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
 import {
   getPieceInquiryMode,
@@ -1572,6 +1573,8 @@ export function getSiteSettings() {
     ...fallback,
     ...activeSettings,
     navigation: Array.isArray(stored.navigation) ? stored.navigation : fallback.navigation,
+    footer: safeFooterConfiguration((stored as SiteSettings & { footer?: unknown }).footer, fallback.footer),
+    homeServices: safeHomeServices((stored as SiteSettings & { homeServices?: unknown }).homeServices, [...fallback.homeServices]),
     pieceCategories: normalizePieceCategories((stored as SiteSettings & { pieceCategories?: unknown }).pieceCategories)
   };
 }
