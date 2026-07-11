@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
-import { CategoryIcon, PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
+import { CategoryIcon } from "@/components/category-icon";
+import { PageIntro, PageSection, PieceCard, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPiecePortfolioCategory, getPortfolioCategories } from "@/lib/catalog";
 import { getPage, getSiteSettings, listPieces } from "@/lib/db";
@@ -17,7 +18,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   const { category } = await searchParams;
   const page = getPage("portfolio");
   const categories = getPortfolioCategories(getSiteSettings().pieceCategories);
-  const portfolioCategories = [{ key: "all", label: "All pieces", icon: "all" as const, aliases: [] }, ...categories];
+  const portfolioCategories = [{ key: "all", label: "All pieces", icon: "all" as const, iconName: "all" as const, iconType: "builtin" as const, customIconSvg: null, aliases: [], sortOrder: -1, visible: true }, ...categories];
   const selectedCategory = portfolioCategories.some((item) => item.key === category) ? String(category) : "all";
   const allPieces = listPieces();
   const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece, categories) === selectedCategory);
@@ -52,7 +53,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
                   href={href}
                   key={item.key}
                 >
-                  <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item.key} icon={item.icon} /></span>
+                  <span className="portfolio-filter-mark" aria-hidden="true"><CategoryIcon category={item} /></span>
                   <span>{item.label}</span>
                   <strong>{counts.get(item.key) ?? 0}</strong>
                 </Link>

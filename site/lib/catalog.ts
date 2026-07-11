@@ -12,7 +12,7 @@ import {
 import { defaultPieceCategories, normalizePieceCategories, pieceCategoryKey, type PieceCategoryDefinition } from "@/lib/categories";
 
 export function getPortfolioCategories(value?: unknown) {
-  return normalizePieceCategories(value ?? defaultPieceCategories);
+  return normalizePieceCategories(value ?? defaultPieceCategories).filter((category) => category.visible);
 }
 
 export function getPiecePortfolioCategory(

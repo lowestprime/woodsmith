@@ -62,6 +62,7 @@ import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { StudioScrollRestore } from "@/components/studio-form";
 import { StudioMediaWorkspace } from "@/components/studio-media-workspace";
+import { StudioCategoryEditor } from "@/components/studio-category-editor";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
@@ -152,28 +153,6 @@ function PieceEditor({ piece, categories, highlight = false }: { piece: Omit<Pie
         <div className="field-grid two-up compact-grid"><Check label="Verified media" name="verifiedMedia" defaultChecked={piece.metadata.verifiedMedia !== false} /><Check label="Media review required" name="mediaReviewRequired" defaultChecked={Boolean(piece.metadata.mediaReviewRequired)} /></div>
         <button className="button-primary" type="submit">Save piece</button>
       </form>
-    </article>
-  );
-}
-
-function PieceCategoryEditor({ category, categories, isNew = false }: { category: PieceCategoryDefinition; categories: PieceCategoryDefinition[]; isNew?: boolean }) {
-  return (
-    <article className="studio-panel studio-editor-card category-editor-card" id={toDomId("category", category.key)}>
-      <div className="studio-editor-head"><div><p className="eyebrow">Portfolio category</p><h3>{category.label}</h3></div><span className={`category-preview category-preview-${category.icon}`}>{category.icon}</span></div>
-      <form action={savePieceCategoryAction} className="request-form compact-form">
-        <input name="originalKey" type="hidden" value={isNew ? "" : category.key} />
-        <div className="field-grid two-up compact-grid"><Field label="Key" name="key" defaultValue={category.key} required /><Field label="Public label" name="label" defaultValue={category.label} required /></div>
-        <label><span>Icon</span><select defaultValue={category.icon} name="icon"><option value="tables">Table</option><option value="benches">Bench</option><option value="stepstools">Stepstool</option><option value="cabinets">Cabinet</option><option value="objects">Object</option></select></label>
-        <Area label="Matching terms, one per line" name="aliasesText" defaultValue={category.aliases.join("\n")} rows={3} />
-        <button className="button-primary" type="submit">{isNew ? "Add category" : "Save category"}</button>
-      </form>
-      {!isNew ? (
-        <form action={deletePieceCategoryAction} className="request-form compact-form category-delete-form">
-          <input name="key" type="hidden" value={category.key} />
-          <label><span>Move assigned pieces before deleting</span><select defaultValue="" name="replacementKey"><option value="">Only delete if unused</option>{categories.filter((entry) => entry.key !== category.key).map((entry) => <option key={entry.key} value={entry.key}>{entry.label}</option>)}</select></label>
-          <button className="button-secondary" type="submit">Delete category</button>
-        </form>
-      ) : null}
     </article>
   );
 }
@@ -487,7 +466,7 @@ export default async function StudioPage({
 
       {currentPanel === "pages" ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Titles, intros, body copy, and hero media. Saving here writes to {persistence.databasePath} and revalidates the live route.</p></div><div className="studio-grid two-column-grid"><PageEditor page={pageDraft()} />{pages.map((page) => <PageEditor highlight={page.slug === pageHighlight} key={page.slug} page={page} />)}</div></PageSection> : null}
       {currentPanel === "pieces" ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Categories, availability, media assignments, shop asking price, and metadata.</p></div><div className="studio-grid two-column-grid"><PieceEditor categories={categories} piece={pieceDraft(currentAdmin.email)} />{pieces.map((piece) => <PieceEditor categories={categories} highlight={piece.slug === pieceHighlight} key={piece.slug} piece={piece} />)}</div></PageSection> : null}
-      {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Manage the category labels, matching terms, and icon styles used by the public portfolio and piece editor.</p></div><div className="studio-grid category-editor-grid"><PieceCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "objects", aliases: [] }} isNew />{categories.map((category) => <PieceCategoryEditor categories={categories} category={category} key={category.key} />)}</div></PageSection> : null}
+      {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Choose a furniture icon, import a safe custom SVG, and control order and visibility without editing code.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} />{categories.map((category) => <StudioCategoryEditor categories={categories} category={category} deleteAction={deletePieceCategoryAction} key={category.key} saveAction={savePieceCategoryAction} />)}</div></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} user={user} />)}</div></PageSection> : null}
       {currentPanel === "process" ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Markdown body, cover images, external links, and publication state.</p></div><div className="studio-grid two-column-grid"><PostEditor post={postDraft(currentAdmin.email)} />{posts.map((post) => <PostEditor highlight={post.slug === postHighlight} key={post.slug} post={post} />)}</div></PageSection> : null}

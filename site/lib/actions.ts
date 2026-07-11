@@ -44,8 +44,10 @@ import {
   setPasswordHash,
   setPasswordResetToken,
   updateProject,
+  withDatabaseTransaction,
   deleteMediaRecordAndReferences,
   finishMediaRenameHistory,
+  recordAdminEditAudit,
   renameMediaRecordAndReferences,
   startMediaRenameHistory,
   type CommissionTypeRecord,
@@ -75,7 +77,8 @@ import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheck
 import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
-import { categoryKey, normalizePieceCategories, type PieceCategoryIcon } from "@/lib/categories";
+import { categoryKey, normalizePieceCategories } from "@/lib/categories";
+import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/category-icons";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceCanEnterCart } from "@/lib/piece-model";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
@@ -846,58 +849,96 @@ export async function saveSiteSettingsAction(formData: FormData) {
   redirect("/studio?panel=settings&saved=settings");
 }
 
-export async function savePieceCategoryAction(formData: FormData) {
-  await requireAdmin();
+export type CategoryActionState = { status: "idle" | "success" | "error"; message: string; categoryKey?: string };
+
+export async function savePieceCategoryAction(_: CategoryActionState, formData: FormData): Promise<CategoryActionState> {
+  const currentAdmin = await requireAdmin();
   const settings = getSiteSettings();
   const originalKey = categoryKey(optionalField(formData.get("originalKey")));
   const label = requiredField(formData.get("label"), "Category label");
   const key = categoryKey(optionalField(formData.get("key")) || label);
-  const allowedIcons = new Set<PieceCategoryIcon>(["tables", "benches", "stepstools", "cabinets", "objects"]);
-  const requestedIcon = optionalField(formData.get("icon")) as PieceCategoryIcon;
-  const icon = allowedIcons.has(requestedIcon) ? requestedIcon : "objects";
+  const iconName = normalizeBuiltinCategoryIcon(formData.get("iconName") ?? formData.get("icon"));
+  const requestedIconType = optionalField(formData.get("iconType"));
   const aliases = parseListField(formData.get("aliasesText"));
 
   if (!key || key === "all") {
-    redirect("/studio?panel=categories&error=category-key");
+    return { status: "error", message: "Use a category key other than 'all'." };
   }
 
   const categories = normalizePieceCategories(settings.pieceCategories);
+  if (originalKey && originalKey !== key && categories.some((category) => category.key === key)) {
+    return { status: "error", message: "Another category already uses that key." };
+  }
   const existingIndex = categories.findIndex((category) => category.key === originalKey || category.key === key);
   const previous = existingIndex >= 0 ? categories[existingIndex] : null;
-  const nextCategory = { key, label, icon, aliases };
+  let customIconSvg: string | null = null;
+  if (requestedIconType === "custom") {
+    try {
+      customIconSvg = sanitizeCategoryIconSvg(requiredField(formData.get("customIconSvg"), "Custom category SVG"));
+    } catch (error) {
+      return { status: "error", message: error instanceof Error ? error.message : "The custom category icon is invalid." };
+    }
+  }
+  const sortOrderInput = Number(formData.get("sortOrder"));
+  const sortOrder = Number.isFinite(sortOrderInput)
+    ? Math.max(0, Math.min(9999, Math.round(sortOrderInput)))
+    : previous?.sortOrder ?? categories.length * 10;
+  const visible = formData.has("visibilityControlled") ? formData.has("visible") : previous?.visible ?? true;
+  const nextCategory = {
+    key,
+    label,
+    icon: iconName,
+    iconName,
+    iconType: customIconSvg ? "custom" as const : "builtin" as const,
+    customIconSvg,
+    aliases,
+    sortOrder,
+    visible
+  };
   const nextCategories = existingIndex >= 0
     ? categories.map((category, index) => index === existingIndex ? nextCategory : category)
     : [...categories, nextCategory];
 
-  saveSiteSettings({ ...settings, pieceCategories: nextCategories });
-
-  if (previous && (previous.key !== key || previous.label !== label)) {
-    for (const piece of listPieces(true)) {
-      const currentCategory = piece.category.trim().toLowerCase();
-      if (currentCategory === previous.key.toLowerCase() || currentCategory === previous.label.toLowerCase()) {
-        savePiece({ ...piece, category: label });
-        revalidatePieceSurfaces(piece.slug);
+  const affectedPieceSlugs: string[] = [];
+  withDatabaseTransaction(() => {
+    saveSiteSettings({ ...settings, pieceCategories: nextCategories });
+    if (previous && (previous.key !== key || previous.label !== label)) {
+      for (const piece of listPieces(true)) {
+        const currentCategory = piece.category.trim().toLowerCase();
+        if (currentCategory === previous.key.toLowerCase() || currentCategory === previous.label.toLowerCase()) {
+          savePiece({ ...piece, category: label });
+          affectedPieceSlugs.push(piece.slug);
+        }
       }
     }
-  }
+    recordAdminEditAudit({
+      actorEmail: currentAdmin.email,
+      entityType: "piece-category",
+      entityKey: key,
+      operation: previous ? "update" : "create",
+      before: previous,
+      after: nextCategory
+    });
+  });
 
+  affectedPieceSlugs.forEach(revalidatePieceSurfaces);
   revalidatePath("/portfolio");
   revalidatePath("/studio");
-  redirect(`/studio?panel=categories&saved=category&category=${encodeURIComponent(key)}`);
+  return { status: "success", message: previous ? "Category saved." : "Category added.", categoryKey: key };
 }
 
-export async function deletePieceCategoryAction(formData: FormData) {
-  await requireAdmin();
+export async function deletePieceCategoryAction(_: CategoryActionState, formData: FormData): Promise<CategoryActionState> {
+  const currentAdmin = await requireAdmin();
   const settings = getSiteSettings();
   const key = categoryKey(requiredField(formData.get("key"), "Category key"));
   const categories = normalizePieceCategories(settings.pieceCategories);
   if (categories.length <= 1) {
-    redirect("/studio?panel=categories&error=category-last");
+    return { status: "error", message: "At least one portfolio category must remain available." };
   }
 
   const category = categories.find((entry) => entry.key === key);
   if (!category) {
-    redirect("/studio?panel=categories&error=category-missing");
+    return { status: "error", message: "The requested portfolio category could not be found." };
   }
 
   const replacementKey = categoryKey(optionalField(formData.get("replacementKey")));
@@ -908,20 +949,29 @@ export async function deletePieceCategoryAction(formData: FormData) {
   });
 
   if (affectedPieces.length > 0 && !replacement) {
-    redirect(`/studio?panel=categories&error=category-in-use&category=${encodeURIComponent(key)}`);
+    return { status: "error", message: "This category still has pieces. Choose a replacement before deleting it." };
   }
 
-  if (replacement) {
-    for (const piece of affectedPieces) {
-      savePiece({ ...piece, category: replacement.label });
-      revalidatePieceSurfaces(piece.slug);
+  withDatabaseTransaction(() => {
+    if (replacement) {
+      for (const piece of affectedPieces) {
+        savePiece({ ...piece, category: replacement.label });
+      }
     }
-  }
-
-  saveSiteSettings({ ...settings, pieceCategories: categories.filter((entry) => entry.key !== key) });
+    saveSiteSettings({ ...settings, pieceCategories: categories.filter((entry) => entry.key !== key) });
+    recordAdminEditAudit({
+      actorEmail: currentAdmin.email,
+      entityType: "piece-category",
+      entityKey: key,
+      operation: "delete",
+      before: category,
+      after: replacement ? { replacementKey: replacement.key } : null
+    });
+  });
+  affectedPieces.forEach((piece) => revalidatePieceSurfaces(piece.slug));
   revalidatePath("/portfolio");
   revalidatePath("/studio");
-  redirect("/studio?panel=categories&deleted=category");
+  return { status: "success", message: "Category deleted.", categoryKey: key };
 }
 
 export async function savePageAction(formData: FormData) {

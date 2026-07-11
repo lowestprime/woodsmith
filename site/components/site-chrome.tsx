@@ -4,10 +4,11 @@ import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
 import { HeaderShell } from "@/components/header-shell";
+import { CategoryIcon as SharedCategoryIcon } from "@/components/category-icon";
 import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
 import { avatarGradientStyle } from "@/lib/avatar";
 import { getDisplayMediaPaths, hasVerifiedMedia } from "@/lib/catalog";
-import { pieceCategoryIcon, type PieceCategoryDefinition, type PieceCategoryIcon } from "@/lib/categories";
+import { findPieceCategory, pieceCategoryIcon, type PieceCategoryDefinition } from "@/lib/categories";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, listPages, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
@@ -41,15 +42,7 @@ function EditGlyph() {
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 16.8V20h3.2L18.7 8.5l-3.2-3.2L4 16.8Z" /><path d="m14.9 5.9 3.2 3.2" /></svg>;
 }
 
-export function CategoryIcon({ category, icon }: { category: string; icon?: PieceCategoryIcon | "all" }) {
-  const key = icon ?? pieceCategoryIcon(category);
-  if (key === "all") return <span className="category-icon all-icon" aria-hidden="true"><i /><i /><i /></span>;
-  if (key === "tables") return <span className="category-icon" aria-hidden="true"><i /><i /><i /></span>;
-  if (key === "benches") return <span className="category-icon bench-icon" aria-hidden="true"><i /><i /><i /></span>;
-  if (key === "stepstools") return <span className="category-icon stepstool-icon" aria-hidden="true"><i /><i /><i /></span>;
-  if (key === "cabinets") return <span className="category-icon cabinet-icon" aria-hidden="true"><i /><i /><i /></span>;
-  return <span className="category-icon object-icon" aria-hidden="true"><i /><i /><i /></span>;
-}
+export { CategoryIcon } from "@/components/category-icon";
 
 const RESERVED_NAV_SLUGS = new Set(["home", "portfolio", "shop", "journal", "process", "commissions", "requests", "studio", "about", "account", "search", "media", "contact"]);
 
@@ -114,7 +107,8 @@ export function PieceCard({ piece, categories }: { piece: PieceRecord; categorie
   const firstImage = getDisplayMediaPaths(piece)[0];
   const verified = hasVerifiedMedia(piece);
   const media = firstImage ? getMedia(firstImage) : null;
-  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><CategoryIcon category={piece.category} icon={pieceCategoryIcon(piece.category, categories)} />{piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
+  const category = findPieceCategory(piece.category, categories);
+  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
 }
 export function PostCard({ post }: { post: PostRecord }) {
   return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p></article>;
