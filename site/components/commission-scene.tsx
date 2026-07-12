@@ -1,9 +1,9 @@
 "use client";
 
-import { Component, useEffect, useRef, useState, type ErrorInfo, type KeyboardEvent, type ReactNode } from "react";
+import { Component, useEffect, useRef, useState, useSyncExternalStore, type ErrorInfo, type KeyboardEvent, type ReactNode } from "react";
 import { Canvas, useThree } from "@react-three/fiber";
 import { ContactShadows, Edges, Grid, Html, OrbitControls, OrthographicCamera, PerspectiveCamera } from "@react-three/drei";
-import { Vector3 } from "three";
+import { Vector3, type Camera, type OrthographicCamera as ThreeOrthographicCamera } from "three";
 import {
   normalizeVisualizerState,
   resolveVisualizerTemplate,
@@ -14,6 +14,7 @@ type ViewPreset = "isometric" | "front" | "side" | "top";
 type CameraCommandKind = "rotate-left" | "rotate-right" | "zoom-in" | "zoom-out" | "reset";
 type CameraCommand = { id: number; kind: CameraCommandKind } | null;
 type Position = [number, number, number];
+type ProjectionCamera = Camera & { updateProjectionMatrix: () => void };
 
 const INCH = 0.0254;
 
@@ -33,6 +34,37 @@ const MATERIAL_COLORS: Record<string, string> = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
+}
+
+function isOrthographicCamera(camera: Camera): camera is ThreeOrthographicCamera {
+  return "isOrthographicCamera" in camera && camera.isOrthographicCamera === true;
+}
+
+function positionCamera(camera: Camera, position: Position, target: Vector3, zoom?: number) {
+  camera.position.set(...position);
+  if (zoom !== undefined && isOrthographicCamera(camera)) camera.zoom = zoom;
+  camera.lookAt(target);
+  (camera as ProjectionCamera).updateProjectionMatrix();
+}
+
+function applyCameraCommand(camera: Camera, command: CameraCommandKind, target: Vector3, resetPosition: Position, resetZoom: number) {
+  const offset = camera.position.clone().sub(target);
+  if (command === "rotate-left" || command === "rotate-right") {
+    offset.applyAxisAngle(new Vector3(0, 1, 0), command === "rotate-left" ? Math.PI / 12 : -Math.PI / 12);
+    camera.position.copy(target.clone().add(offset));
+  } else if (command === "zoom-in" || command === "zoom-out") {
+    if (isOrthographicCamera(camera)) {
+      camera.zoom = clamp(camera.zoom * (command === "zoom-in" ? 1.16 : 0.86), 0.35, 240);
+    } else {
+      offset.multiplyScalar(command === "zoom-in" ? 0.84 : 1.16);
+      camera.position.copy(target.clone().add(offset));
+    }
+  } else {
+    camera.position.set(...resetPosition);
+    if (isOrthographicCamera(camera)) camera.zoom = resetZoom;
+  }
+  camera.lookAt(target);
+  (camera as ProjectionCamera).updateProjectionMatrix();
 }
 
 function Part({ color, position, size }: { color: string; position: Position; size: Position }) {
@@ -136,41 +168,18 @@ function CameraRig({ command, preset, size }: { command: CameraCommand; preset: 
       side: [distance, distance * 0.38, 0],
       top: [0.001, distance, 0.001]
     };
-    camera.position.set(...positions[preset]);
-    if ("isOrthographicCamera" in camera && camera.isOrthographicCamera) {
-      camera.zoom = clamp(Math.min(viewportSize.width, viewportSize.height) / (Math.max(size, 0.1) * 1.65), 20, 240);
-    }
-    camera.lookAt(0, size * 0.3, 0);
-    camera.updateProjectionMatrix();
+    const zoom = clamp(Math.min(viewportSize.width, viewportSize.height) / (Math.max(size, 0.1) * 1.65), 20, 240);
+    positionCamera(camera, positions[preset], new Vector3(0, size * 0.3, 0), zoom);
     invalidate();
   }, [camera, invalidate, preset, size, viewportSize.height, viewportSize.width]);
 
   useEffect(() => {
     if (!command) return;
     const target = new Vector3(0, Math.min(size * 0.3, 0.8), 0);
-    const offset = camera.position.clone().sub(target);
-
-    if (command.kind === "rotate-left" || command.kind === "rotate-right") {
-      offset.applyAxisAngle(new Vector3(0, 1, 0), command.kind === "rotate-left" ? Math.PI / 12 : -Math.PI / 12);
-      camera.position.copy(target.clone().add(offset));
-    } else if (command.kind === "zoom-in" || command.kind === "zoom-out") {
-      if ("isOrthographicCamera" in camera && camera.isOrthographicCamera) {
-        camera.zoom = clamp(camera.zoom * (command.kind === "zoom-in" ? 1.16 : 0.86), 0.35, 5);
-      } else {
-        offset.multiplyScalar(command.kind === "zoom-in" ? 0.84 : 1.16);
-        camera.position.copy(target.clone().add(offset));
-      }
-    } else {
-      const portraitScale = clamp(viewportSize.height / Math.max(1, viewportSize.width), 1, 2.2);
-      const distance = Math.max(2.6, size * 2.2 * portraitScale);
-      camera.position.set(distance, distance * 0.78, distance);
-      if ("isOrthographicCamera" in camera && camera.isOrthographicCamera) {
-        camera.zoom = clamp(Math.min(viewportSize.width, viewportSize.height) / (Math.max(size, 0.1) * 1.65), 20, 240);
-      }
-    }
-
-    camera.lookAt(target);
-    camera.updateProjectionMatrix();
+    const portraitScale = clamp(viewportSize.height / Math.max(1, viewportSize.width), 1, 2.2);
+    const distance = Math.max(2.6, size * 2.2 * portraitScale);
+    const resetZoom = clamp(Math.min(viewportSize.width, viewportSize.height) / (Math.max(size, 0.1) * 1.65), 20, 240);
+    applyCameraCommand(camera, command.kind, target, [distance, distance * 0.78, distance], resetZoom);
     invalidate();
   }, [camera, command, invalidate, size, viewportSize.height, viewportSize.width]);
   return null;
@@ -199,9 +208,23 @@ function supportsWebGl() {
   }
 }
 
+function subscribeToWebGl() {
+  return () => undefined;
+}
+
+function getReducedMotionSnapshot() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function subscribeToReducedMotion(callback: () => void) {
+  const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+  media.addEventListener("change", callback);
+  return () => media.removeEventListener("change", callback);
+}
+
 export default function CommissionScene3D({ state, fallbackSvg }: { state: VisualizerState; fallbackSvg: string }) {
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const available = useSyncExternalStore(subscribeToWebGl, supportsWebGl, () => null);
+  const prefersReducedMotion = useSyncExternalStore(subscribeToReducedMotion, getReducedMotionSnapshot, () => false);
   const [reducedMotionOverride, setReducedMotionOverride] = useState(false);
   const [preset, setPreset] = useState<ViewPreset>("isometric");
   const [orthographic, setOrthographic] = useState(false);
@@ -211,15 +234,6 @@ export default function CommissionScene3D({ state, fallbackSvg }: { state: Visua
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const normalizedState = normalizeVisualizerState(state);
   const size = Math.max(normalizedState.width, normalizedState.depth, normalizedState.height) * INCH;
-
-  useEffect(() => {
-    setAvailable(supportsWebGl());
-    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const updateMotionPreference = () => setPrefersReducedMotion(media.matches);
-    updateMotionPreference();
-    media.addEventListener("change", updateMotionPreference);
-    return () => media.removeEventListener("change", updateMotionPreference);
-  }, []);
 
   const fallback = <div className="visualizer-static-fallback"><div dangerouslySetInnerHTML={{ __html: fallbackSvg }} /><p>Interactive 3D is unavailable in this browser. The deterministic proportional drawing remains part of the request.</p></div>;
   if (available === false) return fallback;
