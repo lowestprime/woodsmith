@@ -2,6 +2,8 @@
 
 Date: 2026-07-11  
 Branch: `codex/sitewide-studio-ux-commission-overhaul-20260711`  
+
+Rendered verification for this overhaul is now provided by the pinned two-mode system documented in `docs/visual-archive.md`. Its evidence contract covers source/database/rendered-link inventory, read-only live capture, isolated mutation-state capture, required themes and viewports, deep Studio/media/inline-edit/visualizer states, overlapping raw tiles, stitched surfaces, restricted/redacted HTML and PDF reports, checksums, and baseline comparison. Deployment remains gated on a passing final-candidate smoke and full archive.
 Baseline commit: `81b35c4b97d464a388560c13c1526b78c10afa45`
 
 This document records the verified baseline used for the sitewide overhaul. Documentation claims were treated as hypotheses and checked against source, a disposable SQLite backup, supplied screenshots, and read-only production requests.

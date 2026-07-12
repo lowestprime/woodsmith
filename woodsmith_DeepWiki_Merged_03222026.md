@@ -16,7 +16,7 @@ Beaman Woodworks is a self-hosted Next.js 16 application with a SQLite-backed co
 - Nodemailer for SMTP delivery
 - Stripe API for hosted checkout and invoice generation
 - EasyPost API for shipment creation
-- Credential-free procedural 3D preview UI for custom work, with Three.js and React Three Fiber dependencies retained for future rendering work
+- Dynamically isolated React Three Fiber/Three.js conceptual proportional preview with deterministic SVG and textual fallbacks
 - Optional OpenAI Image API and Embeddings API integration, disabled unless `OPENAI_API_KEY` and feature flags are configured server-side
 
 ## Core application areas
@@ -80,6 +80,10 @@ The SQLite schema includes these primary tables:
 - `orders`
 - `reviews`
 - `notifications`
+- `schema_migrations`
+- `piece_media_links`
+- `admin_edit_audit`
+- `media_rename_history`
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v5 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
@@ -114,7 +118,13 @@ The public custom work route is contact-first. It captures buyer contact details
 
 Custom work type records still store default dimensions, material options, labor hours, and markup settings so the woodshop can maintain estimator context and future richer intake flows.
 
-`site/components/visualizer.tsx` now provides a live 3D CSS/procedural scale preview and still stores an SVG snapshot with submitted project data when the buyer opts in. When `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, `/api/render-preview` can generate a photorealistic image preview, persist it under `/app/pics`, and attach it to the project only when the buyer includes the preview.
+`site/components/visualizer.tsx` dynamically loads `site/components/commission-scene.tsx` only on the custom-work route. The React Three Fiber scene supports category-specific and generic templates, exact submitted dimensions, material cues, perspective/orthographic cameras, front/side/top/isometric presets, orbit/zoom/reset controls, and demand rendering. A deterministic SVG drawing and textual dimensions remain available for printing, submission, reduced motion, and WebGL failure. When `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, `/api/render-preview` can generate a photorealistic conceptual image, persist it under `/app/pics`, and attach it only when the buyer includes the preview.
+
+## Visual archive and rendered QA
+
+`visual-audit/` is an independent TypeScript package pinned to Playwright 1.61.0 and Sharp 0.35.3. It reconciles source routes, a token-and-admin-protected bounded database inventory, and rendered same-origin links. `live-readonly` blocks unsafe browser requests and adds a server read-only header; `snapshot-lab` uses a verified SQLite/media clone on an internal Docker network with external providers disabled.
+
+The runner captures the required desktop/tablet/mobile/theme matrix plus a 5120 x 2880 archival viewport, deep dialog/disclosure/lightbox/Studio/media/inline-edit/visualizer states, overlapping raw tiles and stitched long surfaces, and an element atlas. It writes restricted and redacted searchable HTML/PDF editions, SHA-256 manifests, route/network/render diagnostics, tile-seam validation, and baseline comparisons. See `docs/visual-archive.md` for the exact safety and operating contract.
 
 ## Search
 
@@ -145,7 +155,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 ## Known caveats
 
 - SQLite support still relies on Node's experimental `node:sqlite` API.
-- The visualizer is a procedural 3D scale preview unless optional OpenAI rendering is configured. Generated images are previews, not fabrication drawings.
+- The visualizer is a conceptual proportional R3F preview, not fabrication-ready CAD. Optional generated images are also conceptual and provider-dependent.
 - Scientist Desk media is intentionally withheld until the correct images are verified.
 - Local pixel embeddings require the optional sidecar model dependencies and a sidecar URL reachable from the web container. The manual workflow remains available when it is offline.
 - OpenAI-backed rendering and cleaned image copies remain separate explicit feature flags. ChatGPT Plus is not an API credential.
@@ -174,6 +184,9 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/components/studio-media-workspace.tsx`: compact media-management workspace for `/studio?panel=media`
 - `site/components/visitor-tracker.tsx` + `site/components/visitor-insights.tsx`: client visit logging and dashboard visitor map/list
 - `site/components/visualizer.tsx`: procedural custom-work visualizer, optional AI preview trigger, legacy to-scale SVG snapshot, and estimator fields
+- `site/components/commission-scene.tsx`: route-local React Three Fiber templates, cameras, lighting, dimensions, and fallback-safe scene controls
+- `visual-audit/`: deterministic two-mode visual archive, reports, validation, comparison, and NAS scripts
+- `docs/visual-archive.md`: visual-archive security and operations manual
 - `site/app/icon.tsx`: generated favicon
 - `site/app/studio/page.tsx`: private Woodshop dashboard
 - `site/app/media/[...slug]/route.ts`: file-backed media serving route

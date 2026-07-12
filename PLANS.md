@@ -1,5 +1,19 @@
 # PLANS.md
 
+## 2026-07-11 Sitewide UX, Data, Commission, And Visual Archive Overhaul
+
+- Status: IN PROGRESS ON FEATURE BRANCH; NOT DEPLOYED
+- Branch: `codex/sitewide-studio-ux-commission-overhaul-20260711`
+
+| Slice | Status | Evidence |
+|------|--------|----------|
+| Additive data model and compatibility | DONE / COMMITTED | `d35eb35` adds the migration ledger, normalized piece media, typed commerce policies, edit/rename history, compatibility synchronization, transactional reference rewriting, and disposable-database tests. |
+| Audit and category design | DONE / COMMITTED | `30c87f6` records the evidence audit; `959a2ca` adds managed visual category icons and tests. |
+| Structured Studio and public content | DONE / COMMITTED | `8b2a39b` adds structured footer/home services, typed public pricing/inquiry/review behavior, visual media selection, compact Page/Piece/Process editing, media roles, and public build records. |
+| Conceptual proportional 3D preview | DONE / COMMITTED | `9e143da` adds route-local R3F templates, view/camera controls, exact dimensions, deterministic SVG/text fallbacks, demand rendering, and estimator tests. |
+| Deterministic visual archive | IMPLEMENTED / LOCALLY VALIDATED; NAS RUNTIME VALIDATION PENDING | The QA slice adds protected bounded inventory, strict live-readonly and isolated snapshot-lab modes, pinned Playwright Docker, route/link reconciliation, required high-resolution profiles, overlapping page/nested-scroll tiles with seam checks, deep UI state capture, restricted/redacted HTML/PDF, checksums, diffs, locks, and retention. Local tests, typecheck, lint, build, Compose validation, and a disposable-data smoke archive pass. The local Docker daemon is unavailable, so candidate-image and NAS smoke/full evidence remain required before deployment. |
+| Remaining product work | PENDING | Typed atomic inline editing, secure resumable multi-step commissions, transactional batch media operations/rollback, derivative-only cleanup, accessibility/performance completion, final docs, archive evidence, release, rollback, and deployment gates remain active. |
+
 ## 2026-07-05 Local-First Media AI, Header, and Persistence Pass
 
 - Status: LIVE DEPLOYED AND VERIFIED ON SYNOLOGY

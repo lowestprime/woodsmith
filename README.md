@@ -16,7 +16,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Portfolio category filtering managed through editable labels, matching terms, and icon styles in the Woodshop dashboard
 - Shop pages with asking-price language, cart totals, coupon handling, tax estimate, pickup/delivery/shipping labels, and Stripe checkout plumbing
 - Process writing under the dedicated `/process` archive, with markdown content and optional source-credit links for outside references
-- Contact-first custom work requests with attachments, lead-time context, material preferences, project tracking, and an optional live procedural 3D scale preview
+- Contact-first custom work requests with attachments, lead-time context, material preferences, project tracking, and an optional route-local React Three Fiber conceptual scale preview
 - Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
@@ -29,13 +29,14 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
+- A pinned two-mode Playwright visual archive with protected source/database/link inventory, read-only production capture, isolated snapshot-lab states, overlapping high-resolution tiles, HTML/PDF reports, checksums, and baseline comparisons
 
 ## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
 - Studio overview reports the active `DATA_ROOT`, SQLite `quick_check`, journal mode, and seed version so rebuild-safe persistence can be verified from the browser. Seed upgrades are non-destructive for existing Studio-edited records.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
-- The public custom work flow is contact-first and includes a credential-free procedural 3D scale preview. The older SVG renderer remains for stored visualization snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
+- The public custom work flow is contact-first and includes a credential-free, dynamically loaded React Three Fiber conceptual proportional preview. A deterministic SVG drawing remains available for fallback, printing, and submitted snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
 - The public site exposes admin-only edit controls when an admin is signed in. Mapped text and link fields save in place without a page reload; structural changes remain available through the linked `/studio` editor.
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
@@ -50,6 +51,8 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `design/Beaman_Woodworks_V2_Google_Stitch_Beta/`: Beaman Woodworks 2.0 prototypes audited for layout, theme, and dashboard direction
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
 - `docker-compose.synology.yml`: Synology runtime model
+- `visual-audit/`: pinned Playwright capture, report, comparison, validation, and NAS automation package
+- `docs/visual-archive.md`: private live-readonly and snapshot-lab operating guide
 - `synology-nas-deploy.md`: deployment and NAS operations guide
 - `admin.md`: private Woodshop dashboard manual
 - `woodsmith_DeepWiki_Merged_03222026.md`: codebase architecture reference
@@ -81,6 +84,11 @@ Required for a secure deployment:
 - `SITE_URL`
 - `NEXT_PUBLIC_SITE_URL`
 - `DATA_ROOT` (production: `/app/site/data`)
+
+Required only when the private visual archive is enabled:
+
+- `VISUAL_AUDIT_TOKEN` and optional `VISUAL_AUDIT_MAX_RECORDS`
+- private ignored secret files prepared by `visual-audit/scripts/prepare-live-secrets.sh`
 
 Local-first media AI configuration:
 
@@ -135,6 +143,8 @@ Public:
 - `/process/[slug]`
 - `/commissions`
 - `/commissions/status`
+- `/contact`
+- `/care-and-warranty`
 - `/about`
 - `/search`
 
@@ -169,3 +179,4 @@ Use these docs together:
 - `synology-nas-deploy.md`
 - `admin.md`
 - `woodsmith_DeepWiki_Merged_03222026.md`
+- `docs/visual-archive.md`

@@ -3,6 +3,8 @@
 node_modules
 site/node_modules
 site/.next
+visual-audit/node_modules
+visual-audit/dist
 .output
 .sst
 .tanstack
@@ -17,6 +19,7 @@ site/data/media-ai-cache/
 .env
 .env.local
 .env.*.local
+.visual-audit-lab.env
 #recycle
 @eaDir
 **/@eaDir
@@ -24,4 +27,10 @@ site/data/media-ai-cache/
 pics/
 cache/
 releases/
+archive/
+design/
+output/
+visual-audits/
+visual-audit-lab/
+secrets/
 wsl_build_nas_deploy_commands.md

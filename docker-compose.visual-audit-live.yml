@@ -1,0 +1,47 @@
+services:
+  visual-audit:
+    build:
+      context: .
+      dockerfile: visual-audit/Dockerfile
+    container_name: woodsmith-visual-audit
+    init: true
+    ipc: host
+    read_only: true
+    user: "${PUID:?PUID must be set}:${PGID:?PGID must be set}"
+    environment:
+      TARGET_MODE: live-readonly
+      BASE_URL: "${VISUAL_AUDIT_BASE_URL:-https://woodmat.ch}"
+      TARGET_COMMIT_SHA: "${TARGET_COMMIT_SHA:?TARGET_COMMIT_SHA must be set}"
+      AUDIT_RUN_ID: "${AUDIT_RUN_ID:?AUDIT_RUN_ID must be set}"
+      AUDIT_SCOPE: "${AUDIT_SCOPE:-full}"
+      AUDIT_RESUME: "${AUDIT_RESUME:-true}"
+      RUN_OUTPUT_ROOT: /output
+      REPO_ROOT: /workspace
+      AUDIT_TMP_ROOT: /audit-tmp
+      APPROVED_BASELINE_ROOT: "${APPROVED_BASELINE_ROOT:-}"
+      WOODSMITH_ADMIN_EMAIL: "${WOODSMITH_ADMIN_EMAIL:-woodsmithbb@proton.me}"
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      AUDIT_TOKEN_FILE: /run/secrets/audit_token
+      MAX_FULL_PAGE_DEVICE_HEIGHT: "${MAX_FULL_PAGE_DEVICE_HEIGHT:-50000}"
+      MAX_STITCHED_SEGMENT_HEIGHT: "${MAX_STITCHED_SEGMENT_HEIGHT:-60000}"
+      AUDIT_STRICT_DIAGNOSTICS: "${AUDIT_STRICT_DIAGNOSTICS:-true}"
+    volumes:
+      - ./:/workspace:ro
+      - /volume2/docker_ssd/woodsmith/visual-audits:/output:rw
+    tmpfs:
+      - /audit-tmp:rw,noexec,nosuid,nodev,size=64m,mode=700
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    secrets:
+      - admin_password
+      - audit_token
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: "no"
+
+secrets:
+  admin_password:
+    file: ./secrets/woodsmith_audit_admin_password
+  audit_token:
+    file: ./secrets/woodsmith_visual_audit_token

@@ -1,0 +1,27 @@
+{
+  "name": "woodsmith-visual-audit",
+  "version": "1.0.0",
+  "description": "Deterministic two-mode visual archive for Beaman Woodworks",
+  "scripts": {
+    "test": "npm run build && node --test dist/*.test.js",
+    "build": "tsc -p tsconfig.json",
+    "capture": "npm run build && node dist/run.js",
+    "report": "npm run build && node dist/report.js",
+    "validate": "npm run build && node dist/validate.js",
+    "compare": "npm run build && node dist/diff.js",
+    "all": "npm run capture && npm run compare && npm run report && npm run validate"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "playwright": "1.61.0",
+    "sharp": "0.35.3"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.0",
+    "typescript": "5.8.3"
+  }
+}

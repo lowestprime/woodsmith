@@ -25,7 +25,7 @@ Changes save into the mounted SQLite data store, revalidate the matching public 
 
 ### Portfolio and shop pieces
 
-The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, assign media paths, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified.
+The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, select and order media visually by role, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified. Raw path entry is not the normal workflow.
 
 The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Categories can be renamed safely; deletion requires that assigned pieces are either absent or reassigned to another category.
 
@@ -120,7 +120,13 @@ Password resets, verification links, project updates, contact requests, and comm
 
 ### Custom work contact
 
-The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional 3D scale preview, and a written brief. It creates a private project record and redirects the buyer to a reference page. If `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, the visualizer can also generate a photorealistic preview and attach it only when the buyer chooses to include the preview.
+The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional conceptual proportional preview, and a written brief. The preview uses a dynamically loaded React Three Fiber scene with perspective/orthographic and front/side/top/isometric controls, while the deterministic SVG drawing remains available if WebGL or motion is unavailable. It creates a private project record and redirects the buyer to a reference page. If `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, the visualizer can also generate a photorealistic preview and attach it only when the buyer chooses to include the preview.
+
+## Private visual archive
+
+The visual archive is an operational QA tool, not a Studio content panel. It inventories public and authenticated routes, captures the final rendered interfaces, and produces restricted PNG/HTML/PDF evidence. Production capture is read-only at both browser and server layers. Save, upload, rename, delete, invoice, shipping, email, and model actions are captured only against an isolated SQLite/media clone.
+
+Use [`docs/visual-archive.md`](docs/visual-archive.md) for secret preparation, smoke/full runs, snapshot-lab setup, validation, retention, and post-deployment gates. Never upload the restricted archive or its authentication state to public CI or Git.
 
 ### Shop checkout
 

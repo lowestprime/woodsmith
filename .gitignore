@@ -52,3 +52,13 @@ releases/
 cloudflared/*.json
 cloudflared/config.yml
 wsl_build_nas_deploy_commands.md
+
+# Visual audit
+visual-audit/node_modules/
+visual-audit/dist/
+visual-audit/.auth/
+visual-audit/tmp/
+visual-audits/
+visual-audit-lab/
+.visual-audit-lab.env
+secrets/

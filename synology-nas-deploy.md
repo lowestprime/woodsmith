@@ -151,7 +151,11 @@ ChatGPT Plus is not an API backend. Gemini and OpenAI require their own API cred
 
 ```bash
 cd /mnt/woodsmith
-docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg WOODSMITH_BUILD_SHA="$(git rev-parse HEAD)" \
+  -t woodsmith:prod \
+  --load .
 ```
 
 Optional local container smoke test:
@@ -258,6 +262,27 @@ curl -I http://127.0.0.1:3002/studio/login
 ```bash
 docker compose -f docker-compose.synology.yml logs --tail=200 woodsmith
 ```
+
+## Post-deployment visual archive
+
+After the candidate passes the normal database, mount, route, and log checks, run the deterministic live-readonly smoke before the full archive:
+
+```bash
+cd /volume2/docker_ssd/woodsmith
+visual-audit/scripts/prepare-live-secrets.sh
+
+export TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
+export AUDIT_RUN_ID="smoke-$(date -u '+%Y%m%dT%H%M%SZ')-$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
+export AUDIT_SCOPE=smoke
+
+visual-audit/scripts/run-live-audit.sh
+```
+
+The same run ID is used by capture, baseline comparison, report generation, and validation. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
+
+Mutation-dependent success/error states require `visual-audit/scripts/prepare-snapshot-lab.sh` followed by `visual-audit/scripts/run-snapshot-lab.sh`. The lab uses a `VACUUM INTO` database clone, reflink/full-copy media, verified run markers, an internal Docker network, and disabled external integrations. It never mounts production data or media read-write.
+
+Full commands, artifacts, permissions, retention, and acceptance criteria are in [`docs/visual-archive.md`](docs/visual-archive.md).
 
 ## Backup guidance
 

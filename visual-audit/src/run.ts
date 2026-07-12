@@ -1,0 +1,2002 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import {
+  chromium,
+  type Browser,
+  type BrowserContext,
+  type Locator,
+  type Page
+} from "playwright";
+
+import {
+  captureElement,
+  capturePageSurface
+} from "./capture.js";
+import {
+  config,
+  viewports
+} from "./config.js";
+import {
+  buildRoutes,
+  discoverSourceRoutes,
+  fetchInventory
+} from "./inventory.js";
+import { waitForVisualReady } from "./readiness.js";
+import { auditTokenEligible, isUnsafeMethod } from "./policy.js";
+import type {
+  AuthState,
+  CaptureRecord,
+  DiagnosticRecord,
+  Inventory,
+  RouteResult,
+  RunManifest,
+  ThemeMode,
+  ViewportProfile
+} from "./types.js";
+import {
+  ensureDirectory,
+  exists,
+  relativeTo,
+  safeName,
+  unique,
+  writeJsonAtomic
+} from "./util.js";
+
+const manifestFile = path.join(
+  config.runRoot,
+  "manifest.json"
+);
+
+const captureRoot = path.join(
+  config.runRoot,
+  "png"
+);
+
+let manifest: RunManifest;
+const preAuthenticationDiagnostics: DiagnosticRecord[] = [];
+let preAuthenticationUnsafeBlocks = 0;
+
+const coverageExclusions = [
+  { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
+  { surface: "Admin authentication POST", reason: "The single Studio login submission is the only live unsafe request allowed before the read-only capture context exists." },
+  { surface: "Successful production mutations", reason: "Forbidden in live-readonly mode and captured only against the isolated snapshot lab." },
+  { surface: "Fabrication-ready 3D output", reason: "The public renderer is explicitly a conceptual proportional planning preview." },
+  { surface: "Unconfigured provider success states", reason: "Payment, shipping, email, and model-provider success states require provider fixtures and remain disabled in snapshot-lab mode." }
+] as const;
+
+function now() {
+  return new Date().toISOString();
+}
+
+function deepCount(total: number, smokeLimit: number) {
+  return config.scope === "smoke" ? Math.min(total, smokeLimit) : total;
+}
+
+function captureKey(input: {
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  viewport: string;
+  state: string;
+}) {
+  return [
+    input.auth,
+    input.route,
+    input.theme,
+    input.viewport,
+    input.state
+  ].join("::");
+}
+
+async function persistManifest() {
+  manifest.completedKeys = unique(
+    manifest.captures.map(
+      capture => capture.key
+    )
+  );
+
+  const routes = new Map<string, RouteResult>();
+  for (const route of manifest.routes) {
+    routes.set(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`, route);
+  }
+  manifest.routes = [...routes.values()];
+
+  await writeJsonAtomic(
+    manifestFile,
+    manifest
+  );
+}
+
+async function loadOrCreateManifest(
+  browserVersion: string,
+  inventory: Inventory
+) {
+  if (
+    config.resume &&
+    await exists(manifestFile)
+  ) {
+    const existing = JSON.parse(
+      await fs.readFile(manifestFile, "utf8")
+    ) as RunManifest;
+
+    if (
+      existing.runId !== config.runId ||
+      existing.mode !== config.targetMode ||
+      existing.baseUrl !== config.baseUrl ||
+      existing.expectedCommit !== config.expectedCommit
+    ) {
+      throw new Error("AUDIT_RESUME refused to combine output from a different run, mode, origin, or commit.");
+    }
+
+    return {
+      ...existing,
+      completedAt: null,
+      scope: existing.scope ?? config.scope,
+      discoveredLinks: existing.discoveredLinks ?? [],
+      exclusions: existing.exclusions ?? [...coverageExclusions],
+      security: existing.security ?? {
+        sameOriginUnsafeRequestsBlocked: 0,
+        successfulUnsafeRequests: 0,
+        tokenEligibleRequests: 0,
+        crossOriginRequests: 0
+      }
+    };
+  }
+
+  return {
+    schemaVersion: 2,
+    runId: config.runId,
+    startedAt: now(),
+    completedAt: null,
+    mode: config.targetMode,
+    scope: config.scope,
+    baseUrl: config.baseUrl,
+    expectedCommit: config.expectedCommit,
+    deployedCommit: inventory.buildSha,
+    browserVersion,
+    inventory,
+    captures: [],
+    routes: [],
+    diagnostics: [],
+    completedKeys: [],
+    discoveredLinks: [],
+    exclusions: [...coverageExclusions],
+    security: {
+      sameOriginUnsafeRequestsBlocked: 0,
+      successfulUnsafeRequests: 0,
+      tokenEligibleRequests: 0,
+      crossOriginRequests: 0
+    }
+  } satisfies RunManifest;
+}
+
+function attachDiagnostics(
+  page: Page,
+  route: string
+) {
+  page.on("console", message => {
+    if (
+      ["error", "warning"].includes(
+        message.type()
+      )
+    ) {
+      const text = `${message.type()}: ${message.text()}`;
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "console",
+        route,
+        message: text,
+        expected: /THREE\.THREE\.Clock: This module has been deprecated/.test(text)
+      });
+    }
+  });
+
+  page.on("pageerror", error => {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "pageerror",
+      route,
+      message: error.stack || error.message
+    });
+  });
+
+  page.on("requestfailed", request => {
+    const failure =
+      request.failure()?.errorText ||
+      "unknown request failure";
+
+    const method =
+      request.method().toUpperCase();
+
+    if (
+      failure.includes("ERR_BLOCKED_BY_CLIENT") &&
+      !["GET", "HEAD", "OPTIONS"].includes(method)
+    ) {
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "mutation-blocked",
+        route,
+        message: `${method} ${request.url()}`
+      });
+
+      return;
+    }
+
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "requestfailed",
+      route,
+      message: `${method} ${request.url()} — ${failure}`
+    });
+  });
+
+  page.on("response", response => {
+    const request = response.request();
+    const method = request.method().toUpperCase();
+
+    if (
+      isUnsafeMethod(method) &&
+      response.status() < 400
+    ) {
+      manifest.security.successfulUnsafeRequests += 1;
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "security",
+        route,
+        message: `Successful ${method} request returned HTTP ${response.status()}: ${response.url()}`,
+        expected: config.targetMode === "snapshot-lab"
+      });
+    }
+
+    if (response.status() >= 400) {
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type:
+          response.headers()[
+            "x-woodsmith-audit-blocked"
+          ] === "1"
+            ? "mutation-blocked"
+            : "http-error",
+        route,
+        message:
+          `${response.status()} ` +
+          `${request.method()} ${response.url()}`
+      });
+    }
+  });
+}
+
+async function authenticateAdmin(
+  browser: Browser
+) {
+  await ensureDirectory(
+    path.dirname(config.authStatePath)
+  );
+
+  const context = await browser.newContext({
+    baseURL: config.baseUrl,
+    viewport: {
+      width: 1440,
+      height: 1000
+    },
+    locale: "en-US",
+    timezoneId: "America/Los_Angeles",
+    serviceWorkers: "block"
+  });
+
+  const targetOrigin = new URL(config.baseUrl).origin;
+  let allowLoginSubmission = false;
+
+  await context.route("**/*", async (route) => {
+    const request = route.request();
+    const method = request.method().toUpperCase();
+    let requestUrl: URL;
+
+    try {
+      requestUrl = new URL(request.url());
+    } catch {
+      await route.continue();
+      return;
+    }
+
+    const sameOrigin = requestUrl.origin === targetOrigin;
+    const isLoginSubmission =
+      sameOrigin &&
+      requestUrl.pathname === "/studio/login" &&
+      method === "POST" &&
+      allowLoginSubmission;
+
+    if (isUnsafeMethod(method) && !isLoginSubmission) {
+      preAuthenticationUnsafeBlocks += 1;
+      preAuthenticationDiagnostics.push({
+        timestamp: now(),
+        type: "mutation-blocked",
+        route: requestUrl.pathname,
+        message: `Authentication guard blocked ${sameOrigin ? "same-origin" : "cross-origin"} ${method} ${requestUrl.origin}${requestUrl.pathname}`,
+        expected: true
+      });
+      await route.abort("blockedbyclient");
+      return;
+    }
+
+    if (isLoginSubmission) {
+      allowLoginSubmission = false;
+      await route.continue();
+      return;
+    }
+
+    if (sameOrigin) {
+      await route.continue({
+        headers: {
+          ...request.headers(),
+          "x-woodsmith-audit-readonly": "1"
+        }
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  const page = await context.newPage();
+
+  try {
+    await page.goto(
+      "/studio/login",
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000
+      }
+    );
+
+    await page
+      .getByLabel("Email")
+      .fill(config.adminEmail);
+
+    await page
+      .getByLabel("Password")
+      .fill(config.adminPassword);
+
+    allowLoginSubmission = true;
+
+    await Promise.all([
+      page.waitForURL(
+        /\/studio(?:\?|$)/,
+        { timeout: 45_000 }
+      ),
+
+      page
+        .getByRole(
+          "button",
+          { name: "Enter dashboard" }
+        )
+        .click()
+    ]);
+
+    await page
+      .locator('[data-studio-root="true"]')
+      .waitFor({
+        state: "visible",
+        timeout: 30_000
+      });
+
+    await context.storageState({
+      path: config.authStatePath
+    });
+  } finally {
+    await context.close();
+  }
+}
+
+async function createCaptureContext(
+  browser: Browser,
+  auth: AuthState,
+  profile: ViewportProfile,
+  theme: ThemeMode,
+  options: { reducedMotion?: "reduce" | "no-preference"; disableWebGl?: boolean } = {}
+) {
+  const context = await browser.newContext({
+    baseURL: config.baseUrl,
+    ...(auth === "admin" ? { storageState: config.authStatePath } : {}),
+
+    viewport: {
+      width: profile.width,
+      height: profile.height
+    },
+
+    deviceScaleFactor:
+      profile.deviceScaleFactor,
+
+    isMobile: profile.isMobile,
+    hasTouch: profile.isMobile,
+
+    locale: "en-US",
+    timezoneId: "America/Los_Angeles",
+    reducedMotion: options.reducedMotion ?? "no-preference",
+    colorScheme: theme,
+    serviceWorkers: "block"
+  });
+
+  await context.addCookies([
+    {
+      name: "beaman-theme",
+      value: theme,
+      url: config.baseUrl,
+      sameSite: "Lax",
+      secure:
+        config.baseUrl.startsWith("https://")
+    }
+  ]);
+
+  await context.addInitScript(
+    selectedTheme => {
+      window.localStorage.setItem(
+        "beaman-theme",
+        selectedTheme
+      );
+    },
+    theme
+  );
+
+  if (options.disableWebGl) {
+    await context.addInitScript(() => {
+      const original = HTMLCanvasElement.prototype.getContext;
+      HTMLCanvasElement.prototype.getContext = function getContext(this: HTMLCanvasElement, contextId: string, ...args: unknown[]) {
+        if (contextId === "webgl" || contextId === "webgl2" || contextId === "experimental-webgl") return null;
+        return original.call(this, contextId, ...args as []) as RenderingContext | null;
+      } as typeof HTMLCanvasElement.prototype.getContext;
+    });
+  }
+
+  const targetOrigin =
+    new URL(config.baseUrl).origin;
+
+  await context.route(
+    "**/*",
+    async route => {
+      const request = route.request();
+      const method =
+        request.method().toUpperCase();
+
+      let requestUrl: URL;
+
+      try {
+        requestUrl = new URL(request.url());
+      } catch {
+        await route.continue();
+        return;
+      }
+
+      if (requestUrl.origin !== targetOrigin) {
+        manifest.security.crossOriginRequests += 1;
+
+        if (
+          config.targetMode === "live-readonly" &&
+          isUnsafeMethod(method)
+        ) {
+          manifest.diagnostics.push({
+            timestamp: now(),
+            type: "mutation-blocked",
+            route: request.url(),
+            message: `Client route guard blocked cross-origin ${method} ${request.url()}`,
+            expected: true
+          });
+          await route.abort("blockedbyclient");
+          return;
+        }
+
+        await route.continue();
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        ...request.headers()
+      };
+
+      const tokenEligible = auditTokenEligible(requestUrl, config.baseUrl);
+
+      if (tokenEligible) {
+        headers["x-woodsmith-audit-token"] = config.auditToken;
+        manifest.security.tokenEligibleRequests += 1;
+      }
+
+      if (
+        config.targetMode ===
+        "live-readonly"
+      ) {
+        headers[
+          "x-woodsmith-audit-readonly"
+        ] = "1";
+
+        if (
+          isUnsafeMethod(method)
+        ) {
+          manifest.diagnostics.push({
+            timestamp: now(),
+            type: "mutation-blocked",
+            route: request.url(),
+            message:
+              `Client route guard blocked ` +
+              `${method} ${request.url()}`,
+            expected: true
+          });
+
+          manifest.security.sameOriginUnsafeRequestsBlocked += 1;
+
+          await route.abort(
+            "blockedbyclient"
+          );
+
+          return;
+        }
+      }
+
+      await route.continue({
+        headers
+      });
+    }
+  );
+
+  return context;
+}
+
+async function captureFormValidationStates(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  if (
+    config.targetMode !== "snapshot-lab"
+  ) {
+    return;
+  }
+
+  const forms =
+    input.page.locator("form");
+
+  const count = deepCount(await forms.count(), 4);
+
+  for (
+    let index = 0;
+    index < count;
+    index += 1
+  ) {
+    const form = forms.nth(index);
+
+    if (
+      !await form
+        .isVisible()
+        .catch(() => false)
+    ) {
+      continue;
+    }
+
+    const requiredField =
+      form.locator(
+        [
+          "input[required]",
+          "textarea[required]",
+          "select[required]"
+        ].join(",")
+      ).first();
+
+    const submit =
+      form.locator(
+        'button[type="submit"],input[type="submit"]'
+      ).first();
+
+    if (
+      !await requiredField
+        .isVisible()
+        .catch(() => false) ||
+      !await submit
+        .isVisible()
+        .catch(() => false)
+    ) {
+      continue;
+    }
+
+    await requiredField.evaluate(
+      element => {
+        (
+          element as HTMLInputElement
+        ).setCustomValidity(
+          "Required visual-audit validation state."
+        );
+      }
+    );
+
+    await submit.click();
+
+    await saveCapture({
+      ...input,
+      state:
+        `form-${String(index + 1)
+          .padStart(4, "0")}-validation`,
+      locator: form
+    });
+
+    await requiredField.evaluate(
+      element => {
+        (
+          element as HTMLInputElement
+        ).setCustomValidity("");
+      }
+    );
+  }
+}
+
+function routeLabel(route: string) {
+  const url = new URL(
+    route,
+    config.baseUrl
+  );
+
+  const query = [...url.searchParams.keys()].sort().join("-");
+  const privatePath = url.pathname.replace(
+    /^\/(requests|studio\/request|account\/(?:reset|verify))\/[^/]+/i,
+    "/$1/[private]"
+  );
+  const digest = createHash("sha256")
+    .update(`${url.pathname}${url.search}`)
+    .digest("hex")
+    .slice(0, 10);
+
+  return safeName(
+    `${safeName(privatePath).slice(0, 28)}-${query ? safeName(query).slice(0, 20) : "default"}-${digest}`
+  );
+}
+
+async function collectPageEvidence(page: Page, route: string) {
+  const evidence = await page.evaluate((targetOrigin) => {
+    const sensitiveParameters = new Set(["token", "code", "secret", "key", "password", "email"]);
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>("a[href]")).flatMap((anchor) => {
+      try {
+        const url = new URL(anchor.href, window.location.href);
+        if (url.origin !== targetOrigin) return [];
+        if ([...url.searchParams.keys()].some((key) => sensitiveParameters.has(key.toLowerCase()))) return [];
+        if (["mailto:", "tel:", "javascript:", "data:"].includes(url.protocol)) return [];
+        if (url.pathname.startsWith("/_next/") || url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/")) return [];
+        if (/\.(?:png|jpe?g|webp|gif|svg|pdf|zip|xml|json)$/i.test(url.pathname)) return [];
+        return [`${url.pathname}${url.search}`];
+      } catch {
+        return [];
+      }
+    });
+
+    const visible = (element: Element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
+    };
+
+    const scrollContainers = Array.from(document.querySelectorAll<HTMLElement>("body *")).filter((element) => {
+      const style = getComputedStyle(element);
+      return visible(element) && (
+        (/(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 4) ||
+        (/(auto|scroll)/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 4)
+      );
+    }).length;
+
+    const surfaces = {
+      details: Array.from(document.querySelectorAll("details")).filter(visible).length,
+      lightboxOpeners: Array.from(document.querySelectorAll("button.media-card")).filter(visible).length,
+      mediaPickerOpeners: Array.from(document.querySelectorAll("button")).filter((element) => visible(element) && element.textContent?.trim() === "Browse library").length,
+      inlineEditLinks: Array.from(document.querySelectorAll("a.section-edit-link")).filter(visible).length,
+      studioCards: Array.from(document.querySelectorAll(".studio-editor-card")).filter(visible).length,
+      mediaCards: Array.from(document.querySelectorAll("[data-media-path]")).filter(visible).length,
+      validationForms: Array.from(document.querySelectorAll("form")).filter((form) => visible(form) && Boolean(form.querySelector("input[required],textarea[required],select[required]"))).length,
+      interactiveElements: Array.from(document.querySelectorAll("a,button,input,textarea,select,summary,[role=button],[role=tab],[aria-pressed]")).filter(visible).length,
+      scrollContainers,
+      visualizer: Array.from(document.querySelectorAll("[role=region]")).some((element) => visible(element) && element.getAttribute("aria-label") === "Interactive conceptual furniture preview")
+    };
+
+    const brokenMedia = [
+      ...Array.from(document.images).filter((image) => image.complete && image.naturalWidth === 0).map((image) => image.currentSrc || image.src || "image-without-source"),
+      ...Array.from(document.querySelectorAll<HTMLVideoElement>("video")).filter((video) => Boolean(video.error)).map((video) => video.currentSrc || video.src || "video-without-source")
+    ];
+
+    const documentWidth = Math.max(document.documentElement.scrollWidth, document.body.scrollWidth);
+    const overflow = documentWidth > window.innerWidth + 2
+      ? Array.from(document.querySelectorAll<HTMLElement>("body *"))
+          .filter((element) => {
+            const rect = element.getBoundingClientRect();
+            return rect.right > window.innerWidth + 2 || rect.left < -2;
+          })
+          .slice(0, 12)
+          .map((element) => element.dataset.auditId || element.id || element.tagName.toLowerCase())
+      : [];
+
+    return { links: [...new Set(links)], brokenMedia, overflow, documentWidth, viewportWidth: window.innerWidth, surfaces };
+  }, new URL(config.baseUrl).origin);
+
+  manifest.discoveredLinks = unique([...manifest.discoveredLinks, ...evidence.links]).sort();
+
+  for (const source of evidence.brokenMedia) {
+    manifest.diagnostics.push({ timestamp: now(), type: "broken-media", route, message: source });
+  }
+
+  if (evidence.overflow.length > 0) {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "horizontal-overflow",
+      route,
+      message: `Document width ${evidence.documentWidth}px exceeds viewport ${evidence.viewportWidth}px; candidates: ${evidence.overflow.join(", ")}`
+    });
+  }
+
+  return evidence;
+}
+
+async function saveCapture(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  state: string;
+  status: number | null;
+  fullPage?: boolean;
+  locator?: Locator;
+  sensitive?: boolean;
+}) {
+  const key = captureKey({
+    auth: input.auth,
+    route: input.route,
+    theme: input.theme,
+    viewport: input.profile.name,
+    state: input.state
+  });
+
+  if (
+    config.resume &&
+    manifest.completedKeys.includes(key)
+  ) {
+    return;
+  }
+
+  const outputDirectory = path.join(
+    captureRoot,
+    input.auth,
+    input.profile.name,
+    input.theme,
+    routeLabel(input.route)
+  );
+
+  const baseName = `${safeName(input.state).slice(0, 40)}-${createHash("sha256")
+    .update(key)
+    .digest("hex")
+    .slice(0, 12)}`;
+
+  let files: string[];
+  try {
+    files = input.locator
+      ? await captureElement(input.locator, outputDirectory, baseName)
+      : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
+  } catch (error) {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "pageerror",
+      route: input.route,
+      message: `Capture state ${input.state} failed: ${error instanceof Error ? error.message : String(error)}`
+    });
+    return;
+  }
+
+  const dimensions = await input.page.evaluate(() => ({
+    width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+    height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+  })).catch(() => ({ width: input.profile.width, height: input.profile.height }));
+
+  const record: CaptureRecord = {
+    key,
+    createdAt: now(),
+    auth: input.auth,
+    route: input.route,
+    finalUrl: input.page.url(),
+    theme: input.theme,
+    viewport: input.profile.name,
+    state: input.state,
+    status: input.status,
+    files: files.map(file =>
+      relativeTo(config.runRoot, file)
+    ),
+    width: dimensions.width,
+    height: dimensions.height,
+    deviceScaleFactor:
+      input.profile.deviceScaleFactor,
+    sensitive:
+      input.sensitive ??
+      input.auth !== "anonymous"
+  };
+
+  manifest.captures.push(record);
+  manifest.completedKeys.push(key);
+
+  await persistManifest();
+}
+
+async function captureHeaderStates(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const header =
+    input.page.locator("header").first();
+
+  if (!await header.isVisible().catch(() => false)) {
+    return;
+  }
+
+  await input.page.evaluate(() => {
+    window.scrollTo(
+      0,
+      Math.max(
+        window.innerHeight,
+        900
+      )
+    );
+  });
+
+  await input.page.waitForTimeout(180);
+
+  await saveCapture({
+    ...input,
+    state: "header-after-scroll-down",
+    fullPage: false
+  });
+
+  await input.page.mouse.wheel(0, -400);
+  await input.page.waitForTimeout(180);
+
+  await saveCapture({
+    ...input,
+    state: "header-after-scroll-up",
+    fullPage: false
+  });
+
+  await input.page.evaluate(() => {
+    window.scrollTo(0, 0);
+  });
+}
+
+async function captureDetailsStates(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const details =
+    input.page.locator("details");
+
+  const count = deepCount(await details.count(), 8);
+
+  if (count === 0) {
+    return;
+  }
+
+  await details.evaluateAll(nodes => {
+    nodes.forEach(node => {
+      (node as HTMLDetailsElement).open = true;
+    });
+  });
+
+  await input.page.waitForTimeout(100);
+
+  await saveCapture({
+    ...input,
+    state: "all-details-open",
+    fullPage: true
+  });
+
+  for (let index = 0; index < count; index += 1) {
+    const item = details.nth(index);
+
+    if (!await item.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    await saveCapture({
+      ...input,
+      state:
+        `details-${String(index + 1)
+          .padStart(3, "0")}-open`,
+      locator: item
+    });
+  }
+}
+
+async function captureLightboxes(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const openers =
+    input.page.locator("button.media-card");
+
+  const count = deepCount(await openers.count(), 4);
+
+  for (let index = 0; index < count; index += 1) {
+    const opener = openers.nth(index);
+
+    if (!await opener.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    await opener.click();
+
+    const dialog =
+      input.page.locator(
+        '.lightbox-shell[role="dialog"]'
+      );
+
+    await dialog.waitFor({
+      state: "visible",
+      timeout: 10_000
+    });
+
+    await saveCapture({
+      ...input,
+      state:
+        `lightbox-${String(index + 1)
+          .padStart(4, "0")}-100-percent`,
+      fullPage: false
+    });
+
+    if (index === 0) {
+      const previous = dialog.getByRole("button", { name: "Previous image" });
+      const next = dialog.getByRole("button", { name: "Next image" });
+      if (await previous.isVisible().catch(() => false) && await next.isVisible().catch(() => false)) {
+        await previous.click();
+        await saveCapture({ ...input, state: "lightbox-previous-boundary", fullPage: false });
+        await next.click();
+        await saveCapture({ ...input, state: "lightbox-next-boundary", fullPage: false });
+      }
+    }
+
+    const zoomIn =
+      dialog.getByRole(
+        "button",
+        { name: "Zoom in" }
+      );
+
+    if (
+      await zoomIn.isVisible().catch(() => false)
+    ) {
+      for (let click = 0; click < 4; click += 1) {
+        await zoomIn.click();
+      }
+
+      await saveCapture({
+        ...input,
+        state:
+          `lightbox-${String(index + 1)
+            .padStart(4, "0")}-200-percent`,
+        fullPage: false
+      });
+
+      for (let click = 0; click < 8; click += 1) {
+        await zoomIn.click();
+      }
+
+      await saveCapture({
+        ...input,
+        state:
+          `lightbox-${String(index + 1)
+            .padStart(4, "0")}-400-percent`,
+        fullPage: false
+      });
+
+      const stage = dialog.locator(".lightbox-stage");
+      const box = await stage.boundingBox();
+      if (box) {
+        const centerX = box.x + box.width / 2;
+        const centerY = box.y + box.height / 2;
+        await input.page.mouse.move(centerX, centerY);
+        await input.page.mouse.down();
+        await input.page.mouse.move(centerX + box.width * 0.28, centerY + box.height * 0.28, { steps: 8 });
+        await input.page.mouse.up();
+        await saveCapture({ ...input, state: `lightbox-${String(index + 1).padStart(4, "0")}-pan-boundary`, fullPage: false });
+      }
+    }
+
+    if (index === 0) await input.page.keyboard.press("Escape");
+    else await dialog.getByRole("button", { name: "Close image preview" }).click();
+
+    await dialog.waitFor({
+      state: "hidden",
+      timeout: 10_000
+    });
+  }
+}
+
+async function captureInlineEditing(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  if (input.auth !== "admin") {
+    return;
+  }
+
+  const editLinks =
+    input.page.locator(
+      "a.section-edit-link"
+    );
+
+  const linkCount = deepCount(await editLinks.count(), 4);
+
+  for (
+    let sectionIndex = 0;
+    sectionIndex < linkCount;
+    sectionIndex += 1
+  ) {
+    const link =
+      editLinks.nth(sectionIndex);
+
+    if (!await link.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    await link.click();
+
+    const assistant =
+      input.page.locator(
+        ".inline-edit-hint"
+      );
+
+    await assistant.waitFor({
+      state: "visible",
+      timeout: 10_000
+    });
+
+    await saveCapture({
+      ...input,
+      state:
+        `inline-section-${String(sectionIndex + 1)
+          .padStart(3, "0")}-active`,
+      fullPage: false
+    });
+
+    const editable =
+      input.page.locator(
+        'section[data-inline-editing="true"] ' +
+        ".inline-editable-active"
+      );
+
+    const editableCount =
+      await editable.count();
+
+    for (
+      let fieldIndex = 0;
+      fieldIndex < editableCount;
+      fieldIndex += 1
+    ) {
+      const field =
+        editable.nth(fieldIndex);
+
+      if (!await field.isVisible().catch(() => false)) {
+        continue;
+      }
+
+      await field.click();
+
+      await saveCapture({
+        ...input,
+        state:
+          `inline-section-${String(sectionIndex + 1)
+            .padStart(3, "0")}` +
+          `-field-${String(fieldIndex + 1)
+            .padStart(3, "0")}-selected`,
+        fullPage: false
+      });
+
+      const urlField = await field.evaluate(
+        element =>
+          element instanceof HTMLAnchorElement &&
+          Boolean(
+            element.dataset.inlineEditUrlField
+          )
+      );
+
+      if (urlField) {
+        await assistant
+          .getByRole(
+            "button",
+            { name: "Edit URL" }
+          )
+          .click();
+
+        const dialog =
+          input.page.locator(
+            '.inline-url-dialog[role="dialog"]'
+          );
+
+        await dialog.waitFor({
+          state: "visible"
+        });
+
+        await saveCapture({
+          ...input,
+          state:
+            `inline-section-${String(sectionIndex + 1)
+              .padStart(3, "0")}` +
+            `-field-${String(fieldIndex + 1)
+              .padStart(3, "0")}-url-dialog`,
+          fullPage: false
+        });
+
+        await dialog
+          .getByRole(
+            "button",
+            { name: "Cancel" }
+          )
+          .click();
+      }
+    }
+
+    await assistant
+      .getByRole(
+        "button",
+        { name: "Cancel" }
+      )
+      .click();
+  }
+}
+
+async function captureStudioCards(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  if (
+    input.auth !== "admin" ||
+    !input.page.url().includes("/studio")
+  ) {
+    return;
+  }
+
+  const cards =
+    input.page.locator(
+      ".studio-editor-card"
+    );
+
+  const count = deepCount(await cards.count(), 8);
+
+  for (let index = 0; index < count; index += 1) {
+    const card = cards.nth(index);
+
+    if (!await card.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    await saveCapture({
+      ...input,
+      state:
+        `studio-editor-${String(index + 1)
+          .padStart(4, "0")}`,
+      locator: card
+    });
+  }
+}
+
+async function captureMediaPageItems(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  if (
+    input.auth !== "admin" ||
+    !input.page.url().includes(
+      "panel=media"
+    )
+  ) {
+    return;
+  }
+
+  const cards =
+    input.page.locator(
+      "[data-media-path]"
+    );
+
+  const count = deepCount(await cards.count(), 6);
+
+  for (let index = 0; index < count; index += 1) {
+    const card = cards.nth(index);
+
+    if (!await card.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    await card.click();
+
+    const inspector =
+      input.page.locator(
+        ".studio-media-inspector"
+      );
+
+    await inspector.waitFor({
+      state: "visible"
+    });
+
+    await saveCapture({
+      ...input,
+      state:
+        `media-inspector-${String(index + 1)
+          .padStart(4, "0")}`,
+      locator: inspector
+    });
+
+    await inspector
+      .locator("details")
+      .evaluateAll(nodes => {
+        nodes.forEach(node => {
+          (node as HTMLDetailsElement).open = true;
+        });
+      });
+
+    await saveCapture({
+      ...input,
+      state:
+        `media-inspector-${String(index + 1)
+          .padStart(4, "0")}-expanded`,
+      locator: inspector
+    });
+
+    const preview =
+      inspector.locator("button.media-card");
+
+    if (
+      await preview.isVisible().catch(() => false)
+    ) {
+      await preview.click();
+
+      const dialog =
+        input.page.locator(
+          '.lightbox-shell[role="dialog"]'
+        );
+
+      await dialog.waitFor({
+        state: "visible"
+      });
+
+      await saveCapture({
+        ...input,
+        state:
+          `media-inspector-${String(index + 1)
+            .padStart(4, "0")}-lightbox`,
+        fullPage: false
+      });
+
+      await dialog
+        .getByRole(
+          "button",
+          { name: "Close image preview" }
+        )
+        .click();
+    }
+  }
+
+  if (input.profile.isMobile) {
+    for (
+      const pane of [
+        "Tools",
+        "Library",
+        "Inspector"
+      ]
+    ) {
+      const button =
+        input.page.getByRole(
+          "button",
+          { name: pane }
+        );
+
+      if (
+        await button.isVisible().catch(() => false) &&
+        await button.isEnabled()
+      ) {
+        await button.click();
+
+        await saveCapture({
+          ...input,
+          state:
+            `media-mobile-pane-${pane.toLowerCase()}`,
+          fullPage: false
+        });
+      }
+    }
+  }
+}
+
+async function captureVisualizerStates(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const preview = input.page.getByRole("region", { name: "Interactive conceptual furniture preview" });
+  if (!await preview.isVisible().catch(() => false)) return;
+
+  for (const name of ["front", "side", "top", "Orthographic", "Rotate preview left", "Zoom preview in", "Zoom preview out", "Reset view"]) {
+    const button = input.page.getByRole("button", { name, exact: true });
+    if (!await button.isVisible().catch(() => false)) continue;
+    await button.click();
+    await input.page.waitForTimeout(120);
+    await saveCapture({ ...input, state: `visualizer-${safeName(name)}`, locator: preview });
+  }
+
+  const pieceType = input.page.getByLabel("Piece type");
+  if (await pieceType.isVisible().catch(() => false)) {
+    const options = await pieceType.locator("option").evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
+    for (const value of options) {
+      await pieceType.selectOption(value);
+      await input.page.waitForTimeout(100);
+      await saveCapture({ ...input, state: `visualizer-template-${safeName(value)}`, locator: preview });
+    }
+  }
+
+  const dimensionFields = [
+    { label: "Width (in)", min: "4", max: "240" },
+    { label: "Depth (in)", min: "2", max: "120" },
+    { label: "Height (in)", min: "2", max: "144" }
+  ];
+
+  for (const boundary of ["min", "max"] as const) {
+    for (const field of dimensionFields) {
+      const inputField = input.page.getByLabel(field.label);
+      if (await inputField.isVisible().catch(() => false)) await inputField.fill(field[boundary]);
+    }
+    await input.page.waitForTimeout(120);
+    await saveCapture({ ...input, state: `visualizer-dimensions-${boundary}`, locator: preview });
+  }
+}
+
+async function captureElementAtlas(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const elements =
+    input.page.locator([
+      "a",
+      "button",
+      "input",
+      "textarea",
+      "select",
+      "summary",
+      '[role="button"]',
+      '[role="tab"]',
+      '[aria-pressed]'
+    ].join(","));
+
+  const count = deepCount(await elements.count(), 48);
+
+  for (let index = 0; index < count; index += 1) {
+    const element =
+      elements.nth(index);
+
+    if (!await element.isVisible().catch(() => false)) {
+      continue;
+    }
+
+    const box =
+      await element.boundingBox();
+
+    if (
+      !box ||
+      box.width < 2 ||
+      box.height < 2
+    ) {
+      continue;
+    }
+
+    const prefix =
+      `element-${String(index + 1)
+        .padStart(5, "0")}`;
+
+    await saveCapture({
+      ...input,
+      state: `${prefix}-normal`,
+      locator: element
+    });
+
+    await element.hover({
+      force: true
+    }).catch(() => undefined);
+
+    await saveCapture({
+      ...input,
+      state: `${prefix}-hover`,
+      locator: element
+    });
+
+    await element.focus()
+      .catch(() => undefined);
+
+    await saveCapture({
+      ...input,
+      state: `${prefix}-focus`,
+      locator: element
+    });
+  }
+}
+
+async function captureRoute(input: {
+  context: BrowserContext;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  deep: boolean;
+}) {
+  const page =
+    await input.context.newPage();
+
+  attachDiagnostics(page, input.route);
+
+  try {
+    const response = await page.goto(
+      input.route,
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 60_000
+      }
+    );
+
+    const redirectChain: string[] = [];
+    let redirected =
+      response?.request().redirectedFrom();
+
+    while (redirected) {
+      redirectChain.unshift(
+        redirected.url()
+      );
+
+      redirected =
+        redirected.redirectedFrom();
+    }
+
+    const routeResult: RouteResult = {
+      route: input.route,
+      auth: input.auth,
+      theme: input.theme,
+      viewport: input.profile.name,
+      deep: input.deep,
+      finalUrl: page.url(),
+      status:
+        response?.status() ?? null,
+      redirectChain,
+      expected: true
+    };
+
+    manifest.routes.push(routeResult);
+
+    await waitForVisualReady(page);
+    const evidence = await collectPageEvidence(page, input.route);
+    routeResult.discoveredLinks = evidence.links;
+    routeResult.surfaces = evidence.surfaces;
+
+    const base = {
+      page,
+      auth: input.auth,
+      route: input.route,
+      theme: input.theme,
+      profile: input.profile,
+      status: response?.status() ?? null
+    };
+
+    await saveCapture({
+      ...base,
+      state: "viewport-top",
+      fullPage: false
+    });
+
+    await saveCapture({
+      ...base,
+      state: "full-page-default",
+      fullPage: true
+    });
+
+    try {
+      await captureHeaderStates(base);
+    } catch (error) {
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "pageerror",
+        route: input.route,
+        message: `Header-state capture failed: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
+
+    if (input.deep) {
+      const steps = [
+        ["details", captureDetailsStates],
+        ["lightboxes", captureLightboxes],
+        ["media-pickers", captureMediaPickers],
+        ["inline-editing", captureInlineEditing],
+        ["studio-cards", captureStudioCards],
+        ["media-inspectors", captureMediaPageItems],
+        ["form-validation", captureFormValidationStates],
+        ["commission-visualizer", captureVisualizerStates],
+        ["element-atlas", captureElementAtlas]
+      ] as const;
+
+      for (const [label, step] of steps) {
+        try {
+          await step(base);
+        } catch (error) {
+          manifest.diagnostics.push({
+            timestamp: now(),
+            type: "pageerror",
+            route: input.route,
+            message: `Deep capture step ${label} failed: ${error instanceof Error ? error.message : String(error)}`
+          });
+        }
+      }
+    }
+
+    await persistManifest();
+  } catch (error) {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "pageerror",
+      route: input.route,
+      message:
+        error instanceof Error
+          ? error.stack || error.message
+          : String(error)
+    });
+
+    await persistManifest();
+  } finally {
+    await page.close();
+  }
+}
+
+async function captureMediaPickers(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const openers =
+    input.page.getByRole(
+      "button",
+      { name: "Browse library" }
+    );
+
+  const count = deepCount(await openers.count(), 3);
+
+  for (
+    let index = 0;
+    index < count;
+    index += 1
+  ) {
+    const opener = openers.nth(index);
+
+    if (
+      !await opener
+        .isVisible()
+        .catch(() => false)
+    ) {
+      continue;
+    }
+
+    await opener.click();
+
+    const dialog =
+      input.page.locator(
+        '.media-picker-dialog[role="dialog"]'
+      );
+
+    await dialog.waitFor({
+      state: "visible",
+      timeout: 10_000
+    });
+
+    await saveCapture({
+      ...input,
+      state:
+        `media-picker-${String(index + 1)
+          .padStart(3, "0")}-default`,
+      fullPage: false
+    });
+
+    const filter = dialog.getByLabel("Search");
+
+    if (
+      await filter
+        .isVisible()
+        .catch(() => false)
+    ) {
+      await filter.fill(
+        "__visual_audit_no_results__"
+      );
+      await dialog.getByRole("button", { name: "Search" }).click();
+      await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => input.page.waitForTimeout(500));
+
+      await saveCapture({
+        ...input,
+        state:
+          `media-picker-${String(index + 1)
+            .padStart(3, "0")}-empty-filter`,
+        fullPage: false
+      });
+
+      await filter.fill("");
+    }
+
+    await dialog
+      .getByRole(
+        "button",
+        { name: "Close media browser" }
+      )
+      .click();
+
+    await dialog.waitFor({
+      state: "hidden",
+      timeout: 10_000
+    });
+  }
+}
+
+function structuralMatrix() {
+  if (config.scope === "smoke") {
+    return [
+      {
+        profile:
+          viewports.find(
+            viewport =>
+              viewport.name ===
+              "desktop-1440"
+          )!,
+        theme: "dark" as const
+      }
+    ];
+  }
+
+  return viewports.flatMap(profile =>
+    (["dark", "light"] as const).map(
+      theme => ({
+        profile,
+        theme
+      })
+    )
+  );
+}
+
+async function runRoutes(
+  browser: Browser,
+  auth: AuthState,
+  routes: string[]
+) {
+  const matrix = structuralMatrix();
+
+  for (const route of routes) {
+    for (const entry of matrix) {
+      const deep =
+        entry.profile.name ===
+          "desktop-archival" &&
+        entry.theme === "dark";
+
+      const context =
+        await createCaptureContext(
+          browser,
+          auth,
+          entry.profile,
+          entry.theme
+        );
+
+      try {
+        await captureRoute({
+          context,
+          auth,
+          route,
+          theme: entry.theme,
+          profile: entry.profile,
+          deep
+        });
+      } finally {
+        await context.close();
+      }
+    }
+  }
+}
+
+function captureableDiscoveredRoute(route: string, auth: AuthState) {
+  let url: URL;
+  try {
+    url = new URL(route, config.baseUrl);
+  } catch {
+    return false;
+  }
+  if (url.origin !== new URL(config.baseUrl).origin) return false;
+  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/media/") || url.pathname.startsWith("/_next/")) return false;
+  if (auth === "anonymous" && (url.pathname.startsWith("/studio") || url.pathname.startsWith("/requests/") || ["/account/profile", "/account/projects"].includes(url.pathname))) return false;
+  return true;
+}
+
+async function runDiscoveredRoutes(browser: Browser, auth: AuthState, seededRoutes: string[]) {
+  const captured = new Set([
+    ...seededRoutes,
+    ...manifest.routes.filter((route) => route.auth === auth).map((route) => route.route)
+  ]);
+
+  for (let pass = 0; pass < 3; pass += 1) {
+    const pending = manifest.discoveredLinks
+      .filter((route) => !captured.has(route) && captureableDiscoveredRoute(route, auth))
+      .sort();
+    if (pending.length === 0) return;
+    pending.forEach((route) => captured.add(route));
+    await runRoutes(browser, auth, pending);
+  }
+}
+
+async function runMediaPagination(
+  browser: Browser,
+  inventory: Inventory
+) {
+  const profile =
+    viewports.find(
+      viewport =>
+        viewport.name === (config.scope === "smoke" ? "desktop-1440" : "desktop-archival")
+    )!;
+
+  const theme = "dark" as const;
+  const totalPages = Math.max(
+    1,
+    Math.ceil(inventory.counts.media / 48)
+  );
+
+  const filterRoutes = [
+    "/studio?panel=media&mediaAssignment=unassigned",
+    "/studio?panel=media&mediaAssignment=assigned",
+    "/studio?panel=media&mediaAssignment=review",
+    "/studio?panel=media&mediaKind=image",
+    "/studio?panel=media&mediaKind=video",
+    "/studio?panel=media&mediaAi=high",
+    "/studio?panel=media&mediaAi=ambiguous",
+    "/studio?panel=media&mediaAi=details",
+    "/studio?panel=media&mediaAi=unanalyzed",
+    "/studio?panel=media&mediaAi=missing-alt",
+    "/studio?panel=media&mediaAi=representatives"
+  ];
+
+  const pageRoutes = Array.from(
+    { length: config.scope === "smoke" ? 1 : totalPages },
+    (_, index) =>
+      `/studio?panel=media&mediaPage=${index + 1}`
+  );
+
+  for (
+    const route of unique([
+      ...pageRoutes,
+      ...(config.scope === "smoke" ? [] : filterRoutes)
+    ])
+  ) {
+    const context =
+      await createCaptureContext(
+        browser,
+        "admin",
+        profile,
+        theme
+      );
+
+    try {
+      await captureRoute({
+        context,
+        auth: "admin",
+        route,
+        theme,
+        profile,
+        deep: true
+      });
+    } finally {
+      await context.close();
+    }
+  }
+}
+
+async function runVisualizerFallbackStates(browser: Browser) {
+  if (config.scope === "smoke") return;
+  const profile = viewports.find((viewport) => viewport.name === "desktop-archival")!;
+  const variants = [
+    { route: "/commissions?auditState=reduced-motion", options: { reducedMotion: "reduce" as const } },
+    { route: "/commissions?auditState=webgl-unavailable", options: { disableWebGl: true } }
+  ];
+
+  for (const variant of variants) {
+    const context = await createCaptureContext(browser, "anonymous", profile, "dark", variant.options);
+    try {
+      await captureRoute({ context, auth: "anonymous", route: variant.route, theme: "dark", profile, deep: false });
+    } finally {
+      await context.close();
+    }
+  }
+}
+
+function routesForCurrentScope(routes: ReturnType<typeof buildRoutes>, inventory: Inventory) {
+  if (config.scope === "full") return routes;
+
+  const firstPiece = inventory.pieces.find((piece) => piece.publicationStatus === "published");
+  const publicCandidates = [
+    "/",
+    "/portfolio",
+    ...(firstPiece ? [`/portfolio/${encodeURIComponent(firstPiece.slug)}`] : []),
+    "/shop",
+    "/commissions",
+    "/contact",
+    "/search?q=__visual_audit_no_results__",
+    "/account/login",
+    "/studio/login",
+    "/__visual-audit-route-not-found__"
+  ];
+  const publicRoutes = publicCandidates.filter((route) => routes.publicRoutes.includes(route));
+  const panelPrefixes = ["overview", "pages", "pieces", "media", "projects", "notifications"]
+    .map((panel) => `/studio?panel=${panel}`);
+  const adminRoutes = unique([
+    ...publicRoutes,
+    "/commissions",
+    ...routes.adminRoutes.filter((route) => panelPrefixes.some((prefix) => route.startsWith(prefix)))
+  ]);
+
+  return { ...routes, publicRoutes, adminRoutes };
+}
+
+async function main() {
+  await ensureDirectory(config.outputRoot);
+  await ensureDirectory(config.runRoot);
+  await ensureDirectory(captureRoot);
+
+  const browser =
+    await chromium.launch({
+      headless: true,
+      chromiumSandbox: false,
+      ...(config.browserChannel ? { channel: config.browserChannel } : {}),
+      args: [
+        "--disable-dev-shm-usage=false",
+        "--hide-scrollbars=false"
+      ]
+    });
+
+  try {
+    await authenticateAdmin(browser);
+
+    const inventory =
+      await fetchInventory(
+        browser,
+        config.authStatePath
+      );
+
+    const targetHost = new URL(config.baseUrl).hostname;
+    const localTarget = ["127.0.0.1", "localhost", "::1"].includes(targetHost);
+    if (inventory.buildSha === "unknown" && !localTarget) {
+      throw new Error(
+        "The target image is missing WOODSMITH_BUILD_SHA; rebuild it with the audited commit before capture."
+      );
+    }
+    if (inventory.buildSha !== "unknown" && inventory.buildSha !== config.expectedCommit) {
+      throw new Error(
+        `Deployment mismatch: expected ${config.expectedCommit}, ` +
+        `but production reported ${inventory.buildSha}.`
+      );
+    }
+
+    const source =
+      await discoverSourceRoutes();
+
+    const completeRoutes = buildRoutes(inventory, source);
+    const routes = routesForCurrentScope(completeRoutes, inventory);
+
+    manifest =
+      await loadOrCreateManifest(
+        browser.version(),
+        inventory
+      );
+
+    manifest.diagnostics.push(...preAuthenticationDiagnostics);
+    manifest.security.sameOriginUnsafeRequestsBlocked += preAuthenticationUnsafeBlocks;
+
+    await writeJsonAtomic(
+      path.join(
+        config.runRoot,
+        "coverage-plan.json"
+      ),
+      {
+        generatedAt: now(),
+        runId: config.runId,
+        mode: config.targetMode,
+        scope: config.scope,
+        source,
+        inventoryCounts:
+          inventory.counts,
+        routes,
+        completeInventoryRoutes: completeRoutes,
+        exclusions: coverageExclusions,
+        requiredStates: [
+          "route-default", "header-scroll", "theme-light", "theme-dark", "desktop", "tablet", "mobile", "archival-dpr",
+          "disclosures", "dialogs", "lightbox-zoom-boundaries", "inline-editing", "media-picker", "media-inspector",
+          "nested-scroll-surfaces", "empty-states", "error-states", "snapshot-lab-validation"
+        ],
+        safety: {
+          liveReadonly: "Unsafe same-origin and cross-origin requests are blocked client-side; same-origin requests also carry the server read-only header.",
+          snapshotLab: "Mutation-dependent states are permitted only against the separately mounted SQLite and media clones."
+        },
+        structuralMatrix:
+          structuralMatrix()
+      }
+    );
+
+    await runRoutes(
+      browser,
+      "anonymous",
+      routes.publicRoutes
+    );
+
+    if (config.scope === "full") await runDiscoveredRoutes(browser, "anonymous", routes.publicRoutes);
+
+    await runRoutes(
+      browser,
+      "admin",
+      routes.adminRoutes
+    );
+
+    if (config.scope === "full") await runDiscoveredRoutes(browser, "admin", routes.adminRoutes);
+
+    await runMediaPagination(
+      browser,
+      inventory
+    );
+
+    await runVisualizerFallbackStates(browser);
+
+    if (config.targetMode === "live-readonly" && manifest.security.successfulUnsafeRequests > 0) {
+      throw new Error(`Live read-only audit observed ${manifest.security.successfulUnsafeRequests} successful unsafe request(s).`);
+    }
+
+    manifest.completedAt = now();
+    await persistManifest();
+  } finally {
+    await browser.close();
+
+    await fs.rm(
+      config.tmpRoot,
+      {
+        recursive: true,
+        force: true
+      }
+    );
+  }
+}
+
+await main();

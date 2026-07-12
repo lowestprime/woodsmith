@@ -1,0 +1,117 @@
+services:
+  woodsmith-audit-lab:
+    image: woodsmith:prod
+    container_name: woodsmith-audit-lab
+    restart: "no"
+    user: "${PUID:?PUID must be set}:${PGID:?PGID must be set}"
+    read_only: true
+    environment:
+      NODE_ENV: production
+      NEXT_TELEMETRY_DISABLED: "1"
+      PORT: "3002"
+      HOSTNAME: 0.0.0.0
+      SELF_HOSTED: "true"
+      SITE_URL: http://woodsmith-audit-lab:3002
+      NEXT_PUBLIC_SITE_URL: http://woodsmith-audit-lab:3002
+      MEDIA_ROOT: /app/pics
+      DATA_ROOT: /app/site/data
+      STUDIO_PASSWORD: "${AUDIT_LAB_STUDIO_PASSWORD:?AUDIT_LAB_STUDIO_PASSWORD must be set}"
+      SESSION_SECRET: "${AUDIT_LAB_SESSION_SECRET:?AUDIT_LAB_SESSION_SECRET must be set}"
+      VISUAL_AUDIT_TOKEN_FILE: /run/secrets/audit_token
+      VISUAL_AUDIT_MAX_RECORDS: "${VISUAL_AUDIT_MAX_RECORDS:-5000}"
+      STRIPE_SECRET_KEY: ""
+      STRIPE_PUBLISHABLE_KEY: ""
+      EASYPOST_API_KEY: ""
+      SMTP_HOST: ""
+      SMTP_USER: ""
+      SMTP_PASSWORD: ""
+      OPENAI_API_KEY: ""
+      ENABLE_PUBLIC_AI_RENDERING: "false"
+      ENABLE_AI_BACKGROUND_CLEANUP: "false"
+      ENABLE_AI_MEDIA_ANALYSIS: "false"
+      ENABLE_EMBEDDING_SEARCH: "false"
+      ENABLE_LOCAL_IMAGE_EMBEDDINGS: "false"
+      ENABLE_GEMINI_FALLBACK: "false"
+      AI_PROVIDER: disabled
+      AI_ANALYSIS_PROVIDER: disabled
+      AI_EMBEDDING_PROVIDER: disabled
+      AI_FALLBACK_PROVIDER: disabled
+      LOCAL_AI_SIDECAR_URL: http://127.0.0.1:9
+      OLLAMA_BASE_URL: http://127.0.0.1:9
+    expose:
+      - "3002"
+    volumes:
+      - "${AUDIT_LAB_DATA_DIR:?AUDIT_LAB_DATA_DIR must be set}:/app/site/data:rw"
+      - "${AUDIT_LAB_MEDIA_DIR:?AUDIT_LAB_MEDIA_DIR must be set}:/app/pics:rw"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777
+      - /app/site/.next/cache:rw,noexec,nosuid,nodev,size=128m,mode=700
+    secrets:
+      - audit_token
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - audit-lab
+    healthcheck:
+      test: ["CMD", "node", "--experimental-sqlite", "-e", "const{DatabaseSync}=require('node:sqlite');const d=new DatabaseSync('/app/site/data/woodsmith.sqlite',{readOnly:true});const ok=d.prepare('PRAGMA quick_check').all().some(r=>r.quick_check==='ok');d.close();if(!ok)process.exit(1);fetch('http://127.0.0.1:3002/studio/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  visual-audit:
+    build:
+      context: .
+      dockerfile: visual-audit/Dockerfile
+    container_name: woodsmith-visual-audit-lab-runner
+    init: true
+    ipc: host
+    read_only: true
+    user: "${PUID:?PUID must be set}:${PGID:?PGID must be set}"
+    depends_on:
+      woodsmith-audit-lab:
+        condition: service_healthy
+    environment:
+      TARGET_MODE: snapshot-lab
+      BASE_URL: http://woodsmith-audit-lab:3002
+      TARGET_COMMIT_SHA: "${TARGET_COMMIT_SHA:?TARGET_COMMIT_SHA must be set}"
+      AUDIT_RUN_ID: "${AUDIT_RUN_ID:?AUDIT_RUN_ID must be set}"
+      AUDIT_SCOPE: "${AUDIT_SCOPE:-full}"
+      AUDIT_RESUME: "${AUDIT_RESUME:-true}"
+      RUN_OUTPUT_ROOT: /output
+      REPO_ROOT: /workspace
+      AUDIT_TMP_ROOT: /audit-tmp
+      APPROVED_BASELINE_ROOT: "${APPROVED_BASELINE_ROOT:-}"
+      WOODSMITH_ADMIN_EMAIL: "${WOODSMITH_ADMIN_EMAIL:-woodsmithbb@proton.me}"
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      AUDIT_TOKEN_FILE: /run/secrets/audit_token
+      MAX_FULL_PAGE_DEVICE_HEIGHT: "${MAX_FULL_PAGE_DEVICE_HEIGHT:-50000}"
+      MAX_STITCHED_SEGMENT_HEIGHT: "${MAX_STITCHED_SEGMENT_HEIGHT:-60000}"
+      AUDIT_STRICT_DIAGNOSTICS: "${AUDIT_STRICT_DIAGNOSTICS:-true}"
+    volumes:
+      - ./:/workspace:ro
+      - /volume2/docker_ssd/woodsmith/visual-audits:/output:rw
+    tmpfs:
+      - /audit-tmp:rw,noexec,nosuid,nodev,size=64m,mode=700
+      - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
+    secrets:
+      - admin_password
+      - audit_token
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - audit-lab
+    restart: "no"
+
+secrets:
+  admin_password:
+    file: ./secrets/woodsmith_audit_lab_password
+  audit_token:
+    file: ./secrets/woodsmith_visual_audit_token
+
+networks:
+  audit-lab:
+    internal: true
