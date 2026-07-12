@@ -8,10 +8,12 @@ import {
   seedPieces,
   seedPosts,
   seedProfiles,
-  siteSettingsSeed
+  siteSettingsSeed,
+  type FooterConfiguration,
+  type HomeServiceDefinition
 } from "./seed.ts";
 import { scanMediaLibrary } from "./media.ts";
-import { normalizePieceCategories } from "./categories.ts";
+import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
 import {
@@ -32,7 +34,28 @@ export type PieceStatus = "inventory" | "commission" | "archive";
 export type ProjectKind = "commission" | "purchase";
 export type ProjectVisibility = "public" | "private";
 
-export type SiteSettings = typeof siteSettingsSeed;
+type PersistedSettingValue<T> = T extends string
+  ? string
+  : T extends number
+    ? number
+    : T extends boolean
+      ? boolean
+      : T extends readonly (infer Item)[]
+        ? PersistedSettingValue<Item>[]
+        : T extends object
+          ? { -readonly [Key in keyof T]: PersistedSettingValue<T[Key]> }
+          : T;
+
+type WidenedSiteSettings = PersistedSettingValue<Omit<typeof siteSettingsSeed, "footer" | "homeServices" | "pieceCategories">>;
+export type SiteSettings = WidenedSiteSettings & {
+  footer: FooterConfiguration;
+  homeServices: HomeServiceDefinition[];
+  pieceCategories: PieceCategoryDefinition[];
+};
+
+function seededSiteSettings() {
+  return structuredClone(siteSettingsSeed) as unknown as SiteSettings;
+}
 
 export type UserRecord = {
   id: string;
@@ -1083,7 +1106,7 @@ function seedDefaultContent(db: DatabaseSync) {
     // Older releases rewrote seeded records during this upgrade, which could
     // erase Studio edits on a rebuilt container. Keep the version marker and
     // backfill only missing settings arrays without replacing live records.
-    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
+    const currentSite = getSetting<SiteSettings>("site", seededSiteSettings());
     upsertSetting(db, "site", {
       ...siteSettingsSeed,
       ...currentSite,
@@ -1096,7 +1119,7 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 
   if (seededVersion > 0 && seededVersion < 4) {
-    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
+    const currentSite = getSetting<SiteSettings>("site", seededSiteSettings());
     const nextSite: SiteSettings = {
       ...currentSite,
       developerName: siteSettingsSeed.developerName,
@@ -1190,7 +1213,7 @@ function seedDefaultContent(db: DatabaseSync) {
         .run(replacement.to, timestamp, replacement.slug, replacement.from);
     }
 
-    const currentSite = getSetting<SiteSettings>("site", siteSettingsSeed);
+    const currentSite = getSetting<SiteSettings>("site", seededSiteSettings());
     const legacyNavigationHrefs = new Set(["/process", "/shop#process"]);
     const navigation = currentSite.navigation.filter((item) => !legacyNavigationHrefs.has(String(item.href))) as unknown as SiteSettings["navigation"];
     if (navigation.length !== currentSite.navigation.length) {
@@ -1564,8 +1587,8 @@ function mapNotification(row: Record<string, unknown>): NotificationRecord {
     sentAt: row.sentAt ? String(row.sentAt) : null
   };
 }
-export function getSiteSettings() {
-  const fallback = { ...siteSettingsSeed };
+export function getSiteSettings(): SiteSettings {
+  const fallback = seededSiteSettings();
   const stored = getSetting<SiteSettings>("site", fallback);
   const activeSettings = { ...(stored as SiteSettings & { pieceDividerNames?: unknown }) };
   delete activeSettings.pieceDividerNames;

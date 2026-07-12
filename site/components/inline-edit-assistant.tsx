@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
-type InlineMode = "update" | "add" | "cut";
-type EditablePatch = { resource: string; id?: string; field: string; index?: number; value: string; mode?: InlineMode };
+type InlineMode = "update" | "add" | "cut" | "move";
+type EditablePatch = { resource: string; id?: string; field: string; index?: number; toIndex?: number; value?: unknown; expectedValue?: string; mode?: InlineMode };
 type EditableSnapshot = EditablePatch & { text: string };
 type UrlDraft = { resource: string; id?: string; field: string; index?: number; value: string };
 
@@ -28,13 +28,21 @@ function patchFromElement(element: HTMLElement, mode: InlineMode = "update"): Ed
   const value = element.textContent?.replace(/\u00a0/g, " ").trim() ?? "";
   if (!resource || !field || (!value && mode !== "cut")) return null;
   const index = getInlineIndex(element);
-  return { resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(index !== undefined ? { index } : {}), value, ...(mode !== "update" ? { mode } : {}) };
+  return {
+    resource,
+    field,
+    ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}),
+    ...(index !== undefined ? { index } : {}),
+    value,
+    ...(mode !== "add" ? { expectedValue: element.dataset.inlineEditOriginal ?? value } : {}),
+    ...(mode !== "update" ? { mode } : {})
+  };
 }
 
 function collectEditableText(root: ParentNode): EditableSnapshot[] {
   return editableElements(root).flatMap((element) => {
     const patch = patchFromElement(element);
-    return patch ? [{ ...patch, text: patch.value }] : [];
+    return patch ? [{ ...patch, text: String(patch.value ?? "") }] : [];
   });
 }
 
@@ -60,7 +68,8 @@ function setEditableState(root: ParentNode, enabled: boolean) {
     element.spellcheck = enabled;
     element.classList.toggle("inline-editable-active", enabled);
     element.classList.remove("inline-editable-active-selected");
-    element.dataset.inlineEditOriginal = enabled ? element.textContent?.trim() ?? "" : element.dataset.inlineEditOriginal ?? "";
+    if (enabled) element.dataset.inlineEditOriginal = element.textContent?.trim() ?? "";
+    else delete element.dataset.inlineEditOriginal;
     if (element instanceof HTMLAnchorElement) {
       if (enabled) element.addEventListener("click", preventAnchorNavigation, true);
       else element.removeEventListener("click", preventAnchorNavigation, true);
@@ -93,7 +102,9 @@ export function InlineEditAssistant() {
   const [addValue, setAddValue] = useState("");
   const [urlDraft, setUrlDraft] = useState<UrlDraft | null>(null);
   const [urlError, setUrlError] = useState<string | null>(null);
-  const help = useMemo(() => "Select highlighted text or a mapped link, then save text edits or use Edit URL for mapped destinations. Add/remove is limited to mapped arrays.", []);
+  const [lastRevertPatches, setLastRevertPatches] = useState<EditablePatch[]>([]);
+  const focusReturnRef = useRef<HTMLElement | null>(null);
+  const help = useMemo(() => "Select highlighted text or a mapped link. Use Ctrl+S to save and Esc to exit. Structural fields open in the visual full editor.", []);
 
   useEffect(() => {
     document.querySelectorAll<HTMLElement>("section[data-inline-editing='true']").forEach((section) => {
@@ -124,6 +135,7 @@ export function InlineEditAssistant() {
       setEditableCount(count);
       setSelectedElement(null);
       setMessage(`Inline edit mode enabled for ${count} mapped field${count === 1 ? "" : "s"}. Select highlighted text or a mapped link before URL edits.`);
+      focusReturnRef.current = editLink;
       section.dataset.inlineEditing = "true";
       setEditableState(section, true);
       section.scrollIntoView({ block: "start", behavior: "smooth" });
@@ -143,27 +155,68 @@ export function InlineEditAssistant() {
     return () => { document.removeEventListener("click", handleClick, true); document.removeEventListener("click", handleSelect); };
   }, [editingSection]);
 
+  const handleKeyboard = useEffectEvent((event: globalThis.KeyboardEvent) => {
+    if (!active) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelInlineEditing();
+    } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      event.preventDefault();
+      void saveInlineEdits();
+    }
+  });
+
+  useEffect(() => {
+    if (!active) return;
+    document.addEventListener("keydown", handleKeyboard);
+    return () => document.removeEventListener("keydown", handleKeyboard);
+  }, [active]);
+
   if (!active) return null;
 
-  async function sendPatches(patches: EditablePatch[], successMessage: string, reload = false) {
+  function restoreOriginalText(close = false) {
+    const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
+    root?.querySelectorAll<HTMLElement>(".inline-editable-active").forEach((element) => {
+      if (element.dataset.inlineEditOriginal != null) element.textContent = element.dataset.inlineEditOriginal;
+      if (close) {
+        element.contentEditable = "false";
+        element.classList.remove("inline-editable-active", "inline-editable-active-selected");
+        delete element.dataset.inlineEditOriginal;
+        element.removeEventListener("click", preventAnchorNavigation, true);
+      }
+    });
+    return root;
+  }
+
+  async function sendPatches(patches: EditablePatch[], successMessage: string, options: { reload?: boolean; rollbackOnFailure?: boolean } = {}) {
     if (patches.length === 0) { setMessage("No changes to save."); return false; }
     setSaving(true);
     setMessage("Saving mapped inline edits...");
     try {
       const response = await fetch("/api/studio/inline-edit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ patches }) });
-      const payload = await response.json().catch(() => null) as { ok?: boolean; message?: string } | null;
-      if (!response.ok || !payload?.ok) { setMessage(payload?.message || `Inline save failed with HTTP ${response.status}.`); return false; }
+      const payload = await response.json().catch(() => null) as { ok?: boolean; message?: string; details?: Array<{ message?: string }>; revertPatches?: EditablePatch[] } | null;
+      if (!response.ok || !payload?.ok) {
+        if (options.rollbackOnFailure) restoreOriginalText();
+        const detail = Array.isArray(payload?.details) ? payload.details.map((entry) => entry.message).filter(Boolean).join(" ") : "";
+        setMessage(`${payload?.message || `Inline save failed with HTTP ${response.status}.`}${detail ? ` ${detail}` : ""}${options.rollbackOnFailure ? " Unsaved text was restored." : ""}`);
+        return false;
+      }
       setMessage(successMessage);
+      setLastRevertPatches(payload.revertPatches ?? []);
       const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
       if (root) { setEditableState(root, false); delete root.dataset.inlineEditing; }
-      if (reload) window.setTimeout(() => window.location.reload(), 350);
+      if (options.reload) window.setTimeout(() => window.location.reload(), 350);
       else {
-        setActive(false);
-        setEditingSection(null);
+        if (root) {
+          root.dataset.inlineEditing = "true";
+          setEditableState(root, true);
+        }
         setSelectedElement(null);
+        window.setTimeout(() => root?.querySelector<HTMLElement>(".inline-editable-active")?.focus(), 0);
       }
       return true;
     } catch (error) {
+      if (options.rollbackOnFailure) restoreOriginalText();
       setMessage(error instanceof Error ? error.message : "Inline save failed.");
       return false;
     } finally { setSaving(false); }
@@ -173,20 +226,20 @@ export function InlineEditAssistant() {
     const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
     if (!root) { setMessage("No active inline-edit section was found."); return; }
     const patches = collectChangedText(root);
-    await sendPatches(patches, `Saved ${patches.length} inline edit${patches.length === 1 ? "" : "s"}.`);
+    await sendPatches(patches, `Saved ${patches.length} inline edit${patches.length === 1 ? "" : "s"}.`, { rollbackOnFailure: true });
   }
 
   async function addInlineItem() {
     const patch = selectedElement ? patchFromElement(selectedElement, "add") : null;
     if (!patch) { setMessage("Select a mapped list item first."); return; }
     if (!addValue.trim()) { setMessage("Type the new item before adding it."); return; }
-    await sendPatches([{ ...patch, value: addValue.trim(), mode: "add" }], "Added mapped inline item. Refreshing current view...", true);
+    await sendPatches([{ ...patch, value: addValue.trim(), mode: "add" }], "Added mapped inline item. Refreshing current view...", { reload: true });
   }
 
   async function removeSelectedItem() {
     const patch = selectedElement ? patchFromElement(selectedElement, "cut") : null;
     if (!patch || patch.index == null) { setMessage("Select a mapped list item with an index before removing it."); return; }
-    await sendPatches([{ ...patch, value: "", mode: "cut" }], "Removed mapped inline item. Refreshing current view...", true);
+    await sendPatches([{ ...patch, value: "", mode: "cut" }], "Removed mapped inline item. Refreshing current view...", { reload: true });
   }
 
   function openUrlEditor() {
@@ -206,33 +259,40 @@ export function InlineEditAssistant() {
     const validation = validateUrl(urlDraft.value);
     if (!validation.ok) { setUrlError(validation.message); return; }
     const element = selectedElement;
-    const saved = await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), ...(urlDraft.index != null ? { index: urlDraft.index } : {}), value: validation.value }], "Saved mapped URL.");
+    const saved = await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), ...(urlDraft.index != null ? { index: urlDraft.index } : {}), value: validation.value, expectedValue: element instanceof HTMLAnchorElement ? element.getAttribute("href") ?? "" : "" }], "Saved mapped URL.");
     if (saved && element instanceof HTMLAnchorElement) element.href = validation.value;
   }
 
+  function resetInlineChanges() {
+    restoreOriginalText();
+    setMessage("Unsaved text was reset to the value shown when edit mode opened.");
+  }
+
+  async function undoLastSave() {
+    if (lastRevertPatches.length === 0) { setMessage("There is no inline save to undo in this session."); return; }
+    const reverted = await sendPatches(lastRevertPatches, "Reverted the last inline save. Refreshing current view...", { reload: true });
+    if (reverted) setLastRevertPatches([]);
+  }
+
   function cancelInlineEditing() {
-    const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
-    root?.querySelectorAll<HTMLElement>(".inline-editable-active").forEach((element) => {
-      if (element.dataset.inlineEditOriginal != null) element.textContent = element.dataset.inlineEditOriginal;
-      element.contentEditable = "false";
-      element.classList.remove("inline-editable-active", "inline-editable-active-selected");
-      delete element.dataset.inlineEditOriginal;
-      element.removeEventListener("click", preventAnchorNavigation, true);
-    });
+    restoreOriginalText(true);
     document.querySelectorAll<HTMLElement>("section[data-inline-editing='true']").forEach((section) => delete section.dataset.inlineEditing);
     setActive(false); setEditingSection(null); setSelectedElement(null); setUrlDraft(null);
+    window.setTimeout(() => focusReturnRef.current?.focus(), 0);
   }
 
   return (
     <>
-      <div className="inline-edit-hint" role="status">
-        <strong>Inline editing</strong><p>{message}</p><p className="muted-copy">{help}</p>
+      <div className="inline-edit-hint">
+        <strong>Inline editing</strong><p aria-live="polite">{message}</p><p className="muted-copy">{help}</p>
         <label className="inline-add-field"><span>Add item</span><input value={addValue} onChange={(event) => setAddValue(event.target.value)} placeholder="New detail, tag, material, or divider" /></label>
         <div className="hero-actions">
           <button className="button-primary" disabled={saving || editableCount === 0} type="button" onClick={saveInlineEdits}>{saving ? "Saving..." : "Save inline edits"}</button>
           <button className="button-secondary" disabled={saving} type="button" onClick={addInlineItem}>Add item</button>
           <button className="button-secondary" disabled={saving} type="button" onClick={removeSelectedItem}>Remove selected</button>
           <button className="button-secondary" disabled={saving} type="button" onClick={openUrlEditor}>Edit URL</button>
+          <button className="button-secondary" disabled={saving} type="button" onClick={resetInlineChanges}>Reset unsaved</button>
+          <button className="button-secondary" disabled={saving || lastRevertPatches.length === 0} type="button" onClick={undoLastSave}>Undo last save</button>
           {advancedHref ? <a className="button-secondary" href={advancedHref}>Full editor</a> : null}
           <button className="button-secondary" type="button" onClick={cancelInlineEditing}>Cancel</button>
         </div>

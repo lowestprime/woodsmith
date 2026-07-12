@@ -60,7 +60,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - buyer email verification at `/account/verify`
 - visitor-session logging endpoint at `/api/visits`
 
-Admins signed into the public site get pencil controls on supported sections. Mapped text and link destinations save through `/api/studio/inline-edit` without a route change or full-page reload. Structural changes use the explicit full-editor link; no raw JSON editor is exposed.
+Admins signed into the public site get pencil controls on supported sections. Mapped text and link destinations save through `/api/studio/inline-edit` without a route change or full-page reload. A typed registry is the single server allowlist for text, rich text, URL, email, number, currency, boolean, date, enum, list, link-list, relation, and media-relation fields. Requests require admin authentication and a trusted same-origin mutation request; each batch validates before one SQLite transaction, detects stale expected values, writes an admin audit record, and returns reversible patches for one-step Undo. Structural changes use the explicit visual full-editor link; no raw JSON editor is exposed.
 
 ## Database model
 

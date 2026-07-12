@@ -1,6 +1,5 @@
 import { createElement, type ElementType, type HTMLAttributes, type ReactNode } from "react";
-
-export type InlineEditResource = "settings" | "homeSection" | "page" | "piece" | "post" | "user";
+import type { InlineEditResource } from "@/lib/inline-edit-registry";
 
 export type InlineEditTarget = {
   resource: InlineEditResource;

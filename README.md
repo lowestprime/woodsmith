@@ -20,7 +20,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Optional server-side OpenAI image-model previews for custom work when `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured; generated previews are stored back into `/app/pics`
 - Buyer account pages for signup, login, password reset, profile editing, profile images, and account-linked projects
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
-- Admin-only pencil controls that edit mapped public text and links in place, with an explicit full-editor link for structural work
+- Admin-only pencil controls backed by a typed field registry, atomic audited saves, conflict detection, URL/origin validation, reset/undo controls, and an explicit visual full-editor link for structural work
 - A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, guided local training actions, training-weighted visual ranking, upload/rename/delete safety, persistent assignment, crop/focal controls, and source credit against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
 - Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior

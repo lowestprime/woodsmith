@@ -160,6 +160,8 @@ Production-like disposable migration result: 26 pieces retained, 193 normalized 
 7. Extend Media Desk batch operations, rename previews, roles/stages, and provider-safe derivatives.
 8. Replace pseudo-3D with dynamically loaded R3F generators and retain an honest scale-drawing fallback.
 9. Replace inline-edit conditionals with a typed registry and atomic audited patch application.
+
+Implemented after the baseline audit: the public editor now derives its allowlist from `site/lib/inline-edit-registry.ts`, validates complete batches before an outer SQLite transaction, records admin audit entries, rejects stale expected values and untrusted origins, and returns reversible patches for one-step Undo. The full visual editor remains the explicit path for structural changes.
 10. Run static, disposable-database, browser, accessibility, performance, Docker, backup, candidate, rollback, and live deployment gates.
 
 ## Validation Matrix

@@ -11,7 +11,7 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 ## Dashboard areas
 
-The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; **Full editor** opens the matching dashboard workspace for structural changes. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again.
+The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; use `Ctrl+S` to save, `Esc` to exit, **Reset unsaved** to restore the value shown when editing opened, or **Undo last save** to reverse the most recent inline batch. **Full editor** opens the matching visual dashboard workspace for structural changes. Inline batches are validated from a typed field registry, saved in one SQLite transaction, checked for concurrent changes, and recorded in the admin edit audit. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again.
 
 ### Settings
 
