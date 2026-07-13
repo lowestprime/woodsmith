@@ -1,6 +1,8 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
+import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { detectMediaKind, resolveMediaPath } from "@/lib/media";
+import { mediaEntityTag, mediaLastModified, mediaRequestIsFresh } from "@/lib/media-http";
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -19,7 +21,7 @@ function notFound() {
   return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });
 }
 
-export async function GET(_: Request, { params }: { params: Promise<{ slug: string[] }> }) {
+export async function GET(request: Request, { params }: { params: Promise<{ slug: string[] }> }) {
   const { slug } = await params;
   const relativePath = slug.join("/");
   if (!relativePath || relativePath.includes("..")) {
@@ -50,19 +52,22 @@ export async function GET(_: Request, { params }: { params: Promise<{ slug: stri
 
   const extension = absolutePath.slice(absolutePath.lastIndexOf(".")).toLowerCase();
   const kind = detectMediaKind(relativePath);
+  const responseHeaders = {
+    "Content-Type": MIME_TYPES[extension] || (kind === "video" ? "application/octet-stream" : "image/jpeg"),
+    "Content-Length": String(stat.size),
+    "Cache-Control": "public, max-age=0, must-revalidate",
+    "CDN-Cache-Control": "public, max-age=0, must-revalidate",
+    ETag: mediaEntityTag(stat),
+    "Last-Modified": mediaLastModified(stat),
+    "X-Content-Type-Options": "nosniff"
+  };
 
-  const stream = createReadStream(absolutePath);
-  stream.on("error", () => {
-    stream.destroy();
-  });
+  if (mediaRequestIsFresh(request.headers, stat)) {
+    return new NextResponse(null, { status: 304, headers: responseHeaders });
+  }
 
-  return new NextResponse(stream as never, {
-    headers: {
-      "Content-Type":
-        MIME_TYPES[extension] ||
-        (kind === "video" ? "application/octet-stream" : "image/jpeg"),
-      "Cache-Control": "no-store",
-      "CDN-Cache-Control": "no-store"
-    }
+  const stream = Readable.toWeb(createReadStream(absolutePath)) as ReadableStream<Uint8Array>;
+  return new NextResponse(stream, {
+    headers: responseHeaders
   });
 }

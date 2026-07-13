@@ -20,6 +20,18 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       current.dataset.headerState = "revealed";
     }
 
+    function onFocusIn(event: FocusEvent) {
+      reveal();
+      const current = ref.current;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!current || !target || current.contains(target)) return;
+      window.requestAnimationFrame(() => {
+        const targetTop = target.getBoundingClientRect().top;
+        const clearance = current.offsetHeight + 8;
+        if (targetTop < clearance) window.scrollBy({ top: targetTop - clearance, behavior: "auto" });
+      });
+    }
+
     function update() {
       const el = ref.current;
       if (!el) return;
@@ -71,13 +83,13 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("focusin", reveal);
+    window.addEventListener("focusin", onFocusIn);
     window.addEventListener("pageshow", reveal);
     el.addEventListener("pointerenter", reveal);
     update();
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("focusin", reveal);
+      window.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("pageshow", reveal);
       el.removeEventListener("pointerenter", reveal);
     };

@@ -11,7 +11,7 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 ## Dashboard areas
 
-The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; use `Ctrl+S` to save, `Esc` to exit, **Reset unsaved** to restore the value shown when editing opened, or **Undo last save** to reverse the most recent inline batch. **Full editor** opens the matching visual dashboard workspace for structural changes. Inline batches are validated from a typed field registry, saved in one SQLite transaction, checked for concurrent changes, and recorded in the admin edit audit. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again.
+The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; use `Ctrl+S` to save, `Esc` to exit, **Reset unsaved** to restore the value shown when editing opened, or **Undo last save** to reverse the most recent inline batch. **Full editor** opens the matching visual dashboard workspace for structural changes. Inline batches are validated from a typed field registry, saved in one SQLite transaction, checked for concurrent changes, and recorded in the admin edit audit. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again. When focus returns to page content, the header reveals without covering the focused control. The inline URL editor and media browser keep keyboard focus inside their modal surfaces and restore it when closed.
 
 ### Settings
 
@@ -94,6 +94,8 @@ Advanced actions expose **Rescan files**, **Analyze page**, **Analyze selected**
 Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only manually reviewed labels provide the strongest propagation prior. Reviewer-rejected candidates and contradicted same-folder examples suppress later suggestions. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
 
 The same visual picker is now used in Pages, Pieces, and Process editors, so cover images and piece galleries can be selected directly from the mounted library without typing raw paths.
+
+Public piece and shop cards request responsive optimized thumbnails rather than each raw original. Opening a piece image still loads the source-resolution media in the full-screen viewer. Carousel arrows update an announced position; the viewer supports plus/minus/reset controls, bounded drag or arrow-key panning while zoomed, `Esc`, backdrop click, and the fixed X close control.
 
 ### Visitor map
 

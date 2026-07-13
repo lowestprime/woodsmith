@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
@@ -44,7 +45,7 @@ export default async function ShopPage() {
 
             return (
               <article className="shop-card" id={`piece-${piece.slug}`} key={piece.slug}>
-                {firstImage ? <img alt={piece.title} className="shop-card-image" loading="lazy" src={toMediaUrl(firstImage)} /> : <div className="piece-card-placeholder">Media under review</div>}
+                {firstImage ? <Image alt={piece.title} className="shop-card-image" height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} width={1200} /> : <div className="piece-card-placeholder">Media under review</div>}
                 <div className="shop-card-body">
                   <div className="piece-card-meta"><span>{piece.category}</span><span>{piece.inventoryCount} available</span></div>
                   <h2 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>

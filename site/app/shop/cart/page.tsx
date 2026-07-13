@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Image from "next/image";
 import { removeCartItemAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { getDisplayMediaPaths, getFulfillmentSummary } from "@/lib/catalog";
@@ -38,7 +39,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
           <div className="cart-items">
             {lines.length > 0 ? lines.map(({ item, piece }) => (
               <article className="cart-line" key={item.id}>
-                {getDisplayMediaPaths(piece)[0] ? <img alt={piece.title} src={toMediaUrl(getDisplayMediaPaths(piece)[0])} /> : <div className="piece-card-placeholder">No image</div>}
+                {getDisplayMediaPaths(piece)[0] ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(getDisplayMediaPaths(piece)[0])} width={320} /> : <div className="piece-card-placeholder">No image</div>}
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>

@@ -16,7 +16,9 @@ function getThemeSnapshot(): ThemeMode {
     return "dark";
   }
 
-  return window.localStorage.getItem("beaman-theme") === "light" ? "light" : "dark";
+  const stored = window.localStorage.getItem("beaman-theme");
+  if (stored === "light" || stored === "dark") return stored;
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 function subscribeTheme(listener: () => void) {
@@ -28,11 +30,11 @@ function subscribeTheme(listener: () => void) {
   };
 }
 
-export function ThemeToggle() {
-  const theme = useSyncExternalStore<ThemeMode>(subscribeTheme, getThemeSnapshot, () => "dark");
+export function ThemeToggle({ initialTheme = "dark" }: { initialTheme?: ThemeMode }) {
+  const theme = useSyncExternalStore<ThemeMode>(subscribeTheme, getThemeSnapshot, () => initialTheme);
 
   useEffect(() => {
-    applyTheme(theme);
+    document.documentElement.dataset.theme = theme;
   }, [theme]);
 
   const isDark = theme === "dark";

@@ -104,6 +104,10 @@ export function InlineEditAssistant() {
   const [urlError, setUrlError] = useState<string | null>(null);
   const [lastRevertPatches, setLastRevertPatches] = useState<EditablePatch[]>([]);
   const focusReturnRef = useRef<HTMLElement | null>(null);
+  const urlDialogRef = useRef<HTMLDivElement>(null);
+  const urlInputRef = useRef<HTMLInputElement>(null);
+  const urlReturnFocusRef = useRef<HTMLElement | null>(null);
+  const urlDialogOpen = Boolean(urlDraft);
   const help = useMemo(() => "Select highlighted text or a mapped link. Use Ctrl+S to save and Esc to exit. Structural fields open in the visual full editor.", []);
 
   useEffect(() => {
@@ -156,7 +160,7 @@ export function InlineEditAssistant() {
   }, [editingSection]);
 
   const handleKeyboard = useEffectEvent((event: globalThis.KeyboardEvent) => {
-    if (!active) return;
+    if (!active || urlDraft) return;
     if (event.key === "Escape") {
       event.preventDefault();
       cancelInlineEditing();
@@ -171,6 +175,40 @@ export function InlineEditAssistant() {
     document.addEventListener("keydown", handleKeyboard);
     return () => document.removeEventListener("keydown", handleKeyboard);
   }, [active]);
+
+  useEffect(() => {
+    if (!urlDialogOpen) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.requestAnimationFrame(() => urlInputRef.current?.focus());
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setUrlDraft(null);
+        return;
+      }
+      if (event.key !== "Tab" || !urlDialogRef.current) return;
+      const focusable = [...urlDialogRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])')];
+      const first = focusable[0];
+      const last = focusable.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+      const target = urlReturnFocusRef.current;
+      window.requestAnimationFrame(() => {
+        if (target?.isConnected) target.focus();
+      });
+    };
+  }, [urlDialogOpen]);
 
   if (!active) return null;
 
@@ -250,6 +288,7 @@ export function InlineEditAssistant() {
     const resource = element.dataset.inlineEditResource;
     if (!resource) { setMessage("Selected anchor is missing inline resource metadata."); return; }
     const index = getInlineIndex(element);
+    urlReturnFocusRef.current = document.activeElement as HTMLElement | null;
     setUrlDraft({ resource, field, ...(element.dataset.inlineEditId ? { id: element.dataset.inlineEditId } : {}), ...(index !== undefined ? { index } : {}), value: element.getAttribute("href") ?? "" });
     setUrlError(null);
   }
@@ -260,7 +299,10 @@ export function InlineEditAssistant() {
     if (!validation.ok) { setUrlError(validation.message); return; }
     const element = selectedElement;
     const saved = await sendPatches([{ resource: urlDraft.resource, field: urlDraft.field, ...(urlDraft.id ? { id: urlDraft.id } : {}), ...(urlDraft.index != null ? { index: urlDraft.index } : {}), value: validation.value, expectedValue: element instanceof HTMLAnchorElement ? element.getAttribute("href") ?? "" : "" }], "Saved mapped URL.");
-    if (saved && element instanceof HTMLAnchorElement) element.href = validation.value;
+    if (saved) {
+      if (element instanceof HTMLAnchorElement) element.href = validation.value;
+      setUrlDraft(null);
+    }
   }
 
   function resetInlineChanges() {
@@ -297,7 +339,7 @@ export function InlineEditAssistant() {
           <button className="button-secondary" type="button" onClick={cancelInlineEditing}>Cancel</button>
         </div>
       </div>
-      {urlDraft ? <div className="inline-url-dialog" role="dialog" aria-label="Edit URL"><strong>Edit URL</strong><p className="muted-copy">Allowed: http, https, mailto, or root-relative /paths.</p><input value={urlDraft.value} onChange={(event) => { setUrlDraft({ ...urlDraft, value: event.target.value }); setUrlError(null); }} />{urlError ? <p className="error-copy">{urlError}</p> : null}<div className="hero-actions"><button className="button-primary" type="button" onClick={saveUrlEditor}>Save URL</button><button className="button-secondary" type="button" onClick={() => setUrlDraft(null)}>Cancel</button></div></div> : null}
+      {urlDraft ? <div className="inline-url-dialog-shell"><button aria-label="Close URL editor" className="inline-url-dialog-backdrop" onClick={() => setUrlDraft(null)} type="button" /><div aria-describedby="inline-url-help" aria-label="Edit URL" aria-modal="true" className="inline-url-dialog" ref={urlDialogRef} role="dialog"><strong>Edit URL</strong><p className="muted-copy" id="inline-url-help">Allowed: http, https, mailto, or root-relative /paths.</p><label><span>Destination</span><input aria-describedby={urlError ? "inline-url-help inline-url-error" : "inline-url-help"} aria-invalid={Boolean(urlError)} ref={urlInputRef} value={urlDraft.value} onChange={(event) => { setUrlDraft({ ...urlDraft, value: event.target.value }); setUrlError(null); }} /></label>{urlError ? <p className="error-copy" id="inline-url-error" role="alert">{urlError}</p> : null}<div className="hero-actions"><button className="button-primary" type="button" onClick={saveUrlEditor}>Save URL</button><button className="button-secondary" type="button" onClick={() => setUrlDraft(null)}>Cancel</button></div></div></div> : null}
     </>
   );
 }

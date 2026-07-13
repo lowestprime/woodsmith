@@ -1,9 +1,11 @@
 import { cache, type ReactNode } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { HeaderSearch } from "@/components/header-search";
 import { HeaderShell } from "@/components/header-shell";
+import { SiteNavLink } from "@/components/site-nav-link";
 import { CategoryIcon as SharedCategoryIcon } from "@/components/category-icon";
 import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
 import { avatarGradientStyle } from "@/lib/avatar";
@@ -48,10 +50,10 @@ const RESERVED_NAV_SLUGS = new Set(["home", "portfolio", "shop", "journal", "pro
 
 export async function SiteHeader() {
   const site = getSiteSettings();
-  const user = await getViewer();
+  const [user, cookieStore] = await Promise.all([getViewer(), cookies()]);
   const seedHrefs = new Set(site.navigation.map((entry) => String(entry.href)));
   const dynamicPages = listPages(false).filter((page) => !RESERVED_NAV_SLUGS.has(page.slug) && !seedHrefs.has(`/${page.slug}`)).map((page) => ({ href: `/${page.slug}` as const, label: page.navLabel || page.title, slug: page.slug }));
-  const cookieStore = await cookies();
+  const initialTheme = cookieStore.get("beaman-theme")?.value === "light" ? "light" : "dark";
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
   const accountHref = user ? (user.role === "admin" ? "/studio" : "/account/profile") : "/account/login";
@@ -68,15 +70,15 @@ export async function SiteHeader() {
             const href = String(item.href).toLowerCase();
             const label = String(item.label).trim().toLowerCase();
             return href !== "/search" && href !== "/process" && href !== "/shop#process" && label !== "process";
-          }).map(({ item, index }) => <Link className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</Link>)}
-          {dynamicPages.map((item) => <Link className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "page", id: item.slug, field: "navLabel" })}>{item.label}</Link>)}
+          }).map(({ item, index }) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</SiteNavLink>)}
+          {dynamicPages.map((item) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "page", id: item.slug, field: "navLabel" })}>{item.label}</SiteNavLink>)}
           <HeaderSearch />
         </nav>
         <div className="header-actions">
           <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart"><span aria-hidden="true">Cart</span><strong>{cartCount}</strong></Link>
           <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}><AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} seed={user?.email ?? user?.displayName ?? accountLabel} /></Link>
           {user ? <form action={logoutAction}><button aria-label="Log out" className="header-icon-button" type="submit" title="Log out"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></button></form> : null}
-          <ThemeToggle />
+          <ThemeToggle initialTheme={initialTheme} />
         </div>
       </Shell>
     </HeaderShell>
@@ -120,7 +122,7 @@ export function PieceCard({ piece, categories }: { piece: PieceRecord; categorie
   const verified = hasVerifiedMedia(piece);
   const media = firstImage ? getMedia(firstImage) : null;
   const category = findPieceCategory(piece.category, categories);
-  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <img alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} loading="lazy" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
+  return <article className="piece-card"><Link className="piece-card-link" href={`/portfolio/${piece.slug}`}>{firstImage ? <Image alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} width={1200} /> : <div className="piece-card-placeholder">Media under review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span><span>{verified ? "Verified photography" : "Photography in progress"}</span></div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
 }
 export function PostCard({ post }: { post: PostRecord }) {
   return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p></article>;

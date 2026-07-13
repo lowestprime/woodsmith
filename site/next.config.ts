@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    qualities: [75, 86, 88]
+  },
   outputFileTracingExcludes: {
     "/*": ["./data/**/*"]
   },

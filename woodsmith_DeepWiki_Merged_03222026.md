@@ -150,7 +150,7 @@ The `site/lib/search.ts` wrapper preserves the SQLite keyword/metadata search pa
 The active design language is based on the Beaman Woodworks 2.0 prototypes but updated for the 3.0 client feedback:
 
 - birds-eye maple, ebony, and white-maple palette
-- persistent light/day and black OLED night theme toggle
+- persistent light/day and black OLED night theme toggle whose server cookie and client store hydrate without overwriting the saved choice
 - compact header shell that condenses on scroll and hides while scrolling down
 - repaired toggle track/thumb alignment and admin-aware account/profile badge resolution
 - local Mackintosh typography throughout the site
@@ -159,7 +159,9 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - categorized portfolio tabs with icon-like labels
 - dedicated Process archive replacing Journal without duplicating Process inside Shop
 - account button as a rounded profile badge
-- full-size lightbox overlays with zoom, pan, arrows, close button, and `Esc` support
+- route-aware current navigation, a skip-to-main link, high-contrast focus rings, reduced-motion behavior, and header focus clearance
+- responsive carousels with announced position and optimized thumbnails; full-size lightboxes retain raw source quality, trap/restore focus, and support bounded keyboard/touch pan, zoom, arrows, reset, close button, backdrop click, and `Esc`
+- ETag and Last-Modified revalidation on direct media responses so unchanged originals are not retransferred while same-path updates remain visible after revalidation
 - private dashboard media preview cards with crop/focal controls, cleanup modes, project media strips, and verification candidates
 - programmatic Beaman Woodworks favicon and header mark
 

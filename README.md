@@ -23,9 +23,11 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Admin-only pencil controls backed by a typed field registry, atomic audited saves, conflict detection, URL/origin validation, reset/undo controls, and an explicit visual full-editor link for structural work
 - A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, guided local training actions, transactional selected-item folder/name/assignment/role/stage changes with rollback, upload/rename/delete safety, crop/focal controls, and source credit against the writable NAS photo library
 - Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
-- Full-size image lightbox support with zoom, pan, arrow navigation, plus `Esc` and close-button exit behavior
+- Responsive piece carousels with announced position and full-size lightboxes that trap focus, restore the opener, support bounded keyboard/touch pan and zoom, and close through `Esc`, backdrop click, or the visible X control
 - Keyword/metadata search plus visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. The optional local sidecar supplies shared image/text CLIP vectors; Gemini or OpenAI embeddings remain opt-in alternatives.
-- Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets
+- Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets; the cookie-backed initial theme and client store are synchronized without hydration overwriting the saved choice
+- WCAG-oriented skip navigation, current-page navigation state, visible high-contrast focus, reduced-motion handling, compact 24px-or-larger targets, and focus clearance for the auto-hiding header
+- Responsive optimized thumbnail requests on portfolio, shop, cart, and carousel surfaces; the raw source remains available in the full-screen viewer and direct media responses use ETag/Last-Modified revalidation
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
