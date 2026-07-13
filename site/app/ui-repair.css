@@ -650,6 +650,63 @@ body:has(.inline-edit-hint) main {
   letter-spacing: 0.03em;
 }
 
+.media-batch-panel > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.media-batch-panel > summary span {
+  min-width: 1.6rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  text-align: center;
+  font-size: 0.72rem;
+}
+
+.media-batch-form {
+  margin-top: 0.55rem;
+  gap: 0.48rem;
+}
+
+.media-batch-panel .field-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.media-batch-panel code {
+  color: var(--accent);
+  font-size: 0.72rem;
+}
+
+.media-batch-history {
+  display: grid;
+  gap: 0.38rem;
+  margin-top: 0.65rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--line);
+}
+
+.media-batch-history article {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.45rem;
+  padding: 0.35rem 0;
+}
+
+.media-batch-history article span,
+.media-batch-history article small {
+  display: block;
+}
+
+.media-batch-history article small {
+  margin-top: 0.08rem;
+  color: var(--muted);
+  font-size: 0.64rem;
+}
+
 .studio-verification-list {
   display: grid;
   gap: 0.55rem;

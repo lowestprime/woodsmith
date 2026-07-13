@@ -44,6 +44,14 @@ export function slugify(value: string) {
     .slice(0, 80);
 }
 
+export function sanitizeMediaFolder(value: string) {
+  return value
+    .split(/[\\/]+/g)
+    .map(slugify)
+    .filter(Boolean)
+    .join("/");
+}
+
 function normalizeRelativePath(value: string) {
   return value.replace(/\\/g, "/").replace(/^\/+/, "");
 }
@@ -185,7 +193,7 @@ export type MediaUploadPolicy = {
 };
 
 export async function persistUploadedMedia(file: File, folder = "Uploads", policy: MediaUploadPolicy = {}) {
-  const safeFolder = folder.split(/[\\/]+/g).map(slugify).filter(Boolean).join("/") || "uploads";
+  const safeFolder = sanitizeMediaFolder(folder) || "uploads";
   const originalName = file.name || "upload";
   const originalExtension = path.extname(originalName) || "";
   const extension = originalExtension.toLowerCase();
@@ -206,7 +214,7 @@ export async function persistUploadedMedia(file: File, folder = "Uploads", polic
 }
 
 export function persistGeneratedMedia(base64Image: string, folder = "generated", baseName = "preview", extension = ".png") {
-  const safeFolder = slugify(folder) || "generated";
+  const safeFolder = sanitizeMediaFolder(folder) || "generated";
   const safeBase = slugify(baseName) || `generated-${randomUUID().slice(0, 8)}`;
   const cleanExtension = extension.startsWith(".") ? extension.toLowerCase() : `.${extension.toLowerCase()}`;
   const relativePath = `${safeFolder}/${safeBase}-${randomUUID().slice(0, 8)}${cleanExtension}`;
@@ -243,11 +251,20 @@ export function scanMediaAsset(relativePath: string): MediaScanRecord | null {
 }
 
 export function previewMediaRenamePath(relativePath: string, nextBaseName: string) {
+  return previewMediaOrganizePath(relativePath, { baseName: nextBaseName });
+}
+
+export function previewMediaOrganizePath(relativePath: string, options: { baseName?: string; folder?: string }) {
   const currentAbsolutePath = resolveMediaPath(relativePath);
   const parsed = path.parse(currentAbsolutePath);
-  const baseName = slugify(nextBaseName) || `media-${randomUUID().slice(0, 8)}`;
-  const targetAbsolutePath = path.join(parsed.dir, `${baseName}${parsed.ext.toLowerCase()}`);
+  const baseName = slugify(options.baseName ?? parsed.name) || `media-${randomUUID().slice(0, 8)}`;
   const mediaRoot = getMediaRoot();
+  const currentFolder = normalizeRelativePath(path.relative(mediaRoot, parsed.dir));
+  const requestedFolder = options.folder == null || options.folder.trim() === ""
+    ? currentFolder
+    : sanitizeMediaFolder(options.folder);
+  const targetDirectory = requestedFolder ? resolveMediaPath(requestedFolder) : mediaRoot;
+  const targetAbsolutePath = path.join(targetDirectory, `${baseName}${parsed.ext.toLowerCase()}`);
   if (path.resolve(targetAbsolutePath) === path.resolve(currentAbsolutePath)) {
     return normalizeRelativePath(path.relative(mediaRoot, currentAbsolutePath));
   }

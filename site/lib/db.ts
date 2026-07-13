@@ -171,6 +171,36 @@ export type MediaRenameHistoryRecord = {
   completedAt: string | null;
 };
 
+export type MediaOperationSnapshot = {
+  media: MediaRecord;
+  links: PieceMediaLinkRecord[];
+};
+
+export type MediaOperationItemRecord = {
+  id: string;
+  batchId: string;
+  ordinal: number;
+  previousPath: string;
+  nextPath: string;
+  before: MediaOperationSnapshot;
+  after: MediaOperationSnapshot;
+  createdAt: string;
+};
+
+export type MediaOperationBatchRecord = {
+  id: string;
+  operation: "organize" | "rollback";
+  status: "planned" | "completed" | "rolled-back" | "failed";
+  actorEmail: string | null;
+  request: Record<string, unknown>;
+  error: string | null;
+  rollbackOf: string | null;
+  createdAt: string;
+  completedAt: string | null;
+  itemCount: number;
+  items: MediaOperationItemRecord[];
+};
+
 export type PostRecord = {
   slug: string;
   title: string;
@@ -2165,6 +2195,20 @@ export function listPieceMediaLinks(pieceSlug: string, options: { publicOnly?: b
   return rows.map(mapPieceMediaLink);
 }
 
+export function listPieceMediaLinksForPath(relativePath: string) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, piece_slug AS pieceSlug, relative_path AS relativePath, role, stage,
+           occurred_at AS occurredAt, title, caption, technical_note AS technicalNote,
+           alt_override AS altOverride, display_order AS displayOrder, is_public AS public,
+           legacy_synced AS legacySynced, created_at AS createdAt, updated_at AS updatedAt
+    FROM piece_media_links
+    WHERE relative_path = ?
+    ORDER BY piece_slug ASC, display_order ASC, created_at ASC
+  `).all(relativePath) as Record<string, unknown>[];
+  return rows.map(mapPieceMediaLink);
+}
+
 export type PieceMediaLinkInput = Omit<PieceMediaLinkRecord, "id" | "pieceSlug" | "createdAt" | "updatedAt" | "legacySynced"> & {
   id?: string;
 };
@@ -2748,6 +2792,272 @@ export function listMediaRenameHistory(limit = 100) {
     createdAt: String(row.createdAt),
     completedAt: row.completedAt ? String(row.completedAt) : null
   }));
+}
+
+function mapMediaOperationItem(row: Record<string, unknown>): MediaOperationItemRecord {
+  return {
+    id: String(row.id),
+    batchId: String(row.batchId),
+    ordinal: Number(row.ordinal),
+    previousPath: String(row.previousPath),
+    nextPath: String(row.nextPath),
+    before: readJson<MediaOperationSnapshot>(row.beforeJson, {} as MediaOperationSnapshot),
+    after: readJson<MediaOperationSnapshot>(row.afterJson, {} as MediaOperationSnapshot),
+    createdAt: String(row.createdAt)
+  };
+}
+
+function mediaOperationItems(batchId: string) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, batch_id AS batchId, ordinal, previous_path AS previousPath, next_path AS nextPath,
+           before_json AS beforeJson, after_json AS afterJson, created_at AS createdAt
+    FROM media_operation_items
+    WHERE batch_id = ?
+    ORDER BY ordinal ASC
+  `).all(batchId) as Record<string, unknown>[];
+  return rows.map(mapMediaOperationItem);
+}
+
+function mapMediaOperationBatch(row: Record<string, unknown>, includeItems = true): MediaOperationBatchRecord {
+  const id = String(row.id);
+  const items = includeItems ? mediaOperationItems(id) : [];
+  return {
+    id,
+    operation: row.operation as MediaOperationBatchRecord["operation"],
+    status: row.status as MediaOperationBatchRecord["status"],
+    actorEmail: row.actorEmail ? String(row.actorEmail) : null,
+    request: readJson<Record<string, unknown>>(row.requestJson, {}),
+    error: row.error ? String(row.error) : null,
+    rollbackOf: row.rollbackOf ? String(row.rollbackOf) : null,
+    createdAt: String(row.createdAt),
+    completedAt: row.completedAt ? String(row.completedAt) : null,
+    itemCount: Number(row.itemCount ?? items.length),
+    items
+  };
+}
+
+export function captureMediaOperationSnapshot(relativePath: string): MediaOperationSnapshot {
+  const media = getMedia(relativePath);
+  if (!media) throw new Error(`Media '${relativePath}' is not indexed.`);
+  return { media, links: listPieceMediaLinksForPath(relativePath) };
+}
+
+export function getMediaOperationBatch(id: string) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT b.id, b.operation, b.status, b.actor_email AS actorEmail, b.request_json AS requestJson,
+           b.error, b.rollback_of AS rollbackOf, b.created_at AS createdAt, b.completed_at AS completedAt,
+           COUNT(i.id) AS itemCount
+    FROM media_operation_batches b
+    LEFT JOIN media_operation_items i ON i.batch_id = b.id
+    WHERE b.id = ?
+    GROUP BY b.id
+    LIMIT 1
+  `).get(id) as Record<string, unknown> | undefined;
+  return row ? mapMediaOperationBatch(row) : null;
+}
+
+export function listMediaOperationBatches(limit = 12) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT b.id, b.operation, b.status, b.actor_email AS actorEmail, b.request_json AS requestJson,
+           b.error, b.rollback_of AS rollbackOf, b.created_at AS createdAt, b.completed_at AS completedAt,
+           COUNT(i.id) AS itemCount
+    FROM media_operation_batches b
+    LEFT JOIN media_operation_items i ON i.batch_id = b.id
+    GROUP BY b.id
+    ORDER BY b.created_at DESC
+    LIMIT ?
+  `).all(Math.max(1, Math.min(50, Math.round(limit)))) as Record<string, unknown>[];
+  return rows.map((row) => mapMediaOperationBatch(row, false));
+}
+
+export function createMediaOperationBatch(input: {
+  operation: MediaOperationBatchRecord["operation"];
+  actorEmail?: string | null;
+  request?: Record<string, unknown>;
+  rollbackOf?: string | null;
+  mutations: Array<{ before: MediaOperationSnapshot; after: MediaOperationSnapshot }>;
+}) {
+  if (input.mutations.length === 0) throw new Error("A media operation requires at least one item.");
+  return withDatabaseTransaction((db) => {
+    const id = randomUUID();
+    const timestamp = nowIso();
+    db.prepare(`
+      INSERT INTO media_operation_batches (
+        id, operation, status, actor_email, request_json, error, rollback_of, created_at, completed_at
+      ) VALUES (?, ?, 'planned', ?, ?, NULL, ?, ?, NULL)
+    `).run(id, input.operation, input.actorEmail?.toLowerCase() ?? null, writeJson(input.request ?? {}), input.rollbackOf ?? null, timestamp);
+    const insertItem = db.prepare(`
+      INSERT INTO media_operation_items (
+        id, batch_id, ordinal, previous_path, next_path, before_json, after_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    input.mutations.forEach((mutation, ordinal) => {
+      insertItem.run(
+        randomUUID(),
+        id,
+        ordinal,
+        mutation.before.media.relativePath,
+        mutation.after.media.relativePath,
+        writeJson(mutation.before),
+        writeJson(mutation.after),
+        timestamp
+      );
+    });
+    return getMediaOperationBatch(id)!;
+  });
+}
+
+export function completeMediaOperationBatch(id: string, snapshots: MediaOperationSnapshot[]) {
+  return withDatabaseTransaction((db) => {
+    const batch = getMediaOperationBatch(id);
+    if (!batch || batch.status !== "planned") throw new Error("The media operation is no longer pending.");
+    if (batch.items.length !== snapshots.length) throw new Error("The media operation result count does not match its plan.");
+    const updateItem = db.prepare("UPDATE media_operation_items SET after_json = ?, next_path = ? WHERE batch_id = ? AND ordinal = ?");
+    snapshots.forEach((snapshot, ordinal) => updateItem.run(writeJson(snapshot), snapshot.media.relativePath, id, ordinal));
+    db.prepare("UPDATE media_operation_batches SET status = 'completed', error = NULL, completed_at = ? WHERE id = ?")
+      .run(nowIso(), id);
+    return getMediaOperationBatch(id)!;
+  });
+}
+
+export function failMediaOperationBatch(id: string, error: string) {
+  const db = getDatabase();
+  db.prepare("UPDATE media_operation_batches SET status = 'failed', error = ?, completed_at = ? WHERE id = ? AND status = 'planned'")
+    .run(error, nowIso(), id);
+}
+
+export function markMediaOperationRolledBack(id: string) {
+  const db = getDatabase();
+  db.prepare("UPDATE media_operation_batches SET status = 'rolled-back', completed_at = ? WHERE id = ? AND status = 'completed'")
+    .run(nowIso(), id);
+}
+
+function snapshotsMatch(current: MediaOperationSnapshot, expected: MediaOperationSnapshot) {
+  return current.media.updatedAt === expected.media.updatedAt
+    && writeJson(current.links) === writeJson(expected.links);
+}
+
+function synchronizePieceLegacyPathsFromLinks(db: DatabaseSync, pieceSlug: string) {
+  const row = db.prepare("SELECT metadata_json AS metadataJson FROM pieces WHERE slug = ? LIMIT 1").get(pieceSlug) as Record<string, unknown> | undefined;
+  if (!row) return;
+  const links = db.prepare(`
+    SELECT relative_path AS relativePath, role, display_order AS displayOrder
+    FROM piece_media_links
+    WHERE piece_slug = ? AND is_public = 1 AND role IN ('hero', 'gallery', 'detail', 'context')
+    ORDER BY CASE role WHEN 'hero' THEN 0 WHEN 'gallery' THEN 1 WHEN 'detail' THEN 2 ELSE 3 END,
+             display_order ASC, created_at ASC
+  `).all(pieceSlug) as Array<Record<string, unknown>>;
+  const paths = [...new Set(links.map((link) => String(link.relativePath)))];
+  const metadata = readJson<Record<string, unknown>>(row.metadataJson, {});
+  db.prepare("UPDATE pieces SET media_paths_json = ?, metadata_json = ?, updated_at = ? WHERE slug = ?")
+    .run(writeJson(paths), writeJson({ ...metadata, verifiedMedia: paths.length > 0, mediaReviewRequired: paths.length === 0 }), nowIso(), pieceSlug);
+}
+
+function replaceMediaLinksForSnapshot(db: DatabaseSync, snapshot: MediaOperationSnapshot) {
+  const relativePath = snapshot.media.relativePath;
+  db.prepare("DELETE FROM piece_media_links WHERE relative_path = ?").run(relativePath);
+  const insert = db.prepare(`
+    INSERT INTO piece_media_links (
+      id, piece_slug, relative_path, role, stage, occurred_at, title, caption,
+      technical_note, alt_override, display_order, is_public, legacy_synced, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const timestamp = nowIso();
+  snapshot.links.forEach((link) => {
+    if (!PIECE_MEDIA_ROLES.includes(link.role)) throw new Error(`Unsupported piece media role '${link.role}'.`);
+    if (link.relativePath !== relativePath) throw new Error("A batch snapshot contains a mismatched media-link path.");
+    insert.run(
+      link.id || randomUUID(), link.pieceSlug, relativePath, link.role, link.stage, link.occurredAt,
+      link.title, link.caption, link.technicalNote, link.altOverride, Math.round(link.displayOrder),
+      link.public ? 1 : 0, link.legacySynced ? 1 : 0, link.createdAt || timestamp, timestamp
+    );
+  });
+}
+
+export function applyMediaOperationSnapshots(input: {
+  mutations: Array<{ before: MediaOperationSnapshot; after: MediaOperationSnapshot }>;
+  actorEmail?: string | null;
+  requestId?: string | null;
+  batchId?: string | null;
+  markRolledBackBatchId?: string | null;
+}) {
+  return withDatabaseTransaction((db) => {
+    const affectedPieceSlugs = new Set<string>();
+    const affectedPostSlugs = new Set<string>();
+    const affectedPageSlugs = new Set<string>();
+
+    for (const mutation of input.mutations) {
+      const previousPath = mutation.before.media.relativePath;
+      const nextPath = mutation.after.media.relativePath;
+      const current = captureMediaOperationSnapshot(previousPath);
+      if (!snapshotsMatch(current, mutation.before)) {
+        throw new Error(`Media '${previousPath}' changed after this operation was prepared. Refresh and try again.`);
+      }
+      mutation.before.links.forEach((link) => affectedPieceSlugs.add(link.pieceSlug));
+      mutation.after.links.forEach((link) => affectedPieceSlugs.add(link.pieceSlug));
+      [mutation.before.media.pieceSlug, mutation.after.media.pieceSlug].filter(Boolean).forEach((slug) => affectedPieceSlugs.add(String(slug)));
+      [mutation.before.media.postSlug, mutation.after.media.postSlug].filter(Boolean).forEach((slug) => affectedPostSlugs.add(String(slug)));
+      [mutation.before.media.pageSlug, mutation.after.media.pageSlug].filter(Boolean).forEach((slug) => affectedPageSlugs.add(String(slug)));
+
+      if (previousPath !== nextPath) {
+        if (getMedia(nextPath)) throw new Error(`Media '${nextPath}' is already indexed.`);
+        const scanned = scanMediaAsset(nextPath);
+        if (!scanned) throw new Error(`Moved media '${nextPath}' was not found during reference synchronization.`);
+        saveMediaMetadata({
+          ...mutation.before.media,
+          relativePath: nextPath
+        });
+        const affected = rewriteMediaReferences(db, previousPath, nextPath);
+        affected.pieceSlugs.forEach((slug) => affectedPieceSlugs.add(slug));
+        affected.postSlugs.forEach((slug) => affectedPostSlugs.add(slug));
+        affected.pageSlugs.forEach((slug) => affectedPageSlugs.add(slug));
+        db.prepare("DELETE FROM media_items WHERE relative_path = ?").run(previousPath);
+      }
+
+      saveMediaMetadata({
+        relativePath: nextPath,
+        altText: mutation.after.media.altText,
+        pieceSlug: mutation.after.media.pieceSlug,
+        postSlug: mutation.after.media.postSlug,
+        pageSlug: mutation.after.media.pageSlug,
+        projectReference: mutation.after.media.projectReference,
+        userEmail: mutation.after.media.userEmail,
+        focalX: mutation.after.media.focalX,
+        focalY: mutation.after.media.focalY,
+        zoom: mutation.after.media.zoom,
+        reviewed: mutation.after.media.reviewed,
+        tags: mutation.after.media.tags,
+        metadata: mutation.after.media.metadata
+      });
+      replaceMediaLinksForSnapshot(db, mutation.after);
+    }
+
+    affectedPieceSlugs.forEach((slug) => synchronizePieceLegacyPathsFromLinks(db, slug));
+    recordAdminEditAudit({
+      actorEmail: input.actorEmail,
+      entityType: "media-batch",
+      entityKey: input.requestId ?? randomUUID(),
+      operation: "apply",
+      before: input.mutations.map((mutation) => mutation.before),
+      after: input.mutations.map((mutation) => mutation.after),
+      requestId: input.requestId
+    });
+
+    const snapshots = input.mutations.map((mutation) => captureMediaOperationSnapshot(mutation.after.media.relativePath));
+    if (input.batchId) completeMediaOperationBatch(input.batchId, snapshots);
+    if (input.markRolledBackBatchId) markMediaOperationRolledBack(input.markRolledBackBatchId);
+    return {
+      snapshots,
+      affected: {
+        pieceSlugs: [...affectedPieceSlugs],
+        postSlugs: [...affectedPostSlugs],
+        pageSlugs: [...affectedPageSlugs]
+      }
+    };
+  });
 }
 
 export function renameMediaRecordAndReferences(previousPath: string, nextPath: string, options: { actorEmail?: string | null; historyId?: string | null } = {}) {

@@ -188,7 +188,7 @@ docker compose -f docker-compose.synology.yml up -d
 
 The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
 
-The independent SQLite schema ledger currently applies through version 5. Its additive commission tables persist account drafts, idempotency keys, expiring project-access grants, render ownership/quotas, and submission quotas. Never replace the mounted `/app/site/data` directory during an image rebuild; back it up and run `PRAGMA quick_check` before and after deployment.
+The independent SQLite schema ledger currently applies through version 6. Its additive tables persist account drafts, idempotency keys, expiring project-access grants, render ownership/quotas, submission quotas, and media-operation before/after snapshots used by guarded batch rollback. Never replace the mounted `/app/site/data` directory during an image rebuild; back it up and run `PRAGMA quick_check` before and after deployment.
 
 ## Reverse proxy
 
@@ -241,6 +241,8 @@ Missing or removed files must return **404** (not a broken stream). Stale `media
 - Media automation now centers on **Train selected**, **Improve page**, and **Continue library**. These guided actions run the bounded scan/analyze/embed/cluster/rank sequence for selected, current-page, or next-library-batch scopes while preserving persistent model/hash/cluster metadata and explicit evidence. Suggested matches cannot publish or assign without a reviewed human action.
 - The compact trainer status card should show the active local provider, cache totals, indexed media, accepted/rejected training labels, analyzed files, vectors, and clusters. Raw provider cards and individual scan/analyze/embed/cluster actions are intentionally tucked under Advanced actions for diagnostics.
 - Routine media metadata saves, assignments, uploads, renames, and deletes do not refresh `/studio`. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
+- **Organize selected** applies at most 96 collision-checked folder/name/tag/quality/assignment/role/stage/visibility changes with filesystem compensation and one SQLite reference transaction. Recent completed batches can be rolled back only while their current snapshots still match; later edits are never overwritten.
+- Optional background cleanup writes an unreviewed derivative under `/app/pics/derivatives/background-cleanup/`, records its source path/size/time/provider and manual-publication gate, and never modifies the original file.
 - The verification queue proposes only one sufficiently separated best-piece match per unassigned image. It never assigns on preview; use the explicit **Assign** control after visual verification.
 - Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
 - After upgrading the app image, use **Refresh library** once so the scanner skips Synology **`@eaDir`** folders and **`SYNOFILE_THUMB*`** files; those paths are also excluded from SQL media lists.
@@ -298,6 +300,8 @@ Because the dashboard can mutate the shared media library, back up these paths t
 - `.env`
 
 A SQLite backup without the matching media tree is no longer sufficient for full recovery.
+
+Create the paired backup before a large batch reorganization. The database operation ledger can reverse application-managed changes, but it is not a replacement for a filesystem snapshot when files are changed outside the application or storage fails mid-operation.
 
 The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, or backup file. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 

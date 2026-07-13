@@ -84,6 +84,8 @@ The SQLite schema includes these primary tables:
 - `piece_media_links`
 - `admin_edit_audit`
 - `media_rename_history`
+- `media_operation_batches`
+- `media_operation_items`
 - `commission_drafts`
 - `commission_submissions`
 - `project_access_grants`
@@ -105,10 +107,11 @@ The master media library lives outside the app bundle and outside `docker_ssd`. 
 - filters Synology and OS sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, and `._*`
 - stores alt text, clustering, associations, focal data, zoom, cleanup mode, visual labels, source credit, display order, review state, and tags in SQLite
 - can upload, rename, delete, and assign files in the mounted media root
+- can apply collision-checked selected-item folder/name/tag/quality/assignment/role/stage/visibility changes with SQLite snapshots, reverse-order filesystem compensation, normalized/legacy reference synchronization, and guarded rollback
 - synchronizes reviewed piece assignments with public piece galleries while keeping unreviewed assignments private
-- can create non-destructive cleaned copies under the same mounted media root when the optional OpenAI cleanup feature is configured
+- can create unpublished source-linked cleanup derivatives under `derivatives/background-cleanup/` when the optional OpenAI cleanup feature is configured; originals are never overwritten and derivative chaining is rejected
 
-Media automation is provider-agnostic and local-first. `tools/media-ai-sidecar/` scans the configured library, excludes Synology/hidden sidecars, stores SHA-256 and perceptual hashes plus generated 768px review thumbnails outside the source tree, computes true image-pixel and text embeddings in a shared SentenceTransformers CLIP space, applies deterministic visual clustering, and can use Ollama or Gemini only for ambiguity arbitration. Bounded guided trainer runs resume changed or uncached files, heavy work is serialized, and partial cluster updates preserve unrelated cluster state. The compact media desk exposes Train selected, Improve page, and Continue library as the primary workflow, with raw scan/analyze/embed/cluster/rank/dry-run controls kept under Advanced actions. The status card shows provider/cache/training totals; AI-state filters, evidence and margin breakdowns, rejection memory, and J/K/F/P/U/R/I/E/C/S/Shift+S/A keyboard controls remain available.
+Media automation is provider-agnostic and local-first. `tools/media-ai-sidecar/` scans the configured library, excludes Synology/hidden sidecars, stores SHA-256 and perceptual hashes plus generated 768px review thumbnails outside the source tree, computes true image-pixel and text embeddings in a shared SentenceTransformers CLIP space, applies deterministic visual clustering, and can use Ollama or Gemini only for ambiguity arbitration. Bounded guided trainer runs resume changed or uncached files, heavy work is serialized, and partial cluster updates preserve unrelated cluster state. The compact media desk exposes Organize selected, Train selected, Improve page, and Continue library as the primary workflows, with raw scan/analyze/embed/cluster/rank/dry-run controls kept under Advanced actions. The status card shows provider/cache/training totals; AI-state filters, evidence and margin breakdowns, rejection memory, and J/K/F/P/U/R/I/E/C/S/Shift+S/A keyboard controls remain available.
 
 SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, human-review reason, accepted training labels, and rejected training labels. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors, then subtracts negative reviewer signals. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate.
 

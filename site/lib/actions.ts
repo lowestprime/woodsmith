@@ -4,12 +4,16 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import {
+  PIECE_MEDIA_ROLES,
+  applyMediaOperationSnapshots,
   appendProjectUpdate,
+  captureMediaOperationSnapshot,
   countMedia,
   countUsersByRole,
   consumeCommissionRenderAsset,
   consumeCommissionSubmissionQuota,
   createDraftOrder,
+  createMediaOperationBatch,
   createProject,
   createProjectIdempotent,
   deleteCommissionType,
@@ -55,6 +59,9 @@ import {
   updateProject,
   withDatabaseTransaction,
   finishMediaRenameHistory,
+  failMediaOperationBatch,
+  getMediaOperationBatch,
+  listMediaOperationBatches,
   recordAdminEditAudit,
   renameMediaRecordAndReferences,
   replacePieceMediaLinks,
@@ -63,6 +70,7 @@ import {
   type MediaAssignmentFilter,
   type MediaAiFilter,
   type MediaKindFilter,
+  type MediaOperationBatchRecord,
   type MediaRecord,
   type OrderRecord,
   type PageRecord,
@@ -83,6 +91,15 @@ import {
   restoreStagedMediaAsset,
   stageMediaAssetDeletion
 } from "@/lib/media";
+import {
+  buildMediaOperationPlan,
+  invertMediaOperationPlan,
+  moveMediaOperationFiles,
+  restoreMediaOperationFiles,
+  type MediaBatchOptions,
+  type MediaOperationMutation,
+  type MovedMediaAsset
+} from "@/lib/media-operations";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
@@ -1367,6 +1384,7 @@ export type MediaActionResult =
   | { ok: true; kind: "assign"; relativePath: string; pieceSlug: string }
   | { ok: true; kind: "cleanup"; relativePath: string }
   | { ok: true; kind: "save"; relativePath: string }
+  | { ok: true; kind: "batch" | "rollback"; batchId: string; message: string; paths: Array<{ previousPath: string; relativePath: string }>; operations: MediaOperationBatchRecord[] }
   | { ok: true; kind: "refresh" }
   | { ok: false; kind: "error"; message: string };
 
@@ -1545,6 +1563,152 @@ export async function renameMediaAction(_: unknown, formData: FormData): Promise
   }
 }
 
+async function executeMediaOperationPlan(input: {
+  actorEmail: string;
+  operation: MediaOperationBatchRecord["operation"];
+  request: Record<string, unknown>;
+  mutations: MediaOperationMutation[];
+  rollbackOf?: string | null;
+}) {
+  const batch = createMediaOperationBatch({
+    operation: input.operation,
+    actorEmail: input.actorEmail,
+    request: input.request,
+    rollbackOf: input.rollbackOf,
+    mutations: input.mutations
+  });
+  let moved: MovedMediaAsset[] = [];
+  try {
+    moved = moveMediaOperationFiles(input.mutations);
+    const result = applyMediaOperationSnapshots({
+      mutations: input.mutations,
+      actorEmail: input.actorEmail,
+      requestId: batch.id,
+      batchId: batch.id,
+      markRolledBackBatchId: input.rollbackOf ?? null
+    });
+    revalidateMediaSurfaces(result.affected);
+    return { batch: getMediaOperationBatch(batch.id)!, operations: listMediaOperationBatches(12) };
+  } catch (error) {
+    let failure = error instanceof Error ? error : new Error(String(error));
+    if (moved.length > 0) {
+      try {
+        restoreMediaOperationFiles(moved);
+      } catch (rollbackError) {
+        failure = new Error(`${failure.message} Filesystem rollback failed: ${rollbackError instanceof Error ? rollbackError.message : String(rollbackError)}`, { cause: failure });
+      }
+    }
+    failMediaOperationBatch(batch.id, failure.message);
+    throw failure;
+  }
+}
+
+export async function organizeMediaBatchAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const selectedPaths = [...new Set(parseJsonField<string[]>(formData.get("selectedPathsJson"), []).map((value) => String(value).trim()).filter(Boolean))];
+    if (selectedPaths.length === 0) return { ok: false, kind: "error", message: "Select at least one media item." };
+    if (selectedPaths.length > 96) return { ok: false, kind: "error", message: "Select no more than 96 media items per batch." };
+
+    const pieceSelection = optionalField(formData.get("pieceAssignment")) || "__keep__";
+    const pieceAssignment: MediaBatchOptions["pieceAssignment"] = pieceSelection === "__clear__" ? "clear" : pieceSelection === "__keep__" ? "keep" : "set";
+    const pieceSlug = pieceAssignment === "set" ? pieceSelection : undefined;
+    if (pieceSlug && !getPiece(pieceSlug)) return { ok: false, kind: "error", message: "The selected piece no longer exists." };
+
+    const requestedRole = optionalField(formData.get("role")) || "keep";
+    const role: MediaBatchOptions["role"] = requestedRole === "keep"
+      ? "keep"
+      : PIECE_MEDIA_ROLES.includes(requestedRole as (typeof PIECE_MEDIA_ROLES)[number])
+        ? requestedRole as (typeof PIECE_MEDIA_ROLES)[number]
+        : "gallery";
+    const stageModeValue = optionalField(formData.get("stageMode"));
+    const stageMode: MediaBatchOptions["stageMode"] = stageModeValue === "clear" || stageModeValue === "set" ? stageModeValue : "keep";
+    const visibilityValue = optionalField(formData.get("visibility"));
+    const visibility: MediaBatchOptions["visibility"] = visibilityValue === "private" || visibilityValue === "public" ? visibilityValue : "keep";
+    const reviewValue = optionalField(formData.get("review"));
+    const review: MediaBatchOptions["review"] = reviewValue === "unreviewed" || reviewValue === "reviewed" ? reviewValue : "keep";
+    const photoQualityValue = optionalField(formData.get("photoQuality"));
+    const photoQuality: MediaBatchOptions["photoQuality"] = ["unrated", "shop-ready", "portfolio-ready", "background-distracting", "needs-reshoot"].includes(photoQualityValue)
+      ? photoQualityValue as Exclude<MediaBatchOptions["photoQuality"], "keep" | undefined>
+      : "keep";
+    const options: MediaBatchOptions = {
+      folder: optionalField(formData.get("folder")),
+      renamePattern: optionalField(formData.get("renamePattern")) || "{name}",
+      pieceAssignment,
+      pieceSlug,
+      role,
+      stageMode,
+      stage: optionalField(formData.get("stage")),
+      visibility,
+      review,
+      addTags: parseListField(formData.get("addTags")),
+      removeTags: parseListField(formData.get("removeTags")),
+      photoQuality,
+      actorEmail: admin.email
+    };
+    const snapshots = selectedPaths.map(captureMediaOperationSnapshot);
+    const mutations = buildMediaOperationPlan(snapshots, options);
+    const result = await executeMediaOperationPlan({
+      actorEmail: admin.email,
+      operation: "organize",
+      request: {
+        count: selectedPaths.length,
+        folder: options.folder || null,
+        renamePattern: options.renamePattern,
+        pieceAssignment,
+        pieceSlug: pieceSlug ?? null,
+        role,
+        stageMode,
+        stage: options.stage || null,
+        visibility,
+        review,
+        addTags: options.addTags,
+        removeTags: options.removeTags,
+        photoQuality
+      },
+      mutations
+    });
+    return {
+      ok: true,
+      kind: "batch",
+      batchId: result.batch.id,
+      message: `Updated ${result.batch.itemCount} media item${result.batch.itemCount === 1 ? "" : "s"}.`,
+      paths: result.batch.items.map((item) => ({ previousPath: item.previousPath, relativePath: item.nextPath })),
+      operations: result.operations
+    };
+  } catch (error) {
+    return mediaActionFailure(error, "Media batch update failed.");
+  }
+}
+
+export async function rollbackMediaBatchAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const batchId = requiredField(formData.get("batchId"), "Media batch");
+    const original = getMediaOperationBatch(batchId);
+    if (!original || original.operation !== "organize") return { ok: false, kind: "error", message: "The selected media batch was not found." };
+    if (original.status !== "completed") return { ok: false, kind: "error", message: "Only a completed media batch can be rolled back." };
+    const mutations = invertMediaOperationPlan(original.items);
+    const result = await executeMediaOperationPlan({
+      actorEmail: admin.email,
+      operation: "rollback",
+      request: { count: mutations.length, rollbackOf: original.id },
+      rollbackOf: original.id,
+      mutations
+    });
+    return {
+      ok: true,
+      kind: "rollback",
+      batchId: result.batch.id,
+      message: `Restored ${result.batch.itemCount} media item${result.batch.itemCount === 1 ? "" : "s"}.`,
+      paths: result.batch.items.map((item) => ({ previousPath: item.previousPath, relativePath: item.nextPath })),
+      operations: result.operations
+    };
+  } catch (error) {
+    return mediaActionFailure(error, "Media batch rollback failed.");
+  }
+}
+
 export async function deleteMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
     const admin = await requireAdmin();
@@ -1631,6 +1795,9 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
     if (!media) {
       return { ok: false, kind: "error", message: "Media not found for cleanup." };
     }
+    if (media.metadata.cleanupGeneratedFrom || media.metadata.derivativeKind === "background-cleanup") {
+      return { ok: false, kind: "error", message: "Create cleanup derivatives from an original image, not from another generated copy." };
+    }
 
     if (!getAiServiceStatus().backgroundCleanup) {
       return { ok: false, kind: "error", message: "AI background cleanup is not configured on this deployment." };
@@ -1650,8 +1817,9 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
     }
 
     const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
-    const nextPath = persistGeneratedMedia(b64Json, "cleaned-media", stem, ".png");
+    const nextPath = persistGeneratedMedia(b64Json, "Derivatives/background-cleanup", stem, ".png");
     refreshMediaLibrary();
+    const generatedAt = new Date().toISOString();
     saveMediaMetadata({
       relativePath: nextPath,
       altText: `${media.altText || media.fileName} cleaned background`,
@@ -1667,11 +1835,29 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
       tags: [...new Set([...media.tags, "cleaned-background", mode])],
       metadata: {
         ...media.metadata,
+        verifiedPieceSlug: "",
+        verifiedAt: "",
+        verifiedBy: "",
+        aiTrainingLabel: "",
+        aiTrainingPieceSlug: "",
         cleanupMode: mode,
         cleanupGeneratedFrom: relativePath,
-        cleanupGeneratedAt: new Date().toISOString(),
-        cleanupProvider: getAiServiceStatus().imageModel
+        cleanupGeneratedAt: generatedAt,
+        cleanupProvider: getAiServiceStatus().imageModel,
+        derivativeKind: "background-cleanup",
+        derivativeSourcePath: relativePath,
+        derivativeSourceUpdatedAt: media.updatedAt,
+        derivativeSourceSizeBytes: media.sizeBytes,
+        derivativePublicationGate: "manual-review-required",
+        manualApprovalRequired: true
       }
+    });
+    const existingDerivatives = Array.isArray(media.metadata.cleanupDerivativePaths)
+      ? media.metadata.cleanupDerivativePaths.map(String)
+      : [];
+    patchMediaMetadata(relativePath, {
+      cleanupDerivativePaths: [...new Set([...existingDerivatives, nextPath])],
+      cleanupLastGeneratedAt: generatedAt
     });
 
     revalidateMediaSurfaces();

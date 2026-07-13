@@ -7,7 +7,7 @@ import { MediaLightbox } from "@/components/lightbox";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { toMediaUrl } from "@/lib/format";
 import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
-import type { MediaAiFilter, MediaAssignmentFilter, MediaKindFilter, MediaRecord } from "@/lib/db";
+import type { MediaAiFilter, MediaAssignmentFilter, MediaKindFilter, MediaOperationBatchRecord, MediaRecord } from "@/lib/db";
 import type { MediaMatchCandidate } from "@/lib/media-audit";
 
 type MediaAction = (state: MediaActionResult | null, formData: FormData) => Promise<MediaActionResult>;
@@ -62,6 +62,7 @@ type StudioMediaWorkspaceProps = {
   initialAssignment: MediaAssignmentFilter;
   initialKind: MediaKindFilter;
   initialAiFilter: MediaAiFilter;
+  initialOperations: MediaOperationBatchRecord[];
   pieces: StudioOption[];
   posts: StudioOption[];
   pages: StudioOption[];
@@ -71,12 +72,16 @@ type StudioMediaWorkspaceProps = {
   deleteAction: MediaAction;
   saveAction: MediaAction;
   cleanupAction: MediaAction;
+  organizeBatchAction: MediaAction;
+  rollbackBatchAction: MediaAction;
   assignAction: MediaAction;
   rejectSuggestionAction: MediaAction;
   refreshAction: () => Promise<MediaActionResult>;
   loadPageAction: (request: MediaPageRequest) => Promise<MediaPageResult>;
   loadVerificationQueueAction: () => Promise<VerificationEntry[]>;
 };
+
+const MEDIA_ROLES = ["hero", "gallery", "detail", "context", "process", "drawing", "plan", "installation", "source", "private-project"] as const;
 
 function confidenceForScore(score: number) {
   if (score >= 82) return { label: "High confidence", className: "is-strong" };
@@ -232,6 +237,77 @@ function UploadMediaPanel({
           <button className="button-secondary" onClick={onRefresh} type="button">Reload list</button>
         </div>
       </ActionForm>
+    </details>
+  );
+}
+
+function MediaBatchPanel({
+  selectedPaths,
+  pieces,
+  operations,
+  organizeAction,
+  rollbackAction,
+  onCompleted
+}: {
+  selectedPaths: Set<string>;
+  pieces: StudioOption[];
+  operations: MediaOperationBatchRecord[];
+  organizeAction: MediaAction;
+  rollbackAction: MediaAction;
+  onCompleted: (result: Extract<MediaActionResult, { ok: true; kind: "batch" | "rollback" }>) => void;
+}) {
+  const completedBatches = operations.filter((operation) => operation.operation === "organize").slice(0, 6);
+  return (
+    <details className="studio-panel studio-media-utility-panel media-batch-panel">
+      <summary>Organize selected <span>{selectedPaths.size}</span></summary>
+      <p className="muted-copy">One operation updates files, references, assignments, and normalized roles together. A failed step restores prior file paths.</p>
+      <ActionForm action={organizeAction} className="request-form compact-form media-batch-form" onSuccess={(result) => {
+        if (result.kind === "batch") onCompleted(result);
+      }}>
+        <input name="selectedPathsJson" type="hidden" value={JSON.stringify([...selectedPaths])} />
+        <div className="field-grid two-up compact-grid">
+          <label><span>Move to folder</span><input name="folder" placeholder="Keep current folders" type="text" /></label>
+          <label><span>Rename pattern</span><input defaultValue="{name}" name="renamePattern" title="Tokens: {name}, {index}, {folder}" type="text" /></label>
+        </div>
+        <label>
+          <span>Piece assignment</span>
+          <select defaultValue="__keep__" name="pieceAssignment">
+            <option value="__keep__">Keep each current assignment</option>
+            <option value="__clear__">Clear piece assignments</option>
+            {pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}</option>)}
+          </select>
+        </label>
+        <div className="field-grid two-up compact-grid">
+          <label><span>Role</span><select defaultValue="keep" name="role"><option value="keep">Keep current role</option>{MEDIA_ROLES.map((role) => <option key={role} value={role}>{role.replaceAll("-", " ")}</option>)}</select></label>
+          <label><span>Build stage</span><select defaultValue="keep" name="stageMode"><option value="keep">Keep current stage</option><option value="clear">Clear stage</option><option value="set">Use stage below</option></select></label>
+        </div>
+        <label><span>Stage name</span><input name="stage" placeholder="e.g. joinery, finish, installation" type="text" /></label>
+        <div className="field-grid three-up compact-grid">
+          <label><span>Review</span><select defaultValue="keep" name="review"><option value="keep">Keep review state</option><option value="unreviewed">Needs review</option><option value="reviewed">Mark reviewed</option></select></label>
+          <label><span>Piece visibility</span><select defaultValue="keep" name="visibility"><option value="keep">Keep visibility</option><option value="private">Private link</option><option value="public">Public link + reviewed</option></select></label>
+          <label><span>Photo quality</span><select defaultValue="keep" name="photoQuality"><option value="keep">Keep rating</option><option value="unrated">Unrated</option><option value="shop-ready">Shop ready</option><option value="portfolio-ready">Portfolio ready</option><option value="background-distracting">Background distracting</option><option value="needs-reshoot">Needs reshoot</option></select></label>
+        </div>
+        <div className="field-grid two-up compact-grid">
+          <label><span>Add tags</span><input name="addTags" placeholder="comma separated" type="text" /></label>
+          <label><span>Remove tags</span><input name="removeTags" placeholder="comma separated" type="text" /></label>
+        </div>
+        <p className="muted-copy">Rename tokens: <code>{"{name}"}</code>, <code>{"{index}"}</code>, <code>{"{folder}"}</code>. Public links always require reviewed media.</p>
+        <button className="button-primary" disabled={selectedPaths.size === 0} type="submit">Apply to {selectedPaths.size || "selected"}</button>
+      </ActionForm>
+      {completedBatches.length > 0 ? <div className="media-batch-history" aria-label="Recent media batches">
+        <strong>Recent operations</strong>
+        {completedBatches.map((operation) => (
+          <article key={operation.id}>
+            <span><b>{operation.itemCount} item{operation.itemCount === 1 ? "" : "s"}</b><small>{operation.status} · {aiTimestamp(operation.createdAt)}</small></span>
+            {operation.status === "completed" ? <ActionForm action={rollbackAction} confirmMessage={`Restore all ${operation.itemCount} items in this batch?`} onSuccess={(result) => {
+              if (result.kind === "rollback") onCompleted(result);
+            }}>
+              <input name="batchId" type="hidden" value={operation.id} />
+              <button className="text-button" type="submit">Roll back</button>
+            </ActionForm> : null}
+          </article>
+        ))}
+      </div> : null}
     </details>
   );
 }
@@ -500,6 +576,7 @@ export function StudioMediaWorkspace({
   initialAssignment,
   initialKind,
   initialAiFilter,
+  initialOperations,
   pieces,
   posts,
   pages,
@@ -509,6 +586,8 @@ export function StudioMediaWorkspace({
   deleteAction,
   saveAction,
   cleanupAction,
+  organizeBatchAction,
+  rollbackBatchAction,
   assignAction,
   rejectSuggestionAction,
   refreshAction,
@@ -528,6 +607,7 @@ export function StudioMediaWorkspace({
   const [queue, setQueue] = useState(verificationQueue);
   const [candidateAssignments, setCandidateAssignments] = useState<Record<string, string>>({});
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
+  const [operations, setOperations] = useState(initialOperations);
   const [automationResult, setAutomationResult] = useState<AutomationResponse | null>(null);
   const [providerStatus, setProviderStatus] = useState<AutomationResponse["providers"]>(undefined);
   const [cacheStatus, setCacheStatus] = useState<AutomationResponse["cache"]>(undefined);
@@ -555,8 +635,9 @@ export function StudioMediaWorkspace({
     setKindFilter(initialKind);
     setAiFilter(initialAiFilter);
     setQueue(verificationQueue);
+    setOperations(initialOperations);
     setSelectedPath((current) => initialItems.some((item) => item.relativePath === current) ? current : initialItems[0]?.relativePath ?? "");
-  }, [initialAiFilter, initialAssignment, initialItems, initialKind, initialPage, initialPageSize, initialQuery, initialTotal, verificationQueue]);
+  }, [initialAiFilter, initialAssignment, initialItems, initialKind, initialOperations, initialPage, initialPageSize, initialQuery, initialTotal, verificationQueue]);
 
   useEffect(() => {
     let active = true;
@@ -768,6 +849,20 @@ export function StudioMediaWorkspace({
           uploadAction={uploadAction}
         />
 
+        <MediaBatchPanel
+          onCompleted={(result) => {
+            setOperations(result.operations);
+            setSelectedPaths(new Set());
+            setPageMessage(result.message);
+            void refreshWorkspaceData(false);
+          }}
+          operations={operations}
+          organizeAction={organizeBatchAction}
+          pieces={pieces}
+          rollbackAction={rollbackBatchAction}
+          selectedPaths={selectedPaths}
+        />
+
         <details className="studio-panel studio-media-utility-panel media-automation-panel" open>
           <summary>Guided media trainer</summary>
           <p className="muted-copy">One guided run updates review evidence only. Every assignment, rejection, and public approval remains manual and persistent.</p>
@@ -929,7 +1024,7 @@ export function StudioMediaWorkspace({
                   <small>{item.reviewed ? "Reviewed" : "Needs review"}{clusterId ? ` · ${clusterId.slice(-6)}` : ""}</small>
                 </div>
               </button>
-              <button aria-label={`${selectedForAutomation ? "Remove" : "Add"} ${item.fileName} ${selectedForAutomation ? "from" : "to"} automation selection`} aria-pressed={selectedForAutomation} className="media-card-select" onClick={() => setSelectedPaths((current) => { const next = new Set(current); if (next.has(item.relativePath)) next.delete(item.relativePath); else next.add(item.relativePath); return next; })} title="Select for batch automation" type="button">{selectedForAutomation ? "Selected" : "Select"}</button>
+              <button aria-label={`${selectedForAutomation ? "Remove" : "Add"} ${item.fileName} ${selectedForAutomation ? "from" : "to"} batch selection`} aria-pressed={selectedForAutomation} className="media-card-select" onClick={() => setSelectedPaths((current) => { const next = new Set(current); if (next.has(item.relativePath)) next.delete(item.relativePath); else next.add(item.relativePath); return next; })} title="Select for organize or training actions" type="button">{selectedForAutomation ? "Selected" : "Select"}</button>
             </div>;
           })}
           {items.length === 0 ? <div className="studio-media-empty"><strong>No media found</strong><p>Clear a filter, rescan the mounted library, or upload a file.</p></div> : null}

@@ -14,8 +14,10 @@ import {
   loadMediaPageAction,
   loadMediaVerificationQueueAction,
   markMediaAiSuggestionWrongAction,
+  organizeMediaBatchAction,
   refreshMediaLibraryAction,
   renameMediaAction,
+  rollbackMediaBatchAction,
   saveCommissionTypeAction,
   savePieceCategoryAction,
   saveMediaMetadataAction,
@@ -40,6 +42,7 @@ import {
   getRuntimePersistenceStatus,
   listCommissionTypes,
   listMedia,
+  listMediaOperationBatches,
   listMediaForProjectReferences,
   listNotifications,
   listOrders,
@@ -567,6 +570,7 @@ export default async function StudioPage({
           cleanupAction={cleanupMediaBackgroundAction}
           deleteAction={deleteMediaAction}
           initialItems={media}
+          initialOperations={listMediaOperationBatches(12)}
           initialAssignment={mediaAssignment}
           initialKind={mediaKind}
           initialAiFilter={mediaAi}
@@ -580,8 +584,10 @@ export default async function StudioPage({
           pages={pages.map((page) => ({ slug: page.slug, title: page.title }))}
           pieces={pieces.map((piece) => ({ slug: piece.slug, title: piece.title }))}
           posts={posts.map((post) => ({ slug: post.slug, title: post.title }))}
+          organizeBatchAction={organizeMediaBatchAction}
           refreshAction={refreshMediaLibraryAction}
           renameAction={renameMediaAction}
+          rollbackBatchAction={rollbackMediaBatchAction}
           saveAction={saveMediaMetadataAction}
           uploadAction={uploadMediaAction}
           verificationQueue={verificationQueue.map((entry) => ({ pieceSlug: entry.piece.slug, pieceTitle: entry.piece.title, assignedCount: entry.assigned.length, needsReview: entry.needsReview, suggestions: entry.suggestions }))}

@@ -314,6 +314,52 @@ const migrations: Migration[] = [
       `);
       return { tables: ["commission_submission_usage"] };
     }
+  },
+  {
+    version: 6,
+    name: "transactional-media-operation-ledger",
+    checksum: "2026-07-media-operation-ledger-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_operation_batches (
+          id TEXT PRIMARY KEY,
+          operation TEXT NOT NULL CHECK (operation IN ('organize', 'rollback')),
+          status TEXT NOT NULL CHECK (status IN ('planned', 'completed', 'rolled-back', 'failed')),
+          actor_email TEXT,
+          request_json TEXT NOT NULL DEFAULT '{}',
+          error TEXT,
+          rollback_of TEXT,
+          created_at TEXT NOT NULL,
+          completed_at TEXT,
+          FOREIGN KEY (rollback_of) REFERENCES media_operation_batches(id)
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS idx_media_operation_batches_created
+          ON media_operation_batches(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_media_operation_batches_rollback
+          ON media_operation_batches(rollback_of);
+
+        CREATE TABLE IF NOT EXISTS media_operation_items (
+          id TEXT PRIMARY KEY,
+          batch_id TEXT NOT NULL,
+          ordinal INTEGER NOT NULL,
+          previous_path TEXT NOT NULL,
+          next_path TEXT NOT NULL,
+          before_json TEXT NOT NULL,
+          after_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (batch_id) REFERENCES media_operation_batches(id) ON DELETE CASCADE,
+          UNIQUE (batch_id, ordinal),
+          UNIQUE (batch_id, previous_path)
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS idx_media_operation_items_batch
+          ON media_operation_items(batch_id, ordinal);
+        CREATE INDEX IF NOT EXISTS idx_media_operation_items_previous
+          ON media_operation_items(previous_path);
+        CREATE INDEX IF NOT EXISTS idx_media_operation_items_next
+          ON media_operation_items(next_path);
+      `);
+      return { tables: ["media_operation_batches", "media_operation_items"] };
+    }
   }
 ];
 

@@ -61,10 +61,12 @@ The media section operates against the NAS photo library mounted directly to `/a
 - browse a compact thumbnail workspace instead of a long full-page stack of editors
 - assign media to a piece, process note, page, or project
 - rename files in place
+- select up to 96 cards and apply one folder, deterministic name pattern, piece assignment, normalized role/stage/visibility, review state, quality rating, and tag change as a compensated batch
+- roll back a recent completed batch when none of its media/link snapshots have been changed afterward
 - edit alt text, tags, focal X/Y, zoom, and reviewed status
 - use the visual crop editor to set focal point, zoom, crop frame, and crop notes through sliders and form controls
 - set cleanup mode, photo quality, source credit, visual search labels, and display order; verified-piece metadata is derived from the reviewed piece assignment
-- generate a cleaned copy of an image when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured
+- generate an unpublished cleaned derivative under `derivatives/background-cleanup/` when `OPENAI_API_KEY` and `ENABLE_AI_BACKGROUND_CLEANUP=true` are configured; the source file is never overwritten, derivatives cannot be chained, and manual review remains required
 - delete files
 - refresh the indexed library
 - select one or more cards and run **Train selected**, **Improve page**, or **Continue library** without choosing individual scan/analyze/embed/cluster steps
@@ -73,6 +75,8 @@ The media section operates against the NAS photo library mounted directly to `/a
 - reject a wrong piece suggestion so it becomes a negative training label for future rankings
 
 The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `I` analyzes, `E` embeds, `C` inspects the current cluster, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved. Reviewed assignments, reviewer rejections, verified cluster neighbors, and same-folder review history are saved as training evidence and weighted into later candidate rankings.
+
+The **Organize selected** panel uses `{name}`, `{index}`, and `{folder}` rename tokens. Every batch is preflighted for collisions, limited to 96 records, recorded in `media_operation_batches` / `media_operation_items`, and applied with one SQLite reference transaction after the filesystem moves succeed. If a move or database update fails, completed moves are reversed. Rollback performs the same checks in reverse and stops rather than overwriting a media record or normalized link changed after the original batch. Back up `site/data/` and the mounted photo tree together before large production reorganizations.
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, AppleDouble `._*`, `@eaDir`, and `SYNOFILE_THUMB*` files are filtered during indexing and querying. Manual media assignments take priority over heuristic clustering. The verification queue offers at most one sufficiently separated best-piece proposal per unassigned image; ambiguous matches remain in the library for manual review. Inspecting a candidate never assigns it.
 
