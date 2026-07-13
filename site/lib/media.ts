@@ -178,11 +178,24 @@ export function resolveMediaPath(relativePath: string) {
   return absolutePath;
 }
 
-export async function persistUploadedMedia(file: File, folder = "Uploads") {
-  const safeFolder = slugify(folder) || "uploads";
+export type MediaUploadPolicy = {
+  maxBytes?: number;
+  allowedMimePrefixes?: string[];
+  allowedExtensions?: string[];
+};
+
+export async function persistUploadedMedia(file: File, folder = "Uploads", policy: MediaUploadPolicy = {}) {
+  const safeFolder = folder.split(/[\\/]+/g).map(slugify).filter(Boolean).join("/") || "uploads";
   const originalName = file.name || "upload";
-  const extension = path.extname(originalName) || ".bin";
-  const stem = slugify(path.basename(originalName, extension)) || `upload-${randomUUID().slice(0, 8)}`;
+  const originalExtension = path.extname(originalName) || "";
+  const extension = originalExtension.toLowerCase();
+  const maxBytes = Math.max(1, policy.maxBytes ?? 250 * 1024 * 1024);
+  const allowedMimePrefixes = policy.allowedMimePrefixes ?? ["image/", "video/"];
+  const allowedExtensions = new Set((policy.allowedExtensions ?? [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif", ".mp4", ".mov", ".m4v", ".webm"]).map((value) => value.toLowerCase()));
+  if (file.size <= 0 || file.size > maxBytes) throw new Error(`Upload must be smaller than ${Math.round(maxBytes / 1024 / 1024)} MB.`);
+  if (!extension || !allowedExtensions.has(extension)) throw new Error("This upload file type is not allowed.");
+  if (!allowedMimePrefixes.some((prefix) => file.type.toLowerCase().startsWith(prefix))) throw new Error("The upload content type is not allowed.");
+  const stem = slugify(path.basename(originalName, originalExtension)) || `upload-${randomUUID().slice(0, 8)}`;
   const finalName = `${stem}-${randomUUID().slice(0, 8)}${extension.toLowerCase()}`;
   const relativePath = `${safeFolder}/${finalName}`;
   const absolutePath = resolveMediaPath(relativePath);
@@ -206,6 +219,27 @@ export function persistGeneratedMedia(base64Image: string, folder = "generated",
 export function renameMediaAsset(relativePath: string, nextBaseName: string) {
   const nextPath = previewMediaRenamePath(relativePath, nextBaseName);
   return moveMediaAsset(relativePath, nextPath);
+}
+
+export function scanMediaAsset(relativePath: string): MediaScanRecord | null {
+  const normalized = normalizeRelativePath(relativePath);
+  if (normalized.split("/").some(shouldIgnoreMediaEntry)) return null;
+  const absolutePath = resolveMediaPath(normalized);
+  if (!existsSync(absolutePath)) return null;
+  const stats = statSync(absolutePath);
+  if (!stats.isFile()) return null;
+  const fileName = path.posix.basename(normalized);
+  return {
+    relativePath: normalized,
+    folder: path.posix.dirname(normalized) === "." ? "" : path.posix.dirname(normalized),
+    fileName,
+    kind: detectMediaKind(fileName),
+    sizeBytes: stats.size,
+    createdAt: stats.birthtime.toISOString(),
+    updatedAt: stats.mtime.toISOString(),
+    clusterKey: deriveClusterKey(normalized),
+    guessedAlt: guessAltFromPath(normalized)
+  };
 }
 
 export function previewMediaRenamePath(relativePath: string, nextBaseName: string) {

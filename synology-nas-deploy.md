@@ -186,7 +186,9 @@ cd /volume2/docker_ssd/woodsmith
 docker compose -f docker-compose.synology.yml up -d
 ```
 
-The startup path includes seed migration v5. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process seed wording.
+The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
+
+The independent SQLite schema ledger currently applies through version 5. Its additive commission tables persist account drafts, idempotency keys, expiring project-access grants, render ownership/quotas, and submission quotas. Never replace the mounted `/app/site/data` directory during an image rebuild; back it up and run `PRAGMA quick_check` before and after deployment.
 
 ## Reverse proxy
 
@@ -252,8 +254,11 @@ curl -I http://127.0.0.1:3002/portfolio
 curl -I http://127.0.0.1:3002/shop
 curl -I http://127.0.0.1:3002/process
 curl -I http://127.0.0.1:3002/commissions
+curl -I http://127.0.0.1:3002/commissions/status
 curl -I http://127.0.0.1:3002/studio/login
 ```
+
+Use a disposable buyer request during candidate validation and confirm that the resulting `/requests/BW-CM-*` URL contains no email query parameter. Project lookup must POST the reference and buyer email at `/commissions/status`, set an `HttpOnly` access cookie, and keep access after a reload. Also verify that `/app/pics/commission-staging` contains no abandoned files after successful or rejected submissions.
 
 `/journal` and `/journal/[slug]` should redirect to the Process routes.
 
@@ -294,7 +299,7 @@ Because the dashboard can mutate the shared media library, back up these paths t
 
 A SQLite backup without the matching media tree is no longer sufficient for full recovery.
 
-The Docker build excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
+The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, or backup file. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 
 ## Current deployment caveats
 

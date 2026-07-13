@@ -2590,3 +2590,248 @@ input[type="range"]::-moz-range-thumb {
 .studio-loading-shell {
   min-height: 40vh;
 }
+
+/* --- Resumable commission workflow --- */
+
+.commission-workflow {
+  gap: clamp(1rem, 2vw, 1.5rem);
+}
+
+.form-honeypot {
+  height: 1px !important;
+  inset-inline-start: -10000px !important;
+  overflow: hidden !important;
+  position: absolute !important;
+  width: 1px !important;
+}
+
+.form-honeypot[hidden] {
+  display: none !important;
+}
+
+.commission-workflow > section {
+  min-height: 22rem;
+  padding: clamp(1rem, 2.5vw, 1.75rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+}
+
+.commission-workflow > section[hidden] {
+  display: none;
+}
+
+.commission-progress {
+  position: sticky;
+  top: calc(var(--header-height, 4.5rem) + 0.5rem);
+  z-index: 8;
+  display: grid;
+  gap: 0.65rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg) 94%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.commission-progress > div:nth-child(2) {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.commission-progress-meter {
+  height: 0.35rem;
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+  background: var(--line);
+}
+
+.commission-progress-meter span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--button));
+  transition: width 180ms ease;
+}
+
+.commission-progress ol {
+  display: grid;
+  grid-template-columns: repeat(10, minmax(4.5rem, 1fr));
+  gap: 0.35rem;
+  min-width: 47rem;
+  margin: 0;
+  padding: 0 0 0.2rem;
+  overflow-x: auto;
+  list-style: none;
+  scrollbar-width: thin;
+}
+
+.commission-progress li button {
+  width: 100%;
+  min-height: 3.1rem;
+  padding: 0.35rem;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 0.72rem;
+}
+
+.commission-progress li button span {
+  display: block;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+
+.commission-progress li button[aria-current="step"] {
+  border-color: var(--accent);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.choice-card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.choice-card {
+  position: relative;
+  display: block;
+  min-height: 9rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+}
+
+.choice-card input {
+  position: absolute;
+  inset: 0.8rem 0.8rem auto auto;
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.choice-card span {
+  display: grid;
+  gap: 0.5rem;
+  padding-right: 1.5rem;
+}
+
+.choice-card small {
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+.choice-card:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--panel));
+}
+
+.commission-upload-previews {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+  gap: 0.65rem;
+}
+
+.commission-upload-previews figure {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--panel);
+}
+
+.commission-upload-previews img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+}
+
+.commission-upload-previews figcaption {
+  overflow: hidden;
+  font-size: 0.75rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commission-upload-previews button {
+  min-height: 2rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--ink);
+}
+
+.commission-review-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.65rem;
+}
+
+.commission-review-list div {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+}
+
+.commission-review-list dt {
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.commission-review-list dd {
+  margin: 0.2rem 0 0;
+}
+
+.commission-step-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (max-width: 720px) {
+  .commission-workflow > section {
+    min-height: 0;
+  }
+
+  .commission-progress {
+    position: relative;
+    top: auto;
+    margin-inline: -0.25rem;
+  }
+
+  .commission-progress > div:nth-child(2) {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .choice-card-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .choice-card {
+    min-height: 0;
+  }
+
+  .commission-step-actions {
+    position: sticky;
+    bottom: 0.5rem;
+    z-index: 7;
+    padding: 0.5rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-pill);
+    background: color-mix(in srgb, var(--bg) 94%, transparent);
+    backdrop-filter: blur(16px);
+  }
+}

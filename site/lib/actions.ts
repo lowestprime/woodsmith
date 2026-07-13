@@ -7,9 +7,13 @@ import {
   appendProjectUpdate,
   countMedia,
   countUsersByRole,
+  consumeCommissionRenderAsset,
+  consumeCommissionSubmissionQuota,
   createDraftOrder,
   createProject,
+  createProjectIdempotent,
   deleteCommissionType,
+  deleteMediaRecordAndReferences,
   deletePage,
   deletePiece,
   deletePost,
@@ -17,6 +21,8 @@ import {
   deleteUserProfile,
   getOrder,
   getMedia,
+  getBandwidthSnapshot,
+  getCommissionType,
   getPage,
   getPiece,
   getPost,
@@ -29,6 +35,8 @@ import {
   listPieceMediaLinks,
   listPieces,
   markEmailVerified,
+  markCommissionDraftSubmitted,
+  rollbackCommissionSubmission,
   patchMediaMetadata,
   refreshMediaLibrary,
   removeCartItem,
@@ -46,7 +54,6 @@ import {
   setPasswordResetToken,
   updateProject,
   withDatabaseTransaction,
-  deleteMediaRecordAndReferences,
   finishMediaRenameHistory,
   recordAdminEditAudit,
   renameMediaRecordAndReferences,
@@ -67,6 +74,7 @@ import {
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
 import {
   finalizeStagedMediaDeletion,
+  deleteMediaAsset,
   moveMediaAsset,
   persistGeneratedMedia,
   persistUploadedMedia,
@@ -84,6 +92,8 @@ import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/cat
 import { normalizeFooterConfiguration, normalizeHomeServices } from "@/lib/site-structure";
 import { normalizePieceMediaLinks } from "@/lib/piece-media";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceAcceptsReviews, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/piece-model";
+import { calculateEstimate, normalizeVisualizerState } from "@/lib/estimator";
+import { commissionOwnerKey, grantProjectBrowserAccess, userCanAccessProject } from "@/lib/commission-security";
 function revalidatePagePaths(slug: string) {
   revalidatePath("/", "layout");
   revalidatePath("/");
@@ -551,232 +561,237 @@ export async function startCheckoutAction(formData: FormData) {
   redirect(`/shop/cart?checkout=configuration-needed&order=${encodeURIComponent(orderNumber)}`);
 }
 
-export async function submitContactRequestAction(formData: FormData) {
-  const user = await getCurrentUser();
-  const guestName = requiredField(formData.get("customerName"), "Your name");
-  const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
-  const message = requiredField(formData.get("message"), "Project details");
-  const materialPreference = optionalField(formData.get("materialPreference"));
-  const materials = parseJsonField<string[]>(formData.get("materials"), materialPreference ? [materialPreference] : []);
-  const dimensions = parseJsonField<{ width: number; depth: number; height: number; unit: string } | null>(formData.get("dimensionsJson"), null);
-  const visualizerOptions = parseJsonField<Record<string, unknown>>(formData.get("visualizerOptions"), {});
-  const estimatedTotalCents = parseOptionalInteger(formData.get("estimatedTotalCents"));
-  const includeVisualization = optionalField(formData.get("includeVisualization")) === "1";
-  const deliveryMode = optionalField(formData.get("deliveryMode"));
-  const requestType = optionalField(formData.get("commissionTypeSlug"));
-  const cityRegion = optionalField(formData.get("cityRegion"));
-  const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
-  const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
-
-  const requestedPieceSlug = optionalField(formData.get("pieceSlug")) || null;
-  if (requestedPieceSlug) {
-    const requestedPiece = getPiece(requestedPieceSlug);
-    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) {
-      redirect(`/contact?error=${encodeURIComponent("This piece is not currently accepting inquiries.")}`);
+function commissionAttachments(formData: FormData) {
+  const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+  if (files.length > 8) throw new Error("Attach no more than eight reference images.");
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalBytes > 60 * 1024 * 1024) throw new Error("Reference uploads may not exceed 60 MB in total.");
+  for (const file of files) {
+    if (file.size > 20 * 1024 * 1024 || !file.type.toLowerCase().startsWith("image/")) {
+      throw new Error("Each reference must be an image smaller than 20 MB.");
     }
   }
+  return files;
+}
 
-  const reference = createProject({
+function serverCommissionEstimate(formData: FormData, requestType: string, dimensions: { width: number; depth: number; height: number; unit: string } | null, options: Record<string, unknown>) {
+  const commissionType = getCommissionType(requestType);
+  if (requestType && (!commissionType || !commissionType.active)) throw new Error("Select an active commission type.");
+  const defaults = commissionType?.defaultDimensions ?? { width: 48, depth: 24, height: 30, unit: "in" as const };
+  const materialPreference = optionalField(formData.get("materialPreference")) || commissionType?.materialOptions[0] || "White Oak";
+  if (commissionType && !commissionType.materialOptions.includes(materialPreference)) throw new Error("Select a material allowed for this commission type.");
+  const state = normalizeVisualizerState({
+    kind: requestType || "other-custom-work",
+    material: materialPreference,
+    joinery: optionalField(formData.get("joineryPreference")) || String(options.joinery ?? "Mortise and tenon"),
+    width: Number(dimensions?.width ?? defaults.width),
+    depth: Number(dimensions?.depth ?? defaults.depth),
+    height: Number(dimensions?.height ?? defaults.height),
+    drawers: Number(options.drawers ?? formData.get("drawers") ?? 0),
+    shelves: Number(options.shelves ?? formData.get("shelves") ?? 0),
+    notes: optionalField(formData.get("visualizerNotes")),
+    includeVisualization: optionalField(formData.get("includeVisualization")) === "1"
+  });
+  const bandwidth = getBandwidthSnapshot();
+  return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays) };
+}
+
+export async function submitContactRequestAction(formData: FormData) {
+  const user = await getCurrentUser();
+  const guestName = requiredField(formData.get("customerName"), "Your name").slice(0, 120);
+  const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(guestEmail)) throw new Error("Enter a valid email address.");
+  const message = requiredField(formData.get("message") || formData.get("brief"), "Project details").slice(0, 20_000);
+  const files = commissionAttachments(formData);
+  const requestedPieceSlug = optionalField(formData.get("pieceSlug")) || null;
+  let requestedPiece: ReturnType<typeof getPiece> = null;
+  if (requestedPieceSlug) {
+    requestedPiece = getPiece(requestedPieceSlug);
+    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) redirect(`/contact?error=${encodeURIComponent("This piece is not currently accepting inquiries.")}`);
+  }
+
+  const requestType = optionalField(formData.get("commissionTypeSlug")) || requestedPiece?.commissionTypeSlug || "other-custom-work";
+  const visualizerDimensions = parseJsonField<{ width: number; depth: number; height: number; unit: string } | null>(formData.get("dimensionsJson"), null);
+  const requestedWidth = Number(formData.get("requestedWidth"));
+  const requestedDepth = Number(formData.get("requestedDepth"));
+  const requestedHeight = Number(formData.get("requestedHeight"));
+  const dimensions = [requestedWidth, requestedDepth, requestedHeight].every((value) => Number.isFinite(value) && value > 0)
+    ? { width: requestedWidth, depth: requestedDepth, height: requestedHeight, unit: "in" }
+    : visualizerDimensions;
+  const visualizerOptions = parseJsonField<Record<string, unknown>>(formData.get("visualizerOptions"), {});
+  const { state, estimate } = serverCommissionEstimate(formData, requestType, dimensions, visualizerOptions);
+  const materialPreference = state.material;
+  const materials = [...new Set([materialPreference, state.joinery].filter(Boolean))];
+  const includeVisualization = optionalField(formData.get("includeVisualization")) === "1";
+  const cityRegion = optionalField(formData.get("cityRegion")).slice(0, 200);
+  const deliveryMode = optionalField(formData.get("deliveryMode"));
+  if (deliveryMode && !["pickup", "local-delivery", "shipment"].includes(deliveryMode)) throw new Error("Delivery preference is invalid.");
+  const idempotencyKey = requiredField(formData.get("idempotencyKey"), "Submission key");
+  if (optionalField(formData.get("companyWebsite"))) throw new Error("The request could not be submitted.");
+  const requestSource = optionalField(formData.get("requestSource")) || "commissions-workflow";
+  if (requestSource === "commissions-workflow" && optionalField(formData.get("accuracyConfirmation")) !== "1") throw new Error("Confirm the request details before submitting.");
+  const ownerKey = await commissionOwnerKey(user?.email);
+  const submissionQuota = consumeCommissionSubmissionQuota(ownerKey, user ? 12 : 5);
+  if (!submissionQuota.allowed) throw new Error(`Too many requests were submitted from this browser. Try again in about ${Math.ceil(submissionQuota.retryAfterSeconds / 60)} minutes.`);
+  const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
+  const stagedUploads: string[] = [];
+  try {
+    for (const file of files) {
+      stagedUploads.push(await persistUploadedMedia(file, `commission-staging/${idempotencyKey.slice(0, 24)}`, {
+        maxBytes: 20 * 1024 * 1024,
+        allowedMimePrefixes: ["image/"],
+        allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"]
+      }));
+    }
+  } catch (error) {
+    stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
+    throw error;
+  }
+
+  let result: ReturnType<typeof createProjectIdempotent>;
+  try {
+    result = createProjectIdempotent({
     userEmail: user?.email ?? null,
     guestName,
     guestEmail,
     pieceSlug: requestedPieceSlug,
-    commissionTypeSlug: requestType || null,
+    commissionTypeSlug: requestType,
     kind: "commission",
     status: "Request received",
     stage: "Contact review",
     budgetCents: (parseInteger(formData.get("budgetDollars"), 0) || parseInteger(formData.get("budgetCents"), 0)) * (formData.get("budgetDollars") ? 100 : 1) || null,
-    estimatedTotalCents,
-    estimator: visualizerOptions,
+    estimatedTotalCents: estimate.totalCents,
+    estimator: { ...estimate, schemaVersion: 2, calculatedBy: "server" },
     brief: message,
     materials,
-    dimensions,
+    dimensions: { width: state.width, depth: state.depth, height: state.height, unit: "in" },
     options: {
+      intent: optionalField(formData.get("intent")),
+      referencePieceSlug: optionalField(formData.get("referencePieceSlug")),
+      roomUse: optionalField(formData.get("roomUse")),
+      roomLocation: optionalField(formData.get("roomLocation")),
+      functionalLoad: optionalField(formData.get("functionalLoad")),
+      fitConstraints: optionalField(formData.get("fitConstraints")),
+      finishPreference: optionalField(formData.get("finishPreference")),
+      hardwarePreference: optionalField(formData.get("hardwarePreference")),
+      timingPreference: optionalField(formData.get("timingPreference")),
       phone: optionalField(formData.get("phone")),
       cityRegion,
       deliveryMode,
-      requestSource: optionalField(formData.get("requestSource")) || "contact-form",
+      requestSource,
       materialPreference,
-      visualizerOptions,
-      aiPreviewPath
+      visualizerOptions: { ...visualizerOptions, serverState: state },
+      aiPreviewPath: ""
     },
     visualizationSvg: includeVisualization ? optionalField(formData.get("visualizationSvg")) || null : null,
     includeVisualization,
-    leadTimeDays,
+    leadTimeDays: estimate.leadTimeDays,
     shippingAddress: cityRegion ? { cityRegion } : {},
     billingAddress: { email: guestEmail }
-  });
+    }, idempotencyKey);
+  } catch (error) {
+    stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
+    throw error;
+  }
+  const reference = result.reference;
 
-  if (aiPreviewPath) {
-    const existingPreview = getMedia(aiPreviewPath);
-    if (existingPreview) {
+  if (!result.created) stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
+
+  if (result.created) {
+    const movedUploads: string[] = [];
+    try {
+      for (const stagedPath of stagedUploads) {
+        const fileName = stagedPath.split("/").at(-1) ?? `reference-${crypto.randomUUID()}.jpg`;
+        movedUploads.push(moveMediaAsset(stagedPath, `projects/${reference}/references/${fileName}`));
+      }
+      for (const relativePath of movedUploads) {
+        saveMediaMetadata({
+          relativePath,
+          altText: `${reference} buyer reference image`,
+          projectReference: reference,
+          userEmail: guestEmail,
+          focalX: 50,
+          focalY: 50,
+          zoom: 1,
+          reviewed: false,
+          tags: ["project", reference, "buyer-reference"],
+          metadata: { privateProjectMedia: true, uploadedAt: new Date().toISOString() }
+        });
+      }
+    } catch (error) {
+      for (const relativePath of [...stagedUploads, ...movedUploads]) {
+        if (movedUploads.includes(relativePath)) {
+          try { deleteMediaRecordAndReferences(relativePath); } catch { /* Continue removing staged files and the retry key. */ }
+        }
+        try { deleteMediaAsset(relativePath); } catch { /* Best-effort cleanup; rollback still removes the project key. */ }
+      }
+      rollbackCommissionSubmission(reference, idempotencyKey);
+      throw error;
+    }
+
+    let ownedPreviewPath = "";
+    if (includeVisualization && aiPreviewPath && getMedia(aiPreviewPath) && consumeCommissionRenderAsset(aiPreviewPath, ownerKey, reference)) {
+      ownedPreviewPath = aiPreviewPath;
+      const preview = getMedia(aiPreviewPath)!;
       saveMediaMetadata({
         relativePath: aiPreviewPath,
-        altText: existingPreview.altText || `${reference} AI preview`,
-        pieceSlug: existingPreview.pieceSlug,
-        postSlug: existingPreview.postSlug,
-        pageSlug: existingPreview.pageSlug,
+        altText: preview.altText || `${reference} conceptual AI preview`,
+        pieceSlug: preview.pieceSlug,
+        postSlug: preview.postSlug,
+        pageSlug: preview.pageSlug,
         projectReference: reference,
         userEmail: guestEmail,
-        focalX: existingPreview.focalX,
-        focalY: existingPreview.focalY,
-        zoom: existingPreview.zoom,
+        focalX: preview.focalX,
+        focalY: preview.focalY,
+        zoom: preview.zoom,
         reviewed: false,
-        tags: [...new Set([...existingPreview.tags, "project", reference, "ai-preview"])],
-        metadata: { ...existingPreview.metadata, projectReference: reference, attachedToRequestAt: new Date().toISOString() }
+        tags: [...new Set([...preview.tags, "project", reference, "ai-preview"])],
+        metadata: { ...preview.metadata, projectReference: reference, attachedToRequestAt: new Date().toISOString() }
       });
+      const project = getProject(reference)!;
+      updateProject(reference, { options: { ...project.options, aiPreviewPath: ownedPreviewPath } });
     }
-  }
-
-  const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
-  for (const file of files) {
-    const relativePath = await persistUploadedMedia(file, `projects/${reference}`);
-    saveMediaMetadata({
-      relativePath,
-      altText: `${reference} reference image`,
-      projectReference: reference,
-      userEmail: guestEmail,
-      focalX: 50,
-      focalY: 50,
-      zoom: 1,
-      reviewed: true,
-      tags: ["project", reference, "reference"]
+    appendProjectUpdate({ projectReference: reference, authorEmail: guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body: message });
+    const statusUrl = `${resolveBaseUrl()}/commissions/status`;
+    await sendNotificationEmail({
+      category: "commission_submitted",
+      to: [guestEmail, getSiteSettings().builderEmail],
+      subject: `Custom work request received: ${reference}`,
+      text: `Your Beaman Woodworks project reference is ${reference}. Open ${statusUrl} and enter the reference with your email to view updates.`,
+      html: `<p>Your Beaman Woodworks project reference is <strong>${reference}</strong>.</p><p>Open <a href="${statusUrl}">${statusUrl}</a> and enter the reference with your email to view updates.</p>`
     });
+    const draftId = optionalField(formData.get("draftId"));
+    if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
   }
 
-  appendProjectUpdate({
-    projectReference: reference,
-    authorEmail: guestEmail,
-    authorRole: user ? "buyer-account" : "buyer",
-    visibility: "public",
-    body: message
-  });
-
-  const statusUrl = `${resolveBaseUrl()}/commissions/status?reference=${encodeURIComponent(reference)}&email=${encodeURIComponent(guestEmail)}`;
-  await sendNotificationEmail({
-    category: "contact_request",
-    to: [guestEmail, getSiteSettings().builderEmail],
-    subject: `New Beaman Woodworks request: ${reference}`,
-    text: `Your Beaman Woodworks request reference is ${reference}. Review status at ${statusUrl}.`,
-    html: `<p>Your Beaman Woodworks request reference is <strong>${reference}</strong>.</p><p>Review status at <a href="${statusUrl}">${statusUrl}</a>.</p>`
-  });
-
-  revalidatePath("/about");
-  revalidatePath("/shop");
-  revalidatePath("/portfolio");
-  revalidatePath("/studio");
-  redirect(`/requests/${reference}?created=1&email=${encodeURIComponent(guestEmail)}`);
-}
-export async function submitCommissionAction(formData: FormData) {
-  const user = await getCurrentUser();
-  const guestName = requiredField(formData.get("customerName"), "Your name");
-  const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
-  const materials = parseJsonField<string[]>(formData.get("materials"), []);
-  const dimensions = parseJsonField<{ width: number; depth: number; height: number; unit: string } | null>(formData.get("dimensionsJson"), null);
-  const options = parseJsonField<Record<string, unknown>>(formData.get("visualizerOptions"), {});
-  const estimatedTotalCents = parseInteger(formData.get("estimatedTotalCents"), 0);
-  const leadTimeDays = parseInteger(formData.get("leadTimeDays"), 0);
-  const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
-  const requestedPieceSlug = optionalField(formData.get("pieceSlug")) || null;
-  if (requestedPieceSlug) {
-    const requestedPiece = getPiece(requestedPieceSlug);
-    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) {
-      redirect(`/commissions?error=${encodeURIComponent("This piece is not currently accepting custom requests.")}`);
-    }
-  }
-  const reference = createProject({
-    userEmail: user?.email ?? null,
-    guestName,
-    guestEmail,
-    pieceSlug: requestedPieceSlug,
-    commissionTypeSlug: optionalField(formData.get("commissionTypeSlug")) || null,
-    kind: "commission",
-    status: "Brief received",
-    stage: "Review",
-    budgetCents: (parseInteger(formData.get("budgetDollars"), 0) || parseInteger(formData.get("budgetCents"), 0)) * (formData.get("budgetDollars") ? 100 : 1) || null,
-    estimatedTotalCents,
-    estimator: { laborHours: options.drawers ? 4 + Number(options.drawers) : undefined },
-    brief: requiredField(formData.get("brief"), "Project brief"),
-    materials,
-    dimensions,
-    options: { ...options, aiPreviewPath },
-    visualizationSvg: optionalField(formData.get("visualizationSvg")) || null,
-    includeVisualization: optionalField(formData.get("includeVisualization")) === "1",
-    leadTimeDays,
-    shippingAddress: {},
-    billingAddress: { email: guestEmail }
-  });
-
-  if (aiPreviewPath) {
-    const existingPreview = getMedia(aiPreviewPath);
-    if (existingPreview) {
-      saveMediaMetadata({
-        relativePath: aiPreviewPath,
-        altText: existingPreview.altText || `${reference} AI preview`,
-        pieceSlug: existingPreview.pieceSlug,
-        postSlug: existingPreview.postSlug,
-        pageSlug: existingPreview.pageSlug,
-        projectReference: reference,
-        userEmail: guestEmail,
-        focalX: existingPreview.focalX,
-        focalY: existingPreview.focalY,
-        zoom: existingPreview.zoom,
-        reviewed: false,
-        tags: [...new Set([...existingPreview.tags, "project", reference, "ai-preview"])],
-        metadata: { ...existingPreview.metadata, projectReference: reference, attachedToRequestAt: new Date().toISOString() }
-      });
-    }
-  }
-
-  const files = formData.getAll("attachments").filter((entry): entry is File => entry instanceof File && entry.size > 0);
-  for (const file of files) {
-    const relativePath = await persistUploadedMedia(file, `projects/${reference}`);
-    saveMediaMetadata({
-      relativePath,
-      altText: `${reference} reference image`,
-      projectReference: reference,
-      userEmail: guestEmail,
-      focalX: 50,
-      focalY: 50,
-      zoom: 1,
-      reviewed: true,
-      tags: ["project", reference]
-    });
-  }
-
-  appendProjectUpdate({
-    projectReference: reference,
-    authorEmail: guestEmail,
-    authorRole: user ? "buyer-account" : "buyer",
-    visibility: "public",
-    body: requiredField(formData.get("brief"), "Project brief")
-  });
-  const statusUrl = `${resolveBaseUrl()}/commissions/status?reference=${encodeURIComponent(reference)}&email=${encodeURIComponent(guestEmail)}`;
-  await sendNotificationEmail({
-    category: "commission_submitted",
-    to: [guestEmail, getSiteSettings().builderEmail],
-    subject: `Commission received: ${reference}`,
-    text: `Your commission reference is ${reference}. Review status at ${statusUrl}.`,
-    html: `<p>Your commission reference is <strong>${reference}</strong>.</p><p>Review status at <a href="${statusUrl}">${statusUrl}</a>.</p>`
-  });
-
+  await grantProjectBrowserAccess(reference);
   revalidatePath("/commissions");
   revalidatePath("/studio");
-  redirect(`/requests/${reference}?created=1&email=${encodeURIComponent(guestEmail)}`);
+  redirect(`/requests/${reference}?created=1`);
+}
+
+export async function submitCommissionAction(formData: FormData) {
+  return submitContactRequestAction(formData);
+}
+
+export async function lookupProjectStatusAction(formData: FormData) {
+  const reference = requiredField(formData.get("reference"), "Reference").toUpperCase();
+  const email = requiredField(formData.get("email"), "Email").toLowerCase();
+  const project = getProject(reference);
+  if (!project || project.guestEmail.toLowerCase() !== email) redirect(`/commissions/status?error=not-found&reference=${encodeURIComponent(reference)}`);
+  await grantProjectBrowserAccess(reference);
+  redirect(`/requests/${reference}`);
 }
 
 export async function submitProjectReplyAction(formData: FormData) {
   const reference = requiredField(formData.get("reference"), "Reference");
-  const email = requiredField(formData.get("email"), "Email").toLowerCase();
-  const body = requiredField(formData.get("body"), "Message");
+  const body = requiredField(formData.get("body"), "Message").slice(0, 10_000);
   const project = getProject(reference);
-  if (!project || project.guestEmail.toLowerCase() !== email) {
-    redirect(`/requests/${reference}?error=lookup`);
-  }
-
-  appendProjectUpdate({ projectReference: reference, authorEmail: email, authorRole: "buyer", visibility: "public", body });
+  const user = await getCurrentUser();
+  if (!project || !await userCanAccessProject(project, user)) redirect(`/requests/${reference}?error=access`);
+  appendProjectUpdate({ projectReference: reference, authorEmail: user?.email ?? project.guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body });
   revalidatePath(`/requests/${reference}`);
-  redirect(`/requests/${reference}?updated=1&email=${encodeURIComponent(email)}`);
+  redirect(`/requests/${reference}?updated=1`);
 }
 
 export async function submitReviewAction(formData: FormData) {

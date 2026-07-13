@@ -43,7 +43,7 @@ test("schema migrations are additive, idempotent, and preserve legacy truth", ()
     const second = applySchemaMigrations(db);
     assert.equal(first.quickCheckBefore, "ok");
     assert.equal(first.quickCheckAfter, "ok");
-    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3]);
+    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5]);
     assert.equal(second.applied.length, 0);
 
     const policies = (db.prepare(`SELECT slug, price_mode AS priceMode, price_cents AS priceCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode FROM pieces ORDER BY slug`).all() as Array<Record<string, unknown>>).map((row) => ({ ...row }));

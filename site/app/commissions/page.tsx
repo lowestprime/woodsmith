@@ -4,6 +4,7 @@ import { connection } from "next/server";
 import { ContactRequestForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { getBandwidthSnapshot, getPage, listCommissionTypes } from "@/lib/db";
+import { getCurrentUser } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Custom Work",
@@ -15,6 +16,7 @@ export default async function CommissionsPage() {
   await connection();
   const page = getPage("commissions");
   const bandwidth = getBandwidthSnapshot();
+  const user = await getCurrentUser();
 
   return (
     <Shell>
@@ -25,7 +27,10 @@ export default async function CommissionsPage() {
         <ContactRequestForm
           bandwidthLeadTimeDays={bandwidth.leadTimeDays}
           commissionTypes={listCommissionTypes()}
+          defaultEmail={user?.email}
+          defaultName={user?.displayName}
           queueCount={bandwidth.activeProjects}
+          signedIn={Boolean(user && (user.role !== "customer" || user.emailVerified))}
         />
       </PageSection>
     </Shell>

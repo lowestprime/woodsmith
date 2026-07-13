@@ -230,6 +230,90 @@ const migrations: Migration[] = [
 
       return { inserted, missing, missingCount: missing.length };
     }
+  },
+  {
+    version: 4,
+    name: "resumable-commission-access-and-idempotency",
+    checksum: "2026-07-commission-draft-access-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS commission_drafts (
+          id TEXT PRIMARY KEY,
+          user_email TEXT NOT NULL,
+          payload_json TEXT NOT NULL DEFAULT '{}',
+          current_step INTEGER NOT NULL DEFAULT 1 CHECK (current_step BETWEEN 1 AND 10),
+          status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft', 'submitted', 'expired')),
+          idempotency_hash TEXT NOT NULL UNIQUE,
+          project_reference TEXT,
+          expires_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS idx_commission_drafts_owner
+          ON commission_drafts(user_email, status, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_commission_drafts_expiry
+          ON commission_drafts(status, expires_at);
+
+        CREATE TABLE IF NOT EXISTS commission_submissions (
+          idempotency_hash TEXT PRIMARY KEY,
+          project_reference TEXT NOT NULL UNIQUE,
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS project_access_grants (
+          token_hash TEXT PRIMARY KEY,
+          project_reference TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          last_used_at TEXT,
+          revoked_at TEXT,
+          created_at TEXT NOT NULL
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS idx_project_access_reference
+          ON project_access_grants(project_reference, expires_at DESC);
+
+        CREATE TABLE IF NOT EXISTS commission_render_usage (
+          owner_key_hash TEXT PRIMARY KEY,
+          window_started_at TEXT NOT NULL,
+          request_count INTEGER NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+          updated_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS commission_render_assets (
+          relative_path TEXT PRIMARY KEY,
+          owner_key_hash TEXT NOT NULL,
+          consumed_project_reference TEXT,
+          created_at TEXT NOT NULL,
+          consumed_at TEXT
+        ) STRICT;
+        CREATE INDEX IF NOT EXISTS idx_commission_render_owner
+          ON commission_render_assets(owner_key_hash, created_at DESC);
+      `);
+      return {
+        tables: [
+          "commission_drafts",
+          "commission_submissions",
+          "project_access_grants",
+          "commission_render_usage",
+          "commission_render_assets"
+        ]
+      };
+    }
+  },
+  {
+    version: 5,
+    name: "commission-submission-rate-limits",
+    checksum: "2026-07-commission-submission-rate-limit-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS commission_submission_usage (
+          owner_key_hash TEXT PRIMARY KEY,
+          window_started_at TEXT NOT NULL,
+          request_count INTEGER NOT NULL DEFAULT 0 CHECK (request_count >= 0),
+          updated_at TEXT NOT NULL
+        ) STRICT;
+      `);
+      return { tables: ["commission_submission_usage"] };
+    }
   }
 ];
 

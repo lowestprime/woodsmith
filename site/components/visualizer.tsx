@@ -148,15 +148,26 @@ function downloadSvg(svg: string, kind: string) {
   URL.revokeObjectURL(objectUrl);
 }
 
-export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays, queueCount }: {
+export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays, queueCount, initialTypeSlug, initialDimensions, lockType = false }: {
   commissionTypes: CommissionTypeOption[];
   bandwidthLeadTimeDays: number;
   queueCount: number;
+  initialTypeSlug?: string;
+  initialDimensions?: { width: number; depth: number; height: number };
+  lockType?: boolean;
 }) {
-  const availableTypes = commissionTypes.length > 0 ? commissionTypes : [FALLBACK_COMMISSION_TYPE];
-  const [selectedSlug, setSelectedSlug] = useState(availableTypes[0].slug);
+  const availableTypes = commissionTypes.length > 0
+    ? commissionTypes.some((type) => type.slug === FALLBACK_COMMISSION_TYPE.slug) ? commissionTypes : [...commissionTypes, FALLBACK_COMMISSION_TYPE]
+    : [FALLBACK_COMMISSION_TYPE];
+  const initialType = availableTypes.find((type) => type.slug === initialTypeSlug) ?? availableTypes[0];
+  const [selectedSlug, setSelectedSlug] = useState(initialType.slug);
   const selectedType = availableTypes.find((type) => type.slug === selectedSlug) ?? availableTypes[0];
-  const [state, setState] = useState<VisualizerState>(defaultVisualizerState(availableTypes[0].slug));
+  const [state, setState] = useState<VisualizerState>(() => normalizeVisualizerState({
+    ...defaultVisualizerState(initialType.slug),
+    width: Number.isFinite(initialDimensions?.width) && Number(initialDimensions?.width) > 0 ? Number(initialDimensions?.width) : initialType.defaultDimensions.width,
+    depth: Number.isFinite(initialDimensions?.depth) && Number(initialDimensions?.depth) > 0 ? Number(initialDimensions?.depth) : initialType.defaultDimensions.depth,
+    height: Number.isFinite(initialDimensions?.height) && Number(initialDimensions?.height) > 0 ? Number(initialDimensions?.height) : initialType.defaultDimensions.height
+  }));
   const [isGenerating, startGeneration] = useTransition();
   const [renderedPreview, setRenderedPreview] = useState<{ url: string; relativePath?: string; message: string } | null>(null);
 
@@ -238,7 +249,7 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
         </div>
 
         <div className="visualizer-controls-3d">
-          <label>
+          {lockType ? <label><span>Piece type</span><strong className="visualizer-locked-value">{selectedType.label}</strong><input name="commissionTypeSlug" type="hidden" value={selectedType.slug} /></label> : <label>
             <span>Piece type</span>
             <select
               name="commissionTypeSlug"
@@ -260,7 +271,7 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
             >
               {availableTypes.map((type) => <option key={type.slug} value={type.slug}>{type.label}</option>)}
             </select>
-          </label>
+          </label>}
           <p className="visualizer-type-description">{selectedType.description}</p>
           <label>
             <span>Primary material</span>

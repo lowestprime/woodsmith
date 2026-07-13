@@ -653,11 +653,11 @@ export const seedPages: SeedPage[] = [
   },
   {
     slug: "commissions",
-    title: "Custom Work Contact",
+    title: "Request Custom Work",
     navLabel: "Custom Work",
     status: "published",
-    intro: "Custom work now starts with a direct contact request instead of a fixed public template.",
-    body: "The private workflow still supports estimates, build notes, lead-time tracking, and visualization, but the public entry point is a simpler contact-first intake.",
+    intro: "Describe the piece, room, dimensions, materials, timing, and fulfillment needs in one guided request.",
+    body: "The form saves progress in this browser, shows a proportional planning preview, and creates a private project page for follow-up after submission.",
     layout: "contact",
     sections: []
   },

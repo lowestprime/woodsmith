@@ -120,7 +120,11 @@ Password resets, verification links, project updates, contact requests, and comm
 
 ### Custom work contact
 
-The public custom work page collects contact details, location, budget, requested piece type, preferred material, pickup/delivery/shipping preference, attachments, an optional conceptual proportional preview, and a written brief. The preview uses a dynamically loaded React Three Fiber scene with perspective/orthographic and front/side/top/isometric controls, while the deterministic SVG drawing remains available if WebGL or motion is unavailable. It creates a private project record and redirects the buyer to a reference page. If `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, the visualizer can also generate a photorealistic preview and attach it only when the buyer chooses to include the preview.
+The public custom work page is a ten-step guided request covering intent, category, room/use, exact working dimensions, materials, private reference uploads, conceptual preview, fulfillment, contact details, and final review. Browser autosave is always available; verified accounts also receive serialized server-side drafts that can resume on another browser. The server, not hidden browser fields, recalculates material, labor, overhead, markup, queue-aware lead time, and the planning total before creating the project.
+
+Reference uploads are limited to eight allowlisted image files, 20 MB each and 60 MB total. They are staged under the writable media mount, moved into the private project folder only after an idempotent project insert, and removed with the retry key if finalization fails. A honeypot and hashed per-owner submission window limit reduce automated abuse without storing raw IP addresses in quota tables.
+
+The preview uses a dynamically loaded React Three Fiber scene with perspective/orthographic and front/side/top/isometric controls, while the deterministic SVG drawing remains available if WebGL or motion is unavailable. If `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, generated previews have a separate owner-bound quota and can attach only once to the request that owns them.
 
 ## Private visual archive
 
@@ -134,7 +138,7 @@ The cart calculates subtotal, coupon discount, tax estimate, shipping estimate, 
 
 ### Buyer project lookup
 
-Buyers can use `/commissions/status` or `/requests/[reference]?email=buyer@example.com`. Reference links should be shared only with the buyer and trusted collaborators.
+Buyers use `/commissions/status` to exchange the project reference and buyer email through a POST form for a 30-day, `HttpOnly`, same-site capability cookie. Email addresses are never placed in request URLs. A signed-in buyer whose account email matches the project can open it directly; administrators retain operational access.
 
 ## Environment-dependent services
 

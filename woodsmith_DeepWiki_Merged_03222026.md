@@ -39,7 +39,7 @@ Routes under `site/app/` provide:
 
 The account system supports signup, login, password reset, profile updates, profile image upload, and account-linked project listing.
 
-Project trackers live at `/requests/[reference]`. Access is allowed only when the viewer is an admin, the viewer is signed in with the linked account email, or the buyer email supplied in the request URL matches the project record.
+Project trackers live at `/requests/[reference]`. Access is allowed only when the viewer is an administrator, is signed in with the linked account email, or holds an unexpired per-project capability cookie. The `/commissions/status` POST form exchanges a matching reference and buyer email for that `HttpOnly`, same-site cookie; buyer email is never accepted in a project URL.
 
 ### Private Woodshop dashboard
 
@@ -84,8 +84,14 @@ The SQLite schema includes these primary tables:
 - `piece_media_links`
 - `admin_edit_audit`
 - `media_rename_history`
+- `commission_drafts`
+- `commission_submissions`
+- `project_access_grants`
+- `commission_render_usage`
+- `commission_render_assets`
+- `commission_submission_usage`
 
-Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v5 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
+Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v6 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
 User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
 
@@ -114,11 +120,13 @@ Payment capture, invoice delivery, shipping labels, and outbound email degrade s
 
 ## Custom work workflow
 
-The public custom work route is contact-first. It captures buyer contact details, location, budget, project type, material preference, fulfillment preference, attachments, optional procedural 3D scale preview data, and a written brief. Submission creates a project record, queues notifications, and redirects the buyer to a reference page.
+The public custom work route is a ten-step guided request covering intent, category, room/use, dimensions, materials, private reference files, conceptual preview, fulfillment, contact identity, and final review. Every browser gets local autosave. Verified accounts additionally get optimistic, serialized server drafts with 30-day expiry and cross-browser recovery. The server treats browser totals and lead times as advisory, recalculates the estimator from normalized dimensions/options plus the live queue, and stores the exact submitted options separately.
+
+Submission uses a client-generated idempotency key backed by `commission_submissions`, a honeypot, and hashed owner-window quotas. Allowlisted images are staged before the database insert, moved into `projects/<reference>/references/` after creation, and rolled back with the project/idempotency row if finalization fails. Project status access uses expiring opaque capability cookies rather than email query parameters.
 
 Custom work type records still store default dimensions, material options, labor hours, and markup settings so the woodshop can maintain estimator context and future richer intake flows.
 
-`site/components/visualizer.tsx` dynamically loads `site/components/commission-scene.tsx` only on the custom-work route. The React Three Fiber scene supports category-specific and generic templates, exact submitted dimensions, material cues, perspective/orthographic cameras, front/side/top/isometric presets, orbit/zoom/reset controls, and demand rendering. A deterministic SVG drawing and textual dimensions remain available for printing, submission, reduced motion, and WebGL failure. When `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, `/api/render-preview` can generate a photorealistic conceptual image, persist it under `/app/pics`, and attach it only when the buyer includes the preview.
+`site/components/visualizer.tsx` dynamically loads `site/components/commission-scene.tsx` only on the custom-work route. The React Three Fiber scene supports category-specific and generic templates, exact submitted dimensions, material cues, perspective/orthographic cameras, front/side/top/isometric presets, orbit/zoom/reset controls, and demand rendering. A deterministic SVG drawing and textual dimensions remain available for printing, submission, reduced motion, and WebGL failure. When `OPENAI_API_KEY` and `ENABLE_PUBLIC_AI_RENDERING=true` are configured, `/api/render-preview` can generate a photorealistic conceptual image, persist it under `/app/pics`, and attach it only once when the submitting owner explicitly includes it. Render and submission quotas store only hashed owner keys.
 
 ## Visual archive and rendered QA
 

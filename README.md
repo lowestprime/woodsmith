@@ -163,6 +163,8 @@ Buyer account and request access:
 - `/account/projects`
 - `/requests/[reference]`
 
+Custom work uses a ten-step, locally autosaved request flow. Verified accounts also receive resumable server drafts. Submission is idempotent, rate-limited by a hashed owner key, recalculates the estimate and lead time on the server, stages allowlisted private image references safely, and redirects without putting buyer email in the URL. Existing projects are opened through the POST lookup at `/commissions/status`, which issues an expiring `HttpOnly` capability cookie.
+
 Private Woodshop:
 
 - `/studio/login`
@@ -171,6 +173,8 @@ Private Woodshop:
 ## 🚀 Deployment
 
 The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics:rw`; do not remount or bind the repo-local `pics/` folder under `docker_ssd`. `MEDIA_ROOT` must be an absolute container path.
+
+`npm run build` uses disposable build-time data and media roots and fails if Next standalone output contains SQLite, WAL/SHM, or backup files. Production state must enter the container only through the writable runtime mounts.
 
 After deploying a build from this branch, the startup migration updates legacy `lowestprime@proton.me` developer references in persisted settings and seeded profile data to `cooperbeaman@proton.me`.
 

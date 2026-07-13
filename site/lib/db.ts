@@ -1,6 +1,6 @@
 import { accessSync, constants as fsConstants, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import {
   seedCommissionTypes,
@@ -12,7 +12,7 @@ import {
   type FooterConfiguration,
   type HomeServiceDefinition
 } from "./seed.ts";
-import { scanMediaLibrary } from "./media.ts";
+import { scanMediaAsset, scanMediaLibrary } from "./media.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
@@ -249,6 +249,41 @@ export type ProjectRecord = {
   internalNotes: string;
   createdAt: string;
   updatedAt: string;
+};
+
+export type CommissionDraftRecord = {
+  id: string;
+  userEmail: string;
+  payload: Record<string, unknown>;
+  currentStep: number;
+  status: "draft" | "submitted" | "expired";
+  projectReference: string | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectInput = {
+  userEmail?: string | null;
+  guestName: string;
+  guestEmail: string;
+  pieceSlug?: string | null;
+  commissionTypeSlug?: string | null;
+  kind: ProjectKind;
+  status: string;
+  stage: string;
+  budgetCents?: number | null;
+  estimatedTotalCents?: number | null;
+  estimator?: Record<string, unknown>;
+  brief: string;
+  materials: string[];
+  dimensions: { width: number; depth: number; height: number; unit: string } | null;
+  options?: Record<string, unknown>;
+  visualizationSvg?: string | null;
+  includeVisualization?: boolean;
+  leadTimeDays?: number | null;
+  shippingAddress?: Record<string, unknown>;
+  billingAddress?: Record<string, unknown>;
 };
 
 export type ProjectUpdateRecord = {
@@ -838,7 +873,7 @@ function seedDefaultContent(db: DatabaseSync) {
   const seededVersion = getSeededVersion(db);
   if (seededVersion === 0) {
     upsertSetting(db, "site", siteSettingsSeed);
-    upsertSetting(db, "seededVersion", { version: 5, updatedAt: nowIso() });
+    upsertSetting(db, "seededVersion", { version: 6, updatedAt: nowIso() });
   }
 
   for (const profile of seedProfiles) {
@@ -1221,6 +1256,25 @@ function seedDefaultContent(db: DatabaseSync) {
     }
 
     upsertSetting(db, "seededVersion", { version: 5, updatedAt: timestamp });
+  }
+
+  if (seededVersion > 0 && seededVersion < 6) {
+    const timestamp = nowIso();
+    db.prepare(`UPDATE pages SET title = ?, updated_at = ? WHERE slug = 'commissions' AND title = ?`)
+      .run("Request Custom Work", timestamp, "Custom Work Contact");
+    db.prepare(`UPDATE pages SET intro = ?, updated_at = ? WHERE slug = 'commissions' AND intro = ?`)
+      .run(
+        "Describe the piece, room, dimensions, materials, timing, and fulfillment needs in one guided request.",
+        timestamp,
+        "Custom work now starts with a direct contact request instead of a fixed public template."
+      );
+    db.prepare(`UPDATE pages SET body = ?, updated_at = ? WHERE slug = 'commissions' AND body = ?`)
+      .run(
+        "The form saves progress in this browser, shows a proportional planning preview, and creates a private project page for follow-up after submission.",
+        timestamp,
+        "The private workflow still supports estimates, build notes, lead-time tracking, and visualization, but the public entry point is a simpler contact-first intake."
+      );
+    upsertSetting(db, "seededVersion", { version: 6, updatedAt: timestamp });
   }
 }
 
@@ -2497,6 +2551,27 @@ export function saveMediaMetadata(input: {
   metadata?: Record<string, unknown>;
 }) {
   const db = getDatabase();
+  if (!getMedia(input.relativePath)) {
+    const media = scanMediaAsset(input.relativePath);
+    if (!media) throw new Error(`Media file '${input.relativePath}' was not found in the configured library.`);
+    db.prepare(`
+      INSERT INTO media_items (
+        relative_path, folder, file_name, kind, size_bytes, cluster_key, alt_text,
+        piece_slug, post_slug, page_slug, project_reference, user_email,
+        focal_x, focal_y, zoom, reviewed, tags_json, metadata_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', '{}', ?, ?)
+    `).run(
+      media.relativePath,
+      media.folder,
+      media.fileName,
+      media.kind,
+      media.sizeBytes,
+      media.clusterKey,
+      media.guessedAlt,
+      media.createdAt,
+      media.updatedAt
+    );
+  }
   db.prepare(`
     UPDATE media_items
     SET alt_text = :altText,
@@ -2875,6 +2950,228 @@ export function mergeMediaTags(relativePath: string, newTags: string[]) {
   db.prepare(`UPDATE media_items SET tags_json = ?, updated_at = ? WHERE relative_path = ?`)
     .run(writeJson(merged), nowIso(), relativePath);
 }
+
+function hashOpaqueValue(value: string) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function safeHashEqual(left: string, right: string) {
+  const leftBuffer = Buffer.from(left, "hex");
+  const rightBuffer = Buffer.from(right, "hex");
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function mapCommissionDraft(row: Record<string, unknown>): CommissionDraftRecord {
+  return {
+    id: String(row.id),
+    userEmail: String(row.userEmail),
+    payload: readJson(row.payloadJson, {}),
+    currentStep: Number(row.currentStep),
+    status: String(row.status) as CommissionDraftRecord["status"],
+    projectReference: row.projectReference ? String(row.projectReference) : null,
+    expiresAt: String(row.expiresAt),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt)
+  };
+}
+
+export function getCommissionDraftForUser(id: string, userEmail: string) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT id, user_email AS userEmail, payload_json AS payloadJson, current_step AS currentStep,
+           status, project_reference AS projectReference, expires_at AS expiresAt,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM commission_drafts
+    WHERE id = ? AND user_email = ?
+    LIMIT 1
+  `).get(id, userEmail.toLowerCase()) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const draft = mapCommissionDraft(row);
+  if (draft.status === "draft" && new Date(draft.expiresAt).getTime() <= Date.now()) {
+    db.prepare("UPDATE commission_drafts SET status = 'expired', updated_at = ? WHERE id = ?").run(nowIso(), id);
+    return { ...draft, status: "expired" as const };
+  }
+  return draft;
+}
+
+export function listCommissionDraftsForUser(userEmail: string, limit = 10) {
+  const db = getDatabase();
+  db.prepare(`
+    UPDATE commission_drafts
+    SET status = 'expired', updated_at = ?
+    WHERE user_email = ? AND status = 'draft' AND datetime(expires_at) <= datetime(?)
+  `).run(nowIso(), userEmail.toLowerCase(), nowIso());
+  const rows = db.prepare(`
+    SELECT id, user_email AS userEmail, payload_json AS payloadJson, current_step AS currentStep,
+           status, project_reference AS projectReference, expires_at AS expiresAt,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM commission_drafts
+    WHERE user_email = ?
+    ORDER BY datetime(updated_at) DESC
+    LIMIT ?
+  `).all(userEmail.toLowerCase(), Math.max(1, Math.min(50, Math.round(limit)))) as Record<string, unknown>[];
+  return rows.map(mapCommissionDraft);
+}
+
+export function saveCommissionDraftForUser(input: {
+  id?: string | null;
+  userEmail: string;
+  payload: Record<string, unknown>;
+  currentStep: number;
+  idempotencyKey: string;
+  expectedUpdatedAt?: string | null;
+}) {
+  const email = input.userEmail.trim().toLowerCase();
+  if (!email) throw new Error("A signed-in user is required for server draft storage.");
+  const idempotencyKey = input.idempotencyKey.trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(idempotencyKey)) throw new Error("Draft idempotency key is invalid.");
+  const currentStep = Math.max(1, Math.min(10, Math.round(input.currentStep)));
+  const payload = JSON.stringify(input.payload);
+  if (Buffer.byteLength(payload, "utf8") > 256_000) throw new Error("Commission draft data exceeds the 256 KB limit.");
+
+  return withDatabaseTransaction((db) => {
+    const timestamp = nowIso();
+    const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
+    const id = input.id?.trim() || randomUUID();
+    const existing = getCommissionDraftForUser(id, email);
+    if (existing) {
+      if (existing.status !== "draft") throw new Error("Only active drafts can be updated.");
+      if (input.expectedUpdatedAt && existing.updatedAt !== input.expectedUpdatedAt) throw new Error("Commission draft changed in another session.");
+      db.prepare(`
+        UPDATE commission_drafts
+        SET payload_json = ?, current_step = ?, idempotency_hash = ?, expires_at = ?, updated_at = ?
+        WHERE id = ? AND user_email = ?
+      `).run(payload, currentStep, hashOpaqueValue(idempotencyKey), expiresAt, timestamp, id, email);
+    } else {
+      db.prepare(`
+        INSERT INTO commission_drafts (
+          id, user_email, payload_json, current_step, status, idempotency_hash,
+          project_reference, expires_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, 'draft', ?, NULL, ?, ?, ?)
+      `).run(id, email, payload, currentStep, hashOpaqueValue(idempotencyKey), expiresAt, timestamp, timestamp);
+    }
+    return getCommissionDraftForUser(id, email)!;
+  });
+}
+
+export function markCommissionDraftSubmitted(id: string, userEmail: string, projectReference: string) {
+  const db = getDatabase();
+  db.prepare(`
+    UPDATE commission_drafts
+    SET status = 'submitted', project_reference = ?, updated_at = ?
+    WHERE id = ? AND user_email = ? AND status = 'draft'
+  `).run(projectReference, nowIso(), id, userEmail.toLowerCase());
+}
+
+export function deleteCommissionDraftForUser(id: string, userEmail: string) {
+  const db = getDatabase();
+  const result = db.prepare("DELETE FROM commission_drafts WHERE id = ? AND user_email = ? AND status = 'draft'")
+    .run(id, userEmail.toLowerCase());
+  return Number(result.changes ?? 0) === 1;
+}
+
+export function createProjectAccessGrant(projectReference: string, days = 30) {
+  const db = getDatabase();
+  if (!getProject(projectReference)) throw new Error("Project not found.");
+  const token = randomBytes(32).toString("base64url");
+  const timestamp = nowIso();
+  db.prepare(`
+    INSERT INTO project_access_grants (
+      token_hash, project_reference, expires_at, last_used_at, revoked_at, created_at
+    ) VALUES (?, ?, ?, NULL, NULL, ?)
+  `).run(hashOpaqueValue(token), projectReference, new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString(), timestamp);
+  return token;
+}
+
+export function projectAccessGrantValid(projectReference: string, token: string) {
+  const db = getDatabase();
+  const candidateHash = hashOpaqueValue(token.trim());
+  const row = db.prepare(`
+    SELECT token_hash AS tokenHash, expires_at AS expiresAt, revoked_at AS revokedAt
+    FROM project_access_grants
+    WHERE project_reference = ? AND token_hash = ?
+    LIMIT 1
+  `).get(projectReference, candidateHash) as Record<string, unknown> | undefined;
+  if (!row || row.revokedAt || new Date(String(row.expiresAt)).getTime() <= Date.now()) return false;
+  if (!safeHashEqual(String(row.tokenHash), candidateHash)) return false;
+  db.prepare("UPDATE project_access_grants SET last_used_at = ? WHERE token_hash = ?").run(nowIso(), candidateHash);
+  return true;
+}
+
+export function consumeCommissionRenderQuota(ownerKey: string, limit = 3, windowMs = 24 * 60 * 60 * 1000) {
+  return withDatabaseTransaction((db) => {
+    const ownerKeyHash = hashOpaqueValue(ownerKey);
+    const row = db.prepare(`SELECT window_started_at AS windowStartedAt, request_count AS requestCount FROM commission_render_usage WHERE owner_key_hash = ?`).get(ownerKeyHash) as Record<string, unknown> | undefined;
+    const now = Date.now();
+    const currentWindow = row ? new Date(String(row.windowStartedAt)).getTime() : 0;
+    const reset = !row || !Number.isFinite(currentWindow) || now - currentWindow >= windowMs;
+    const count = reset ? 0 : Number(row.requestCount);
+    if (count >= limit) return { allowed: false as const, remaining: 0, retryAfterSeconds: Math.max(1, Math.ceil((currentWindow + windowMs - now) / 1000)), ownerKeyHash };
+    const timestamp = nowIso();
+    db.prepare(`
+      INSERT INTO commission_render_usage (owner_key_hash, window_started_at, request_count, updated_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(owner_key_hash) DO UPDATE SET
+        window_started_at = excluded.window_started_at,
+        request_count = CASE WHEN ? THEN 1 ELSE commission_render_usage.request_count + 1 END,
+        updated_at = excluded.updated_at
+    `).run(ownerKeyHash, reset ? timestamp : new Date(currentWindow).toISOString(), timestamp, reset ? 1 : 0);
+    return { allowed: true as const, remaining: Math.max(0, limit - count - 1), retryAfterSeconds: 0, ownerKeyHash };
+  });
+}
+
+export function consumeCommissionSubmissionQuota(ownerKey: string, limit = 5, windowMs = 60 * 60 * 1000) {
+  return withDatabaseTransaction((db) => {
+    const ownerKeyHash = hashOpaqueValue(ownerKey);
+    const row = db.prepare(`
+      SELECT window_started_at AS windowStartedAt, request_count AS requestCount
+      FROM commission_submission_usage
+      WHERE owner_key_hash = ?
+    `).get(ownerKeyHash) as Record<string, unknown> | undefined;
+    const now = Date.now();
+    const currentWindow = row ? new Date(String(row.windowStartedAt)).getTime() : 0;
+    const reset = !row || !Number.isFinite(currentWindow) || now - currentWindow >= windowMs;
+    const count = reset ? 0 : Number(row.requestCount);
+    if (count >= limit) {
+      return {
+        allowed: false as const,
+        remaining: 0,
+        retryAfterSeconds: Math.max(1, Math.ceil((currentWindow + windowMs - now) / 1000))
+      };
+    }
+    const timestamp = nowIso();
+    db.prepare(`
+      INSERT INTO commission_submission_usage (owner_key_hash, window_started_at, request_count, updated_at)
+      VALUES (?, ?, 1, ?)
+      ON CONFLICT(owner_key_hash) DO UPDATE SET
+        window_started_at = excluded.window_started_at,
+        request_count = CASE WHEN ? THEN 1 ELSE commission_submission_usage.request_count + 1 END,
+        updated_at = excluded.updated_at
+    `).run(ownerKeyHash, reset ? timestamp : new Date(currentWindow).toISOString(), timestamp, reset ? 1 : 0);
+    return { allowed: true as const, remaining: Math.max(0, limit - count - 1), retryAfterSeconds: 0 };
+  });
+}
+
+export function registerCommissionRenderAsset(relativePath: string, ownerKey: string) {
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO commission_render_assets (relative_path, owner_key_hash, consumed_project_reference, created_at, consumed_at)
+    VALUES (?, ?, NULL, ?, NULL)
+    ON CONFLICT(relative_path) DO UPDATE SET owner_key_hash = excluded.owner_key_hash
+  `).run(relativePath, hashOpaqueValue(ownerKey), nowIso());
+}
+
+export function consumeCommissionRenderAsset(relativePath: string, ownerKey: string, projectReference: string) {
+  const db = getDatabase();
+  const ownerKeyHash = hashOpaqueValue(ownerKey);
+  const result = db.prepare(`
+    UPDATE commission_render_assets
+    SET consumed_project_reference = ?, consumed_at = ?
+    WHERE relative_path = ? AND owner_key_hash = ? AND consumed_project_reference IS NULL
+  `).run(projectReference, nowIso(), relativePath, ownerKeyHash);
+  return Number(result.changes ?? 0) === 1;
+}
+
 function createReference(kind: ProjectKind) {
   const prefix = kind === "commission" ? "CM" : "SH";
   const stamp = new Intl.DateTimeFormat("en-CA", { year: "2-digit", month: "2-digit", day: "2-digit" }).format(new Date()).replace(/-/g, "").slice(2);
@@ -2923,28 +3220,7 @@ export function getProject(reference: string) {
   return row ? mapProject(row) : null;
 }
 
-export function createProject(input: {
-  userEmail?: string | null;
-  guestName: string;
-  guestEmail: string;
-  pieceSlug?: string | null;
-  commissionTypeSlug?: string | null;
-  kind: ProjectKind;
-  status: string;
-  stage: string;
-  budgetCents?: number | null;
-  estimatedTotalCents?: number | null;
-  estimator?: Record<string, unknown>;
-  brief: string;
-  materials: string[];
-  dimensions: { width: number; depth: number; height: number; unit: string } | null;
-  options?: Record<string, unknown>;
-  visualizationSvg?: string | null;
-  includeVisualization?: boolean;
-  leadTimeDays?: number | null;
-  shippingAddress?: Record<string, unknown>;
-  billingAddress?: Record<string, unknown>;
-}) {
+export function createProject(input: ProjectInput) {
   const db = getDatabase();
   const reference = createReference(input.kind);
   const timestamp = nowIso();
@@ -2986,6 +3262,40 @@ export function createProject(input: {
     updatedAt: timestamp
   });
   return reference;
+}
+
+export function createProjectIdempotent(input: ProjectInput, idempotencyKey: string) {
+  const cleanKey = idempotencyKey.trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(cleanKey)) throw new Error("Submission idempotency key is invalid.");
+  const idempotencyHash = hashOpaqueValue(cleanKey);
+  return withDatabaseTransaction((db) => {
+    const existing = db.prepare(`SELECT project_reference AS projectReference FROM commission_submissions WHERE idempotency_hash = ? LIMIT 1`).get(idempotencyHash) as { projectReference?: unknown } | undefined;
+    if (existing?.projectReference) return { reference: String(existing.projectReference), created: false as const };
+    const reference = createProject(input);
+    db.prepare(`INSERT INTO commission_submissions (idempotency_hash, project_reference, created_at) VALUES (?, ?, ?)`)
+      .run(idempotencyHash, reference, nowIso());
+    return { reference, created: true as const };
+  });
+}
+
+export function rollbackCommissionSubmission(reference: string, idempotencyKey: string) {
+  const cleanKey = idempotencyKey.trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(cleanKey)) return false;
+  const idempotencyHash = hashOpaqueValue(cleanKey);
+  return withDatabaseTransaction((db) => {
+    const submission = db.prepare(`
+      SELECT project_reference AS projectReference
+      FROM commission_submissions
+      WHERE idempotency_hash = ?
+      LIMIT 1
+    `).get(idempotencyHash) as { projectReference?: unknown } | undefined;
+    if (String(submission?.projectReference ?? "") !== reference) return false;
+    db.prepare("DELETE FROM project_updates WHERE project_reference = ?").run(reference);
+    db.prepare("DELETE FROM project_access_grants WHERE project_reference = ?").run(reference);
+    db.prepare("DELETE FROM commission_submissions WHERE idempotency_hash = ?").run(idempotencyHash);
+    db.prepare("DELETE FROM projects WHERE reference = ?").run(reference);
+    return true;
+  });
 }
 
 export function updateProject(reference: string, input: Partial<Omit<ProjectRecord, "reference" | "createdAt" | "updatedAt">>) {
