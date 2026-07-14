@@ -19,12 +19,19 @@ import {
   viewports
 } from "./config.js";
 import {
+  isExpectedNextPrefetchAbort,
+  isExpectedReadonlyBlockedConsole,
+  isExpectedReadonlyMutationBlock,
+  requestBlockKey
+} from "./diagnostics.js";
+import {
   buildRoutes,
   discoverSourceRoutes,
   fetchInventory
 } from "./inventory.js";
 import { waitForVisualReady } from "./readiness.js";
 import { auditTokenEligible, isUnsafeMethod } from "./policy.js";
+import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
 import type {
   AuthState,
   CaptureRecord,
@@ -36,6 +43,7 @@ import type {
   ViewportProfile
 } from "./types.js";
 import {
+  clearDirectoryContents,
   ensureDirectory,
   exists,
   relativeTo,
@@ -57,6 +65,7 @@ const captureRoot = path.join(
 let manifest: RunManifest;
 const preAuthenticationDiagnostics: DiagnosticRecord[] = [];
 let preAuthenticationUnsafeBlocks = 0;
+const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
 
 const coverageExclusions = [
   { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
@@ -174,7 +183,8 @@ async function loadOrCreateManifest(
 
 function attachDiagnostics(
   page: Page,
-  route: string
+  route: string,
+  blockedRequests: ReadonlySet<string>
 ) {
   page.on("console", message => {
     if (
@@ -188,7 +198,13 @@ function attachDiagnostics(
         type: "console",
         route,
         message: text,
-        expected: /THREE\.THREE\.Clock: This module has been deprecated/.test(text)
+        expected:
+          /THREE\.THREE\.Clock: This module has been deprecated/.test(text) ||
+          isExpectedReadonlyBlockedConsole({
+            targetMode: config.targetMode,
+            text,
+            blockedRequestCount: blockedRequests.size
+          })
       });
     }
   });
@@ -210,15 +226,19 @@ function attachDiagnostics(
     const method =
       request.method().toUpperCase();
 
-    if (
-      failure.includes("ERR_BLOCKED_BY_CLIENT") &&
-      !["GET", "HEAD", "OPTIONS"].includes(method)
-    ) {
+    if (isExpectedReadonlyMutationBlock({
+      targetMode: config.targetMode,
+      method,
+      url: request.url(),
+      failure,
+      blockedRequests
+    })) {
       manifest.diagnostics.push({
         timestamp: now(),
         type: "mutation-blocked",
         route,
-        message: `${method} ${request.url()}`
+        message: `${method} ${request.url()}`,
+        expected: true
       });
 
       return;
@@ -228,7 +248,15 @@ function attachDiagnostics(
       timestamp: now(),
       type: "requestfailed",
       route,
-      message: `${method} ${request.url()} — ${failure}`
+      message: `${method} ${request.url()} — ${failure}`,
+      expected: isExpectedNextPrefetchAbort({
+        method,
+        url: request.url(),
+        failure,
+        resourceType: request.resourceType(),
+        headers: request.headers(),
+        baseUrl: config.baseUrl
+      })
     });
   });
 
@@ -262,7 +290,10 @@ function attachDiagnostics(
         route,
         message:
           `${response.status()} ` +
-          `${request.method()} ${response.url()}`
+          `${request.method()} ${response.url()}`,
+        expected:
+          response.headers()["x-woodsmith-audit-blocked"] === "1" &&
+          config.targetMode === "live-readonly"
       });
     }
   });
@@ -452,6 +483,8 @@ async function createCaptureContext(
 
   const targetOrigin =
     new URL(config.baseUrl).origin;
+  const blockedRequests = new Set<string>();
+  intentionalMutationBlocks.set(context, blockedRequests);
 
   await context.route(
     "**/*",
@@ -476,6 +509,7 @@ async function createCaptureContext(
           config.targetMode === "live-readonly" &&
           isUnsafeMethod(method)
         ) {
+          blockedRequests.add(requestBlockKey(method, request.url()));
           manifest.diagnostics.push({
             timestamp: now(),
             type: "mutation-blocked",
@@ -513,6 +547,7 @@ async function createCaptureContext(
         if (
           isUnsafeMethod(method)
         ) {
+          blockedRequests.add(requestBlockKey(method, request.url()));
           manifest.diagnostics.push({
             timestamp: now(),
             type: "mutation-blocked",
@@ -820,6 +855,69 @@ async function saveCapture(input: {
   manifest.completedKeys.push(key);
 
   await persistManifest();
+}
+
+async function captureSkipLinkStates(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const skipLink = input.page.locator('a.skip-link[href="#main-content"]').first();
+  const mainContent = input.page.locator("#main-content").first();
+  if (await skipLink.count() !== 1 || await mainContent.count() !== 1) {
+    throw new Error("The route is missing the skip link or #main-content target.");
+  }
+
+  await input.page.evaluate(() => {
+    window.scrollTo(0, 0);
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+  });
+  await input.page.keyboard.press("Tab");
+
+  const focusEvidence = await skipLink.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = window.getComputedStyle(element);
+    return {
+      focused: document.activeElement === element,
+      visible:
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0 &&
+        rect.width > 0 &&
+        rect.height > 0,
+      intersectsViewport:
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight,
+      target: element.getAttribute("href") ?? ""
+    };
+  });
+  assertFocusedSkipLink(focusEvidence);
+
+  await saveCapture({
+    ...input,
+    state: "skip-link-focused",
+    locator: skipLink
+  });
+
+  await input.page.keyboard.press("Enter");
+  await input.page.waitForFunction(
+    () => document.activeElement?.id === "main-content",
+    undefined,
+    { timeout: 5_000 }
+  );
+  const activeElementId = await input.page.evaluate(() => document.activeElement?.id ?? null);
+  assertMainFocusTransferred(activeElementId);
+
+  await saveCapture({
+    ...input,
+    state: "skip-link-activated-main-focus",
+    fullPage: false
+  });
 }
 
 async function captureHeaderStates(input: {
@@ -1386,7 +1484,7 @@ async function captureElementAtlas(input: {
 }) {
   const elements =
     input.page.locator([
-      "a",
+      "a:not(.skip-link)",
       "button",
       "input",
       "textarea",
@@ -1460,7 +1558,11 @@ async function captureRoute(input: {
   const page =
     await input.context.newPage();
 
-  attachDiagnostics(page, input.route);
+  attachDiagnostics(
+    page,
+    input.route,
+    intentionalMutationBlocks.get(input.context) ?? new Set<string>()
+  );
 
   try {
     const response = await page.goto(
@@ -1524,6 +1626,17 @@ async function captureRoute(input: {
       state: "full-page-default",
       fullPage: true
     });
+
+    try {
+      await captureSkipLinkStates(base);
+    } catch (error) {
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "coverage",
+        route: input.route,
+        message: `Skip-link capture failed: ${error instanceof Error ? error.message : String(error)}`
+      });
+    }
 
     try {
       await captureHeaderStates(base);
@@ -1945,7 +2058,7 @@ async function main() {
         exclusions: coverageExclusions,
         requiredStates: [
           "route-default", "header-scroll", "theme-light", "theme-dark", "desktop", "tablet", "mobile", "archival-dpr",
-          "disclosures", "dialogs", "lightbox-zoom-boundaries", "inline-editing", "media-picker", "media-inspector",
+          "skip-link-focus-and-activation", "disclosures", "dialogs", "lightbox-zoom-boundaries", "inline-editing", "media-picker", "media-inspector",
           "nested-scroll-surfaces", "empty-states", "error-states", "snapshot-lab-validation"
         ],
         safety: {
@@ -1989,13 +2102,7 @@ async function main() {
   } finally {
     await browser.close();
 
-    await fs.rm(
-      config.tmpRoot,
-      {
-        recursive: true,
-        force: true
-      }
-    );
+    await clearDirectoryContents(config.tmpRoot);
   }
 }
 

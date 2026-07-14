@@ -4,16 +4,9 @@ import path from "node:path";
 import sharp from "sharp";
 
 import { config, viewports } from "./config.js";
+import { isKnownExpectedDiagnostic } from "./diagnostics.js";
 import type { RunManifest, TileManifest } from "./types.js";
 import { exists, listFiles, relativeTo, sha256File, writeJsonAtomic } from "./util.js";
-
-function expectedDiagnostic(message: string, type: string, route: string) {
-  if (type === "mutation-blocked") return true;
-  if (message.includes("/api/visits") && type === "requestfailed") return true;
-  if (route.includes("__visual-audit-route-not-found__") && type === "http-error" && message.startsWith("404 ")) return true;
-  if (/THREE\.THREE\.Clock: This module has been deprecated/.test(message)) return true;
-  return false;
-}
 
 async function validatePng(file: string, label: string, failures: string[]) {
   const image = sharp(file);
@@ -212,7 +205,18 @@ async function main() {
     const missingRoute = route.route.includes("__visual-audit-route-not-found__");
     if (route.status == null) failures.push(`Route did not return a response: ${route.auth} ${route.route}`);
     else if (route.status >= 400 && !(missingRoute && route.status === 404)) failures.push(`Unexpected HTTP ${route.status}: ${route.auth} ${route.route}`);
-    if (!manifest.captures.some((capture) => capture.auth === route.auth && capture.route === route.route)) failures.push(`Route has no successful capture: ${route.auth} ${route.route}`);
+    const routeCaptures = manifest.captures.filter((capture) =>
+      capture.auth === route.auth &&
+      capture.route === route.route &&
+      capture.theme === route.theme &&
+      capture.viewport === route.viewport
+    );
+    if (routeCaptures.length === 0) failures.push(`Route has no successful capture: ${route.auth} ${route.route}`);
+    for (const state of ["skip-link-focused", "skip-link-activated-main-focus"]) {
+      if (!routeCaptures.some((capture) => capture.state === state)) {
+        failures.push(`Route is missing ${state} accessibility evidence: ${route.auth} ${route.route} ${route.theme}/${route.viewport}`);
+      }
+    }
   }
 
   const matrixProfiles = config.scope === "smoke" ? ["desktop-1440"] : viewports.map((viewport) => viewport.name);
@@ -265,7 +269,10 @@ async function main() {
     if (!manifest.captures.some((capture) => capture.viewport === profile)) failures.push(`Required viewport has no captures: ${profile}`);
   }
 
-  const unexpectedDiagnostics = manifest.diagnostics.filter((record) => !record.expected && !expectedDiagnostic(record.message, record.type, record.route));
+  const unexpectedDiagnostics = manifest.diagnostics.filter((record) =>
+    !record.expected &&
+    !isKnownExpectedDiagnostic(record)
+  );
   if (config.strictDiagnostics && unexpectedDiagnostics.length > 0) {
     failures.push(`${unexpectedDiagnostics.length} unexpected browser/network diagnostic(s) were recorded.`);
   }

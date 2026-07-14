@@ -1,6 +1,6 @@
 # Deterministic Visual Archive
 
-The visual archive is a private, repository-integrated Playwright system for rendered-browser QA and long-term evidence. It uses pinned Playwright 1.61.0 and Sharp 0.35.3, records the deployed commit, and reconciles routes from source files, the protected SQLite inventory, and rendered same-origin links.
+The visual archive is a private, repository-integrated Playwright system for rendered-browser QA and long-term evidence. It uses pinned Playwright 1.61.0, Sharp 0.35.3, and PDFKit 0.19.1, records the deployed commit, and reconciles routes from source files, the protected SQLite inventory, and rendered same-origin links.
 
 Generated archives are runtime artifacts. They must remain outside Git and private unless the redacted edition has been reviewed for sharing.
 
@@ -11,7 +11,9 @@ The two modes are intentionally separate:
 - `live-readonly` authenticates to the deployed site, then blocks every unsafe same-origin and cross-origin request in Playwright. Same-origin requests also carry `x-woodsmith-audit-readonly: 1`, which makes `site/proxy.ts` reject unsafe methods with HTTP 409. The one Studio login POST is the explicit authentication exception.
 - `snapshot-lab` runs against a verified SQLite `VACUUM INTO` clone and a reflink or full-copy media tree. Its Docker network is internal, provider keys are empty, paid/local model providers are disabled, and the production data/media paths are rejected.
 
-The inventory endpoint requires both normal admin authentication and a separate audit token. It returns bounded route-driving metadata and counts, not users, customer contact details, notification bodies, payment data, reset tokens, or session state. The runner adds the audit token only to the same-origin inventory endpoint and authenticated `audit=all` Studio pages.
+The inventory endpoint requires both normal admin authentication and a separate audit token. It returns bounded route-driving metadata and counts, not users, customer contact details, notification bodies, payment data, reset tokens, or session state. Inventory acquisition permits only the exact same-origin GET endpoint. The ordinary capture context adds the audit token only to that endpoint and authenticated `audit=all` Studio pages.
+
+Network diagnostics are evidence-based. A blocked mutation is expected only when its unsafe method and exact URL match a route-guard policy record. An aborted request is expected only when it is a same-origin fetch/XHR with Next.js RSC or prefetch evidence. Aborted documents, scripts, stylesheets, images, media, API calls, inventory calls, and unrelated resources remain validation failures.
 
 Secrets, storage state, SQLite files, media, raw tiles, PNGs, HTML, PDFs, traces, and reports are ignored by Git. Authentication state is held under the runner tmpfs and removed in `finally`.
 
@@ -109,6 +111,7 @@ The smoke is accepted only when:
 - the inventory endpoint is hidden without the token and denies a token-only unauthenticated request;
 - a read-only unsafe request returns HTTP 409;
 - the manifest reports zero successful unsafe requests;
+- every rendered route has focused and activated skip-link evidence, and activation transfers focus to `#main-content`;
 - capture, comparison, report, and validation use the same run ID;
 - `validation.json` reports `passed: true`.
 
@@ -134,7 +137,7 @@ Full mode covers dark and light themes at:
 - 430 x 932, 390 x 844, 375 x 812, and 320 x 720 mobile profiles at DPR 3;
 - 2560 x 1440 archival desktop at DPR 2.
 
-Deep archival-dark capture opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Long pages and independently scrollable surfaces use 12 percent overlapping raw tiles, stitched PNGs, tile manifests, and image-correlation seam checks.
+Every route receives a deterministic keyboard skip-link focus and activation check. Deep archival-dark capture opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Long pages and independently scrollable surfaces use 12 percent overlapping raw tiles, stitched PNGs, tile manifests, and image-correlation seam checks.
 
 ## Snapshot Lab
 
@@ -174,9 +177,9 @@ visual-audits/<run-id>/
   shareable/woodmat-visual-atlas-redacted.pdf
 ```
 
-Raw tiles and tile manifests live beside their stitched capture. The HTML report is searchable and includes linked contents. The PDF uses selectable text, Chromium outlines/bookmarks, and bounded image slices so tall pages remain readable. The PNG and raw-tile archive remains the highest-resolution source of truth.
+Raw tiles and tile manifests live beside their stitched capture. The HTML report is searchable and includes linked contents. PDFKit streams one bounded image slice per A3 page, with selectable route/state metadata and native capture bookmarks, so report generation does not decode the entire atlas in one browser page. Report reruns clear only their generated report/shareable directories and atomically replace both PDFs. The PNG and raw-tile archive remains the highest-resolution source of truth.
 
-The shareable edition includes anonymous, nonsensitive captures only. Review it before moving it outside the restricted NAS archive.
+The shareable edition includes anonymous, nonsensitive captures only. Its copied image assets use opaque sequence names and preserve only a safe image extension; captions and PDF labels do not reuse source filenames. Review it before moving it outside the restricted NAS archive.
 
 ## Validation Contract
 
@@ -184,6 +187,7 @@ The shareable edition includes anonymous, nonsensitive captures only. Review it 
 
 - incomplete or truncated inventory;
 - missing route/theme/viewport combinations;
+- missing focused or activated skip-link evidence for any rendered route;
 - discovered same-origin links not captured;
 - missing deep states that were present in the rendered surface inventory;
 - unexpected status codes, redirects, console/page errors, request failures, broken media, or horizontal overflow;

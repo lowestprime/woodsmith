@@ -1,14 +1,13 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { pathToFileURL } from "node:url";
 
-import { chromium } from "playwright";
 import sharp from "sharp";
 
 import { config } from "./config.js";
+import { createPdfAtlas, type PdfAtlasPage } from "./pdf-atlas.js";
 import type { CaptureRecord, RunManifest } from "./types.js";
-import { ensureDirectory, escapeHtml, exists, safeName, writeJsonAtomic } from "./util.js";
+import { clearDirectoryContents, ensureDirectory, escapeHtml, exists, redactedAssetName, writeJsonAtomic } from "./util.js";
 
 const manifestFile = path.join(config.runRoot, "manifest.json");
 
@@ -30,7 +29,7 @@ function captureCard(capture: CaptureRecord, imageSources: string[], redacted: b
   const fileFigures = imageSources.map((source, index) => `
     <figure>
       <img alt="${escapeHtml(`${route} ${capture.state} capture ${index + 1}`)}"${lazy ? ' loading="lazy"' : ""} src="${escapeHtml(source)}">
-      <figcaption>${escapeHtml(capture.files[Math.min(index, capture.files.length - 1)] ?? source)}</figcaption>
+      <figcaption>${escapeHtml(redacted ? `Capture image ${index + 1}` : capture.files[Math.min(index, capture.files.length - 1)] ?? source)}</figcaption>
     </figure>`).join("");
   return `<article id="${captureAnchor(capture)}" class="capture" data-search="${escapeHtml(`${capture.auth} ${route} ${capture.theme} ${capture.viewport} ${capture.state}`.toLowerCase())}">
     <h2>${escapeHtml(route)}</h2>
@@ -169,36 +168,6 @@ async function createPrintSlices(source: string, outputRoot: string, sequence: n
   return outputs;
 }
 
-async function createPdf(htmlFile: string, outputFile: string) {
-  const browser = await chromium.launch({
-    headless: true,
-    chromiumSandbox: false,
-    ...(config.browserChannel ? { channel: config.browserChannel } : {})
-  });
-  try {
-    const page = await browser.newPage({ viewport: { width: 1800, height: 1200 } });
-    await page.goto(pathToFileURL(htmlFile).href, { waitUntil: "load" });
-    await page.emulateMedia({ media: "screen" });
-    await page.evaluate(async () => {
-      await document.fonts.ready;
-      await Promise.all(Array.from(document.images).map((image) => image.decode().catch(() => undefined)));
-    });
-    await page.pdf({
-      path: outputFile,
-      format: "A3",
-      landscape: true,
-      printBackground: true,
-      tagged: true,
-      outline: true,
-      preferCSSPageSize: true,
-      margin: { top: "8mm", right: "8mm", bottom: "8mm", left: "8mm" }
-    });
-    await fs.chmod(outputFile, 0o600).catch(() => undefined);
-  } finally {
-    await browser.close();
-  }
-}
-
 async function main() {
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
   const reportRoot = path.join(config.runRoot, "report");
@@ -206,7 +175,9 @@ async function main() {
   const shareableRoot = path.join(config.runRoot, "shareable");
   const shareableAssets = path.join(shareableRoot, "assets");
   const shareablePrintAssets = path.join(shareableRoot, "print-assets");
-  await Promise.all([reportRoot, restrictedPrintAssets, shareableRoot, shareableAssets, shareablePrintAssets].map((directory) => ensureDirectory(directory)));
+  await Promise.all([reportRoot, shareableRoot].map((directory) => ensureDirectory(directory)));
+  await Promise.all([reportRoot, shareableRoot].map((directory) => clearDirectoryContents(directory)));
+  await Promise.all([restrictedPrintAssets, shareableAssets, shareablePrintAssets].map((directory) => ensureDirectory(directory)));
 
   const comparisonFile = path.join(config.runRoot, "comparison.json");
   const comparison = await exists(comparisonFile) ? JSON.parse(await fs.readFile(comparisonFile, "utf8")) as unknown : { status: "No approved baseline configured." };
@@ -222,7 +193,7 @@ async function main() {
     for (const relativeFile of capture.files) {
       const source = path.join(config.runRoot, relativeFile);
       shareableAssetIndex += 1;
-      const destination = path.join(shareableAssets, `${String(shareableAssetIndex).padStart(7, "0")}-${path.extname(relativeFile) ? path.basename(relativeFile) : `${safeName(capture.state)}.png`}`);
+      const destination = path.join(shareableAssets, redactedAssetName(shareableAssetIndex, relativeFile));
       await fs.copyFile(source, destination);
       await fs.chmod(destination, 0o600).catch(() => undefined);
       sources.push(`assets/${path.basename(destination)}`);
@@ -248,6 +219,8 @@ async function main() {
 
   const restrictedPrintCards: string[] = [];
   const shareablePrintCards: string[] = [];
+  const restrictedPdfPages: PdfAtlasPage[] = [];
+  const shareablePdfPages: PdfAtlasPage[] = [];
   let restrictedPrintPages = 0;
   let shareablePrintPages = 0;
   let sequence = 0;
@@ -257,6 +230,19 @@ async function main() {
       sequence += 1;
       const slices = await createPrintSlices(path.join(config.runRoot, relativeFile), restrictedPrintAssets, sequence);
       sources.push(...slices.map((file) => `print-assets/${path.basename(file)}`));
+      restrictedPdfPages.push(...slices.map((imageFile, index) => ({
+        imageFile,
+        captureKey: capture.key,
+        route: capture.route,
+        state: capture.state,
+        auth: capture.auth,
+        theme: capture.theme,
+        viewport: capture.viewport,
+        status: capture.status == null ? "unknown" : String(capture.status),
+        assetLabel: relativeFile,
+        sliceIndex: index + 1,
+        sliceCount: slices.length
+      })));
       restrictedPrintPages += slices.length;
     }
     restrictedPrintCards.push(captureCard(capture, sources, false, false));
@@ -269,6 +255,19 @@ async function main() {
       sequence += 1;
       const slices = await createPrintSlices(path.join(config.runRoot, relativeFile), shareablePrintAssets, sequence);
       sources.push(...slices.map((file) => `print-assets/${path.basename(file)}`));
+      shareablePdfPages.push(...slices.map((imageFile, index) => ({
+        imageFile,
+        captureKey: capture.key,
+        route: redact(capture.route),
+        state: capture.state,
+        auth: capture.auth,
+        theme: capture.theme,
+        viewport: capture.viewport,
+        status: capture.status == null ? "unknown" : String(capture.status),
+        assetLabel: `Capture image ${sequence}`,
+        sliceIndex: index + 1,
+        sliceCount: slices.length
+      })));
       shareablePrintPages += slices.length;
     }
     shareablePrintCards.push(captureCard(capture, sources, true, false));
@@ -279,8 +278,36 @@ async function main() {
   await fs.writeFile(restrictedPrintHtml, htmlDocument({ manifest, captures: manifest.captures, cards: restrictedPrintCards.join("\n"), redacted: false, comparison, print: true }), { encoding: "utf8", mode: 0o600 });
   await fs.writeFile(shareablePrintHtml, htmlDocument({ manifest, captures: shareableCaptures, cards: shareablePrintCards.join("\n"), redacted: true, comparison: { status: "Comparison details are restricted." }, print: true }), { encoding: "utf8", mode: 0o600 });
 
-  await createPdf(restrictedPrintHtml, path.join(config.runRoot, "woodmat-visual-atlas.pdf"));
-  await createPdf(shareablePrintHtml, path.join(shareableRoot, "woodmat-visual-atlas-redacted.pdf"));
+  const unexpectedDiagnostics = manifest.diagnostics.filter((item) => !item.expected).length;
+  const routeCount = new Set(manifest.captures.map((capture) => `${capture.auth}:${capture.route}`)).size;
+  await createPdfAtlas({
+    outputFile: path.join(config.runRoot, "woodmat-visual-atlas.pdf"),
+    title: "Woodmat Visual Atlas",
+    edition: "Beaman Woodworks QA archive - restricted edition",
+    runId: manifest.runId,
+    mode: manifest.mode,
+    commit: manifest.deployedCommit,
+    createdAt: manifest.startedAt,
+    captureCount: manifest.captures.length,
+    routeCount,
+    unexpectedDiagnostics,
+    redacted: false,
+    pages: restrictedPdfPages
+  });
+  await createPdfAtlas({
+    outputFile: path.join(shareableRoot, "woodmat-visual-atlas-redacted.pdf"),
+    title: "Woodmat Visual Atlas",
+    edition: "Beaman Woodworks QA archive - shareable redacted edition",
+    runId: manifest.runId,
+    mode: manifest.mode,
+    commit: manifest.deployedCommit,
+    createdAt: manifest.startedAt,
+    captureCount: shareableCaptures.length,
+    routeCount: new Set(shareableCaptures.map((capture) => capture.route)).size,
+    unexpectedDiagnostics,
+    redacted: true,
+    pages: shareablePdfPages
+  });
   await writeJsonAtomic(path.join(reportRoot, "report-index.json"), {
     runId: manifest.runId,
     restrictedHtml: "report/index.html",

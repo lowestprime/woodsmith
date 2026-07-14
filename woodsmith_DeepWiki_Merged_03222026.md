@@ -133,9 +133,9 @@ Custom work type records still store default dimensions, material options, labor
 
 ## Visual archive and rendered QA
 
-`visual-audit/` is an independent TypeScript package pinned to Playwright 1.61.0 and Sharp 0.35.3. It reconciles source routes, a token-and-admin-protected bounded database inventory, and rendered same-origin links. `live-readonly` blocks unsafe browser requests and adds a server read-only header; `snapshot-lab` uses a verified SQLite/media clone on an internal Docker network with external providers disabled.
+`visual-audit/` is an independent TypeScript package pinned to Playwright 1.61.0, Sharp 0.35.3, and PDFKit 0.19.1. It reconciles source routes, a token-and-admin-protected bounded database inventory, and rendered same-origin links. `live-readonly` blocks unsafe browser requests and adds a server read-only header; `snapshot-lab` uses a verified SQLite/media clone on an internal Docker network with external providers disabled. Diagnostic exceptions require exact mutation-policy or same-origin RSC/prefetch evidence rather than matching generic browser error text.
 
-The runner captures the required desktop/tablet/mobile/theme matrix plus a 5120 x 2880 archival viewport, deep dialog/disclosure/lightbox/Studio/media/inline-edit/visualizer states, overlapping raw tiles and stitched long surfaces, and an element atlas. It writes restricted and redacted searchable HTML/PDF editions, SHA-256 manifests, route/network/render diagnostics, tile-seam validation, and baseline comparisons. See `docs/visual-archive.md` for the exact safety and operating contract.
+The runner captures the required desktop/tablet/mobile/theme matrix plus a 5120 x 2880 archival viewport, keyboard skip-link focus/activation, deep dialog/disclosure/lightbox/Studio/media/inline-edit/visualizer states, overlapping raw tiles and stitched long surfaces, and an element atlas. It writes restricted and redacted searchable HTML plus streamed bookmarked PDF editions, SHA-256 manifests, route/network/render diagnostics, tile-seam validation, and baseline comparisons. See `docs/visual-archive.md` for the exact safety and operating contract.
 
 ## Search
 

@@ -8,9 +8,13 @@ ENV HOME=/tmp
 
 COPY visual-audit/package.json ./package.json
 COPY visual-audit/package-lock.json ./package-lock.json
-RUN npm ci
+RUN npm ci --include=dev
 
 COPY visual-audit/ ./
-RUN npm run build
+RUN npm run build \
+  && npm prune --omit=dev
+
+# Keep source-route inventory available when Docker Desktop cannot bind an SMB checkout.
+COPY site/app /workspace/site/app
 
 ENTRYPOINT ["node", "dist/run.js"]

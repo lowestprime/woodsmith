@@ -2,11 +2,11 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
-  request,
   type Browser
 } from "playwright";
 
 import { config } from "./config.js";
+import { inventoryRequestEligible } from "./policy.js";
 import type { Inventory } from "./types.js";
 import { unique } from "./util.js";
 
@@ -98,31 +98,62 @@ export async function fetchInventory(
   browser: Browser,
   storageStatePath: string
 ) {
-  void browser;
-
-  const context = await request.newContext({
+  const endpoint = new URL(
+    "/api/visual-audit/inventory",
+    config.baseUrl
+  );
+  const context = await browser.newContext({
     baseURL: config.baseUrl,
     storageState: storageStatePath,
-    extraHTTPHeaders: {
-      "x-woodsmith-audit-token":
-        config.auditToken
-    }
+    serviceWorkers: "block"
   });
 
   try {
-    const response = await context.get(
-      "/api/visual-audit/inventory"
-    );
+    // A browser navigation preserves the production Secure session cookie on
+    // trusted HTTP loopback. Every request except this exact endpoint is denied.
+    await context.route("**/*", async route => {
+      const request = route.request();
+      const requestUrl = new URL(request.url());
 
-    if (!response.ok()) {
+      if (inventoryRequestEligible(request.method(), requestUrl, config.baseUrl)) {
+        await route.continue({
+          headers: {
+            ...request.headers(),
+            "x-woodsmith-audit-token":
+              config.auditToken
+          }
+        });
+        return;
+      }
+
+      await route.abort("blockedbyclient");
+    });
+
+    const page = await context.newPage();
+    const response = await page.goto(
+      endpoint.toString(),
+      {
+        waitUntil: "domcontentloaded",
+        timeout: 45_000
+      }
+    );
+    const body = await page.locator("body").innerText();
+
+    if (!response) {
       throw new Error(
-        `Inventory endpoint returned HTTP ${response.status()}: ${await response.text()}`
+        "Inventory endpoint did not return a response."
       );
     }
 
-    return await response.json() as Inventory;
+    if (!response.ok()) {
+      throw new Error(
+        `Inventory endpoint returned HTTP ${response.status()}: ${body}`
+      );
+    }
+
+    return JSON.parse(body) as Inventory;
   } finally {
-    await context.dispose();
+    await context.close();
   }
 }
 

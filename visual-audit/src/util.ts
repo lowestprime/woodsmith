@@ -7,6 +7,20 @@ export async function ensureDirectory(directory: string, mode = 0o700) {
   await fs.chmod(directory, mode).catch(() => undefined);
 }
 
+export async function clearDirectoryContents(directory: string) {
+  let entries;
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
+  }
+
+  await Promise.all(entries.map(entry =>
+    fs.rm(path.join(directory, entry.name), { recursive: true, force: true })
+  ));
+}
+
 export async function exists(file: string) {
   return fs.access(file).then(() => true).catch(() => false);
 }
@@ -21,6 +35,15 @@ export function safeName(value: string) {
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 180) || "surface";
+}
+
+export function redactedAssetName(index: number, source: string) {
+  const extension = path.extname(source).toLowerCase();
+  const safeExtension = new Set([".avif", ".gif", ".jpeg", ".jpg", ".png", ".webp"])
+    .has(extension)
+    ? extension
+    : ".png";
+  return `${String(index).padStart(7, "0")}${safeExtension}`;
 }
 
 export function relativeTo(root: string, file: string) {

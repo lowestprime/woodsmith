@@ -14,3 +14,12 @@ export function auditTokenEligible(requestUrl: string | URL, baseUrl: string | U
   return request.pathname === "/api/visual-audit/inventory" ||
     (request.pathname === "/studio" && request.searchParams.get("audit") === "all");
 }
+
+export function inventoryRequestEligible(method: string, requestUrl: string | URL, baseUrl: string | URL) {
+  const request = new URL(requestUrl, baseUrl);
+  const endpoint = new URL("/api/visual-audit/inventory", baseUrl);
+  return method.toUpperCase() === "GET" &&
+    request.origin === endpoint.origin &&
+    request.pathname === endpoint.pathname &&
+    request.search === "";
+}

@@ -289,7 +289,7 @@ export AUDIT_SCOPE=smoke
 visual-audit/scripts/run-live-audit.sh
 ```
 
-The same run ID is used by capture, baseline comparison, report generation, and validation. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
+The same run ID is used by capture, baseline comparison, report generation, and validation. Report generation writes searchable HTML and streams bounded A3 PDF pages with native bookmarks instead of loading the entire image atlas into Chromium. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
 
 Mutation-dependent success/error states require `visual-audit/scripts/prepare-snapshot-lab.sh` followed by `visual-audit/scripts/run-snapshot-lab.sh`. The lab uses a `VACUUM INTO` database clone, reflink/full-copy media, verified run markers, an internal Docker network, and disabled external integrations. It never mounts production data or media read-write.
 
@@ -307,7 +307,7 @@ A SQLite backup without the matching media tree is no longer sufficient for full
 
 Create the paired backup before a large batch reorganization. The database operation ledger can reverse application-managed changes, but it is not a replacement for a filesystem snapshot when files are changed outside the application or storage fails mid-operation.
 
-The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, or backup file. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
+The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, backup, or test/spec source file. Runtime state and build-only tests are never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 
 ## Current deployment caveats
 
