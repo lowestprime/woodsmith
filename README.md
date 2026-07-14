@@ -32,6 +32,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
 - A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, searchable HTML, streamed bookmarked PDF atlases, checksums, and baseline comparisons
+- A fail-closed paired recovery tool that creates and verifies an online-consistent SQLite backup, a hashed copy of the mounted media tree, and an optional protected environment-file copy, then restores only to new staging destinations
 
 ## 📃 Production Notes
 
@@ -55,6 +56,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `docker-compose.synology.yml`: Synology runtime model
 - `visual-audit/`: pinned Playwright capture, report, comparison, validation, and NAS automation package
 - `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows smoke using fake credentials, synthetic media, non-root containers, and automatically removed volumes
+- `site/scripts/runtime-state.mjs`: backup, verify, and staging-only restore CLI included in the production image at `/app/site/ops/runtime-state.mjs`
 - `docs/visual-archive.md`: private live-readonly and snapshot-lab operating guide
 - `synology-nas-deploy.md`: deployment and NAS operations guide
 - `admin.md`: private Woodshop dashboard manual
@@ -178,6 +180,8 @@ Private Woodshop:
 The supported deployment target is Synology NAS with Docker Compose and reverse proxy termination. The compose file mounts `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025` directly to `/app/pics:rw`; do not remount or bind the repo-local `pics/` folder under `docker_ssd`. `MEDIA_ROOT` must be an absolute container path.
 
 `npm run build` uses disposable build-time data and media roots and fails if Next standalone output contains SQLite, WAL/SHM, or backup files. Production state must enter the container only through the writable runtime mounts.
+
+Before deployment or a large media operation, use the paired runtime-state procedure in `synology-nas-deploy.md`. A completed backup is accepted only after its manifest hashes, exact file inventory, and SQLite `quick_check` pass; restore never overwrites the live data, media, or environment paths.
 
 After deploying a build from this branch, the startup migration updates legacy `lowestprime@proton.me` developer references in persisted settings and seeded profile data to `cooperbeaman@proton.me`.
 

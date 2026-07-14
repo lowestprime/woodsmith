@@ -27,6 +27,8 @@ site/data/media-ai-cache/
 pics/
 cache/
 releases/
+backups/
+restores/
 archive/
 design/
 output/

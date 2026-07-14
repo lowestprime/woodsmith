@@ -31,14 +31,14 @@ Deploy Beaman Woodworks from `/volume2/docker_ssd/woodsmith/` so that:
 Create these once on the NAS:
 
 ```bash
-mkdir -p /volume2/docker_ssd/woodsmith/{site/data,cache/next-image,releases,backups}
+mkdir -p /volume2/docker_ssd/woodsmith/{site/data,cache/next-image,releases,backups/runtime,restores}
 ```
 
 Then ensure the container user can write to `site/data`, `cache`, and the real NAS photo library:
 
 ```bash
-chown -R 1026:100 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
-chmod -R u+rwX,g+rwX /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+chown -R 1026:100 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/restores /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+chmod -R u+rwX,g+rwX /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/restores /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
 ```
 
 ## `.env`
@@ -297,17 +297,132 @@ Mutation-dependent success/error states require `visual-audit/scripts/prepare-sn
 
 Full commands, artifacts, permissions, retention, and acceptance criteria are in [`docs/visual-archive.md`](docs/visual-archive.md).
 
-## Backup guidance
+## Paired backup and recovery
 
-Because the dashboard can mutate the shared media library, back up these paths together:
+Because Studio can update both SQLite references and the shared media library, recoverable state consists of all three of these surfaces:
 
-- `site/data/`
-- `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025`
-- `.env`
+- `site/data/woodsmith.sqlite`, captured online with SQLite `VACUUM INTO`
+- `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025`, copied byte-for-byte with per-file SHA-256 evidence
+- `.env`, copied into the restricted backup without printing its contents
 
-A SQLite backup without the matching media tree is no longer sufficient for full recovery.
+The candidate image includes `/app/site/ops/runtime-state.mjs`. The tool refuses overlapping source/output paths, symlinks, special files, changing source media, existing destinations, path traversal, missing or extra backup files, failed hashes, and failed SQLite `quick_check`. It writes through a hidden partial directory and promotes the backup only after verification.
 
-Create the paired backup before a large batch reorganization. The database operation ledger can reverse application-managed changes, but it is not a replacement for a filesystem snapshot when files are changed outside the application or storage fails mid-operation.
+### Create and verify a paired backup
+
+Build the exact candidate first; building does not touch mounted production state. Then set only nonsecret shell values and run the tool with networking disabled. Keep the data mount writable so SQLite can coordinate safely with the live WAL; the tool itself opens the source database read-only and writes only to the backup mount.
+
+```bash
+cd /volume2/docker_ssd/woodsmith
+
+export PUID=1026
+export PGID=100
+export RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')"
+export CANDIDATE_IMAGE="woodsmith:candidate-$(git rev-parse --short=8 HEAD)"
+
+mkdir -p backups/runtime restores
+chmod 700 backups backups/runtime restores
+chown -R "${PUID}:${PGID}" backups restores
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777 \
+  -v /volume2/docker_ssd/woodsmith/site/data:/state/data:rw \
+  -v /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025:/state/media:ro \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:rw \
+  -v /volume2/docker_ssd/woodsmith/.env:/state/config/runtime.env:ro \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs backup \
+  --data-root /state/data \
+  --media-root /state/media \
+  --backup-root /state/backups \
+  --environment-file /state/config/runtime.env \
+  --run-id "$RUN_ID"
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:ro \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs verify \
+  --backup "/state/backups/woodsmith-runtime-${RUN_ID}"
+```
+
+Record the emitted manifest SHA-256, media count, byte count, and `quickCheck=ok`. The backup directory and environment copy are mode-restricted and must never be added to Git, a public archive, or CI artifacts.
+
+### Prove a staging restore
+
+Before promotion, restore the backup into new paths on the same volumes as the eventual live paths. This validates recovery without overwriting or mounting production state:
+
+```bash
+export DATA_STAGE="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-data"
+export MEDIA_STAGE="/volume1/homes/Cooper/Photos/.woodsmith-restore-${RUN_ID}"
+export ENV_STAGE="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}.env"
+
+test ! -e "$DATA_STAGE"
+test ! -e "$MEDIA_STAGE"
+test ! -e "$ENV_STAGE"
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777 \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:ro \
+  -v /volume2/docker_ssd/woodsmith/restores:/state/restores:rw \
+  -v /volume1/homes/Cooper/Photos:/state/photos:rw \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs restore \
+  --backup "/state/backups/woodsmith-runtime-${RUN_ID}" \
+  --data-destination "/state/restores/${RUN_ID}-data" \
+  --media-destination "/state/photos/.woodsmith-restore-${RUN_ID}" \
+  --environment-destination "/state/restores/${RUN_ID}.env"
+```
+
+The restore command rechecks the complete backup before writing, validates the restored database and every copied file, and compensates its own newly created outputs if promotion fails. Do not swap these paths during an ordinary pre-deployment proof; keep them as verified rollback inputs until the candidate passes.
+
+### Stopped-service recovery or rollback
+
+Only when recovery is actually required, stop the app and move the verified staging paths into place. Keep the previous state under unique hold names on the same filesystems; never delete it during the release window.
+
+```bash
+export DATA_HOLD="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-previous-data"
+export MEDIA_HOLD="/volume1/homes/Cooper/Photos/.woodsmith-previous-${RUN_ID}"
+export ENV_HOLD="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-previous.env"
+
+test ! -e "$DATA_HOLD"
+test ! -e "$MEDIA_HOLD"
+test ! -e "$ENV_HOLD"
+
+docker compose --env-file .env -f docker-compose.synology.yml stop woodsmith
+
+mv site/data "$DATA_HOLD"
+mv "$DATA_STAGE" site/data
+mv /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025 "$MEDIA_HOLD"
+mv "$MEDIA_STAGE" /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+mv .env "$ENV_HOLD"
+mv "$ENV_STAGE" .env
+
+docker compose --env-file .env -f docker-compose.synology.yml up -d --force-recreate woodsmith
+```
+
+If candidate validation fails, retag the recorded rollback image, stop the service, move the failed candidate state aside, move the three hold paths back, and recreate the service. Run SQLite `quick_check`, mounted-media checks, internal/public routes, logs, and persistence/recreation checks again before declaring rollback complete.
+
+Create the paired backup before deployment and before a large media reorganization. The database operation ledger can reverse application-managed changes, but it is not a substitute for a verified filesystem copy when storage fails or files change outside the application.
 
 The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, backup, or test/spec source file. Runtime state and build-only tests are never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 

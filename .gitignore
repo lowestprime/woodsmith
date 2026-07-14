@@ -41,6 +41,11 @@ site/data/*.sqlite-wal
 pics/
 cache/
 releases/
+backups/
+restores/
+site/data/backups/
+site/data.restore-*/
+site/data.rollback-*/
 
 # Secrets
 .env

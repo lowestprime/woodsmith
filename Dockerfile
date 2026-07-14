@@ -35,6 +35,8 @@ RUN useradd --system --uid 1001 --gid 1001 nextjs
 COPY --from=builder --chown=nextjs:nextjs /app/site/.next/standalone ./
 COPY --from=builder --chown=nextjs:nextjs /app/site/.next/static ./.next/static
 COPY --from=builder --chown=nextjs:nextjs /app/site/public ./public
+COPY --from=builder --chown=nextjs:nextjs /app/site/scripts/runtime-state.mjs ./ops/runtime-state.mjs
+COPY --from=builder --chown=nextjs:nextjs /app/site/scripts/runtime-state-lib.mjs ./ops/runtime-state-lib.mjs
 
 RUN mkdir -p /app/site/data \
   && chown nextjs:nextjs /app/site/data \
