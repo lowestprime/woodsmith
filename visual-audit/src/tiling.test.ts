@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { overlappingPositions, positionsIntersectingRange } from "./tiling.js";
+import { overlappingPositions, positionsIntersectingRange, viewportClipOrigin } from "./tiling.js";
 
 test("overlapping tile positions cover the full surface with a deterministic tail", () => {
   const positions = overlappingPositions(3_200, 1_000);
@@ -23,4 +23,16 @@ test("range selection retains every tile needed across a segment boundary", () =
 
   assert.ok(segment.some((position) => position < 2_000));
   assert.ok(segment.some((position) => position + 1_000 >= 3_000));
+});
+
+test("scroll-container screenshot clips remain viewport relative", () => {
+  assert.deepEqual(
+    viewportClipOrigin({
+      rectLeft: 24,
+      rectTop: 118,
+      clientLeft: 1,
+      clientTop: 1
+    }),
+    { x: 25, y: 119 }
+  );
 });

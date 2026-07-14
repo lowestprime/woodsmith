@@ -31,7 +31,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
-- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, isolated snapshot-lab states, overlapping high-resolution tiles, searchable HTML, streamed bookmarked PDF atlases, checksums, and baseline comparisons
+- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, searchable HTML, streamed bookmarked PDF atlases, checksums, and baseline comparisons
 
 ## 📃 Production Notes
 
@@ -54,6 +54,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
 - `docker-compose.synology.yml`: Synology runtime model
 - `visual-audit/`: pinned Playwright capture, report, comparison, validation, and NAS automation package
+- `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows smoke using fake credentials, synthetic media, non-root containers, and automatically removed volumes
 - `docs/visual-archive.md`: private live-readonly and snapshot-lab operating guide
 - `synology-nas-deploy.md`: deployment and NAS operations guide
 - `admin.md`: private Woodshop dashboard manual

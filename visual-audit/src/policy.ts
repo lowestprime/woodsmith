@@ -23,3 +23,11 @@ export function inventoryRequestEligible(method: string, requestUrl: string | UR
     request.pathname === endpoint.pathname &&
     request.search === "";
 }
+
+export function isSyntheticVisitTelemetry(method: string, requestUrl: string | URL, baseUrl: string | URL) {
+  const request = new URL(requestUrl, baseUrl);
+  return method.toUpperCase() === "POST" &&
+    request.origin === new URL(baseUrl).origin &&
+    request.pathname === "/api/visits" &&
+    request.search === "";
+}

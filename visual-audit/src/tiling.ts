@@ -32,3 +32,15 @@ export function positionsIntersectingRange(
     position < rangeEnd && position + viewportSize > rangeStart
   ));
 }
+
+export function viewportClipOrigin(input: {
+  rectLeft: number;
+  rectTop: number;
+  clientLeft: number;
+  clientTop: number;
+}) {
+  return {
+    x: input.rectLeft + input.clientLeft,
+    y: input.rectTop + input.clientTop
+  };
+}

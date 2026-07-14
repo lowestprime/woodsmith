@@ -1,4 +1,4 @@
-import { isSameOrigin, isUnsafeMethod } from "./policy.js";
+import { isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 
 export type RequestFailureEvidence = {
   method: string;
@@ -38,25 +38,33 @@ export function isExpectedNextPrefetchAbort(evidence: RequestFailureEvidence) {
     headers["sec-purpose"]?.includes("prefetch") === true;
 }
 
-export function isExpectedReadonlyMutationBlock(input: {
+export function isExpectedAuditMutationBlock(input: {
   targetMode: string;
   method: string;
   url: string;
+  baseUrl: string;
   failure: string;
   blockedRequests: ReadonlySet<string>;
 }) {
-  return input.targetMode === "live-readonly" &&
-    input.failure.includes("ERR_BLOCKED_BY_CLIENT") &&
-    isUnsafeMethod(input.method) &&
-    input.blockedRequests.has(requestBlockKey(input.method, input.url));
+  if (
+    !input.failure.includes("ERR_BLOCKED_BY_CLIENT") ||
+    !isUnsafeMethod(input.method) ||
+    !input.blockedRequests.has(requestBlockKey(input.method, input.url))
+  ) {
+    return false;
+  }
+
+  return input.targetMode === "live-readonly" ||
+    input.targetMode === "snapshot-lab" &&
+      isSyntheticVisitTelemetry(input.method, input.url, input.baseUrl);
 }
 
-export function isExpectedReadonlyBlockedConsole(input: {
+export function isExpectedAuditBlockedConsole(input: {
   targetMode: string;
   text: string;
   blockedRequestCount: number;
 }) {
-  return input.targetMode === "live-readonly" &&
+  return ["live-readonly", "snapshot-lab"].includes(input.targetMode) &&
     input.text.includes("ERR_BLOCKED_BY_CLIENT") &&
     input.blockedRequestCount > 0;
 }

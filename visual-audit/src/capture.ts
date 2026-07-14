@@ -5,7 +5,7 @@ import sharp from "sharp";
 import type { Locator, Page } from "playwright";
 
 import { config } from "./config.js";
-import { overlappingPositions, positionsIntersectingRange } from "./tiling.js";
+import { overlappingPositions, positionsIntersectingRange, viewportClipOrigin } from "./tiling.js";
 import type { SegmentRecord, TileManifest, TileRecord } from "./types.js";
 import { ensureDirectory, relativeTo, safeName, writeJsonAtomic } from "./util.js";
 
@@ -225,11 +225,16 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
         scrollHeight: element.scrollHeight,
         scrollLeft: element.scrollLeft,
         scrollTop: element.scrollTop,
-        clipX: rect.left + window.scrollX + element.clientLeft,
-        clipY: rect.top + window.scrollY + element.clientTop
+        rectLeft: rect.left,
+        rectTop: rect.top,
+        clientLeft: element.clientLeft,
+        clientTop: element.clientTop
       };
       }, index).catch(() => null);
       if (!info) continue;
+
+    // Playwright screenshot clips use viewport CSS coordinates from getBoundingClientRect().
+    const clipOrigin = viewportClipOrigin(info);
 
     const rawRoot = path.join(outputDirectory, "raw", `${safeName(baseName)}-scroll-${String(captured + 1).padStart(3, "0")}`);
     await ensureDirectory(rawRoot);
@@ -260,7 +265,7 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
               scale: "device",
               animations: "disabled",
               caret: "hide",
-              clip: { x: info.clipX, y: info.clipY, width: info.clientWidth, height: info.clientHeight }
+              clip: { x: clipOrigin.x, y: clipOrigin.y, width: info.clientWidth, height: info.clientHeight }
             });
             const metadata = await sharp(buffer).metadata();
             const rawFile = path.join(rawRoot, `segment-${String(segmentIndex + 1).padStart(3, "0")}-tile-${String(tileRecords.length + 1).padStart(4, "0")}.png`);

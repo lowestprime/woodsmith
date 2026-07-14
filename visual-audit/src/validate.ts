@@ -5,6 +5,7 @@ import sharp from "sharp";
 
 import { config, viewports } from "./config.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
+import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
 import type { RunManifest, TileManifest } from "./types.js";
 import { exists, listFiles, relativeTo, sha256File, writeJsonAtomic } from "./util.js";
 
@@ -185,6 +186,11 @@ async function main() {
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
+  failures.push(...snapshotLabEvidenceFailures({
+    targetMode: config.targetMode,
+    captureStates: manifest.captures.map((capture) => capture.state),
+    successfulUnsafeRequests: manifest.security.successfulUnsafeRequests
+  }));
 
   const captureKeys = new Set<string>();
   for (const capture of manifest.captures) {

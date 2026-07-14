@@ -3,8 +3,8 @@ import test from "node:test";
 
 import {
   isExpectedNextPrefetchAbort,
-  isExpectedReadonlyBlockedConsole,
-  isExpectedReadonlyMutationBlock,
+  isExpectedAuditBlockedConsole,
+  isExpectedAuditMutationBlock,
   isKnownExpectedDiagnostic,
   requestBlockKey
 } from "./diagnostics.js";
@@ -37,15 +37,24 @@ test("read-only blocked failures require an unsafe request and an exact policy r
     targetMode: "live-readonly",
     method: "POST",
     url,
+    baseUrl: "https://woodmat.ch",
     failure: "net::ERR_BLOCKED_BY_CLIENT",
     blockedRequests
   };
 
-  assert.equal(isExpectedReadonlyMutationBlock(input), true);
-  assert.equal(isExpectedReadonlyMutationBlock({ ...input, method: "GET" }), false);
-  assert.equal(isExpectedReadonlyMutationBlock({ ...input, url: "https://woodmat.ch/media/required.jpg" }), false);
-  assert.equal(isExpectedReadonlyMutationBlock({ ...input, targetMode: "snapshot-lab" }), false);
-  assert.equal(isExpectedReadonlyMutationBlock({ ...input, blockedRequests: new Set() }), false);
+  assert.equal(isExpectedAuditMutationBlock(input), true);
+  assert.equal(isExpectedAuditMutationBlock({ ...input, method: "GET" }), false);
+  assert.equal(isExpectedAuditMutationBlock({ ...input, url: "https://woodmat.ch/media/required.jpg" }), false);
+  assert.equal(isExpectedAuditMutationBlock({ ...input, targetMode: "snapshot-lab" }), false);
+  assert.equal(isExpectedAuditMutationBlock({ ...input, blockedRequests: new Set() }), false);
+
+  const visitUrl = "https://woodmat.ch/api/visits";
+  assert.equal(isExpectedAuditMutationBlock({
+    ...input,
+    targetMode: "snapshot-lab",
+    url: visitUrl,
+    blockedRequests: new Set([requestBlockKey("POST", visitUrl)])
+  }), true);
 });
 
 test("blocked console noise is expected only after a route-local read-only policy decision", () => {
@@ -54,10 +63,10 @@ test("blocked console noise is expected only after a route-local read-only polic
     text: "Failed to load resource: net::ERR_BLOCKED_BY_CLIENT",
     blockedRequestCount: 1
   };
-  assert.equal(isExpectedReadonlyBlockedConsole(input), true);
-  assert.equal(isExpectedReadonlyBlockedConsole({ ...input, blockedRequestCount: 0 }), false);
-  assert.equal(isExpectedReadonlyBlockedConsole({ ...input, targetMode: "snapshot-lab" }), false);
-  assert.equal(isExpectedReadonlyBlockedConsole({ ...input, text: "Failed to load required image" }), false);
+  assert.equal(isExpectedAuditBlockedConsole(input), true);
+  assert.equal(isExpectedAuditBlockedConsole({ ...input, blockedRequestCount: 0 }), false);
+  assert.equal(isExpectedAuditBlockedConsole({ ...input, targetMode: "snapshot-lab" }), true);
+  assert.equal(isExpectedAuditBlockedConsole({ ...input, text: "Failed to load required image" }), false);
 });
 
 test("validator exceptions remain narrow and never hide arbitrary API failures", () => {

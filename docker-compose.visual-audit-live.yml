@@ -29,7 +29,7 @@ services:
       - ./:/workspace:ro
       - /volume2/docker_ssd/woodsmith/visual-audits:/output:rw
     tmpfs:
-      - /audit-tmp:rw,noexec,nosuid,nodev,size=64m,mode=700
+      - /audit-tmp:rw,noexec,nosuid,nodev,size=64m,mode=700,uid=${PUID},gid=${PGID}
       - /tmp:rw,noexec,nosuid,nodev,size=256m,mode=1777
     secrets:
       - admin_password

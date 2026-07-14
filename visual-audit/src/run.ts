@@ -20,8 +20,8 @@ import {
 } from "./config.js";
 import {
   isExpectedNextPrefetchAbort,
-  isExpectedReadonlyBlockedConsole,
-  isExpectedReadonlyMutationBlock,
+  isExpectedAuditBlockedConsole,
+  isExpectedAuditMutationBlock,
   requestBlockKey
 } from "./diagnostics.js";
 import {
@@ -30,8 +30,9 @@ import {
   fetchInventory
 } from "./inventory.js";
 import { waitForVisualReady } from "./readiness.js";
-import { auditTokenEligible, isUnsafeMethod } from "./policy.js";
+import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
+import { SNAPSHOT_LAB_COMMISSION_DRAFT_STATE } from "./snapshot-lab-evidence.js";
 import type {
   AuthState,
   CaptureRecord,
@@ -200,7 +201,7 @@ function attachDiagnostics(
         message: text,
         expected:
           /THREE\.THREE\.Clock: This module has been deprecated/.test(text) ||
-          isExpectedReadonlyBlockedConsole({
+          isExpectedAuditBlockedConsole({
             targetMode: config.targetMode,
             text,
             blockedRequestCount: blockedRequests.size
@@ -226,10 +227,11 @@ function attachDiagnostics(
     const method =
       request.method().toUpperCase();
 
-    if (isExpectedReadonlyMutationBlock({
+    if (isExpectedAuditMutationBlock({
       targetMode: config.targetMode,
       method,
       url: request.url(),
+      baseUrl: config.baseUrl,
       failure,
       blockedRequests
     })) {
@@ -537,6 +539,25 @@ async function createCaptureContext(
       }
 
       if (
+        config.targetMode === "snapshot-lab" &&
+        isSyntheticVisitTelemetry(method, requestUrl, config.baseUrl)
+      ) {
+        blockedRequests.add(requestBlockKey(method, request.url()));
+        manifest.diagnostics.push({
+          timestamp: now(),
+          type: "mutation-blocked",
+          route: request.url(),
+          message:
+            "Snapshot-lab route guard blocked synthetic visitor telemetry " +
+            method + " " + request.url(),
+          expected: true
+        });
+        manifest.security.sameOriginUnsafeRequestsBlocked += 1;
+        await route.abort("blockedbyclient");
+        return;
+      }
+
+      if (
         config.targetMode ===
         "live-readonly"
       ) {
@@ -620,16 +641,8 @@ async function captureFormValidationStates(input: {
         ].join(",")
       ).first();
 
-    const submit =
-      form.locator(
-        'button[type="submit"],input[type="submit"]'
-      ).first();
-
     if (
       !await requiredField
-        .isVisible()
-        .catch(() => false) ||
-      !await submit
         .isVisible()
         .catch(() => false)
     ) {
@@ -646,7 +659,17 @@ async function captureFormValidationStates(input: {
       }
     );
 
-    await submit.click();
+    await requiredField.evaluate(
+      element => {
+        const field =
+          element as HTMLInputElement;
+        if (field.form) {
+          field.form.reportValidity();
+        } else {
+          field.reportValidity();
+        }
+      }
+    );
 
     await saveCapture({
       ...input,
@@ -663,6 +686,147 @@ async function captureFormValidationStates(input: {
         ).setCustomValidity("");
       }
     );
+  }
+}
+
+async function captureSnapshotLabMutationState(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const route = new URL(input.route, config.baseUrl);
+  const targetProfile =
+    config.scope === "smoke"
+      ? "desktop-1440"
+      : "desktop-archival";
+
+  if (
+    config.targetMode !== "snapshot-lab" ||
+    input.auth !== "admin" ||
+    route.pathname !== "/commissions" ||
+    input.theme !== "dark" ||
+    input.profile.name !== targetProfile
+  ) {
+    return;
+  }
+
+  const key = captureKey({
+    auth: input.auth,
+    route: input.route,
+    theme: input.theme,
+    viewport: input.profile.name,
+    state: SNAPSHOT_LAB_COMMISSION_DRAFT_STATE
+  });
+  if (
+    config.resume &&
+    manifest.completedKeys.includes(key)
+  ) {
+    return;
+  }
+
+  const form =
+    input.page.locator("form.commission-workflow");
+  await form.waitFor({
+    state: "visible",
+    timeout: 10_000
+  });
+
+  const saveAndContinue =
+    form.getByRole("button", {
+      name: "Save and continue",
+      exact: true
+    });
+  await saveAndContinue.click();
+
+  await input.page.getByText(
+    "Account draft saved.",
+    { exact: true }
+  ).waitFor({
+    state: "visible",
+    timeout: 15_000
+  });
+
+  const draftId =
+    await form.locator(
+      'input[name="draftId"]'
+    ).inputValue();
+  if (!draftId) {
+    throw new Error(
+      "Snapshot-lab commission draft did not return an ID."
+    );
+  }
+
+  try {
+    const verified =
+      await input.page.evaluate(
+        async (id) => {
+          const response = await fetch(
+            "/api/commissions/draft?id=" +
+              encodeURIComponent(id),
+            {
+              cache: "no-store"
+            }
+          );
+          const payload =
+            await response.json()
+              .catch(() => null) as {
+                ok?: boolean;
+                draft?: {
+                  id?: string;
+                };
+              } | null;
+
+          return (
+            response.ok &&
+            payload?.ok === true &&
+            payload.draft?.id === id
+          );
+        },
+        draftId
+      );
+    if (!verified) {
+      throw new Error(
+        "Snapshot-lab commission draft could not be read back."
+      );
+    }
+
+    await saveCapture({
+      ...input,
+      state: SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
+      locator: form
+    });
+  } finally {
+    const deleted =
+      await input.page.evaluate(
+        async (id) => {
+          const response = await fetch(
+            "/api/commissions/draft?id=" +
+              encodeURIComponent(id),
+            {
+              method: "DELETE"
+            }
+          );
+          const payload =
+            await response.json()
+              .catch(() => null) as {
+                ok?: boolean;
+              } | null;
+
+          return (
+            response.ok &&
+            payload?.ok === true
+          );
+        },
+        draftId
+      );
+    if (!deleted) {
+      throw new Error(
+        "Snapshot-lab commission draft cleanup failed."
+      );
+    }
   }
 }
 
@@ -1649,6 +1813,19 @@ async function captureRoute(input: {
       });
     }
 
+    try {
+      await captureSnapshotLabMutationState(base);
+    } catch (error) {
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "pageerror",
+        route: input.route,
+        message:
+          "Snapshot-lab mutation capture failed: " +
+          (error instanceof Error ? error.message : String(error))
+      });
+    }
+
     if (input.deep) {
       const steps = [
         ["details", captureDetailsStates],
@@ -2059,7 +2236,8 @@ async function main() {
         requiredStates: [
           "route-default", "header-scroll", "theme-light", "theme-dark", "desktop", "tablet", "mobile", "archival-dpr",
           "skip-link-focus-and-activation", "disclosures", "dialogs", "lightbox-zoom-boundaries", "inline-editing", "media-picker", "media-inspector",
-          "nested-scroll-surfaces", "empty-states", "error-states", "snapshot-lab-validation"
+          "nested-scroll-surfaces", "empty-states", "error-states", "snapshot-lab-validation",
+          ...(config.targetMode === "snapshot-lab" ? ["snapshot-lab-successful-mutation"] : [])
         ],
         safety: {
           liveReadonly: "Unsafe same-origin and cross-origin requests are blocked client-side; same-origin requests also carry the server read-only header.",

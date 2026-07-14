@@ -117,6 +117,17 @@ The smoke is accepted only when:
 
 Resume an interrupted run by preserving the same `AUDIT_RUN_ID`, `TARGET_COMMIT_SHA`, scope, and output directory.
 
+On a Windows release workstation, validate exact local app and runner images without mounting repository data or media:
+
+```powershell
+visual-audit/scripts/run-local-disposable-smoke.ps1 `
+  -AppImage woodsmith:candidate-<short-sha> `
+  -AuditImage woodsmith-visual-audit:<short-sha> `
+  -CommitSha <full-40-character-sha>
+```
+
+The script uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It validates the archive, rejects image-cache and unhandled-rejection errors, and removes every container and volume in `finally`.
+
 ## Full Live Archive
 
 ```bash
@@ -152,6 +163,10 @@ visual-audit/scripts/run-snapshot-lab.sh
 Preparation performs an online SQLite backup with `VACUUM INTO`, verifies `PRAGMA quick_check`, copies the database into a unique lab root, and creates a Btrfs reflink media copy when supported. If reflinks are unavailable, it performs a full `rsync -a` copy. Hardlinks are forbidden because lab rename/delete operations must not alter production originals.
 
 Both lab mounts contain a matching run marker. The runner rejects missing markers, production paths, mismatched run IDs, and unavailable clones. The lab container health check verifies the cloned database before capture begins. The internal Docker network blocks outbound provider access.
+
+The Compose files assign the private audit and image-cache tmpfs mounts to the configured `PUID:PGID`. Keep those values aligned with the container user; a root-owned mode-700 tmpfs prevents the non-root app or runner from writing its disposable cache.
+
+The lab archive performs one bounded commission-draft save, reads the saved record back, captures the visible saved state, and deletes the draft before continuing. Validation requires exactly those two successful unsafe responses and the saved-state capture. Form error-state capture uses browser-native constraint validation without submitting, and synthetic `/api/visits` telemetry is blocked so the archive does not create visitor sessions. These mutations run only in `snapshot-lab`; `live-readonly` continues to reject every capture-time unsafe request.
 
 Do not run `docker compose down -v`; the scripts use ordinary `down` and preserve bind-mounted evidence for review.
 

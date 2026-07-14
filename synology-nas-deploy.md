@@ -160,6 +160,8 @@ docker buildx build \
 
 Optional local container smoke test:
 
+For the exact release-candidate app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. It runs without production mounts or credentials and removes its temporary data, media, output, and secret volumes after validation.
+
 ```bash
 docker run --rm -p 3002:3002 \
   --env-file .env \
