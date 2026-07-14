@@ -435,6 +435,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isoAfter(previous: string) {
+  const previousTime = Date.parse(previous);
+  return new Date(Math.max(Date.now(), Number.isFinite(previousTime) ? previousTime + 1 : 0)).toISOString();
+}
+
 export function withDatabaseTransaction<T>(work: (db: DatabaseSync) => T): T {
   const db = getDatabase();
   const depth = transactionDepth;
@@ -3373,19 +3378,20 @@ export function saveCommissionDraftForUser(input: {
   if (Buffer.byteLength(payload, "utf8") > 256_000) throw new Error("Commission draft data exceeds the 256 KB limit.");
 
   return withDatabaseTransaction((db) => {
-    const timestamp = nowIso();
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24 * 30).toISOString();
     const id = input.id?.trim() || randomUUID();
     const existing = getCommissionDraftForUser(id, email);
     if (existing) {
       if (existing.status !== "draft") throw new Error("Only active drafts can be updated.");
       if (input.expectedUpdatedAt && existing.updatedAt !== input.expectedUpdatedAt) throw new Error("Commission draft changed in another session.");
+      const timestamp = isoAfter(existing.updatedAt);
       db.prepare(`
         UPDATE commission_drafts
         SET payload_json = ?, current_step = ?, idempotency_hash = ?, expires_at = ?, updated_at = ?
         WHERE id = ? AND user_email = ?
       `).run(payload, currentStep, hashOpaqueValue(idempotencyKey), expiresAt, timestamp, id, email);
     } else {
+      const timestamp = nowIso();
       db.prepare(`
         INSERT INTO commission_drafts (
           id, user_email, payload_json, current_step, status, idempotency_hash,

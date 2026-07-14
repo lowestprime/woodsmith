@@ -32,6 +32,7 @@ test("commission drafts, idempotency, capabilities, and render ownership persist
       expectedUpdatedAt: draft.updatedAt
     });
     assert.equal(updated.currentStep, 3);
+    assert.ok(Date.parse(updated.updatedAt) > Date.parse(draft.updatedAt));
     assert.throws(() => db.saveCommissionDraftForUser({
       id: draft.id,
       userEmail: "buyer@example.com",

@@ -51,7 +51,26 @@ test("safe build rejects bundled runtime state and still removes its temporary r
         writeFileSync(path.join(outputData, "leak.sqlite"), "forbidden");
         return { status: 0 };
       }
-    }), /runtime database or backup files/);
+    }), /runtime state or build-only test files/);
+    assertNoBuildRoots(input.temporaryParent);
+  } finally {
+    rmSync(input.root, { recursive: true, force: true });
+  }
+});
+
+test("safe build rejects test sources from standalone output and cleans up", () => {
+  const input = fixture();
+  try {
+    assert.throws(() => runSafeBuild({
+      projectRoot: input.projectRoot,
+      temporaryParent: input.temporaryParent,
+      spawnBuild() {
+        const outputLib = path.join(input.projectRoot, ".next", "standalone", "lib");
+        mkdirSync(outputLib, { recursive: true });
+        writeFileSync(path.join(outputLib, "runtime.test.mts"), "forbidden");
+        return { status: 0 };
+      }
+    }), /runtime state or build-only test files/);
     assertNoBuildRoots(input.temporaryParent);
   } finally {
     rmSync(input.root, { recursive: true, force: true });

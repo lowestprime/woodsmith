@@ -18,7 +18,10 @@ export function collectForbiddenRuntimeFiles(projectRoot, directory, output = []
       collectForbiddenRuntimeFiles(projectRoot, absolutePath, output);
       continue;
     }
-    if (/(?:\.sqlite|\.db)(?:-(?:wal|shm))?$|\.(?:sqlite|db)-(?:wal|shm)$|\.(?:bak|backup)$/i.test(entry.name)) {
+    if (
+      /(?:\.sqlite|\.db)(?:-(?:wal|shm))?$|\.(?:sqlite|db)-(?:wal|shm)$|\.(?:bak|backup)$/i.test(entry.name) ||
+      /\.(?:test|spec)\.(?:[cm]?[jt]sx?)$/i.test(entry.name)
+    ) {
       output.push(path.relative(projectRoot, absolutePath));
     }
   }
@@ -50,7 +53,7 @@ export function runSafeBuild({ projectRoot = process.cwd(), temporaryParent = tm
 
     const forbidden = collectForbiddenRuntimeFiles(projectRoot, standaloneRoot);
     if (forbidden.length > 0) {
-      throw new SafeBuildError(`Standalone output contains runtime database or backup files:\n${forbidden.map((value) => `- ${value}`).join("\n")}`);
+      throw new SafeBuildError(`Standalone output contains runtime state or build-only test files:\n${forbidden.map((value) => `- ${value}`).join("\n")}`);
     }
     return { standaloneRoot };
   } finally {
