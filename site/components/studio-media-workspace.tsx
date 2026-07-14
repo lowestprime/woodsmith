@@ -9,6 +9,7 @@ import { toMediaUrl } from "@/lib/format";
 import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
 import type { MediaAiFilter, MediaAssignmentFilter, MediaKindFilter, MediaOperationBatchRecord, MediaRecord } from "@/lib/db";
 import type { MediaMatchCandidate } from "@/lib/media-audit";
+import { mediaRequiresDirectBrowserRequest } from "@/lib/media-access";
 
 type MediaAction = (state: MediaActionResult | null, formData: FormData) => Promise<MediaActionResult>;
 
@@ -155,8 +156,8 @@ function providerCopy(provider?: ProviderState) {
   return `${provider.provider.replace("-", " ")} ${availability}${provider.model ? ` · ${provider.model}` : ""}`;
 }
 
-function imageNeedsUnoptimized(relativePath: string) {
-  return /\.(gif|svg)$/i.test(relativePath);
+function imageNeedsUnoptimized(relativePath: string, projectReference?: string | null) {
+  return mediaRequiresDirectBrowserRequest(relativePath, { projectReference }) || /\.(gif|svg)$/i.test(relativePath);
 }
 
 function parseList(value: FormDataEntryValue | null) {
@@ -939,7 +940,7 @@ export function StudioMediaWorkspace({
                       return (
                       <div className="candidate-assignment-card" key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
-                          <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
+                          <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath, item.projectReference)} />
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
                         </button>
                         <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster training {compactMetric(evidence.clusterPropagation)}</span><span>Folder training {compactMetric(evidence.folderDateContext)}</span><span>Manual label {compactMetric(evidence.manualPrior)}</span><span>Rejected signal {compactMetric(evidence.negativeReviewSignal)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
@@ -1012,7 +1013,7 @@ export function StudioMediaWorkspace({
               >
                 <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
                   {item.kind === "image"
-                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath)} />
+                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath, item.projectReference)} />
                     : item.kind === "video"
                       ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}

@@ -14,6 +14,7 @@ export type MediaPickerItem = {
   pieceSlug: string | null;
   postSlug: string | null;
   pageSlug: string | null;
+  projectReference: string | null;
   reviewed: boolean;
   tags: string[];
   metadata: Record<string, unknown>;
@@ -197,7 +198,7 @@ export function MediaPicker({
           const item = itemByPath.get(relativePath);
           return (
             <article className="media-picker-chip" key={relativePath}>
-              {item?.kind === "image" ? <Image alt={item.altText || item.fileName} className="media-picker-chip-image" height={96} sizes="96px" src={toMediaUrl(relativePath)} width={128} /> : <span className="media-picker-chip-fallback">{item?.kind?.toUpperCase() || "MEDIA"}</span>}
+              {item?.kind === "image" ? <Image alt={item.altText || item.fileName} className="media-picker-chip-image" height={96} sizes="96px" src={toMediaUrl(relativePath)} unoptimized width={128} /> : <span className="media-picker-chip-fallback">{item?.kind?.toUpperCase() || "MEDIA"}</span>}
               <span className="media-picker-chip-copy"><strong>{item?.fileName || relativePath.split("/").pop()}</strong><small>{item?.folder || relativePath}</small></span>
               {multiple ? <span className="media-picker-chip-actions"><button aria-label={`Move ${item?.fileName || relativePath} earlier`} disabled={index === 0} onClick={() => moveSelected(index, -1)} type="button">↑</button><button aria-label={`Move ${item?.fileName || relativePath} later`} disabled={index === selectedPaths.length - 1} onClick={() => moveSelected(index, 1)} type="button">↓</button></span> : null}
               <button aria-label={`Remove ${item?.fileName || relativePath}`} className="media-picker-remove" onClick={() => toggleItem(relativePath)} type="button">×</button>
@@ -220,7 +221,7 @@ export function MediaPicker({
             <div aria-busy={loading} className="media-picker-grid">
               {visibleItems.map((item) => {
                 const selected = selectedPaths.includes(item.relativePath);
-                return <button aria-pressed={selected} className={cn("media-picker-card", selected && "is-selected")} key={item.relativePath} onClick={() => toggleItem(item.relativePath)} type="button"><div className="media-picker-card-media">{item.kind === "image" ? <Image alt={item.altText || item.fileName} fill loading="lazy" sizes="(max-width: 640px) 44vw, 180px" src={toMediaUrl(item.relativePath)} /> : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}</div><div className="media-picker-card-body"><strong>{item.fileName}</strong><p>{item.folder}</p><small>{item.pieceSlug || item.pageSlug || item.postSlug || "Unassigned"}{item.reviewed ? " · reviewed" : " · review needed"}</small></div></button>;
+                return <button aria-pressed={selected} className={cn("media-picker-card", selected && "is-selected")} key={item.relativePath} onClick={() => toggleItem(item.relativePath)} type="button"><div className="media-picker-card-media">{item.kind === "image" ? <Image alt={item.altText || item.fileName} fill loading="lazy" sizes="(max-width: 640px) 44vw, 180px" src={toMediaUrl(item.relativePath)} unoptimized /> : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}</div><div className="media-picker-card-body"><strong>{item.fileName}</strong><p>{item.folder}</p><small>{item.pieceSlug || item.pageSlug || item.postSlug || item.projectReference || "Unassigned"}{item.reviewed ? " · reviewed" : " · review needed"}</small></div></button>;
               })}
               {!loading && visibleItems.length === 0 ? <p className="media-picker-empty">No media matches this page and folder filter.</p> : null}
             </div>

@@ -77,7 +77,7 @@ export function PieceMediaEditor({
         const item = itemMap.get(link.relativePath);
         const buildRole = BUILD_ROLES.includes(link.role);
         return <article className="piece-media-relation" key={`${link.relativePath}-${index}`}>
-          <div className="piece-media-relation-preview">{item?.kind === "image" ? <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(link.relativePath)} /> : <span>{item?.kind || "media"}</span>}</div>
+          <div className="piece-media-relation-preview">{item?.kind === "image" ? <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(link.relativePath)} unoptimized={!link.public || Boolean(item.projectReference)} /> : <span>{item?.kind || "media"}</span>}</div>
           <div className="piece-media-relation-fields">
             <strong>{item?.fileName || link.relativePath.split("/").pop()}</strong>
             <div className="field-grid three-up compact-grid">

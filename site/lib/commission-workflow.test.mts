@@ -89,6 +89,12 @@ test("commission drafts, idempotency, capabilities, and render ownership persist
       tags: ["buyer-reference"]
     });
     assert.equal(db.getMedia(nestedUpload)?.projectReference, first.reference);
+    assert.deepEqual(db.getMediaAccessAssociations(nestedUpload), {
+      projectReference: first.reference,
+      privateAssociation: false,
+      renderAsset: false,
+      renderProjectReference: null
+    });
 
     const accessToken = db.createProjectAccessGrant(first.reference, 1);
     assert.equal(db.projectAccessGrantValid(first.reference, accessToken), true);
@@ -101,8 +107,18 @@ test("commission drafts, idempotency, capabilities, and render ownership persist
     assert.equal(db.consumeCommissionSubmissionQuota("guest:submission", 2, 60_000).allowed, true);
     assert.equal(db.consumeCommissionSubmissionQuota("guest:submission", 2, 60_000).allowed, false);
     db.registerCommissionRenderAsset("ai-renderings/test.png", "guest:test");
+    assert.equal(db.commissionRenderAssetOwnedBy("ai-renderings/test.png", "guest:test"), true);
+    assert.equal(db.commissionRenderAssetOwnedBy("ai-renderings/test.png", "guest:other"), false);
+    assert.deepEqual(db.getMediaAccessAssociations("ai-renderings/test.png"), {
+      projectReference: null,
+      privateAssociation: false,
+      renderAsset: true,
+      renderProjectReference: null
+    });
     assert.equal(db.consumeCommissionRenderAsset("ai-renderings/test.png", "guest:other", first.reference), false);
     assert.equal(db.consumeCommissionRenderAsset("ai-renderings/test.png", "guest:test", first.reference), true);
+    assert.equal(db.commissionRenderAssetOwnedBy("ai-renderings/test.png", "guest:test"), false);
+    assert.equal(db.getMediaAccessAssociations("ai-renderings/test.png").renderProjectReference, first.reference);
     assert.equal(db.consumeCommissionRenderAsset("ai-renderings/test.png", "guest:test", first.reference), false);
 
     db.markCommissionDraftSubmitted(draft.id, "buyer@example.com", first.reference);

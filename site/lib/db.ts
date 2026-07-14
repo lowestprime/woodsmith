@@ -253,6 +253,13 @@ export type MediaRecord = {
   updatedAt: string;
 };
 
+export type MediaAccessAssociationsRecord = {
+  projectReference: string | null;
+  privateAssociation: boolean;
+  renderAsset: boolean;
+  renderProjectReference: string | null;
+};
+
 export type ProjectRecord = {
   reference: string;
   userEmail: string | null;
@@ -2579,6 +2586,32 @@ export function getMedia(relativePath: string) {
   return row ? mapMedia(row) : null;
 }
 
+export function getMediaAccessAssociations(relativePath: string): MediaAccessAssociationsRecord {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT
+      (SELECT project_reference FROM media_items WHERE relative_path = ? LIMIT 1) AS projectReference,
+      EXISTS(
+        SELECT 1 FROM piece_media_links
+        WHERE relative_path = ? AND (role = 'private-project' OR is_public = 0)
+      ) AS privateAssociation,
+      EXISTS(
+        SELECT 1 FROM commission_render_assets WHERE relative_path = ?
+      ) AS renderAsset,
+      (
+        SELECT consumed_project_reference FROM commission_render_assets
+        WHERE relative_path = ? LIMIT 1
+      ) AS renderProjectReference
+  `).get(relativePath, relativePath, relativePath, relativePath) as Record<string, unknown>;
+
+  return {
+    projectReference: row.projectReference ? String(row.projectReference) : null,
+    privateAssociation: Number(row.privateAssociation) === 1,
+    renderAsset: Number(row.renderAsset) === 1,
+    renderProjectReference: row.renderProjectReference ? String(row.renderProjectReference) : null
+  };
+}
+
 export function saveMediaMetadata(input: {
   relativePath: string;
   altText: string;
@@ -3469,6 +3502,19 @@ export function registerCommissionRenderAsset(relativePath: string, ownerKey: st
     VALUES (?, ?, NULL, ?, NULL)
     ON CONFLICT(relative_path) DO UPDATE SET owner_key_hash = excluded.owner_key_hash
   `).run(relativePath, hashOpaqueValue(ownerKey), nowIso());
+}
+
+export function commissionRenderAssetOwnedBy(relativePath: string, ownerKey: string) {
+  if (!ownerKey) return false;
+  const db = getDatabase();
+  const candidateHash = hashOpaqueValue(ownerKey);
+  const row = db.prepare(`
+    SELECT owner_key_hash AS ownerKeyHash
+    FROM commission_render_assets
+    WHERE relative_path = ? AND consumed_project_reference IS NULL
+    LIMIT 1
+  `).get(relativePath) as { ownerKeyHash?: unknown } | undefined;
+  return Boolean(row?.ownerKeyHash && safeHashEqual(String(row.ownerKeyHash), candidateHash));
 }
 
 export function consumeCommissionRenderAsset(relativePath: string, ownerKey: string, projectReference: string) {

@@ -8,7 +8,7 @@
     "start": "node --experimental-sqlite .next/standalone/server.js",
     "lint": "eslint app components lib",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test lib/media-scoring.test.mts lib/piece-model.test.mts lib/database-migrations.test.mts lib/media-reference-transaction.test.mts lib/media-batch-transaction.test.mts lib/category-icons.test.mts lib/site-structure.test.mts lib/piece-media.test.mts lib/estimator.test.mts lib/visual-audit-security.test.mts lib/inline-edit-registry.test.mts lib/commission-workflow.test.mts lib/ui-behavior.test.mts lib/media-http.test.mts scripts/safe-build.test.mjs"
+    "test": "node --experimental-strip-types --test lib/media-scoring.test.mts lib/piece-model.test.mts lib/database-migrations.test.mts lib/media-reference-transaction.test.mts lib/media-batch-transaction.test.mts lib/category-icons.test.mts lib/site-structure.test.mts lib/piece-media.test.mts lib/estimator.test.mts lib/visual-audit-security.test.mts lib/inline-edit-registry.test.mts lib/commission-workflow.test.mts lib/ui-behavior.test.mts lib/media-http.test.mts lib/media-access.test.mts lib/request-security.test.mts scripts/safe-build.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.7",

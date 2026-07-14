@@ -11,7 +11,6 @@ import {
   normalizeInlineEditUrl,
   validateInlineEditPatch
 } from "./inline-edit-registry.ts";
-import { mutationOriginAllowed } from "./request-security.ts";
 
 test("typed inline registry allows declared fields and denies arbitrary paths", () => {
   assert.equal(getInlineEditDefinition("piece", "title")?.kind, "text");
@@ -48,13 +47,6 @@ test("list add, remove, replace, and reorder operations are deterministic", () =
   assert.deepEqual(editInlineList(["First", "Third", "Second"], cut, []), ["First", "Second"]);
   const move = validateInlineEditPatch({ resource: "piece", id: "pastry-table", field: "details", value: "", mode: "move", index: 2, toIndex: 0 });
   assert.deepEqual(editInlineList(["First", "Second", "Third"], move, []), ["Third", "First", "Second"]);
-});
-
-test("mutation origin policy accepts only same-site or explicitly configured origins", () => {
-  assert.equal(mutationOriginAllowed({ requestUrl: "http://127.0.0.1:3002/api/studio/inline-edit", origin: "http://127.0.0.1:3002" }), true);
-  assert.equal(mutationOriginAllowed({ requestUrl: "http://woodsmith:3002/api/studio/inline-edit", origin: "https://woodmat.ch", forwardedHost: "woodmat.ch", forwardedProto: "https" }), true);
-  assert.equal(mutationOriginAllowed({ requestUrl: "http://woodsmith:3002/api/studio/inline-edit", origin: "https://evil.example", configuredOrigins: ["https://woodmat.ch"] }), false);
-  assert.equal(mutationOriginAllowed({ requestUrl: "http://127.0.0.1:3002/api/studio/inline-edit", origin: null }), false);
 });
 
 test("SQLite rollback, media synchronization, and footer URL persistence remain atomic", async () => {
