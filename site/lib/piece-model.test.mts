@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   getPieceInquiryMode,
   getPiecePriceMode,
+  getPiecePublicPriceDisplay,
   getPiecePublicPriceLabel,
   getPieceReviewsMode,
   pieceAcceptsReviews,
@@ -46,6 +47,10 @@ test("all pricing modes resolve without interpreting sentinels as money", () => 
   assert.equal(getPiecePriceMode(piece({ status: "inventory", priceCents: -1, priceMode: null })), "contact-for-price");
   assert.equal(getPiecePublicPriceLabel(piece({ priceMode: "contact-for-price" })), "Contact for price");
   assert.equal(getPiecePublicPriceLabel(piece({ priceMode: "not-listed" })), null);
+  assert.deepEqual(getPiecePublicPriceDisplay(piece({ priceMode: "fixed", inventoryCount: 0 })), { kind: "fixed", cents: 125_000 });
+  assert.deepEqual(getPiecePublicPriceDisplay(piece({ priceMode: "fixed", priceCents: 0 })), { kind: "unlisted" });
+  assert.deepEqual(getPiecePublicPriceDisplay(piece({ priceMode: "determined-after-approval" })), { kind: "label", label: "Pricing follows design approval" });
+  assert.deepEqual(getPiecePublicPriceDisplay(piece({ priceMode: "fixed", publicPriceLabel: "Price on written quote" })), { kind: "label", label: "Price on written quote" });
 });
 
 test("inquiry and review modes are independent from legacy status", () => {

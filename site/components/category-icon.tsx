@@ -1,5 +1,5 @@
 import type { SVGProps } from "react";
-import { normalizeBuiltinCategoryIcon, type BuiltinCategoryIconName } from "@/lib/category-icons";
+import { categoryIconAccessibility, normalizeBuiltinCategoryIcon, type BuiltinCategoryIconName } from "@/lib/category-icons";
 import type { PieceCategoryDefinition } from "@/lib/categories";
 
 type IconProps = SVGProps<SVGSVGElement> & {
@@ -28,12 +28,13 @@ function BuiltinGeometry({ name }: { name: BuiltinCategoryIconName }) {
 }
 
 export function CategoryIcon({ name, category, label, className = "", ...props }: IconProps) {
+  const accessibility = categoryIconAccessibility(label);
   if (category?.iconType === "custom" && category.customIconSvg) {
-    return <span aria-label={label} className={`category-icon-svg category-icon-custom ${className}`.trim()} dangerouslySetInnerHTML={{ __html: category.customIconSvg }} role={label ? "img" : undefined} />;
+    return <span {...accessibility} className={`category-icon-svg category-icon-custom ${className}`.trim()} dangerouslySetInnerHTML={{ __html: category.customIconSvg }} />;
   }
   const iconName = normalizeBuiltinCategoryIcon(category?.iconName ?? name);
   return (
-    <svg aria-hidden={label ? undefined : true} aria-label={label} className={`category-icon-svg ${className}`.trim()} fill="none" role={label ? "img" : undefined} stroke="currentColor" strokeLinecap="square" strokeLinejoin="miter" strokeWidth="2" viewBox="0 0 48 48" {...props}>
+    <svg {...accessibility} className={`category-icon-svg ${className}`.trim()} fill="none" stroke="currentColor" strokeLinecap="square" strokeLinejoin="miter" strokeWidth="2" viewBox="0 0 48 48" {...props}>
       <BuiltinGeometry name={iconName} />
     </svg>
   );

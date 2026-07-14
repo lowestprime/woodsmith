@@ -18,7 +18,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
     if (!piece || piece.priceCents == null) return [];
-    return [{ item, piece }];
+    return [{ item, piece, firstImage: getDisplayMediaPaths(piece)[0] ?? null }];
   });
   const totals = calculateCheckoutTotals({
     lines: lines.map(({ item, piece }) => ({ slug: piece.slug, title: piece.title, quantity: item.quantity, unitAmountCents: piece.priceCents!, description: piece.subtitle })),
@@ -37,9 +37,9 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         {checkout === "local-review" && order ? <div className="notice-panel" role="status"><p>Local pickup/drop-off review was created for order <strong>{order}</strong>.</p>{summary ? <p className="muted-copy">{summary}</p> : null}</div> : null}
         <div className="cart-layout">
           <div className="cart-items">
-            {lines.length > 0 ? lines.map(({ item, piece }) => (
+            {lines.length > 0 ? lines.map(({ item, piece, firstImage }) => (
               <article className="cart-line" key={item.id}>
-                {getDisplayMediaPaths(piece)[0] ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(getDisplayMediaPaths(piece)[0])} width={320} /> : <div className="piece-card-placeholder">No image</div>}
+                {firstImage ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(firstImage)} width={320} /> : <div className="piece-card-placeholder">No image</div>}
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>

@@ -3,11 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
-import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, getPiecePublicPriceLabel, pieceAllowsInquiry, pieceCanEnterCart, pieceShippingEnabled } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, getPiecePublicPriceDisplay, pieceAllowsInquiry, pieceCanEnterCart, pieceShippingEnabled } from "@/lib/catalog";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPieces } from "@/lib/db";
-import { formatLeadTime, toMediaUrl } from "@/lib/format";
+import { formatLeadTime, formatMoney, toMediaUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Shop",
@@ -40,7 +40,12 @@ export default async function ShopPage() {
             const fulfillment = getFulfillmentOptions(piece);
             const shippingEnabled = pieceShippingEnabled(piece);
             const canAddToCart = pieceCanEnterCart(piece);
-            const priceLabel = getPiecePublicPriceLabel(piece);
+            const priceDisplay = getPiecePublicPriceDisplay(piece);
+            const priceLabel = priceDisplay.kind === "fixed"
+              ? formatMoney(priceDisplay.cents)
+              : priceDisplay.kind === "label"
+                ? priceDisplay.label
+                : "Not publicly listed";
             const canAsk = pieceAllowsInquiry(piece);
 
             return (
@@ -51,7 +56,7 @@ export default async function ShopPage() {
                   <h2 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}><Link href={`/portfolio/${piece.slug}`}>{piece.title}</Link></h2>
                   <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
                   <dl className="shop-detail-list">
-                    <div><dt>Asking price</dt><dd>{priceLabel ?? "Not publicly listed"}</dd></div>
+                    <div><dt>Asking price</dt><dd>{priceLabel}</dd></div>
                     <div><dt>Lead time</dt><dd>{formatLeadTime(piece.leadTimeDays)}</dd></div>
                     <div><dt>Fulfillment</dt><dd>{fulfillment.join(" / ")}</dd></div>
                     <div><dt>Shipping</dt><dd>{shippingEnabled ? "Enabled for this piece" : "Disabled by default"}</dd></div>

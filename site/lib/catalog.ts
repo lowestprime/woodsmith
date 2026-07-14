@@ -2,6 +2,7 @@ import { listPieceMediaLinks, type PieceRecord } from "@/lib/db";
 import {
   getPieceInquiryMode,
   getPiecePriceMode,
+  getPiecePublicPriceDisplay,
   getPiecePublicPriceLabel,
   getPieceReviewsMode,
   pieceAcceptsReviews,
@@ -42,6 +43,7 @@ export function hasVerifiedMedia(piece: Pick<PieceRecord, "slug" | "mediaPaths" 
 export {
   getPieceInquiryMode,
   getPiecePriceMode,
+  getPiecePublicPriceDisplay,
   getPiecePublicPriceLabel,
   getPieceReviewsMode,
   pieceAcceptsReviews,

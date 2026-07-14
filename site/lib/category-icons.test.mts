@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "./category-icons.ts";
+import { categoryIconAccessibility, normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "./category-icons.ts";
 import { normalizePieceCategories } from "./categories.ts";
 
 test("legacy and expanded built-in category icon names normalize safely", () => {
@@ -8,6 +8,11 @@ test("legacy and expanded built-in category icon names normalize safely", () => 
   assert.equal(normalizeBuiltinCategoryIcon("stepstools"), "stool");
   assert.equal(normalizeBuiltinCategoryIcon("desk"), "desk");
   assert.equal(normalizeBuiltinCategoryIcon("not-an-icon"), "object");
+});
+
+test("category icons are decorative unless an accessible label is supplied", () => {
+  assert.deepEqual(categoryIconAccessibility(), { "aria-hidden": true });
+  assert.deepEqual(categoryIconAccessibility("  Tables  "), { "aria-label": "Tables", role: "img" });
 });
 
 test("safe custom category SVG is reduced to the supported shape vocabulary", () => {

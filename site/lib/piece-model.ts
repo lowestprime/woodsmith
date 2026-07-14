@@ -38,6 +38,11 @@ export type PiecePolicySource = {
   metadata?: Record<string, unknown>;
 };
 
+export type PiecePublicPriceDisplay =
+  | { kind: "fixed"; cents: number }
+  | { kind: "label"; label: string }
+  | { kind: "unlisted" };
+
 function oneOf<T extends readonly string[]>(value: unknown, values: T): value is T[number] {
   return typeof value === "string" && (values as readonly string[]).includes(value);
 }
@@ -92,15 +97,23 @@ export function getPieceReviewsMode(piece: PiecePolicySource): ReviewsMode {
   return normalizeReviewsMode(explicit, inferLegacyReviewsMode(piece));
 }
 
-export function getPiecePublicPriceLabel(piece: PiecePolicySource): string | null {
+export function getPiecePublicPriceDisplay(piece: PiecePolicySource): PiecePublicPriceDisplay {
   const override = String(piece.publicPriceLabel ?? piece.metadata?.publicPriceLabel ?? "").trim();
-  if (override) return override;
+  if (override) return { kind: "label", label: override };
 
   const mode = getPiecePriceMode(piece);
-  if (mode === "contact-for-price") return "Contact for price";
-  if (mode === "determined-after-approval") return "Pricing follows design approval";
-  if (mode === "determined-at-order-completion") return "Final price determined at completion";
-  return null;
+  if (mode === "fixed" && typeof piece.priceCents === "number" && piece.priceCents > 0) {
+    return { kind: "fixed", cents: piece.priceCents };
+  }
+  if (mode === "contact-for-price") return { kind: "label", label: "Contact for price" };
+  if (mode === "determined-after-approval") return { kind: "label", label: "Pricing follows design approval" };
+  if (mode === "determined-at-order-completion") return { kind: "label", label: "Final price determined at completion" };
+  return { kind: "unlisted" };
+}
+
+export function getPiecePublicPriceLabel(piece: PiecePolicySource): string | null {
+  const display = getPiecePublicPriceDisplay(piece);
+  return display.kind === "label" ? display.label : null;
 }
 
 export function pieceCanEnterCart(piece: PiecePolicySource): boolean {

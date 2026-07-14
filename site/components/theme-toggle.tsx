@@ -1,14 +1,40 @@
 "use client";
 
 import { useEffect, useSyncExternalStore } from "react";
+import {
+  applyExternalThemeSnapshot,
+  normalizeThemeMode,
+  publishTheme,
+  syncThemePresentation,
+  THEME_CHANGE_EVENT,
+  THEME_STORAGE_KEY,
+  type ThemeMode,
+  type ThemePresentationTarget
+} from "@/lib/theme-store";
 
-type ThemeMode = "light" | "dark";
+function presentationTarget(): ThemePresentationTarget {
+  return {
+    setDocumentTheme: (theme) => {
+      document.documentElement.dataset.theme = theme;
+    },
+    setCookie: (value) => {
+      document.cookie = value;
+    }
+  };
+}
 
 function applyTheme(nextTheme: ThemeMode) {
-  document.documentElement.dataset.theme = nextTheme;
-  document.cookie = `beaman-theme=${nextTheme}; path=/; max-age=31536000; samesite=lax`;
-  window.localStorage.setItem("beaman-theme", nextTheme);
-  window.dispatchEvent(new Event("beaman-theme-change"));
+  publishTheme({
+    ...presentationTarget(),
+    setStoredTheme: (key, theme) => {
+      try {
+        window.localStorage.setItem(key, theme);
+      } catch {
+        // The cookie remains the durable fallback when browser storage is unavailable.
+      }
+    },
+    notify: (eventName) => window.dispatchEvent(new Event(eventName))
+  }, nextTheme);
 }
 
 function getThemeSnapshot(): ThemeMode {
@@ -16,17 +42,25 @@ function getThemeSnapshot(): ThemeMode {
     return "dark";
   }
 
-  const stored = window.localStorage.getItem("beaman-theme");
-  if (stored === "light" || stored === "dark") return stored;
+  let stored: ThemeMode | null = null;
+  try {
+    stored = normalizeThemeMode(window.localStorage.getItem(THEME_STORAGE_KEY));
+  } catch {
+    // Fall back to the server-selected document theme.
+  }
+  if (stored) return stored;
   return document.documentElement.dataset.theme === "light" ? "light" : "dark";
 }
 
 function subscribeTheme(listener: () => void) {
-  window.addEventListener("storage", listener);
-  window.addEventListener("beaman-theme-change", listener);
+  const storageListener = (event: StorageEvent) => {
+    if (applyExternalThemeSnapshot(presentationTarget(), event.key, event.newValue)) listener();
+  };
+  window.addEventListener("storage", storageListener);
+  window.addEventListener(THEME_CHANGE_EVENT, listener);
   return () => {
-    window.removeEventListener("storage", listener);
-    window.removeEventListener("beaman-theme-change", listener);
+    window.removeEventListener("storage", storageListener);
+    window.removeEventListener(THEME_CHANGE_EVENT, listener);
   };
 }
 
@@ -34,7 +68,7 @@ export function ThemeToggle({ initialTheme = "dark" }: { initialTheme?: ThemeMod
   const theme = useSyncExternalStore<ThemeMode>(subscribeTheme, getThemeSnapshot, () => initialTheme);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    syncThemePresentation(presentationTarget(), theme);
   }, [theme]);
 
   const isDark = theme === "dark";

@@ -25,6 +25,13 @@ export type BuiltinCategoryIconDefinition = {
   keywords: string[];
 };
 
+export function categoryIconAccessibility(label?: string) {
+  const accessibleLabel = label?.trim();
+  return accessibleLabel
+    ? { "aria-label": accessibleLabel, role: "img" as const }
+    : { "aria-hidden": true as const };
+}
+
 export const BUILTIN_CATEGORY_ICONS: BuiltinCategoryIconDefinition[] = [
   { name: "all", label: "All pieces", keywords: ["all", "collection", "grid"] },
   { name: "table", label: "Table", keywords: ["table", "dining", "pastry"] },
