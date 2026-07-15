@@ -7,7 +7,8 @@ import {
   type Browser,
   type BrowserContext,
   type Locator,
-  type Page
+  type Page,
+  type Request
 } from "playwright";
 
 import { chromiumLaunchOptions } from "./browser-launch.js";
@@ -37,6 +38,7 @@ import {
   fetchInventory
 } from "./inventory.js";
 import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
+import { waitForRequestDrain } from "./request-drain.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
 import { SNAPSHOT_LAB_COMMISSION_DRAFT_STATE } from "./snapshot-lab-evidence.js";
@@ -75,6 +77,7 @@ let manifest: RunManifest;
 const preAuthenticationDiagnostics: DiagnosticRecord[] = [];
 let preAuthenticationUnsafeBlocks = 0;
 const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
+const pendingVisualRequests = new WeakMap<Page, Set<Request>>();
 
 const coverageExclusions = [
   { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
@@ -197,6 +200,19 @@ function attachDiagnostics(
   route: string,
   blockedRequests: ReadonlySet<string>
 ) {
+  const pendingRequests = new Set<Request>();
+  pendingVisualRequests.set(page, pendingRequests);
+
+  page.on("request", request => {
+    if (["font", "image", "media"].includes(request.resourceType())) {
+      pendingRequests.add(request);
+    }
+  });
+
+  page.on("requestfinished", request => {
+    pendingRequests.delete(request);
+  });
+
   page.on("console", message => {
     if (
       ["error", "warning"].includes(
@@ -230,6 +246,7 @@ function attachDiagnostics(
   });
 
   page.on("requestfailed", request => {
+    pendingRequests.delete(request);
     const failure =
       request.failure()?.errorText ||
       "unknown request failure";
@@ -308,6 +325,26 @@ function attachDiagnostics(
           config.targetMode === "live-readonly"
       });
     }
+  });
+}
+
+async function waitForCaptureRequestDrain(page: Page) {
+  const pendingRequests = pendingVisualRequests.get(page);
+  if (!pendingRequests) {
+    throw new Error("Visual request tracking was not attached to the capture page.");
+  }
+
+  await waitForRequestDrain({
+    pendingCount: () => pendingRequests.size,
+    sleep: milliseconds => page.waitForTimeout(milliseconds)
+  });
+
+  await page.evaluate(async () => {
+    await Promise.all(Array.from(document.images).map(image =>
+      image.complete && image.naturalWidth > 0
+        ? image.decode().catch(() => undefined)
+        : Promise.resolve()
+    ));
   });
 }
 
@@ -990,9 +1027,8 @@ async function saveCapture(input: {
       : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
 
     // A screenshot can expose a new lazy or responsive image candidate. Drain
-    // that work before the next capture changes scroll/viewport state so the
-    // browser does not manufacture ERR_ABORTED diagnostics between states.
-    await waitForVisualIdle(input.page);
+    // only tracked visual requests before the next capture changes state.
+    await waitForCaptureRequestDrain(input.page);
   } catch (error) {
     manifest.diagnostics.push({
       timestamp: now(),
