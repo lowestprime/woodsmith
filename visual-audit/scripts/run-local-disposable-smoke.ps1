@@ -3,6 +3,8 @@ param(
   [string]$AppImage = "woodsmith:local-gate",
   [string]$AuditImage = "woodsmith-visual-audit:local-gate",
   [string]$CommitSha = "",
+  [ValidateSet("live-readonly", "snapshot-lab")]
+  [string]$TargetMode = "live-readonly",
   [ValidateSet("smoke", "full")]
   [string]$Scope = "smoke"
 )
@@ -52,12 +54,24 @@ if ($appBuildSha -ne ("WOODSMITH_BUILD_SHA=" + $CommitSha)) {
 $shortSha = $CommitSha.Substring(0, 8)
 $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
 $suffix = ([Guid]::NewGuid().ToString("N")).Substring(0, 10)
-$runId = "local-$Scope-$stamp-$shortSha-$suffix"
+$modeLabel = if ($TargetMode -eq "snapshot-lab") { "lab" } else { "readonly" }
+$runId = "local-$modeLabel-$Scope-$stamp-$shortSha-$suffix"
 $appContainer = "woodsmith-local-audit-app-$suffix"
 $dataVolume = "woodsmith-local-audit-data-$suffix"
 $mediaVolume = "woodsmith-local-audit-media-$suffix"
+$labDataVolume = "woodsmith-local-audit-lab-data-$suffix"
+$labMediaVolume = "woodsmith-local-audit-lab-media-$suffix"
 $outputVolume = "woodsmith-local-audit-output-$suffix"
 $secretVolume = "woodsmith-local-audit-secrets-$suffix"
+$managedVolumes = @(
+  $dataVolume,
+  $mediaVolume,
+  $outputVolume,
+  $secretVolume
+)
+if ($TargetMode -eq "snapshot-lab") {
+  $managedVolumes += @($labDataVolume, $labMediaVolume)
+}
 $password = [Convert]::ToHexString(
   [Security.Cryptography.RandomNumberGenerator]::GetBytes(36)
 ).ToLowerInvariant()
@@ -72,22 +86,34 @@ $failed = $true
 try {
   Write-Output "AUDIT_RUN_ID=$runId"
 
-  foreach ($volume in @(
-    $dataVolume,
-    $mediaVolume,
-    $outputVolume,
-    $secretVolume
-  )) {
+  foreach ($volume in $managedVolumes) {
     Invoke-Docker volume create $volume | Out-Null
   }
 
-  $initArguments = @(
-    "run", "--rm", "--network", "none", "--user", "0",
+  $initMounts = @(
     "-v", ($dataVolume + ":/data"),
     "-v", ($mediaVolume + ":/media"),
-    "-v", ($outputVolume + ":/output"),
+    "-v", ($outputVolume + ":/output")
+  )
+  $initTargets = "/data /media /output"
+  if ($TargetMode -eq "snapshot-lab") {
+    $initMounts += @(
+      "-v", ($labDataVolume + ":/lab-data"),
+      "-v", ($labMediaVolume + ":/lab-media")
+    )
+    $initTargets += " /lab-data /lab-media"
+  }
+  $initArguments = @(
+    "run", "--rm", "--network", "none", "--user", "0"
+  )
+  $initArguments += $initMounts
+  $initArguments += @(
     "--entrypoint", "/bin/sh", $AppImage, "-c",
-    "chown 1001:1001 /data /media /output && chmod 700 /data /output && chmod 755 /media"
+    ("chown 1001:1001 " + $initTargets +
+      " && chmod 700 /data /output" +
+      $(if ($TargetMode -eq "snapshot-lab") { " /lab-data" } else { "" }) +
+      " && chmod 755 /media" +
+      $(if ($TargetMode -eq "snapshot-lab") { " /lab-media" } else { "" }))
   )
   Invoke-Docker @initArguments
 
@@ -162,63 +188,173 @@ const files = [
   )
   Invoke-Docker @mediaArguments
 
-  $appArguments = @(
-    "run", "-d", "--name", $appContainer,
-    "--network", "none",
-    "--read-only",
-    "--cap-drop", "ALL",
-    "--security-opt", "no-new-privileges:true",
-    "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777",
-    "--tmpfs", "/app/site/.next/cache:rw,noexec,nosuid,nodev,size=128m,mode=700,uid=1001,gid=1001",
-    "-v", ($dataVolume + ":/app/site/data:rw"),
-    "-v", ($mediaVolume + ":/app/pics:ro"),
-    "-v", ($secretVolume + ":/run/secrets:ro"),
-    "-e", "NODE_ENV=production",
-    "-e", "SELF_HOSTED=true",
-    "-e", "SITE_URL=http://127.0.0.1:3002",
-    "-e", "NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3002",
-    "-e", "MEDIA_ROOT=/app/pics",
-    "-e", "DATA_ROOT=/app/site/data",
-    "-e", ("STUDIO_PASSWORD=" + $password),
-    "-e", ("SESSION_SECRET=" + $sessionSecret),
-    "-e", "VISUAL_AUDIT_TOKEN_FILE=/run/secrets/audit_token",
-    "-e", "VISUAL_AUDIT_MAX_RECORDS=5000",
-    "-e", "STRIPE_SECRET_KEY=",
-    "-e", "STRIPE_PUBLISHABLE_KEY=",
-    "-e", "EASYPOST_API_KEY=",
-    "-e", "SMTP_HOST=",
-    "-e", "SMTP_USER=",
-    "-e", "SMTP_PASSWORD=",
-    "-e", "OPENAI_API_KEY=",
-    "-e", "ENABLE_PUBLIC_AI_RENDERING=false",
-    "-e", "ENABLE_AI_BACKGROUND_CLEANUP=false",
-    "-e", "ENABLE_AI_MEDIA_ANALYSIS=false",
-    "-e", "ENABLE_EMBEDDING_SEARCH=false",
-    "-e", "ENABLE_LOCAL_IMAGE_EMBEDDINGS=false",
-    "-e", "ENABLE_GEMINI_FALLBACK=false",
-    "-e", "AI_PROVIDER=disabled",
-    "-e", "AI_ANALYSIS_PROVIDER=disabled",
-    "-e", "AI_EMBEDDING_PROVIDER=disabled",
-    "-e", "AI_FALLBACK_PROVIDER=disabled",
-    "-e", "LOCAL_AI_SIDECAR_URL=http://127.0.0.1:9",
-    "-e", "OLLAMA_BASE_URL=http://127.0.0.1:9",
-    $AppImage
-  )
-  Invoke-Docker @appArguments | Out-Null
+  function New-AppArguments {
+    param(
+      [string]$DataVolume,
+      [string]$MediaVolume,
+      [ValidateSet("ro", "rw")]
+      [string]$MediaAccess,
+      [string]$CloneDataVolume = ""
+    )
 
-  $ready = $false
-  for ($attempt = 1; $attempt -le 60; $attempt += 1) {
-    & docker exec $appContainer node -e "fetch('http://127.0.0.1:3002/studio/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-    if ($LASTEXITCODE -eq 0) {
-      $ready = $true
-      Write-Output "APP_READY_ATTEMPT=$attempt"
-      break
+    $arguments = @(
+      "run", "-d", "--name", $appContainer,
+      "--network", "none",
+      "--read-only",
+      "--cap-drop", "ALL",
+      "--security-opt", "no-new-privileges:true",
+      "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=128m,mode=1777",
+      "--tmpfs", "/app/site/.next/cache:rw,noexec,nosuid,nodev,size=128m,mode=700,uid=1001,gid=1001",
+      "-v", ($DataVolume + ":/app/site/data:rw"),
+      "-v", ($MediaVolume + ":/app/pics:" + $MediaAccess),
+      "-v", ($secretVolume + ":/run/secrets:ro")
+    )
+    if (-not [string]::IsNullOrWhiteSpace($CloneDataVolume)) {
+      $arguments += @("-v", ($CloneDataVolume + ":/clone:rw"))
     }
-    Start-Sleep -Seconds 2
+    $arguments += @(
+      "-e", "NODE_ENV=production",
+      "-e", "SELF_HOSTED=true",
+      "-e", "SITE_URL=http://127.0.0.1:3002",
+      "-e", "NEXT_PUBLIC_SITE_URL=http://127.0.0.1:3002",
+      "-e", "MEDIA_ROOT=/app/pics",
+      "-e", "DATA_ROOT=/app/site/data",
+      "-e", ("STUDIO_PASSWORD=" + $password),
+      "-e", ("SESSION_SECRET=" + $sessionSecret),
+      "-e", "VISUAL_AUDIT_TOKEN_FILE=/run/secrets/audit_token",
+      "-e", "VISUAL_AUDIT_MAX_RECORDS=5000",
+      "-e", "STRIPE_SECRET_KEY=",
+      "-e", "STRIPE_PUBLISHABLE_KEY=",
+      "-e", "EASYPOST_API_KEY=",
+      "-e", "SMTP_HOST=",
+      "-e", "SMTP_USER=",
+      "-e", "SMTP_PASSWORD=",
+      "-e", "OPENAI_API_KEY=",
+      "-e", "ENABLE_PUBLIC_AI_RENDERING=false",
+      "-e", "ENABLE_AI_BACKGROUND_CLEANUP=false",
+      "-e", "ENABLE_AI_MEDIA_ANALYSIS=false",
+      "-e", "ENABLE_EMBEDDING_SEARCH=false",
+      "-e", "ENABLE_LOCAL_IMAGE_EMBEDDINGS=false",
+      "-e", "ENABLE_GEMINI_FALLBACK=false",
+      "-e", "AI_PROVIDER=disabled",
+      "-e", "AI_ANALYSIS_PROVIDER=disabled",
+      "-e", "AI_EMBEDDING_PROVIDER=disabled",
+      "-e", "AI_FALLBACK_PROVIDER=disabled",
+      "-e", "LOCAL_AI_SIDECAR_URL=http://127.0.0.1:9",
+      "-e", "OLLAMA_BASE_URL=http://127.0.0.1:9",
+      $AppImage
+    )
+    return $arguments
   }
-  if (-not $ready) {
+
+  function Wait-DisposableApp {
+    param([string]$Label)
+
+    for ($attempt = 1; $attempt -le 60; $attempt += 1) {
+      & docker exec $appContainer node -e "fetch('http://127.0.0.1:3002/studio/login').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      if ($LASTEXITCODE -eq 0) {
+        Write-Output ("APP_READY_" + $Label + "_ATTEMPT=" + $attempt)
+        return
+      }
+      Start-Sleep -Seconds 2
+    }
     throw "The disposable application did not become ready."
   }
+
+  $fingerprintScript = @'
+const crypto = require("node:crypto");
+const fs = require("node:fs");
+const path = require("node:path");
+const root = "/input";
+const files = [];
+const walk = (directory) => {
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const absolute = path.join(directory, entry.name);
+    if (entry.isDirectory()) walk(absolute);
+    else if (entry.isFile()) files.push(absolute);
+    else throw new Error("Fingerprint input contains a non-file entry.");
+  }
+};
+walk(root);
+files.sort();
+const hash = crypto.createHash("sha256");
+for (const file of files) {
+  hash.update(path.relative(root, file));
+  hash.update("\0");
+  hash.update(fs.readFileSync(file));
+  hash.update("\0");
+}
+console.log(hash.digest("hex"));
+'@
+
+  function Get-VolumeFingerprint {
+    param([string]$Volume)
+
+    $result = @(
+      & docker run --rm --network none --read-only --user 1001:1001 `
+        --cap-drop ALL --security-opt no-new-privileges:true `
+        -v ($Volume + ":/input:ro") --entrypoint node $AuditImage `
+        -e $fingerprintScript
+    )
+    if ($LASTEXITCODE -ne 0 -or $result.Count -eq 0) {
+      throw "Unable to fingerprint disposable volume $Volume."
+    }
+    return $result[-1].Trim()
+  }
+
+  $activeDataVolume = $dataVolume
+  $activeMediaVolume = $mediaVolume
+  $activeMediaAccess = "ro"
+  $sourceDataBefore = ""
+  $sourceMediaBefore = ""
+
+  if ($TargetMode -eq "snapshot-lab") {
+    $sourceArguments = @(
+      New-AppArguments -DataVolume $dataVolume -MediaVolume $mediaVolume `
+        -MediaAccess "ro" -CloneDataVolume $labDataVolume
+    )
+    Invoke-Docker @sourceArguments | Out-Null
+    Wait-DisposableApp -Label "SOURCE"
+
+    $cloneDatabaseScript = @'
+const { DatabaseSync } = require("node:sqlite");
+const source = new DatabaseSync("/app/site/data/woodsmith.sqlite");
+source.exec("VACUUM INTO '/clone/woodsmith.sqlite'");
+source.close();
+const clone = new DatabaseSync("/clone/woodsmith.sqlite", { readOnly: true });
+const quickCheck = clone.prepare("PRAGMA quick_check").all();
+clone.close();
+if (!quickCheck.some((row) => row.quick_check === "ok")) process.exit(1);
+console.log("SNAPSHOT_CLONE_QUICK_CHECK=ok");
+'@
+    $cloneDatabaseArguments = @(
+      "exec", $appContainer, "node", "--experimental-sqlite", "-e", $cloneDatabaseScript
+    )
+    Invoke-Docker @cloneDatabaseArguments
+
+    $copyMediaArguments = @(
+      "run", "--rm", "--network", "none", "--user", "0",
+      "-v", ($mediaVolume + ":/source:ro"),
+      "-v", ($labMediaVolume + ":/target:rw"),
+      "--entrypoint", "/bin/sh", $AppImage, "-c",
+      "cp -a /source/. /target/ && chown -R 1001:1001 /target"
+    )
+    Invoke-Docker @copyMediaArguments
+    Invoke-Docker rm -f $appContainer | Out-Null
+
+    $sourceDataBefore = Get-VolumeFingerprint -Volume $dataVolume
+    $sourceMediaBefore = Get-VolumeFingerprint -Volume $mediaVolume
+    $activeDataVolume = $labDataVolume
+    $activeMediaVolume = $labMediaVolume
+    $activeMediaAccess = "rw"
+  }
+
+  $appArguments = @(
+    New-AppArguments -DataVolume $activeDataVolume -MediaVolume $activeMediaVolume `
+      -MediaAccess $activeMediaAccess
+  )
+  Invoke-Docker @appArguments | Out-Null
+  Wait-DisposableApp -Label $(if ($TargetMode -eq "snapshot-lab") { "LAB" } else { "READONLY" })
 
   $runnerArguments = @(
     "--rm",
@@ -229,10 +365,10 @@ const files = [
     "--security-opt", "no-new-privileges:true",
     "--ipc", "host",
     "--tmpfs", "/audit-tmp:rw,nosuid,nodev,size=128m,mode=700,uid=1001,gid=1001",
-    "--tmpfs", "/tmp:rw,nosuid,nodev,size=256m,mode=1777",
+    "--tmpfs", "/tmp:rw,nosuid,nodev,size=512m,mode=1777",
     "-v", ($outputVolume + ":/output:rw"),
     "-v", ($secretVolume + ":/run/secrets:ro"),
-    "-e", "TARGET_MODE=live-readonly",
+    "-e", ("TARGET_MODE=" + $TargetMode),
     "-e", "BASE_URL=http://127.0.0.1:3002",
     "-e", ("TARGET_COMMIT_SHA=" + $CommitSha),
     "-e", ("AUDIT_RUN_ID=" + $runId),
@@ -275,6 +411,9 @@ const validation = JSON.parse(
 const checksums = JSON.parse(
   fs.readFileSync(path.join(root, "checksums.json"), "utf8")
 );
+const reportIndex = JSON.parse(
+  fs.readFileSync(path.join(root, "report", "report-index.json"), "utf8")
+);
 const walk = (directory) =>
   fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const item = path.join(directory, entry.name);
@@ -302,6 +441,7 @@ const routeKeys = new Set(
 );
 const result = {
   runId: process.env.AUDIT_RUN_ID,
+  targetMode: process.env.TARGET_MODE,
   passed: validation.passed,
   failures: validation.failures.length,
   unexpectedDiagnostics: validation.diagnostics.length,
@@ -309,25 +449,46 @@ const result = {
   routes: routeKeys.size,
   skipFocused,
   skipActivated,
+  snapshotLabSaved: manifest.captures.filter(
+    (item) => item.state === "snapshot-lab-commission-draft-saved"
+  ).length,
   unsafeSuccessful: manifest.security.successfulUnsafeRequests,
   unsafeBlocked: manifest.security.sameOriginUnsafeRequestsBlocked,
   tokenEligible: manifest.security.tokenEligibleRequests,
   crossOrigin: manifest.security.crossOriginRequests,
   checksums: checksums.length,
+  reportSourceCaptures: reportIndex.sourceCaptureCount,
+  reportSelectedCaptures: reportIndex.captureCount,
+  shareableSourceCaptures: reportIndex.shareableSourceCaptureCount,
+  shareableSelectedCaptures: reportIndex.shareableCaptureCount,
+  restrictedPrintPages: reportIndex.restrictedPrintPages,
+  shareablePrintPages: reportIndex.shareablePrintPages,
   totalFiles: files.length,
   temporaryFiles: temporaryFiles.length,
   shareableImages: shareableImages.length
 };
 console.log(JSON.stringify(result, null, 2));
 
+const expectedUnsafeSuccessful = Number(
+  process.env.EXPECTED_UNSAFE_SUCCESSFUL
+);
+
 if (
   !result.passed ||
   result.failures !== 0 ||
   result.unexpectedDiagnostics !== 0 ||
-  result.unsafeSuccessful !== 0 ||
-  result.unsafeBlocked < 1 ||
+  result.unsafeSuccessful !== expectedUnsafeSuccessful ||
+  (result.targetMode === "live-readonly" && result.unsafeBlocked < 1) ||
+  (result.targetMode === "snapshot-lab" && result.snapshotLabSaved !== 1) ||
   result.tokenEligible < 1 ||
   result.crossOrigin !== 0 ||
+  result.reportSourceCaptures !== result.captures ||
+  result.reportSelectedCaptures < 1 ||
+  result.reportSelectedCaptures > result.reportSourceCaptures ||
+  result.shareableSelectedCaptures < 1 ||
+  result.shareableSelectedCaptures > result.shareableSourceCaptures ||
+  result.restrictedPrintPages < result.reportSelectedCaptures ||
+  result.shareablePrintPages < result.shareableSelectedCaptures ||
   result.temporaryFiles !== 0 ||
   result.skipFocused < 1 ||
   result.skipFocused !== result.skipActivated
@@ -340,9 +501,53 @@ if (
     "run", "--rm", "--network", "none", "--user", "1001:1001",
     "-v", ($outputVolume + ":/output:ro"),
     "-e", ("AUDIT_RUN_ID=" + $runId),
+    "-e", ("TARGET_MODE=" + $TargetMode),
+    "-e", ("EXPECTED_UNSAFE_SUCCESSFUL=" + $(if ($TargetMode -eq "snapshot-lab") { "2" } else { "0" })),
     "--entrypoint", "node", $AuditImage, "-e", $summaryScript
   )
   Invoke-Docker @summaryArguments
+
+  if ($TargetMode -eq "snapshot-lab") {
+    $labStateScript = @'
+const { DatabaseSync } = require("node:sqlite");
+const database = new DatabaseSync("/data/woodsmith.sqlite", { readOnly: true });
+const quickCheck = database.prepare("PRAGMA quick_check").all();
+const draftCount = database.prepare("SELECT COUNT(*) AS count FROM commission_drafts").get().count;
+database.close();
+console.log(JSON.stringify({
+  quickCheck: quickCheck.some((row) => row.quick_check === "ok"),
+  draftCount
+}));
+'@
+    $labStateOutput = @(
+      & docker run --rm --network none --read-only --user 1001:1001 `
+        --cap-drop ALL --security-opt no-new-privileges:true `
+        -v ($labDataVolume + ":/data:ro") --entrypoint node $AppImage `
+        --experimental-sqlite -e $labStateScript
+    )
+    if ($LASTEXITCODE -ne 0 -or $labStateOutput.Count -eq 0) {
+      throw "Unable to verify the disposable snapshot-lab database."
+    }
+    $labState = $labStateOutput[-1] | ConvertFrom-Json
+    if (-not $labState.quickCheck -or $labState.draftCount -ne 0) {
+      throw "The disposable snapshot lab failed quick_check or retained commission drafts."
+    }
+
+    $sourceDataAfter = Get-VolumeFingerprint -Volume $dataVolume
+    $sourceMediaAfter = Get-VolumeFingerprint -Volume $mediaVolume
+    $labMediaAfter = Get-VolumeFingerprint -Volume $labMediaVolume
+    $sourceDataUnchanged = $sourceDataBefore -eq $sourceDataAfter
+    $sourceMediaUnchanged = $sourceMediaBefore -eq $sourceMediaAfter
+    $labMediaMatchesSource = $sourceMediaBefore -eq $labMediaAfter
+    Write-Output ("SNAPSHOT_LAB_QUICK_CHECK=" + $labState.quickCheck)
+    Write-Output ("SNAPSHOT_LAB_RESIDUAL_DRAFTS=" + $labState.draftCount)
+    Write-Output ("SNAPSHOT_SOURCE_DATA_UNCHANGED=" + $sourceDataUnchanged)
+    Write-Output ("SNAPSHOT_SOURCE_MEDIA_UNCHANGED=" + $sourceMediaUnchanged)
+    Write-Output ("SNAPSHOT_LAB_MEDIA_MATCHES_SOURCE=" + $labMediaMatchesSource)
+    if (-not $sourceDataUnchanged -or -not $sourceMediaUnchanged -or -not $labMediaMatchesSource) {
+      throw "Snapshot-lab isolation or media-clone verification failed."
+    }
+  }
 
   $applicationLogs = @(& docker logs $appContainer 2>&1)
   $logFailures = @(
@@ -370,12 +575,7 @@ finally {
   }
 
   & docker rm -f $appContainer 2>$null | Out-Null
-  foreach ($volume in @(
-    $dataVolume,
-    $mediaVolume,
-    $outputVolume,
-    $secretVolume
-  )) {
+  foreach ($volume in $managedVolumes) {
     & docker volume rm -f $volume 2>$null | Out-Null
   }
 

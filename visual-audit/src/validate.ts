@@ -4,6 +4,10 @@ import path from "node:path";
 import sharp from "sharp";
 
 import { config, viewports } from "./config.js";
+import {
+  canonicalCoverageMatrix,
+  discoveredCoverageMatrix
+} from "./coverage-matrix.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
 import type { RunManifest, TileManifest } from "./types.js";
@@ -225,8 +229,6 @@ async function main() {
     }
   }
 
-  const matrixProfiles = config.scope === "smoke" ? ["desktop-1440"] : viewports.map((viewport) => viewport.name);
-  const matrixThemes = config.scope === "smoke" ? ["dark"] : ["dark", "light"];
   const matrixRoutes = new Map<string, typeof manifest.routes>();
   for (const route of manifest.routes.filter((item) => !item.route.includes("auditState="))) {
     const key = `${route.auth}::${route.route}`;
@@ -234,13 +236,23 @@ async function main() {
   }
 
   for (const [key, results] of matrixRoutes) {
-    for (const profile of matrixProfiles) {
-      for (const theme of matrixThemes) {
-        const routeResult = results.find((item) => item.viewport === profile && item.theme === theme);
-        if (!routeResult) failures.push(`Coverage matrix is missing ${profile}/${theme} for ${key}.`);
-        else if (!manifest.captures.some((capture) => capture.auth === routeResult.auth && capture.route === routeResult.route && capture.viewport === profile && capture.theme === theme)) {
-          failures.push(`Coverage matrix has no successful capture for ${profile}/${theme} ${key}.`);
-        }
+    const tier = results.some((item) => item.coverageTier === "canonical")
+      ? "canonical"
+      : results.some((item) => item.coverageTier === "discovered")
+        ? "discovered"
+        : "special";
+    if (tier === "special") continue;
+    const expectedMatrix = tier === "canonical"
+      ? canonicalCoverageMatrix(config.scope, viewports)
+      : discoveredCoverageMatrix(config.scope, viewports);
+
+    for (const entry of expectedMatrix) {
+      const profile = entry.profile.name;
+      const theme = entry.theme;
+      const routeResult = results.find((item) => item.viewport === profile && item.theme === theme);
+      if (!routeResult) failures.push(`${tier} coverage matrix is missing ${profile}/${theme} for ${key}.`);
+      else if (!manifest.captures.some((capture) => capture.auth === routeResult.auth && capture.route === routeResult.route && capture.viewport === profile && capture.theme === theme)) {
+        failures.push(`${tier} coverage matrix has no successful capture for ${profile}/${theme} ${key}.`);
       }
     }
   }
@@ -290,8 +302,40 @@ async function main() {
   const reportIndexFile = path.join(config.runRoot, "report", "report-index.json");
   if (!await exists(reportIndexFile)) failures.push("Report index is missing.");
   const reportIndex = await exists(reportIndexFile)
-    ? JSON.parse(await fs.readFile(reportIndexFile, "utf8")) as { restrictedPrintPages?: number; shareablePrintPages?: number }
+    ? JSON.parse(await fs.readFile(reportIndexFile, "utf8")) as {
+        sourceCaptureCount?: number;
+        captureCount?: number;
+        shareableSourceCaptureCount?: number;
+        shareableCaptureCount?: number;
+        restrictedPrintPages?: number;
+        shareablePrintPages?: number;
+      }
     : {};
+  const selectionFile = path.join(config.runRoot, "report", "selection.json");
+  if (!await exists(selectionFile)) failures.push("Report representative selection manifest is missing.");
+  if (await exists(selectionFile)) {
+    const selection = JSON.parse(await fs.readFile(selectionFile, "utf8")) as {
+      sourceCaptureCount?: number;
+      selectedCaptureCount?: number;
+      selectedKeys?: string[];
+      missingRoutes?: string[];
+    };
+    const selectedKeys = new Set(selection.selectedKeys ?? []);
+    const manifestKeys = new Set(manifest.captures.map((capture) => capture.key));
+    const selectedRoutes = new Set(manifest.captures
+      .filter((capture) => selectedKeys.has(capture.key))
+      .map((capture) => `${capture.auth}::${capture.route}`));
+    const sourceRoutes = new Set(manifest.captures.map((capture) => `${capture.auth}::${capture.route}`));
+
+    if (selection.sourceCaptureCount !== manifest.captures.length) failures.push("Report selection source count does not match the manifest.");
+    if (selection.selectedCaptureCount !== selectedKeys.size || selectedKeys.size === 0) failures.push("Report selection count is empty or inconsistent.");
+    if ([...selectedKeys].some((key) => !manifestKeys.has(key))) failures.push("Report selection references an unknown capture key.");
+    if ([...sourceRoutes].some((route) => !selectedRoutes.has(route))) failures.push("Report selection omitted one or more source routes.");
+    if ((selection.missingRoutes ?? []).length > 0) failures.push("Report selection recorded missing routes.");
+    if (reportIndex.sourceCaptureCount !== manifest.captures.length || reportIndex.captureCount !== selectedKeys.size) {
+      failures.push("Report index capture counts do not match the representative selection.");
+    }
+  }
   await Promise.all([
     validateHtml(path.join(config.runRoot, "report", "index.html"), failures),
     validateHtml(path.join(config.runRoot, "report", "print.html"), failures),

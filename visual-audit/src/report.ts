@@ -6,6 +6,11 @@ import sharp from "sharp";
 
 import { config } from "./config.js";
 import { createPdfAtlas, type PdfAtlasPage } from "./pdf-atlas.js";
+import {
+  missingSelectedRoutes,
+  REPORT_SELECTION_POLICY,
+  selectReportCaptures
+} from "./report-selection.js";
 import type { CaptureRecord, RunManifest } from "./types.js";
 import { clearDirectoryContents, ensureDirectory, escapeHtml, exists, redactedAssetName, writeJsonAtomic } from "./util.js";
 
@@ -125,7 +130,8 @@ function htmlDocument(input: {
       <div><dt>Routes</dt><dd>${new Set(input.captures.map((capture) => `${capture.auth}:${capture.route}`)).size}</dd></div>
       <div><dt>Unexpected diagnostics</dt><dd>${diagnostics.length}</dd></div>
     </section>
-    ${input.redacted ? '<p class="notice">Private routes, authenticated captures, account details, and customer references are excluded from this edition.</p>' : ""}
+    ${input.redacted ? '<p class="notice">Private routes, authenticated captures, account details, and customer references are excluded from this edition. This edition uses the deterministic representative selection recorded in its manifest; the restricted raw archive remains complete.</p>' : ""}
+    ${input.print && !input.redacted ? '<p class="notice">This printable atlas contains deterministic route, viewport, theme, accessibility, and deep-state representatives. The restricted searchable HTML and PNG tree retain every capture.</p>' : ""}
     ${input.print ? "" : '<label>Search captures<input id="capture-search" type="search" placeholder="Route, viewport, theme, or state"></label>'}
   </header>
   <main>
@@ -185,7 +191,14 @@ async function main() {
   const restrictedHtml = path.join(reportRoot, "index.html");
   await fs.writeFile(restrictedHtml, htmlDocument({ manifest, captures: manifest.captures, cards: restrictedCards, redacted: false, comparison, print: false }), { encoding: "utf8", mode: 0o600 });
 
-  const shareableCaptures = manifest.captures.filter((capture) => !capture.sensitive && capture.auth === "anonymous");
+  const printCaptures = selectReportCaptures(manifest.captures);
+  const shareableSourceCaptures = manifest.captures.filter((capture) => !capture.sensitive && capture.auth === "anonymous");
+  const shareableCaptures = selectReportCaptures(shareableSourceCaptures);
+  const missingRestrictedRoutes = missingSelectedRoutes(manifest.captures, printCaptures);
+  const missingShareableRoutes = missingSelectedRoutes(shareableSourceCaptures, shareableCaptures);
+  if (missingRestrictedRoutes.length > 0 || missingShareableRoutes.length > 0) {
+    throw new Error("Report representative selection omitted one or more source routes.");
+  }
   const shareableCards: string[] = [];
   let shareableAssetIndex = 0;
   for (const capture of shareableCaptures) {
@@ -209,7 +222,9 @@ async function main() {
     mode: manifest.mode,
     scope: manifest.scope,
     deployedCommit: manifest.deployedCommit,
+    sourceCaptureCount: shareableSourceCaptures.length,
     captureCount: shareableCaptures.length,
+    selectionPolicy: REPORT_SELECTION_POLICY,
     routes: [...new Set(shareableCaptures.map((capture) => redact(capture.route)))].sort(),
     exclusions: manifest.exclusions
   };
@@ -224,7 +239,7 @@ async function main() {
   let restrictedPrintPages = 0;
   let shareablePrintPages = 0;
   let sequence = 0;
-  for (const capture of manifest.captures) {
+  for (const capture of printCaptures) {
     const sources: string[] = [];
     for (const relativeFile of capture.files) {
       sequence += 1;
@@ -275,7 +290,7 @@ async function main() {
 
   const restrictedPrintHtml = path.join(reportRoot, "print.html");
   const shareablePrintHtml = path.join(shareableRoot, "print.html");
-  await fs.writeFile(restrictedPrintHtml, htmlDocument({ manifest, captures: manifest.captures, cards: restrictedPrintCards.join("\n"), redacted: false, comparison, print: true }), { encoding: "utf8", mode: 0o600 });
+  await fs.writeFile(restrictedPrintHtml, htmlDocument({ manifest, captures: printCaptures, cards: restrictedPrintCards.join("\n"), redacted: false, comparison, print: true }), { encoding: "utf8", mode: 0o600 });
   await fs.writeFile(shareablePrintHtml, htmlDocument({ manifest, captures: shareableCaptures, cards: shareablePrintCards.join("\n"), redacted: true, comparison: { status: "Comparison details are restricted." }, print: true }), { encoding: "utf8", mode: 0o600 });
 
   const unexpectedDiagnostics = manifest.diagnostics.filter((item) => !item.expected).length;
@@ -288,7 +303,7 @@ async function main() {
     mode: manifest.mode,
     commit: manifest.deployedCommit,
     createdAt: manifest.startedAt,
-    captureCount: manifest.captures.length,
+    captureCount: printCaptures.length,
     routeCount,
     unexpectedDiagnostics,
     redacted: false,
@@ -316,10 +331,20 @@ async function main() {
     shareableHtml: "shareable/index.html",
     shareablePrintHtml: "shareable/print.html",
     shareablePdf: "shareable/woodmat-visual-atlas-redacted.pdf",
-    captureCount: manifest.captures.length,
+    sourceCaptureCount: manifest.captures.length,
+    captureCount: printCaptures.length,
     shareableCaptureCount: shareableCaptures.length,
+    shareableSourceCaptureCount: shareableSourceCaptures.length,
+    selectionPolicy: REPORT_SELECTION_POLICY,
     restrictedPrintPages,
     shareablePrintPages
+  });
+  await writeJsonAtomic(path.join(reportRoot, "selection.json"), {
+    selectionPolicy: REPORT_SELECTION_POLICY,
+    sourceCaptureCount: manifest.captures.length,
+    selectedCaptureCount: printCaptures.length,
+    selectedKeys: printCaptures.map((capture) => capture.key),
+    missingRoutes: missingRestrictedRoutes
   });
 }
 

@@ -31,7 +31,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
-- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, searchable HTML, streamed bookmarked PDF atlases, checksums, and baseline comparisons
+- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, complete restricted searchable HTML, deterministic representative bookmarked PDF/shareable atlases, checksums, and baseline comparisons
 - A fail-closed paired recovery tool that creates and verifies an online-consistent SQLite backup, a hashed copy of the mounted media tree, and an optional protected environment-file copy, then restores only to new staging destinations
 
 ## 📃 Production Notes
@@ -55,7 +55,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
 - `docker-compose.synology.yml`: Synology runtime model
 - `visual-audit/`: pinned Playwright capture, report, comparison, validation, and NAS automation package
-- `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows smoke using fake credentials, synthetic media, non-root containers, and automatically removed volumes
+- `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows live-readonly or clone-only snapshot-lab smoke using fake credentials, synthetic media, non-root containers, and automatically removed volumes
 - `site/scripts/runtime-state.mjs`: backup, verify, and staging-only restore CLI included in the production image at `/app/site/ops/runtime-state.mjs`
 - `docs/visual-archive.md`: private live-readonly and snapshot-lab operating guide
 - `synology-nas-deploy.md`: deployment and NAS operations guide

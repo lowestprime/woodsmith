@@ -160,7 +160,7 @@ docker buildx build \
 
 Optional local container smoke test:
 
-For the exact release-candidate app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. It runs without production mounts or credentials and removes its temporary data, media, output, and secret volumes after validation.
+For the exact release-candidate app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. Its default live-readonly mode runs without production mounts or credentials. Add `-TargetMode snapshot-lab` to prove the bounded mutation flow against separate online-cloned SQLite and copied synthetic-media volumes. Both modes remove their temporary app, data, media, output, and secret resources after validation.
 
 ```bash
 docker run --rm -p 3002:3002 \
@@ -291,7 +291,7 @@ export AUDIT_SCOPE=smoke
 visual-audit/scripts/run-live-audit.sh
 ```
 
-The same run ID is used by capture, baseline comparison, report generation, and validation. Report generation writes searchable HTML and streams bounded A3 PDF pages with native bookmarks instead of loading the entire image atlas into Chromium. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
+The same run ID is used by capture, baseline comparison, report generation, and validation. Canonical routes retain the full viewport/theme/deep matrix; discovered link variants use recorded desktop/tablet/mobile theme representatives plus archival desktop. The restricted PNG tree and searchable HTML remain complete. `report/selection.json` records the bounded per-route set used by the A3 bookmarked PDFs and redacted edition. Chromium uses the Compose `ipc: host` shared-memory path, and the audit runner receives a 512 MiB `/tmp` scratch ceiling. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
 
 Mutation-dependent success/error states require `visual-audit/scripts/prepare-snapshot-lab.sh` followed by `visual-audit/scripts/run-snapshot-lab.sh`. The lab uses a `VACUUM INTO` database clone, reflink/full-copy media, verified run markers, an internal Docker network, and disabled external integrations. It never mounts production data or media read-write.
 

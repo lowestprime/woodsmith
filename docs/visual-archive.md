@@ -126,7 +126,9 @@ visual-audit/scripts/run-local-disposable-smoke.ps1 `
   -CommitSha <full-40-character-sha>
 ```
 
-The script uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It validates the archive, rejects image-cache and unhandled-rejection errors, and removes every container and volume in `finally`.
+The default `live-readonly` mode uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It validates the archive, rejects image-cache and unhandled-rejection errors, and removes every container and volume in `finally`.
+
+Run the same current-image gate against an isolated local snapshot lab with `-TargetMode snapshot-lab`. The harness first initializes disposable source data/media, creates the lab database online with SQLite `VACUUM INTO`, copies media into distinct lab volumes, and then runs the app and audit only against those clones. Acceptance requires exactly one draft save and one cleanup delete, zero residual drafts, SQLite `quick_check`, unchanged source data/media fingerprints, an unchanged cloned media tree, and complete container/volume cleanup.
 
 ## Full Live Archive
 
@@ -148,7 +150,9 @@ Full mode covers dark and light themes at:
 - 430 x 932, 390 x 844, 375 x 812, and 320 x 720 mobile profiles at DPR 3;
 - 2560 x 1440 archival desktop at DPR 2.
 
-Every route receives a deterministic keyboard skip-link focus and activation check. Deep archival-dark capture opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Long pages and independently scrollable surfaces use 12 percent overlapping raw tiles, stitched PNGs, tile manifests, and image-correlation seam checks.
+Source- and database-inventoried canonical routes use the complete matrix above. Rendered same-origin links discovered from those pages use desktop, tablet, and mobile representatives in both themes plus archival desktop dark. This accounts for every finite link target without repeating deep captures for query variants that render the same page template. `coverage-plan.json` records both matrices and the sampling rationale.
+
+Every captured route state receives a deterministic keyboard skip-link focus and activation check. Deep archival-dark capture on canonical routes opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Long pages and independently scrollable surfaces use 12 percent overlapping raw tiles, stitched PNGs, tile manifests, and image-correlation seam checks. Chromium uses the container's explicit shared-memory mount rather than spilling into the bounded `/tmp` tmpfs; the audit runner has a 512 MiB scratch ceiling for browser profiles and temporary files.
 
 ## Snapshot Lab
 
@@ -185,6 +189,7 @@ visual-audits/<run-id>/
   png/
   report/index.html
   report/print.html
+  report/selection.json
   report/report-index.json
   woodmat-visual-atlas.pdf
   shareable/index.html
@@ -192,16 +197,16 @@ visual-audits/<run-id>/
   shareable/woodmat-visual-atlas-redacted.pdf
 ```
 
-Raw tiles and tile manifests live beside their stitched capture. The HTML report is searchable and includes linked contents. PDFKit streams one bounded image slice per A3 page, with selectable route/state metadata and native capture bookmarks, so report generation does not decode the entire atlas in one browser page. Report reruns clear only their generated report/shareable directories and atomically replace both PDFs. The PNG and raw-tile archive remains the highest-resolution source of truth.
+Raw tiles and tile manifests live beside their stitched capture. The restricted HTML report remains complete and searchable across every capture. `report/selection.json` records a deterministic maximum of 16 print representatives per authenticated route, covering route, theme, viewport, accessibility, header, and available deep-state families. PDFKit streams only that reviewed selection as bounded A3 image slices with selectable route/state metadata and native bookmarks. This prevents query variants and element atlases from expanding derived PDFs without bound; no raw restricted PNG is removed. Report reruns clear only their generated report/shareable directories and atomically replace both PDFs. The PNG/raw-tile tree and complete restricted HTML remain the highest-resolution sources of truth.
 
-The shareable edition includes anonymous, nonsensitive captures only. Its copied image assets use opaque sequence names and preserve only a safe image extension; captions and PDF labels do not reuse source filenames. Review it before moving it outside the restricted NAS archive.
+The shareable edition includes the same deterministic representatives filtered to anonymous, nonsensitive captures only. Its copied image assets use opaque sequence names and preserve only a safe image extension; captions and PDF labels do not reuse source filenames. The redacted manifest records both source and selected counts. Review it before moving it outside the restricted NAS archive.
 
 ## Validation Contract
 
 `dist/validate.js` fails the run for:
 
 - incomplete or truncated inventory;
-- missing route/theme/viewport combinations;
+- missing canonical or discovered-link route/theme/viewport combinations;
 - missing focused or activated skip-link evidence for any rendered route;
 - discovered same-origin links not captured;
 - missing deep states that were present in the rendered surface inventory;
@@ -209,6 +214,7 @@ The shareable edition includes anonymous, nonsensitive captures only. Its copied
 - invalid, blank, missing, or duplicate PNG captures;
 - raw-tile coverage gaps or seam-correlation failures;
 - missing HTML contents targets, PDFs, PDF pages, or bookmark trees;
+- a report selection count mismatch, unknown capture key, or omitted route;
 - commit/run/mode mismatches;
 - successful unsafe live requests;
 - exact secret values found in any output artifact;

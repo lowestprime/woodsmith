@@ -2,6 +2,7 @@ export type TargetMode = "live-readonly" | "snapshot-lab";
 export type AuditScope = "smoke" | "full";
 export type AuthState = "anonymous" | "admin";
 export type ThemeMode = "dark" | "light";
+export type CoverageTier = "canonical" | "discovered" | "special";
 
 export type ViewportProfile = {
   name: string;
@@ -69,6 +70,7 @@ export type RouteResult = {
   theme: ThemeMode;
   viewport: string;
   deep: boolean;
+  coverageTier: CoverageTier;
   finalUrl: string;
   status: number | null;
   redirectChain: string[];

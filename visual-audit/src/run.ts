@@ -10,6 +10,13 @@ import {
   type Page
 } from "playwright";
 
+import { chromiumLaunchOptions } from "./browser-launch.js";
+import {
+  canonicalCoverageMatrix,
+  discoveredCoverageMatrix,
+  type CoverageMatrixEntry
+} from "./coverage-matrix.js";
+
 import {
   captureElement,
   capturePageSurface
@@ -35,6 +42,7 @@ import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.j
 import { SNAPSHOT_LAB_COMMISSION_DRAFT_STATE } from "./snapshot-lab-evidence.js";
 import type {
   AuthState,
+  CoverageTier,
   CaptureRecord,
   DiagnosticRecord,
   Inventory,
@@ -73,7 +81,8 @@ const coverageExclusions = [
   { surface: "Admin authentication POST", reason: "The single Studio login submission is the only live unsafe request allowed before the read-only capture context exists." },
   { surface: "Successful production mutations", reason: "Forbidden in live-readonly mode and captured only against the isolated snapshot lab." },
   { surface: "Fabrication-ready 3D output", reason: "The public renderer is explicitly a conceptual proportional planning preview." },
-  { surface: "Unconfigured provider success states", reason: "Payment, shipping, email, and model-provider success states require provider fixtures and remain disabled in snapshot-lab mode." }
+  { surface: "Unconfigured provider success states", reason: "Payment, shipping, email, and model-provider success states require provider fixtures and remain disabled in snapshot-lab mode." },
+  { surface: "Redundant deep capture on discovered query variants", reason: "Every rendered same-origin link is captured across desktop, tablet, and mobile in both themes plus archival desktop dark; deep element and dialog states remain on canonical source/database routes to avoid duplicating the same template cross-product." }
 ] as const;
 
 function now() {
@@ -135,9 +144,10 @@ async function loadOrCreateManifest(
       existing.runId !== config.runId ||
       existing.mode !== config.targetMode ||
       existing.baseUrl !== config.baseUrl ||
-      existing.expectedCommit !== config.expectedCommit
+      existing.expectedCommit !== config.expectedCommit ||
+      existing.schemaVersion !== 3
     ) {
-      throw new Error("AUDIT_RESUME refused to combine output from a different run, mode, origin, or commit.");
+      throw new Error("AUDIT_RESUME refused to combine output from a different schema, run, mode, origin, or commit.");
     }
 
     return {
@@ -156,7 +166,7 @@ async function loadOrCreateManifest(
   }
 
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     runId: config.runId,
     startedAt: now(),
     completedAt: null,
@@ -1718,6 +1728,7 @@ async function captureRoute(input: {
   theme: ThemeMode;
   profile: ViewportProfile;
   deep: boolean;
+  coverageTier: CoverageTier;
 }) {
   const page =
     await input.context.newPage();
@@ -1756,6 +1767,7 @@ async function captureRoute(input: {
       theme: input.theme,
       viewport: input.profile.name,
       deep: input.deep,
+      coverageTier: input.coverageTier,
       finalUrl: page.url(),
       status:
         response?.status() ?? null,
@@ -1960,45 +1972,20 @@ async function captureMediaPickers(input: {
   }
 }
 
-function structuralMatrix() {
-  if (config.scope === "smoke") {
-    return [
-      {
-        profile:
-          viewports.find(
-            viewport =>
-              viewport.name ===
-              "desktop-1440"
-          )!,
-        theme: "dark" as const
-      }
-    ];
-  }
-
-  return viewports.flatMap(profile =>
-    (["dark", "light"] as const).map(
-      theme => ({
-        profile,
-        theme
-      })
-    )
-  );
-}
-
 async function runRoutes(
   browser: Browser,
   auth: AuthState,
-  routes: string[]
+  routes: string[],
+  options: {
+    matrix?: CoverageMatrixEntry[];
+    coverageTier?: CoverageTier;
+  } = {}
 ) {
-  const matrix = structuralMatrix();
+  const matrix = options.matrix ?? canonicalCoverageMatrix(config.scope, viewports);
+  const coverageTier = options.coverageTier ?? "canonical";
 
   for (const route of routes) {
     for (const entry of matrix) {
-      const deep =
-        entry.profile.name ===
-          "desktop-archival" &&
-        entry.theme === "dark";
-
       const context =
         await createCaptureContext(
           browser,
@@ -2014,7 +2001,8 @@ async function runRoutes(
           route,
           theme: entry.theme,
           profile: entry.profile,
-          deep
+          deep: entry.deep,
+          coverageTier
         });
       } finally {
         await context.close();
@@ -2048,7 +2036,10 @@ async function runDiscoveredRoutes(browser: Browser, auth: AuthState, seededRout
       .sort();
     if (pending.length === 0) return;
     pending.forEach((route) => captured.add(route));
-    await runRoutes(browser, auth, pending);
+    await runRoutes(browser, auth, pending, {
+      matrix: discoveredCoverageMatrix(config.scope, viewports),
+      coverageTier: "discovered"
+    });
   }
 }
 
@@ -2109,7 +2100,8 @@ async function runMediaPagination(
         route,
         theme,
         profile,
-        deep: true
+        deep: true,
+        coverageTier: "special"
       });
     } finally {
       await context.close();
@@ -2128,7 +2120,7 @@ async function runVisualizerFallbackStates(browser: Browser) {
   for (const variant of variants) {
     const context = await createCaptureContext(browser, "anonymous", profile, "dark", variant.options);
     try {
-      await captureRoute({ context, auth: "anonymous", route: variant.route, theme: "dark", profile, deep: false });
+      await captureRoute({ context, auth: "anonymous", route: variant.route, theme: "dark", profile, deep: false, coverageTier: "special" });
     } finally {
       await context.close();
     }
@@ -2168,16 +2160,9 @@ async function main() {
   await ensureDirectory(config.runRoot);
   await ensureDirectory(captureRoot);
 
-  const browser =
-    await chromium.launch({
-      headless: true,
-      chromiumSandbox: false,
-      ...(config.browserChannel ? { channel: config.browserChannel } : {}),
-      args: [
-        "--disable-dev-shm-usage=false",
-        "--hide-scrollbars=false"
-      ]
-    });
+  const browser = await chromium.launch(
+    chromiumLaunchOptions(config.browserChannel)
+  );
 
   try {
     await authenticateAdmin(browser);
@@ -2243,8 +2228,13 @@ async function main() {
           liveReadonly: "Unsafe same-origin and cross-origin requests are blocked client-side; same-origin requests also carry the server read-only header.",
           snapshotLab: "Mutation-dependent states are permitted only against the separately mounted SQLite and media clones."
         },
-        structuralMatrix:
-          structuralMatrix()
+        structuralMatrix: canonicalCoverageMatrix(config.scope, viewports),
+        discoveredLinkMatrix: discoveredCoverageMatrix(config.scope, viewports),
+        matrixPolicy: {
+          canonical: "Every source/database route uses every configured viewport in dark and light; desktop-archival dark also expands deep states.",
+          discovered: "Every rendered same-origin link uses standard desktop, tablet, and mobile dark/light states plus archival desktop dark, without duplicate deep template expansion.",
+          continuousControls: "Intermediate continuous dimensions use finite boundary and pairwise representatives; raw values and selected state are retained in the manifest."
+        }
       }
     );
 
