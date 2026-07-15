@@ -36,7 +36,7 @@ import {
   discoverSourceRoutes,
   fetchInventory
 } from "./inventory.js";
-import { waitForVisualReady } from "./readiness.js";
+import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
 import { SNAPSHOT_LAB_COMMISSION_DRAFT_STATE } from "./snapshot-lab-evidence.js";
@@ -1863,6 +1863,8 @@ async function captureRoute(input: {
           });
         }
       }
+
+      await waitForVisualIdle(page);
     }
 
     await persistManifest();

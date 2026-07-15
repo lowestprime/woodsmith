@@ -108,15 +108,7 @@ async function waitForStableLayout(page: Page) {
   throw new Error("Visual readiness did not reach three consecutive stable layout samples.");
 }
 
-export async function waitForVisualReady(page: Page) {
-  await page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
-  await page.locator("main").first().waitFor({ state: "attached", timeout: 30_000 }).catch(() => undefined);
-  await page.addStyleTag({ content: READINESS_CSS });
-
-  await triggerLazyContent(page);
-  await settleMedia(page);
-  await waitForStableLayout(page);
-
+async function waitForBusySurfaces(page: Page) {
   await page.waitForFunction(() => {
     const visibleBusy = Array.from(document.querySelectorAll<HTMLElement>('[aria-busy="true"], .loading-pulse')).some((element) => {
       const style = getComputedStyle(element);
@@ -125,6 +117,24 @@ export async function waitForVisualReady(page: Page) {
     });
     return !visibleBusy;
   }, { timeout: 15_000 });
+}
+
+export async function waitForVisualIdle(page: Page) {
+  await page.waitForTimeout(100);
+  await settleMedia(page);
+  await waitForStableLayout(page);
+  await waitForBusySurfaces(page);
+}
+
+export async function waitForVisualReady(page: Page) {
+  await page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
+  await page.locator("main").first().waitFor({ state: "attached", timeout: 30_000 }).catch(() => undefined);
+  await page.addStyleTag({ content: READINESS_CSS });
+
+  await triggerLazyContent(page);
+  await settleMedia(page);
+  await waitForStableLayout(page);
+  await waitForBusySurfaces(page);
 
   await page.evaluate(() => {
     const candidates = Array.from(document.querySelectorAll<HTMLElement>([
@@ -139,5 +149,8 @@ export async function waitForVisualReady(page: Page) {
     window.scrollTo(0, 0);
   });
 
-  await page.waitForTimeout(100);
+  // Restoring the canonical scroll position can select new responsive image
+  // candidates. Settle those requests before screenshots begin so context
+  // teardown never manufactures client-aborted image diagnostics.
+  await waitForVisualIdle(page);
 }
