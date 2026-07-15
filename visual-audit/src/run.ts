@@ -37,6 +37,11 @@ import {
   discoverSourceRoutes,
   fetchInventory
 } from "./inventory.js";
+import {
+  isNavigationInterruption,
+  waitForNavigationSettle,
+  type NavigationSample
+} from "./navigation-settle.js";
 import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
 import { waitForRequestDrain } from "./request-drain.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
@@ -346,6 +351,28 @@ async function waitForCaptureRequestDrain(page: Page) {
         : Promise.resolve()
     ));
   });
+}
+
+async function waitForSettledVisualReady(page: Page): Promise<NavigationSample> {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const settled = await waitForNavigationSettle({
+      sleep: milliseconds => page.waitForTimeout(milliseconds),
+      sample: () => page.evaluate(() => ({
+        bodyPresent: Boolean(document.body),
+        readyState: document.readyState,
+        url: window.location.href
+      }))
+    });
+
+    try {
+      await waitForVisualReady(page);
+      return settled;
+    } catch (error) {
+      if (!isNavigationInterruption(error) || attempt === 2) throw error;
+    }
+  }
+
+  throw new Error("Visual readiness did not survive client navigation.");
 }
 
 async function authenticateAdmin(
@@ -1789,6 +1816,7 @@ async function captureRoute(input: {
       }
     );
 
+    const settledDocument = await waitForSettledVisualReady(page);
     const redirectChain: string[] = [];
     let redirected =
       response?.request().redirectedFrom();
@@ -1802,6 +1830,10 @@ async function captureRoute(input: {
         redirected.redirectedFrom();
     }
 
+    if (response && response.url() !== settledDocument.url && !redirectChain.includes(response.url())) {
+      redirectChain.push(response.url());
+    }
+
     const routeResult: RouteResult = {
       route: input.route,
       auth: input.auth,
@@ -1809,7 +1841,7 @@ async function captureRoute(input: {
       viewport: input.profile.name,
       deep: input.deep,
       coverageTier: input.coverageTier,
-      finalUrl: page.url(),
+      finalUrl: settledDocument.url,
       status:
         response?.status() ?? null,
       redirectChain,
@@ -1818,7 +1850,6 @@ async function captureRoute(input: {
 
     manifest.routes.push(routeResult);
 
-    await waitForVisualReady(page);
     const evidence = await collectPageEvidence(page, input.route);
     routeResult.discoveredLinks = evidence.links;
     routeResult.surfaces = evidence.surfaces;
