@@ -988,6 +988,11 @@ async function saveCapture(input: {
     files = input.locator
       ? await captureElement(input.locator, outputDirectory, baseName)
       : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
+
+    // A screenshot can expose a new lazy or responsive image candidate. Drain
+    // that work before the next capture changes scroll/viewport state so the
+    // browser does not manufacture ERR_ABORTED diagnostics between states.
+    await waitForVisualIdle(input.page);
   } catch (error) {
     manifest.diagnostics.push({
       timestamp: now(),
@@ -1863,9 +1868,11 @@ async function captureRoute(input: {
           });
         }
       }
-
-      await waitForVisualIdle(page);
     }
+
+    // Deep and canonical-only routes can both leave responsive media work
+    // behind after their final interaction. Settle it before closing the page.
+    await waitForVisualIdle(page);
 
     await persistManifest();
   } catch (error) {
