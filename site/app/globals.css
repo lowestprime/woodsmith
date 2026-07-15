@@ -2595,6 +2595,9 @@ input[type="range"]::-moz-range-thumb {
 
 .commission-workflow {
   gap: clamp(1rem, 2vw, 1.5rem);
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .form-honeypot {
@@ -2610,6 +2613,9 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .commission-workflow > section {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   min-height: 22rem;
   padding: clamp(1rem, 2.5vw, 1.75rem);
   border: 1px solid var(--line);
@@ -2626,6 +2632,9 @@ input[type="range"]::-moz-range-thumb {
   top: calc(var(--header-height, 4.5rem) + 0.5rem);
   z-index: 8;
   display: grid;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   gap: 0.65rem;
   padding: 0.85rem;
   border: 1px solid var(--line);
@@ -2661,7 +2670,9 @@ input[type="range"]::-moz-range-thumb {
   display: grid;
   grid-template-columns: repeat(10, minmax(4.5rem, 1fr));
   gap: 0.35rem;
-  min-width: 47rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
   margin: 0;
   padding: 0 0 0.2rem;
   overflow-x: auto;
