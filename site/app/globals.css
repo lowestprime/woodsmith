@@ -2099,8 +2099,11 @@ img.cleanup-subject-isolate {
 @media (max-width: 640px) {
   .portfolio-filter-row {
     flex-wrap: nowrap;
-    margin-inline: calc(var(--page-gutter, 1rem) * -1);
-    padding: 0 var(--page-gutter, 1rem) 0.4rem;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    margin-inline: 0;
+    padding: 0 0 0.4rem;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
     scrollbar-width: thin;
