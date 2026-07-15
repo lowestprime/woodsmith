@@ -60,6 +60,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               );
             })}
           </nav>
+          <h2 className="visually-hidden">Portfolio pieces</h2>
           <div className="piece-grid portfolio-grid">{pieces.map((piece) => <PieceCard categories={categories} key={piece.slug} piece={piece} />)}</div>
         </PageSection>
       </Shell>
