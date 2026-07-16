@@ -1,8 +1,15 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
-import sharp from "sharp";
-
+import {
+  processArtifactTask,
+  runArtifactTasks,
+  type ArtifactTask,
+  type InspectArtifactResult,
+  type ValidateTileManifestResult,
+  type ValidationFinding
+} from "./artifact-tasks.js";
 import { config, viewports } from "./config.js";
 import {
   canonicalCoverageMatrix,
@@ -10,146 +17,8 @@ import {
 } from "./coverage-matrix.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
-import type { RunManifest, TileManifest } from "./types.js";
-import { exists, listFiles, relativeTo, sha256File, writeJsonAtomic } from "./util.js";
-
-async function validatePng(file: string, label: string, failures: string[]) {
-  const image = sharp(file);
-  const metadata = await image.metadata();
-  if (!metadata.width || !metadata.height) {
-    failures.push(`PNG has invalid dimensions: ${label}`);
-    return { width: metadata.width, height: metadata.height };
-  }
-  if (metadata.format !== "png") failures.push(`Capture is not PNG: ${label}`);
-  const stats = await image.stats();
-  if (stats.channels.length > 0 && stats.channels.every((channel) => channel.stdev < 0.15)) {
-    failures.push(`Capture appears blank or single-color: ${label}`);
-  }
-  return { width: metadata.width, height: metadata.height };
-}
-
-async function overlapDifference(input: {
-  previousFile: string;
-  currentFile: string;
-  axis: "horizontal" | "vertical";
-  overlap: number;
-  width: number;
-  height: number;
-}) {
-  const sampleWidth = input.axis === "vertical" ? input.width : input.overlap;
-  const sampleHeight = input.axis === "vertical" ? input.overlap : input.height;
-  const previousMetadata = await sharp(input.previousFile).metadata();
-  const currentMetadata = await sharp(input.currentFile).metadata();
-  const width = Math.max(1, Math.min(sampleWidth, previousMetadata.width ?? sampleWidth, currentMetadata.width ?? sampleWidth));
-  const height = Math.max(1, Math.min(sampleHeight, previousMetadata.height ?? sampleHeight, currentMetadata.height ?? sampleHeight));
-  const previousLeft = input.axis === "horizontal" ? Math.max(0, (previousMetadata.width ?? width) - width) : 0;
-  const previousTop = input.axis === "vertical" ? Math.max(0, (previousMetadata.height ?? height) - height) : 0;
-
-  const targetWidth = Math.min(512, width);
-  const targetHeight = Math.min(192, height);
-  const previous = await sharp(input.previousFile)
-    .extract({ left: previousLeft, top: previousTop, width, height })
-    .resize(targetWidth, targetHeight, { fit: "fill" })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-  const current = await sharp(input.currentFile)
-    .extract({ left: 0, top: 0, width, height })
-    .resize(targetWidth, targetHeight, { fit: "fill" })
-    .removeAlpha()
-    .raw()
-    .toBuffer();
-
-  let total = 0;
-  for (let index = 0; index < Math.min(previous.length, current.length); index += 1) {
-    total += Math.abs((previous[index] ?? 0) - (current[index] ?? 0));
-  }
-  return total / Math.max(1, Math.min(previous.length, current.length)) / 255;
-}
-
-async function validateTileAxis(
-  tiles: TileManifest["segments"][number]["tiles"],
-  axis: "horizontal" | "vertical",
-  segmentFile: string,
-  failures: string[]
-) {
-  const primary = axis === "vertical" ? "y" : "x";
-  const secondary = axis === "vertical" ? "x" : "y";
-  const extent = axis === "vertical" ? "height" : "width";
-  const crossExtent = axis === "vertical" ? "width" : "height";
-  const groups = new Map<number, typeof tiles>();
-
-  for (const tile of tiles) {
-    const key = tile[secondary];
-    groups.set(key, [...(groups.get(key) ?? []), tile]);
-  }
-
-  for (const group of groups.values()) {
-    const ordered = [...group].sort((left, right) => left[primary] - right[primary]);
-    for (let index = 1; index < ordered.length; index += 1) {
-      const previous = ordered[index - 1]!;
-      const current = ordered[index]!;
-      const overlap = previous[primary] + previous[extent] - current[primary];
-      if (overlap <= 0) {
-        failures.push(`Tile seam has a ${axis} coverage gap in ${segmentFile}.`);
-        continue;
-      }
-
-      const difference = await overlapDifference({
-        previousFile: path.join(config.runRoot, previous.file),
-        currentFile: path.join(config.runRoot, current.file),
-        axis,
-        overlap,
-        width: Math.min(previous[crossExtent], current[crossExtent]),
-        height: Math.min(previous[crossExtent], current[crossExtent])
-      });
-      if (difference > 0.12) {
-        failures.push(`Tile seam correlation failed in ${segmentFile} (${axis}, normalized difference ${difference.toFixed(4)}).`);
-      }
-    }
-  }
-}
-
-async function validateTiles(files: string[], failures: string[]) {
-  for (const file of files.filter((item) => item.endsWith("__tiles.json"))) {
-    const tileManifest = JSON.parse(await fs.readFile(file, "utf8")) as TileManifest;
-    if (tileManifest.segments.length === 0) failures.push(`Tile manifest has no segments: ${relativeTo(config.runRoot, file)}`);
-    let coveredHeight = 0;
-    for (const segment of tileManifest.segments) {
-      if (segment.tiles.length === 0) failures.push(`Stitched segment has no raw tiles: ${segment.file}`);
-      const output = path.join(config.runRoot, segment.file);
-      if (!await exists(output)) {
-        failures.push(`Stitched segment is missing: ${segment.file}`);
-      } else {
-        const metadata = await sharp(output).metadata();
-        if (metadata.width !== segment.width || metadata.height !== segment.height) {
-          failures.push(`Stitched segment dimensions do not match its tile manifest: ${segment.file}.`);
-        }
-      }
-
-      for (const tile of segment.tiles) {
-        if (!await exists(path.join(config.runRoot, tile.file))) failures.push(`Raw tile is missing: ${tile.file}`);
-      }
-
-      await validateTileAxis(segment.tiles, "vertical", segment.file, failures);
-      await validateTileAxis(segment.tiles, "horizontal", segment.file, failures);
-      coveredHeight = Math.max(coveredHeight, segment.startY + segment.height);
-    }
-    if (coveredHeight + 2 < tileManifest.sourceHeight) {
-      failures.push(`Stitched output does not cover source height for ${relativeTo(config.runRoot, file)}.`);
-    }
-  }
-}
-
-async function scanForSecretLeaks(files: string[], failures: string[]) {
-  const secrets = [config.adminPassword, config.auditToken].filter(Boolean).map((value) => Buffer.from(value));
-  for (const file of files) {
-    const data = await fs.readFile(file);
-    if (secrets.some((secret) => secret.length > 0 && data.indexOf(secret) >= 0)) {
-      failures.push(`A secret value was detected in an output artifact: ${relativeTo(config.runRoot, file)}`);
-    }
-  }
-}
+import type { RunManifest } from "./types.js";
+import { exists, listFiles, relativeTo, writeJsonAtomic } from "./util.js";
 
 async function validateHtml(file: string, failures: string[]) {
   if (!await exists(file)) {
@@ -179,6 +48,24 @@ async function validatePdf(file: string, failures: string[]) {
   return pageCount;
 }
 
+function appendCanonicalFindings(failures: string[], findings: ValidationFinding[]) {
+  findings
+    .sort((left, right) => left.sortKey.localeCompare(right.sortKey) || left.message.localeCompare(right.message))
+    .forEach((entry) => failures.push(entry.message));
+}
+
+function excludesChecksumOutput(file: string) {
+  return !/[\\/]checksums(?:\.json|\.sha256)$/.test(file);
+}
+
+function stageMetric(name: string, startedAt: number, details: Record<string, unknown>) {
+  console.log(`VALIDATION_STAGE=${JSON.stringify({
+    name,
+    seconds: Number(((performance.now() - startedAt) / 1_000).toFixed(3)),
+    ...details
+  })}`);
+}
+
 async function main() {
   const manifestFile = path.join(config.runRoot, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
@@ -205,22 +92,23 @@ async function main() {
       const absolute = path.join(config.runRoot, relativeFile);
       if (!await exists(absolute)) {
         failures.push(`Missing capture file: ${relativeFile}`);
-        continue;
       }
-      await validatePng(absolute, relativeFile, failures);
     }
+  }
+
+  const capturesByRouteState = new Map<string, typeof manifest.captures>();
+  const captureMatrixKeys = new Set<string>();
+  for (const capture of manifest.captures) {
+    const key = `${capture.auth}::${capture.route}::${capture.theme}::${capture.viewport}`;
+    capturesByRouteState.set(key, [...(capturesByRouteState.get(key) ?? []), capture]);
+    captureMatrixKeys.add(key);
   }
 
   for (const route of manifest.routes) {
     const missingRoute = route.route.includes("__visual-audit-route-not-found__");
     if (route.status == null) failures.push(`Route did not return a response: ${route.auth} ${route.route}`);
     else if (route.status >= 400 && !(missingRoute && route.status === 404)) failures.push(`Unexpected HTTP ${route.status}: ${route.auth} ${route.route}`);
-    const routeCaptures = manifest.captures.filter((capture) =>
-      capture.auth === route.auth &&
-      capture.route === route.route &&
-      capture.theme === route.theme &&
-      capture.viewport === route.viewport
-    );
+    const routeCaptures = capturesByRouteState.get(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`) ?? [];
     if (routeCaptures.length === 0) failures.push(`Route has no successful capture: ${route.auth} ${route.route}`);
     for (const state of ["skip-link-focused", "skip-link-activated-main-focus"]) {
       if (!routeCaptures.some((capture) => capture.state === state)) {
@@ -251,7 +139,7 @@ async function main() {
       const theme = entry.theme;
       const routeResult = results.find((item) => item.viewport === profile && item.theme === theme);
       if (!routeResult) failures.push(`${tier} coverage matrix is missing ${profile}/${theme} for ${key}.`);
-      else if (!manifest.captures.some((capture) => capture.auth === routeResult.auth && capture.route === routeResult.route && capture.viewport === profile && capture.theme === theme)) {
+      else if (!captureMatrixKeys.has(`${routeResult.auth}::${routeResult.route}::${theme}::${profile}`)) {
         failures.push(`${tier} coverage matrix has no successful capture for ${profile}/${theme} ${key}.`);
       }
     }
@@ -265,9 +153,7 @@ async function main() {
   }
 
   for (const route of manifest.routes.filter((item) => item.deep && item.surfaces)) {
-    const captures = manifest.captures.filter((capture) => (
-      capture.auth === route.auth && capture.route === route.route && capture.theme === route.theme && capture.viewport === route.viewport
-    ));
+    const captures = capturesByRouteState.get(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`) ?? [];
     const hasState = (prefix: string) => captures.some((capture) => capture.state.startsWith(prefix));
     if (route.surfaces!.details > 0 && !hasState("all-details-open")) failures.push(`Deep coverage missed disclosures for ${route.auth} ${route.route}.`);
     if (route.surfaces!.lightboxOpeners > 0 && !hasState("lightbox-")) failures.push(`Deep coverage missed lightboxes for ${route.auth} ${route.route}.`);
@@ -297,8 +183,53 @@ async function main() {
   if (config.targetMode === "live-readonly" && manifest.security.successfulUnsafeRequests > 0) failures.push("Live read-only capture recorded a successful unsafe request.");
   if (config.targetMode === "live-readonly" && manifest.diagnostics.some((record) => record.type === "security" && !record.expected)) failures.push("Live read-only capture recorded an unsafe security diagnostic.");
 
-  const filesBeforeValidation = await listFiles(config.runRoot);
-  await validateTiles(filesBeforeValidation, failures);
+  const enumerationStarted = performance.now();
+  const filesBeforeValidation = (await listFiles(config.runRoot))
+    .sort((left, right) => relativeTo(config.runRoot, left).localeCompare(relativeTo(config.runRoot, right)));
+  stageMetric("enumeration", enumerationStarted, { files: filesBeforeValidation.length });
+
+  const validationFile = path.join(config.runRoot, "validation.json");
+  const captureFilePaths = new Set(manifest.captures.flatMap((capture) => capture.files));
+  const staticArtifactFiles = filesBeforeValidation.filter((file) => (
+    excludesChecksumOutput(file) && path.resolve(file) !== path.resolve(validationFile)
+  ));
+  const artifactTasks: ArtifactTask[] = staticArtifactFiles.map((file) => ({
+    kind: "inspect-artifact",
+    absolutePath: file,
+    relativePath: relativeTo(config.runRoot, file),
+    inspectPng: captureFilePaths.has(relativeTo(config.runRoot, file)),
+    includePngMetadata: file.toLowerCase().endsWith(".png"),
+    secretValues: [config.adminPassword, config.auditToken]
+  }));
+  const artifactStarted = performance.now();
+  const artifactRun = await runArtifactTasks(artifactTasks, config.validationWorkers);
+  const artifactResults = artifactRun.results as InspectArtifactResult[];
+  appendCanonicalFindings(failures, artifactResults.flatMap((result) => result.findings));
+  stageMetric("artifact-inspection-and-hashing", artifactStarted, {
+    files: artifactResults.length,
+    workers: artifactRun.metrics.workerCount,
+    mode: artifactRun.metrics.mode,
+    maxInFlight: artifactRun.metrics.maxInFlight
+  });
+
+  const tileTasks: ArtifactTask[] = filesBeforeValidation
+    .filter((file) => file.endsWith("__tiles.json"))
+    .map((file) => ({
+      kind: "validate-tile-manifest",
+      runRoot: config.runRoot,
+      manifestFile: file,
+      relativePath: relativeTo(config.runRoot, file)
+    }));
+  const tileStarted = performance.now();
+  const tileRun = await runArtifactTasks(tileTasks, config.validationWorkers);
+  const tileResults = tileRun.results as ValidateTileManifestResult[];
+  appendCanonicalFindings(failures, tileResults.flatMap((result) => result.findings));
+  stageMetric("tile-and-seam-validation", tileStarted, {
+    manifests: tileResults.length,
+    workers: tileRun.metrics.workerCount,
+    mode: tileRun.metrics.mode,
+    maxInFlight: tileRun.metrics.maxInFlight
+  });
   const reportIndexFile = path.join(config.runRoot, "report", "report-index.json");
   if (!await exists(reportIndexFile)) failures.push("Report index is missing.");
   const reportIndex = await exists(reportIndexFile)
@@ -346,17 +277,25 @@ async function main() {
   const shareablePdfPages = await validatePdf(path.join(config.runRoot, "shareable", "woodmat-visual-atlas-redacted.pdf"), failures);
   if (restrictedPdfPages < (reportIndex.restrictedPrintPages ?? 0)) failures.push("Restricted PDF page count is lower than its print-slice count.");
   if (shareablePdfPages < (reportIndex.shareablePrintPages ?? 0)) failures.push("Shareable PDF page count is lower than its print-slice count.");
-  await scanForSecretLeaks(filesBeforeValidation, failures);
-
   if (process.platform !== "win32") {
     const mode = (await fs.stat(config.runRoot)).mode & 0o777;
     if ((mode & 0o077) !== 0) failures.push(`Run directory permissions are ${mode.toString(8)}; expected no group/other access.`);
   }
 
-  const validationFile = path.join(config.runRoot, "validation.json");
-  const artifactCount = filesBeforeValidation.filter((file) => !/[\\/]checksums(?:\.json|\.sha256)$/.test(file)).length + (filesBeforeValidation.includes(validationFile) ? 0 : 1);
+  const missingStaticChecksums = artifactResults.filter((result) => !result.sha256);
+  for (const result of missingStaticChecksums) failures.push(`Checksum could not be generated: ${result.relativePath}.`);
+  const artifactCount = staticArtifactFiles.length + 1;
+  let validatedAt = new Date().toISOString();
+  if (await exists(validationFile)) {
+    try {
+      const prior = JSON.parse(await fs.readFile(validationFile, "utf8")) as { validatedAt?: string };
+      if (prior.validatedAt) validatedAt = prior.validatedAt;
+    } catch {
+      // A malformed prior validation is replaced atomically below.
+    }
+  }
   await writeJsonAtomic(validationFile, {
-    validatedAt: new Date().toISOString(),
+    validatedAt,
     passed: failures.length === 0,
     failures,
     diagnostics: unexpectedDiagnostics,
@@ -366,18 +305,44 @@ async function main() {
     security: manifest.security
   });
 
-  const checksumCandidates = (await listFiles(config.runRoot)).filter((file) => !/[\\/]checksums(?:\.json|\.sha256)$/.test(file));
-  const checksums = [] as Array<{ file: string; sha256: string; width?: number; height?: number }>;
-  for (const file of checksumCandidates) {
-    const relative = relativeTo(config.runRoot, file);
-    if (file.endsWith(".png")) {
-      const metadata = await sharp(file).metadata();
-      checksums.push({ file: relative, sha256: await sha256File(file), width: metadata.width, height: metadata.height });
-    } else {
-      checksums.push({ file: relative, sha256: await sha256File(file) });
-    }
+  if (missingStaticChecksums.length > 0) {
+    throw new Error(`Visual audit failed closed because ${missingStaticChecksums.length} artifact checksum(s) could not be generated.`);
   }
+
+  const validationInspection = await processArtifactTask({
+    kind: "inspect-artifact",
+    absolutePath: validationFile,
+    relativePath: relativeTo(config.runRoot, validationFile),
+    inspectPng: false,
+    secretValues: [config.adminPassword, config.auditToken]
+  }) as InspectArtifactResult;
+  if (!validationInspection.sha256 || validationInspection.findings.length > 0) {
+    throw new Error("Visual audit validation output failed its own checksum or secret-scan gate.");
+  }
+
+  const checksumCandidates = (await listFiles(config.runRoot))
+    .filter(excludesChecksumOutput)
+    .sort((left, right) => relativeTo(config.runRoot, left).localeCompare(relativeTo(config.runRoot, right)));
+  const expectedChecksumPaths = new Set([
+    ...staticArtifactFiles.map((file) => relativeTo(config.runRoot, file)),
+    relativeTo(config.runRoot, validationFile)
+  ]);
+  const actualChecksumPaths = checksumCandidates.map((file) => relativeTo(config.runRoot, file));
+  if (actualChecksumPaths.length !== expectedChecksumPaths.size || actualChecksumPaths.some((file) => !expectedChecksumPaths.has(file))) {
+    throw new Error("Visual audit artifact set changed during validation; refusing to write incomplete checksums.");
+  }
+
+  const checksums = [
+    ...artifactResults.map((result) => ({
+      file: result.relativePath,
+      sha256: result.sha256!,
+      ...(result.width ? { width: result.width } : {}),
+      ...(result.height ? { height: result.height } : {})
+    })),
+    { file: validationInspection.relativePath, sha256: validationInspection.sha256 }
+  ];
   checksums.sort((left, right) => left.file.localeCompare(right.file));
+  if (checksums.length !== artifactCount) throw new Error("Checksum count does not match the complete artifact set.");
   await writeJsonAtomic(path.join(config.runRoot, "checksums.json"), checksums);
   await fs.writeFile(path.join(config.runRoot, "checksums.sha256"), `${checksums.map((item) => `${item.sha256}  ${item.file}`).join("\n")}\n`, { encoding: "utf8", mode: 0o600 });
 

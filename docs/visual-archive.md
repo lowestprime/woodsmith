@@ -13,7 +13,7 @@ The two modes are intentionally separate:
 
 The inventory endpoint requires both normal admin authentication and a separate audit token. It returns bounded route-driving metadata and counts, not users, customer contact details, notification bodies, payment data, reset tokens, or session state. Inventory acquisition permits only the exact same-origin GET endpoint. The ordinary capture context adds the audit token only to that endpoint and authenticated `audit=all` Studio pages.
 
-Network diagnostics are evidence-based. A blocked mutation is expected only when its unsafe method and exact URL match a route-guard policy record. An aborted request is expected only when it is a same-origin fetch/XHR with Next.js RSC or prefetch evidence. Aborted documents, scripts, stylesheets, images, media, API calls, inventory calls, and unrelated resources remain validation failures.
+Network diagnostics are evidence-based. A blocked mutation is expected only when its unsafe method and exact URL match a route-guard policy record. An aborted request is expected only when it is a same-origin fetch/XHR with Next.js RSC or prefetch evidence, or a safe same-origin font/image/media request canceled after the page has completed capture, passed the final visual/request drain, and entered deliberate teardown. The teardown exception is lifecycle-scoped: aborts during navigation, screenshots, interactions, or settling remain failures, and diagnostics include the active capture phase. Aborted documents, scripts, stylesheets, API calls, inventory calls, cross-origin resources, and unrelated resources remain validation failures.
 
 Secrets, storage state, SQLite files, media, raw tiles, PNGs, HTML, PDFs, traces, and reports are ignored by Git. Authentication state is held under the runner tmpfs and removed in `finally`.
 
@@ -89,7 +89,7 @@ docker buildx build \
   --load .
 ```
 
-The runner permits an unstamped image only for a loopback development smoke. It rejects missing or mismatched build identity for remote and snapshot-lab targets.
+The runner permits `WOODSMITH_BUILD_SHA=unknown` only for a loopback `live-readonly` development smoke. It rejects missing or mismatched build identity for remote, full, and snapshot-lab targets. After committing a candidate, rebuild both images with the exact commit before running snapshot-lab or release evidence.
 
 ## Live Read-Only Smoke
 
@@ -128,6 +128,8 @@ visual-audit/scripts/run-local-disposable-smoke.ps1 `
 
 The default `live-readonly` mode uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It validates the archive, rejects image-cache and unhandled-rejection errors, and removes every container and volume in `finally`.
 
+During a dirty pre-commit loop, build the app with its default `WOODSMITH_BUILD_SHA=unknown`; the same command accepts that identity only for this loopback smoke and reports `APP_BUILD_IDENTITY=unknown-loopback-smoke`. Never stamp a dirty image with the current committed SHA. Once the slice is committed, rebuild and require `APP_BUILD_IDENTITY=exact`.
+
 Run the same current-image gate against an isolated local snapshot lab with `-TargetMode snapshot-lab`. The harness first initializes disposable source data/media, creates the lab database online with SQLite `VACUUM INTO`, copies media into distinct lab volumes, and then runs the app and audit only against those clones. Acceptance requires exactly one draft save and one cleanup delete, zero residual drafts, SQLite `quick_check`, unchanged source data/media fingerprints, an unchanged cloned media tree, and complete container/volume cleanup.
 
 ## Full Live Archive
@@ -152,7 +154,48 @@ Full mode covers dark and light themes at:
 
 Source- and database-inventoried canonical routes use the complete matrix above. Rendered same-origin links discovered from those pages use desktop, tablet, and mobile representatives in both themes plus archival desktop dark. This accounts for every finite link target without repeating deep captures for query variants that render the same page template. `coverage-plan.json` records both matrices and the sampling rationale.
 
-Every captured route state receives a deterministic keyboard skip-link focus and activation check. Deep archival-dark capture on canonical routes opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Long pages and independently scrollable surfaces use 12 percent overlapping raw tiles, stitched PNGs, tile manifests, and image-correlation seam checks. Chromium uses the container's explicit shared-memory mount rather than spilling into the bounded `/tmp` tmpfs; the audit runner has a 512 MiB scratch ceiling for browser profiles and temporary files.
+Every captured route state receives a deterministic keyboard skip-link focus and activation check. Deep archival-dark capture on canonical routes opens disclosures, lightboxes, media pickers, inline editing, Studio editors, media inspectors, validation states, visualizer boundaries, and the element atlas. Every full-page capture and every independently scrollable surface uses 12 percent overlapping viewport tiles, stitched PNGs, tile manifests, and image-correlation seam checks. The runner does not use Playwright's geometry-changing `fullPage: true` path: repeated disposable runs proved that it could intermittently cancel six responsive Next Image candidates on `/portfolio`, while the tiled path preserved responsive selection and completed three consecutive strict smokes without unexpected diagnostics. Chromium uses the container's explicit shared-memory mount rather than spilling into the bounded `/tmp` tmpfs; the audit runner has a 512 MiB scratch ceiling for browser profiles and temporary files.
+
+## Bounded Parallelism And Benchmarks
+
+`VISUAL_AUDIT_CAPTURE_WORKERS`, `VISUAL_AUDIT_VALIDATION_WORKERS`, and `VISUAL_AUDIT_REPORT_WORKERS` accept `auto` or a bounded integer. `auto` uses the available CPU parallelism with measured caps of 2 capture workers and 6 validation/report workers. Explicit capture values are limited to 1-6; validation and report values are limited to 1-8. Snapshot-lab capture is always forced to one worker because its mutation states are ordered, although its post-capture validation and report work can remain bounded and parallel.
+
+A disposable live-readonly capture matrix kept the serial mutation-sensitive special stage separate and preserved 310 captures, 27 routes, zero unexpected diagnostics, zero successful unsafe requests, and complete cleanup at each worker count:
+
+| Capture workers | Anonymous seconds | Admin seconds | Serial special seconds | Total capture seconds | Speedup |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 35.118 | 58.493 | 45.192 | 138.803 | 1.00x |
+| 2 | 18.496 | 31.121 | 45.234 | 94.851 | 1.46x |
+| 4 | 11.216 | 18.047 | 45.159 | 74.422 | 1.87x |
+| 6 | 8.517 | 12.303 | 45.139 | 65.959 | 2.10x |
+
+End-to-end wall time also includes application startup, comparison, report generation, validation, and cleanup; the measured totals were 156.226, 109.242, 90.804, and 80.292 seconds respectively. Two workers remain the automatic capture cap because they materially reduce route capture time without imposing the four- or six-browser peak load on the NAS. After replacing resize-based full-page screenshots with tiled capture, three consecutive two-worker smokes completed in stable 104.750-105.029 second capture-stage totals. Each produced 310 captures, 39 tile manifests, 689 checksums, zero unexpected diagnostics, zero successful unsafe requests, 29 blocked unsafe requests, zero cross-origin requests, no temporary files, and zero residual containers or volumes.
+
+The validator reads decoded pixel channels as a sequential stream and computes the same sample standard deviation used by Sharp without materializing full raw images or asking libvips for random-access statistics. This prevents large full-page PNG validation from spilling temporary images into the bounded scratch filesystem. Decode dimensions, blank-image thresholds, checksums, diagnostics, seam checks, and canonical output ordering remain unchanged.
+
+A corrected full-clone benchmark over 37,957 checksummed artifacts produced the same 23 pre-existing validation failures, two diagnostics, semantic digest `2d20c9c564fc4dae4e468936aa5a054f7f2326a8613aaf3af6084e53fc080d74`, validation hash, and checksum hashes at every worker count:
+
+| Validation workers | Artifact seconds | Total seconds | Speedup | CPU seconds | Peak container bytes |
+|---:|---:|---:|---:|---:|---:|
+| 1 | 1350.314 | 1359.808 | 1.00x | 1840.969 | 1,360,478,208 |
+| 4 | 429.744 | 437.022 | 3.11x | 1776.173 | 2,195,255,296 |
+| 6 | 342.494 | 348.317 | 3.90x | 2112.510 | 2,603,417,600 |
+| 8 | 322.335 | 328.050 | 4.15x | 2635.124 | 3,154,866,176 |
+
+Eight workers improved total time by only 5.8 percent over six while consuming about 24.7 percent more CPU time and 21.2 percent more peak memory, so six is the automatic validation/report cap. Six simultaneous report-slice tasks converted 156 slices from six 1170 x 39996 sources in 8.502 seconds under the production 512 MiB tmpfs, and a repeated run produced identical slice hashes.
+
+The validator benchmark utility operates only on a disposable clone of a retained output volume and removes that clone in `finally`:
+
+```powershell
+visual-audit/scripts/benchmark-validator-volume.ps1 `
+  -SourceVolume <retained-read-only-output-volume> `
+  -RunId <full-run-id> `
+  -Workers 6 `
+  -AuditImage woodsmith-visual-audit:<exact-sha> `
+  -TargetCommit <full-40-character-sha>
+```
+
+Do not increase worker counts blindly. Re-run the matrix against representative full-run evidence after changing the capture matrix, image sizes, NAS CPU/memory limits, Sharp, libvips, Playwright, or report selection logic.
 
 ## Snapshot Lab
 

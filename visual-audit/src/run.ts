@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import {
   chromium,
@@ -22,11 +23,17 @@ import {
   captureElement,
   capturePageSurface
 } from "./capture.js";
+import { runBoundedCaptureTasks } from "./capture-scheduler.js";
+import {
+  inlineFieldSelector,
+  type InlineFieldIdentity
+} from "./capture-stability.js";
 import {
   config,
   viewports
 } from "./config.js";
 import {
+  isExpectedCaptureTeardownAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
@@ -79,7 +86,10 @@ const captureRoot = path.join(
 );
 
 let manifest: RunManifest;
+let manifestWriteChain = Promise.resolve();
 const preAuthenticationDiagnostics: DiagnosticRecord[] = [];
+const pagesInDeliberateTeardown = new WeakSet<Page>();
+const pageCapturePhases = new WeakMap<Page, string>();
 let preAuthenticationUnsafeBlocks = 0;
 const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
 const pendingVisualRequests = new WeakMap<Page, Set<Request>>();
@@ -117,23 +127,59 @@ function captureKey(input: {
   ].join("::");
 }
 
+function captureCompleted(input: {
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+}, state: string) {
+  return manifest.completedKeys.includes(captureKey({
+    auth: input.auth,
+    route: input.route,
+    theme: input.theme,
+    viewport: input.profile.name,
+    state
+  }));
+}
+
+function routeResultCompleted(input: {
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  viewport: string;
+}) {
+  return config.resume && manifest.routes.some((result) => (
+    result.expected &&
+    result.auth === input.auth &&
+    result.route === input.route &&
+    result.theme === input.theme &&
+    result.viewport === input.viewport
+  ));
+}
+
 async function persistManifest() {
-  manifest.completedKeys = unique(
-    manifest.captures.map(
-      capture => capture.key
-    )
-  );
+  manifest.completedKeys = unique(manifest.captures.map((capture) => capture.key)).sort();
+  const snapshot = structuredClone(manifest);
+  snapshot.completedKeys = [...manifest.completedKeys];
 
   const routes = new Map<string, RouteResult>();
-  for (const route of manifest.routes) {
+  for (const route of snapshot.routes) {
     routes.set(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`, route);
   }
-  manifest.routes = [...routes.values()];
+  snapshot.routes = [...routes.values()].sort((left, right) => (
+    `${left.auth}::${left.route}::${left.theme}::${left.viewport}`
+      .localeCompare(`${right.auth}::${right.route}::${right.theme}::${right.viewport}`)
+  ));
+  snapshot.captures.sort((left, right) => left.key.localeCompare(right.key));
+  snapshot.discoveredLinks = unique(snapshot.discoveredLinks).sort();
+  snapshot.diagnostics.sort((left, right) => (
+    `${left.route}::${left.type}::${left.message}::${left.timestamp}`
+      .localeCompare(`${right.route}::${right.type}::${right.message}::${right.timestamp}`)
+  ));
 
-  await writeJsonAtomic(
-    manifestFile,
-    manifest
-  );
+  const write = manifestWriteChain.then(() => writeJsonAtomic(manifestFile, snapshot));
+  manifestWriteChain = write;
+  await write;
 }
 
 async function loadOrCreateManifest(
@@ -207,6 +253,7 @@ function attachDiagnostics(
 ) {
   const pendingRequests = new Set<Request>();
   pendingVisualRequests.set(page, pendingRequests);
+  pageCapturePhases.set(page, "diagnostics-attached");
 
   page.on("request", request => {
     if (["font", "image", "media"].includes(request.resourceType())) {
@@ -278,19 +325,21 @@ function attachDiagnostics(
       return;
     }
 
+    const evidence = {
+      method,
+      url: request.url(),
+      failure,
+      resourceType: request.resourceType(),
+      headers: request.headers(),
+      baseUrl: config.baseUrl
+    };
     manifest.diagnostics.push({
       timestamp: now(),
       type: "requestfailed",
       route,
-      message: `${method} ${request.url()} — ${failure}`,
-      expected: isExpectedNextPrefetchAbort({
-        method,
-        url: request.url(),
-        failure,
-        resourceType: request.resourceType(),
-        headers: request.headers(),
-        baseUrl: config.baseUrl
-      })
+      message: `${method} ${request.url()} — ${failure} [phase=${pageCapturePhases.get(page) ?? "unknown"}]`,
+      expected: isExpectedNextPrefetchAbort(evidence) ||
+        isExpectedCaptureTeardownAbort(evidence, pagesInDeliberateTeardown.has(page))
     });
   });
 
@@ -333,7 +382,14 @@ function attachDiagnostics(
   });
 }
 
-async function waitForCaptureRequestDrain(page: Page) {
+async function waitForCaptureRequestDrain(
+  page: Page,
+  options: {
+    intervalMs?: number;
+    quietSamples?: number;
+    timeoutMs?: number;
+  } = {}
+) {
   const pendingRequests = pendingVisualRequests.get(page);
   if (!pendingRequests) {
     throw new Error("Visual request tracking was not attached to the capture page.");
@@ -341,7 +397,8 @@ async function waitForCaptureRequestDrain(page: Page) {
 
   await waitForRequestDrain({
     pendingCount: () => pendingRequests.size,
-    sleep: milliseconds => page.waitForTimeout(milliseconds)
+    sleep: milliseconds => page.waitForTimeout(milliseconds),
+    ...options
   });
 
   await page.evaluate(async () => {
@@ -949,9 +1006,23 @@ async function collectPageEvidence(page: Page, route: string) {
       return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
     };
 
+    const inlineCapable = (link: Element) => {
+      const section = link.closest("section");
+      if (!section) return false;
+      return Array.from(section.querySelectorAll<HTMLElement>("[data-inline-edit-resource][data-inline-edit-field]")).some((element) => (
+        !element.closest("form,button,.section-edit-link,.inline-edit-hint,.inline-url-dialog") &&
+        Boolean(element.textContent?.trim())
+      ));
+    };
+
     const scrollContainers = Array.from(document.querySelectorAll<HTMLElement>("body *")).filter((element) => {
       const style = getComputedStyle(element);
-      return visible(element) && (
+      const rect = element.getBoundingClientRect();
+      return visible(element) &&
+        rect.width >= 120 &&
+        rect.height >= 80 &&
+        rect.width <= window.innerWidth * 1.2 &&
+        rect.height <= window.innerHeight * 1.2 && (
         (/(auto|scroll)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 4) ||
         (/(auto|scroll)/.test(style.overflowX) && element.scrollWidth > element.clientWidth + 4)
       );
@@ -961,7 +1032,7 @@ async function collectPageEvidence(page: Page, route: string) {
       details: Array.from(document.querySelectorAll("details")).filter(visible).length,
       lightboxOpeners: Array.from(document.querySelectorAll("button.media-card")).filter(visible).length,
       mediaPickerOpeners: Array.from(document.querySelectorAll("button")).filter((element) => visible(element) && element.textContent?.trim() === "Browse library").length,
-      inlineEditLinks: Array.from(document.querySelectorAll("a.section-edit-link")).filter(visible).length,
+      inlineEditLinks: Array.from(document.querySelectorAll("a.section-edit-link")).filter((link) => visible(link) && inlineCapable(link)).length,
       studioCards: Array.from(document.querySelectorAll(".studio-editor-card")).filter(visible).length,
       mediaCards: Array.from(document.querySelectorAll("[data-media-path]")).filter(visible).length,
       validationForms: Array.from(document.querySelectorAll("form")).filter((form) => visible(form) && Boolean(form.querySelector("input[required],textarea[required],select[required]"))).length,
@@ -1019,6 +1090,7 @@ async function saveCapture(input: {
   locator?: Locator;
   sensitive?: boolean;
 }) {
+  pageCapturePhases.set(input.page, `capture:${input.state}`);
   const key = captureKey({
     auth: input.auth,
     route: input.route,
@@ -1050,7 +1122,7 @@ async function saveCapture(input: {
   let files: string[];
   try {
     files = input.locator
-      ? await captureElement(input.locator, outputDirectory, baseName)
+      ? await captureElement(input.page, input.locator, outputDirectory, baseName)
       : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
 
     // A screenshot can expose a new lazy or responsive image candidate. Drain
@@ -1376,20 +1448,30 @@ async function captureInlineEditing(input: {
     return;
   }
 
-  const editLinks =
+  const allEditLinks =
     input.page.locator(
       "a.section-edit-link"
     );
 
-  const linkCount = deepCount(await editLinks.count(), 4);
+  const capableIndexes = await allEditLinks.evaluateAll((links) => links.flatMap((link, index) => {
+    const section = link.closest("section");
+    if (!section) return [];
+    const capable = Array.from(section.querySelectorAll<HTMLElement>("[data-inline-edit-resource][data-inline-edit-field]")).some((element) => (
+      !element.closest("form,button,.section-edit-link,.inline-edit-hint,.inline-url-dialog") &&
+      Boolean(element.textContent?.trim())
+    ));
+    return capable ? [index] : [];
+  }));
+  const linkIndexes = capableIndexes.slice(0, deepCount(capableIndexes.length, 4));
 
   for (
-    let sectionIndex = 0;
-    sectionIndex < linkCount;
-    sectionIndex += 1
+    let sectionOrdinal = 0;
+    sectionOrdinal < linkIndexes.length;
+    sectionOrdinal += 1
   ) {
+    const linkIndex = linkIndexes[sectionOrdinal]!;
     const link =
-      editLinks.nth(sectionIndex);
+      allEditLinks.nth(linkIndex);
 
     if (!await link.isVisible().catch(() => false)) {
       continue;
@@ -1410,53 +1492,62 @@ async function captureInlineEditing(input: {
     await saveCapture({
       ...input,
       state:
-        `inline-section-${String(sectionIndex + 1)
+        `inline-section-${String(sectionOrdinal + 1)
           .padStart(3, "0")}-active`,
       fullPage: false
     });
 
-    const editable =
-      input.page.locator(
-        'section[data-inline-editing="true"] ' +
-        ".inline-editable-active"
-      );
-
-    const editableCount =
-      await editable.count();
+    const activeSection = input.page.locator('section[data-inline-editing="true"]');
+    const fieldIdentities = await activeSection
+      .locator("[data-inline-edit-resource][data-inline-edit-field]")
+      .evaluateAll((elements) => {
+        const occurrences = new Map<string, number>();
+        return elements.flatMap((element) => {
+          if (!(element instanceof HTMLElement) || element.closest("form,button,.section-edit-link,.inline-edit-hint,.inline-url-dialog") || !element.textContent?.trim()) return [];
+          const resource = element.dataset.inlineEditResource;
+          const field = element.dataset.inlineEditField;
+          if (!resource || !field) return [];
+          const id = element.dataset.inlineEditId ?? null;
+          const index = element.dataset.inlineEditIndex ?? null;
+          const key = JSON.stringify([resource, field, id, index]);
+          const occurrence = occurrences.get(key) ?? 0;
+          occurrences.set(key, occurrence + 1);
+          return [{
+            resource,
+            field,
+            id,
+            index,
+            occurrence,
+            urlField: element instanceof HTMLAnchorElement && Boolean(element.dataset.inlineEditUrlField)
+          }];
+        });
+      }) as InlineFieldIdentity[];
 
     for (
       let fieldIndex = 0;
-      fieldIndex < editableCount;
+      fieldIndex < fieldIdentities.length;
       fieldIndex += 1
     ) {
-      const field =
-        editable.nth(fieldIndex);
+      const identity = fieldIdentities[fieldIndex]!;
+      const field = activeSection.locator(inlineFieldSelector(identity)).nth(identity.occurrence);
 
       if (!await field.isVisible().catch(() => false)) {
         continue;
       }
 
-      await field.click();
+      await field.click({ timeout: 10_000 });
 
       await saveCapture({
         ...input,
         state:
-          `inline-section-${String(sectionIndex + 1)
+          `inline-section-${String(sectionOrdinal + 1)
             .padStart(3, "0")}` +
           `-field-${String(fieldIndex + 1)
             .padStart(3, "0")}-selected`,
         fullPage: false
       });
 
-      const urlField = await field.evaluate(
-        element =>
-          element instanceof HTMLAnchorElement &&
-          Boolean(
-            element.dataset.inlineEditUrlField
-          )
-      );
-
-      if (urlField) {
+      if (identity.urlField) {
         await assistant
           .getByRole(
             "button",
@@ -1476,7 +1567,7 @@ async function captureInlineEditing(input: {
         await saveCapture({
           ...input,
           state:
-            `inline-section-${String(sectionIndex + 1)
+            `inline-section-${String(sectionOrdinal + 1)
               .padStart(3, "0")}` +
             `-field-${String(fieldIndex + 1)
               .padStart(3, "0")}-url-dialog`,
@@ -1724,6 +1815,12 @@ async function captureElementAtlas(input: {
   profile: ViewportProfile;
   status: number | null;
 }) {
+  await input.page.evaluate(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+    document.querySelector<HTMLElement>(".site-header")?.classList.remove("is-hidden");
+  });
+  await input.page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+
   const elements =
     input.page.locator([
       "a:not(.skip-link)",
@@ -1743,6 +1840,18 @@ async function captureElementAtlas(input: {
     const element =
       elements.nth(index);
 
+    const prefix =
+      `element-${String(index + 1)
+        .padStart(5, "0")}`;
+    const states = [
+      `${prefix}-normal`,
+      `${prefix}-hover`,
+      `${prefix}-focus`
+    ];
+    if (states.every((state) => captureCompleted(input, state))) {
+      continue;
+    }
+
     if (!await element.isVisible().catch(() => false)) {
       continue;
     }
@@ -1757,10 +1866,6 @@ async function captureElementAtlas(input: {
     ) {
       continue;
     }
-
-    const prefix =
-      `element-${String(index + 1)
-        .padStart(5, "0")}`;
 
     await saveCapture({
       ...input,
@@ -1798,6 +1903,15 @@ async function captureRoute(input: {
   deep: boolean;
   coverageTier: CoverageTier;
 }) {
+  if (routeResultCompleted({
+    auth: input.auth,
+    route: input.route,
+    theme: input.theme,
+    viewport: input.profile.name
+  })) {
+    return;
+  }
+
   const page =
     await input.context.newPage();
 
@@ -1808,6 +1922,7 @@ async function captureRoute(input: {
   );
 
   try {
+    pageCapturePhases.set(page, "navigation");
     const response = await page.goto(
       input.route,
       {
@@ -1816,6 +1931,7 @@ async function captureRoute(input: {
       }
     );
 
+    pageCapturePhases.set(page, "initial-readiness");
     const settledDocument = await waitForSettledVisualReady(page);
     const redirectChain: string[] = [];
     let redirected =
@@ -1850,6 +1966,7 @@ async function captureRoute(input: {
 
     manifest.routes.push(routeResult);
 
+    pageCapturePhases.set(page, "collect-page-evidence");
     const evidence = await collectPageEvidence(page, input.route);
     routeResult.discoveredLinks = evidence.links;
     routeResult.surfaces = evidence.surfaces;
@@ -1925,6 +2042,7 @@ async function captureRoute(input: {
 
       for (const [label, step] of steps) {
         try {
+          pageCapturePhases.set(page, `deep:${label}`);
           await step(base);
         } catch (error) {
           manifest.diagnostics.push({
@@ -1938,8 +2056,16 @@ async function captureRoute(input: {
     }
 
     // Deep and canonical-only routes can both leave responsive media work
-    // behind after their final interaction. Settle it before closing the page.
+    // behind after their final interaction. Settle layout/media first, then
+    // require a longer request-free window before closing the page. This keeps
+    // teardown from manufacturing ERR_ABORTED diagnostics for real images.
+    pageCapturePhases.set(page, "final-settle");
     await waitForVisualIdle(page);
+    await waitForCaptureRequestDrain(page, {
+      intervalMs: 100,
+      quietSamples: 6,
+      timeoutMs: 15_000
+    });
 
     await persistManifest();
   } catch (error) {
@@ -1955,6 +2081,8 @@ async function captureRoute(input: {
 
     await persistManifest();
   } finally {
+    pageCapturePhases.set(page, "deliberate-teardown");
+    pagesInDeliberateTeardown.add(page);
     await page.close();
   }
 }
@@ -2059,32 +2187,52 @@ async function runRoutes(
 ) {
   const matrix = options.matrix ?? canonicalCoverageMatrix(config.scope, viewports);
   const coverageTier = options.coverageTier ?? "canonical";
-
-  for (const route of routes) {
-    for (const entry of matrix) {
-      const context =
-        await createCaptureContext(
-          browser,
-          auth,
-          entry.profile,
-          entry.theme
-        );
-
+  const tasks = unique(routes).flatMap((route) => matrix.flatMap((entry) => (
+    routeResultCompleted({ auth, route, theme: entry.theme, viewport: entry.profile.name })
+      ? []
+      : [{ route, entry }]
+  )));
+  const workerCount = config.targetMode === "snapshot-lab" ? 1 : config.captureWorkers;
+  const startedAt = performance.now();
+  const run = await runBoundedCaptureTasks(tasks, {
+    workerCount,
+    execute: async (task, _index, signal) => {
+      if (signal.aborted) throw new Error("Capture task was cancelled before context creation.");
+      if (routeResultCompleted({ auth, route: task.route, theme: task.entry.theme, viewport: task.entry.profile.name })) return;
+      const taskIdentity = `${auth}::${task.route}::${task.entry.theme}::${task.entry.profile.name}`;
+      const taskScratch = path.join(config.tmpRoot, "capture-workers", createHash("sha256").update(taskIdentity).digest("hex").slice(0, 20));
+      await ensureDirectory(taskScratch);
+      await writeJsonAtomic(path.join(taskScratch, "task.json"), {
+        identity: taskIdentity,
+        coverageTier,
+        startedAt: now()
+      });
+      let context: BrowserContext | null = null;
       try {
+        context = await createCaptureContext(browser, auth, task.entry.profile, task.entry.theme);
         await captureRoute({
           context,
           auth,
-          route,
-          theme: entry.theme,
-          profile: entry.profile,
-          deep: entry.deep,
+          route: task.route,
+          theme: task.entry.theme,
+          profile: task.entry.profile,
+          deep: task.entry.deep,
           coverageTier
         });
       } finally {
-        await context.close();
+        await context?.close();
+        await fs.rm(taskScratch, { recursive: true, force: true });
       }
     }
-  }
+  });
+  console.log(`CAPTURE_STAGE=${JSON.stringify({
+    auth,
+    coverageTier,
+    tasks: tasks.length,
+    workers: run.metrics.workerCount,
+    maxInFlight: run.metrics.maxInFlight,
+    seconds: Number(((performance.now() - startedAt) / 1_000).toFixed(3))
+  })}`);
 }
 
 function captureableDiscoveredRoute(route: string, auth: AuthState) {
@@ -2155,34 +2303,13 @@ async function runMediaPagination(
       `/studio?panel=media&mediaPage=${index + 1}`
   );
 
-  for (
-    const route of unique([
-      ...pageRoutes,
-      ...(config.scope === "smoke" ? [] : filterRoutes)
-    ])
-  ) {
-    const context =
-      await createCaptureContext(
-        browser,
-        "admin",
-        profile,
-        theme
-      );
-
-    try {
-      await captureRoute({
-        context,
-        auth: "admin",
-        route,
-        theme,
-        profile,
-        deep: true,
-        coverageTier: "special"
-      });
-    } finally {
-      await context.close();
-    }
-  }
+  await runRoutes(browser, "admin", unique([
+    ...pageRoutes,
+    ...(config.scope === "smoke" ? [] : filterRoutes)
+  ]), {
+    matrix: [{ profile, theme, deep: true }],
+    coverageTier: "special"
+  });
 }
 
 async function runVisualizerFallbackStates(browser: Browser) {
@@ -2193,14 +2320,24 @@ async function runVisualizerFallbackStates(browser: Browser) {
     { route: "/commissions?auditState=webgl-unavailable", options: { disableWebGl: true } }
   ];
 
-  for (const variant of variants) {
-    const context = await createCaptureContext(browser, "anonymous", profile, "dark", variant.options);
-    try {
-      await captureRoute({ context, auth: "anonymous", route: variant.route, theme: "dark", profile, deep: false, coverageTier: "special" });
-    } finally {
-      await context.close();
+  await runBoundedCaptureTasks(variants, {
+    workerCount: config.targetMode === "snapshot-lab" ? 1 : config.captureWorkers,
+    execute: async (variant, _index, signal) => {
+      if (signal.aborted) throw new Error("Visualizer fallback capture was cancelled.");
+      const taskIdentity = `anonymous::${variant.route}::dark::${profile.name}`;
+      const taskScratch = path.join(config.tmpRoot, "capture-workers", createHash("sha256").update(taskIdentity).digest("hex").slice(0, 20));
+      await ensureDirectory(taskScratch);
+      await writeJsonAtomic(path.join(taskScratch, "task.json"), { identity: taskIdentity, coverageTier: "special", startedAt: now() });
+      let context: BrowserContext | null = null;
+      try {
+        context = await createCaptureContext(browser, "anonymous", profile, "dark", variant.options);
+        await captureRoute({ context, auth: "anonymous", route: variant.route, theme: "dark", profile, deep: false, coverageTier: "special" });
+      } finally {
+        await context?.close();
+        await fs.rm(taskScratch, { recursive: true, force: true });
+      }
     }
-  }
+  });
 }
 
 function routesForCurrentScope(routes: ReturnType<typeof buildRoutes>, inventory: Inventory) {

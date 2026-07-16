@@ -38,6 +38,19 @@ export function isExpectedNextPrefetchAbort(evidence: RequestFailureEvidence) {
     headers["sec-purpose"]?.includes("prefetch") === true;
 }
 
+export function isExpectedCaptureTeardownAbort(
+  evidence: RequestFailureEvidence,
+  teardownStarted: boolean
+) {
+  if (!teardownStarted) return false;
+
+  const method = evidence.method.toUpperCase();
+  return evidence.failure.includes("ERR_ABORTED") &&
+    ["GET", "HEAD"].includes(method) &&
+    ["font", "image", "media"].includes(evidence.resourceType) &&
+    isSameOrigin(evidence.url, evidence.baseUrl);
+}
+
 export function isExpectedAuditMutationBlock(input: {
   targetMode: string;
   method: string;

@@ -9,6 +9,9 @@
     "report": "npm run build && node dist/report.js",
     "validate": "npm run build && node dist/validate.js",
     "compare": "npm run build && node dist/diff.js",
+    "repair": "npm run build && node dist/repair.js",
+    "benchmark:artifacts": "npm run build && node dist/benchmark-artifacts.js",
+    "benchmark:validator": "npm run build && node dist/benchmark-validator.js",
     "all": "npm run capture && npm run compare && npm run report && npm run validate"
   },
   "keywords": [],

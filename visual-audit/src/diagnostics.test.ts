@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isExpectedCaptureTeardownAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
@@ -28,6 +29,21 @@ test("only evidenced same-origin Next RSC or prefetch cancellations are expected
   assert.equal(isExpectedNextPrefetchAbort({ ...baseFailure, resourceType: "image" }), false);
   assert.equal(isExpectedNextPrefetchAbort({ ...baseFailure, url: "https://woodmat.ch/api/visual-audit/inventory?_rsc=abc123" }), false);
   assert.equal(isExpectedNextPrefetchAbort({ ...baseFailure, url: "https://woodmat.ch/shop", headers: {} }), false);
+});
+
+test("only safe same-origin visual requests canceled during deliberate teardown are expected", () => {
+  const imageFailure = {
+    ...baseFailure,
+    url: "https://woodmat.ch/_next/image?url=%2Fmedia%2Fpiece.jpg&w=256&q=88",
+    resourceType: "image"
+  };
+
+  assert.equal(isExpectedCaptureTeardownAbort(imageFailure, true), true);
+  assert.equal(isExpectedCaptureTeardownAbort(imageFailure, false), false);
+  assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, url: "https://other.example/piece.jpg" }, true), false);
+  assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, method: "POST" }, true), false);
+  assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, resourceType: "fetch" }, true), false);
+  assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, failure: "net::ERR_CONNECTION_RESET" }, true), false);
 });
 
 test("read-only blocked failures require an unsafe request and an exact policy record", () => {

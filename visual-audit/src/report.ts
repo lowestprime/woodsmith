@@ -2,8 +2,7 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import sharp from "sharp";
-
+import { runArtifactTasks, type ArtifactTask, type CreatePrintSlicesResult } from "./artifact-tasks.js";
 import { config } from "./config.js";
 import { createPdfAtlas, type PdfAtlasPage } from "./pdf-atlas.js";
 import {
@@ -151,29 +150,6 @@ function htmlDocument(input: {
 </html>`;
 }
 
-async function createPrintSlices(source: string, outputRoot: string, sequence: number) {
-  const metadata = await sharp(source).metadata();
-  if (!metadata.width || !metadata.height) return [];
-  const targetWidth = Math.min(2400, metadata.width);
-  const scale = targetWidth / metadata.width;
-  const resizedHeight = Math.max(1, Math.round(metadata.height * scale));
-  const resized = await sharp(source).resize({ width: targetWidth, height: resizedHeight, fit: "fill" }).png().toBuffer();
-  const outputs: string[] = [];
-
-  for (let top = 0, part = 1; top < resizedHeight; top += 1550, part += 1) {
-    const height = Math.min(1550, resizedHeight - top);
-    const output = path.join(outputRoot, `${String(sequence).padStart(7, "0")}-${String(part).padStart(4, "0")}.jpg`);
-    await sharp(resized)
-      .extract({ left: 0, top, width: targetWidth, height })
-      .flatten({ background: "#ffffff" })
-      .jpeg({ quality: 92, chromaSubsampling: "4:4:4", mozjpeg: true })
-      .toFile(output);
-    await fs.chmod(output, 0o600).catch(() => undefined);
-    outputs.push(output);
-  }
-  return outputs;
-}
-
 async function main() {
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
   const reportRoot = path.join(config.runRoot, "report");
@@ -199,7 +175,8 @@ async function main() {
   if (missingRestrictedRoutes.length > 0 || missingShareableRoutes.length > 0) {
     throw new Error("Report representative selection omitted one or more source routes.");
   }
-  const shareableCards: string[] = [];
+  const shareableCardPlans: Array<{ capture: CaptureRecord; sources: string[] }> = [];
+  const shareableCopyTasks: ArtifactTask[] = [];
   let shareableAssetIndex = 0;
   for (const capture of shareableCaptures) {
     const sources: string[] = [];
@@ -207,12 +184,14 @@ async function main() {
       const source = path.join(config.runRoot, relativeFile);
       shareableAssetIndex += 1;
       const destination = path.join(shareableAssets, redactedAssetName(shareableAssetIndex, relativeFile));
-      await fs.copyFile(source, destination);
-      await fs.chmod(destination, 0o600).catch(() => undefined);
+      shareableCopyTasks.push({ kind: "copy-artifact", source, destination });
       sources.push(`assets/${path.basename(destination)}`);
     }
-    shareableCards.push(captureCard(capture, sources, true, true));
+    shareableCardPlans.push({ capture, sources });
   }
+  const shareableCopyRun = await runArtifactTasks(shareableCopyTasks, config.reportWorkers);
+  console.log(`REPORT_STAGE=${JSON.stringify({ name: "shareable-copy", files: shareableCopyTasks.length, workers: shareableCopyRun.metrics.workerCount, mode: shareableCopyRun.metrics.mode, maxInFlight: shareableCopyRun.metrics.maxInFlight })}`);
+  const shareableCards = shareableCardPlans.map((plan) => captureCard(plan.capture, plan.sources, true, true));
 
   const shareableManifest = {
     schemaVersion: manifest.schemaVersion,
@@ -238,55 +217,89 @@ async function main() {
   const shareablePdfPages: PdfAtlasPage[] = [];
   let restrictedPrintPages = 0;
   let shareablePrintPages = 0;
+  const restrictedSources = new Map<string, string[]>();
+  const shareableSources = new Map<string, string[]>();
+  const restrictedSlicePlans: Array<{ capture: CaptureRecord; relativeFile: string; sequence: number }> = [];
+  const shareableSlicePlans: Array<{ capture: CaptureRecord; relativeFile: string; sequence: number }> = [];
   let sequence = 0;
   for (const capture of printCaptures) {
-    const sources: string[] = [];
     for (const relativeFile of capture.files) {
       sequence += 1;
-      const slices = await createPrintSlices(path.join(config.runRoot, relativeFile), restrictedPrintAssets, sequence);
-      sources.push(...slices.map((file) => `print-assets/${path.basename(file)}`));
-      restrictedPdfPages.push(...slices.map((imageFile, index) => ({
-        imageFile,
-        captureKey: capture.key,
-        route: capture.route,
-        state: capture.state,
-        auth: capture.auth,
-        theme: capture.theme,
-        viewport: capture.viewport,
-        status: capture.status == null ? "unknown" : String(capture.status),
-        assetLabel: relativeFile,
-        sliceIndex: index + 1,
-        sliceCount: slices.length
-      })));
-      restrictedPrintPages += slices.length;
+      restrictedSlicePlans.push({ capture, relativeFile, sequence });
     }
-    restrictedPrintCards.push(captureCard(capture, sources, false, false));
   }
 
   sequence = 0;
   for (const capture of shareableCaptures) {
-    const sources: string[] = [];
     for (const relativeFile of capture.files) {
       sequence += 1;
-      const slices = await createPrintSlices(path.join(config.runRoot, relativeFile), shareablePrintAssets, sequence);
-      sources.push(...slices.map((file) => `print-assets/${path.basename(file)}`));
-      shareablePdfPages.push(...slices.map((imageFile, index) => ({
-        imageFile,
-        captureKey: capture.key,
-        route: redact(capture.route),
-        state: capture.state,
-        auth: capture.auth,
-        theme: capture.theme,
-        viewport: capture.viewport,
-        status: capture.status == null ? "unknown" : String(capture.status),
-        assetLabel: `Capture image ${sequence}`,
-        sliceIndex: index + 1,
-        sliceCount: slices.length
-      })));
-      shareablePrintPages += slices.length;
+      shareableSlicePlans.push({ capture, relativeFile, sequence });
     }
-    shareablePrintCards.push(captureCard(capture, sources, true, false));
   }
+
+  const restrictedSliceRun = await runArtifactTasks(restrictedSlicePlans.map((plan) => ({
+    kind: "create-print-slices",
+    source: path.join(config.runRoot, plan.relativeFile),
+    outputRoot: restrictedPrintAssets,
+    sequence: plan.sequence
+  })), config.reportWorkers);
+  const shareableSliceRun = await runArtifactTasks(shareableSlicePlans.map((plan) => ({
+    kind: "create-print-slices",
+    source: path.join(config.runRoot, plan.relativeFile),
+    outputRoot: shareablePrintAssets,
+    sequence: plan.sequence
+  })), config.reportWorkers);
+  console.log(`REPORT_STAGE=${JSON.stringify({
+    name: "print-slices",
+    restrictedFiles: restrictedSlicePlans.length,
+    shareableFiles: shareableSlicePlans.length,
+    workers: config.reportWorkers,
+    restrictedMaxInFlight: restrictedSliceRun.metrics.maxInFlight,
+    shareableMaxInFlight: shareableSliceRun.metrics.maxInFlight
+  })}`);
+
+  restrictedSlicePlans.forEach((plan, planIndex) => {
+    const result = restrictedSliceRun.results[planIndex] as CreatePrintSlicesResult;
+    const sources = restrictedSources.get(plan.capture.key) ?? [];
+    sources.push(...result.files.map((file) => `print-assets/${path.basename(file)}`));
+    restrictedSources.set(plan.capture.key, sources);
+    restrictedPdfPages.push(...result.files.map((imageFile, index) => ({
+      imageFile,
+      captureKey: plan.capture.key,
+      route: plan.capture.route,
+      state: plan.capture.state,
+      auth: plan.capture.auth,
+      theme: plan.capture.theme,
+      viewport: plan.capture.viewport,
+      status: plan.capture.status == null ? "unknown" : String(plan.capture.status),
+      assetLabel: plan.relativeFile,
+      sliceIndex: index + 1,
+      sliceCount: result.files.length
+    })));
+    restrictedPrintPages += result.files.length;
+  });
+  shareableSlicePlans.forEach((plan, planIndex) => {
+    const result = shareableSliceRun.results[planIndex] as CreatePrintSlicesResult;
+    const sources = shareableSources.get(plan.capture.key) ?? [];
+    sources.push(...result.files.map((file) => `print-assets/${path.basename(file)}`));
+    shareableSources.set(plan.capture.key, sources);
+    shareablePdfPages.push(...result.files.map((imageFile, index) => ({
+      imageFile,
+      captureKey: plan.capture.key,
+      route: redact(plan.capture.route),
+      state: plan.capture.state,
+      auth: plan.capture.auth,
+      theme: plan.capture.theme,
+      viewport: plan.capture.viewport,
+      status: plan.capture.status == null ? "unknown" : String(plan.capture.status),
+      assetLabel: `Capture image ${plan.sequence}`,
+      sliceIndex: index + 1,
+      sliceCount: result.files.length
+    })));
+    shareablePrintPages += result.files.length;
+  });
+  restrictedPrintCards.push(...printCaptures.map((capture) => captureCard(capture, restrictedSources.get(capture.key) ?? [], false, false)));
+  shareablePrintCards.push(...shareableCaptures.map((capture) => captureCard(capture, shareableSources.get(capture.key) ?? [], true, false)));
 
   const restrictedPrintHtml = path.join(reportRoot, "print.html");
   const shareablePrintHtml = path.join(shareableRoot, "print.html");

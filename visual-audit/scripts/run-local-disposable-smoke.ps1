@@ -6,7 +6,15 @@ param(
   [ValidateSet("live-readonly", "snapshot-lab")]
   [string]$TargetMode = "live-readonly",
   [ValidateSet("smoke", "full")]
-  [string]$Scope = "smoke"
+  [string]$Scope = "smoke",
+  [ValidateRange(1, 6)]
+  [int]$CaptureWorkers = 2,
+  [ValidateRange(1, 8)]
+  [int]$ValidationWorkers = 6,
+  [ValidateRange(1, 8)]
+  [int]$ReportWorkers = 6,
+  [string]$ResumeRunId = "",
+  [string]$ResumeOutputVolume = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -35,6 +43,21 @@ if ($CommitSha -notmatch "^[0-9a-f]{40}$") {
   throw "CommitSha must be a full 40-character lowercase Git SHA."
 }
 
+$hasResumeRunId = -not [string]::IsNullOrWhiteSpace($ResumeRunId)
+$hasResumeOutputVolume = -not [string]::IsNullOrWhiteSpace($ResumeOutputVolume)
+if ($hasResumeRunId -ne $hasResumeOutputVolume) {
+  throw "ResumeRunId and ResumeOutputVolume must be supplied together."
+}
+$resumeExistingRun = $hasResumeRunId -and $hasResumeOutputVolume
+if ($resumeExistingRun) {
+  if ($ResumeRunId -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,191}$") {
+    throw "ResumeRunId contains unsupported characters."
+  }
+  if ($ResumeOutputVolume -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,191}$") {
+    throw "ResumeOutputVolume contains unsupported characters."
+  }
+}
+
 $appMetadata = (Invoke-Docker image inspect $AppImage) | ConvertFrom-Json
 $auditMetadata = (Invoke-Docker image inspect $AuditImage) | ConvertFrom-Json
 $appBuildSha = $appMetadata[0].Config.Env |
@@ -47,28 +70,47 @@ if ($appMetadata[0].Os -ne "linux" -or $appMetadata[0].Architecture -ne "amd64")
 if ($auditMetadata[0].Os -ne "linux" -or $auditMetadata[0].Architecture -ne "amd64") {
   throw "The visual-audit image must be linux/amd64."
 }
-if ($appBuildSha -ne ("WOODSMITH_BUILD_SHA=" + $CommitSha)) {
-  throw "The app image build identity does not match CommitSha."
+$expectedBuildSha = "WOODSMITH_BUILD_SHA=" + $CommitSha
+$appBuildIdentity = if ($appBuildSha -eq $expectedBuildSha) {
+  "exact"
+} elseif (
+  $appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and
+  $TargetMode -eq "live-readonly" -and
+  $Scope -eq "smoke"
+) {
+  "unknown-loopback-smoke"
+} else {
+  throw "The app image build identity does not match CommitSha. Only an unstamped live-readonly loopback smoke is permitted before commit."
 }
 
 $shortSha = $CommitSha.Substring(0, 8)
 $stamp = [DateTime]::UtcNow.ToString("yyyyMMddTHHmmssZ")
 $suffix = ([Guid]::NewGuid().ToString("N")).Substring(0, 10)
 $modeLabel = if ($TargetMode -eq "snapshot-lab") { "lab" } else { "readonly" }
-$runId = "local-$modeLabel-$Scope-$stamp-$shortSha-$suffix"
+$runId = if ($resumeExistingRun) {
+  $ResumeRunId
+} else {
+  "local-$modeLabel-$Scope-$stamp-$shortSha-$suffix"
+}
 $appContainer = "woodsmith-local-audit-app-$suffix"
 $dataVolume = "woodsmith-local-audit-data-$suffix"
 $mediaVolume = "woodsmith-local-audit-media-$suffix"
 $labDataVolume = "woodsmith-local-audit-lab-data-$suffix"
 $labMediaVolume = "woodsmith-local-audit-lab-media-$suffix"
-$outputVolume = "woodsmith-local-audit-output-$suffix"
+$outputVolume = if ($resumeExistingRun) {
+  $ResumeOutputVolume
+} else {
+  "woodsmith-local-audit-output-$suffix"
+}
 $secretVolume = "woodsmith-local-audit-secrets-$suffix"
 $managedVolumes = @(
   $dataVolume,
   $mediaVolume,
-  $outputVolume,
   $secretVolume
 )
+if (-not $resumeExistingRun) {
+  $managedVolumes += $outputVolume
+}
 if ($TargetMode -eq "snapshot-lab") {
   $managedVolumes += @($labDataVolume, $labMediaVolume)
 }
@@ -85,17 +127,73 @@ $failed = $true
 
 try {
   Write-Output "AUDIT_RUN_ID=$runId"
+  Write-Output ("AUDIT_RESUME_EXISTING=" + $resumeExistingRun)
+  Write-Output ("APP_BUILD_IDENTITY=" + $appBuildIdentity)
 
   foreach ($volume in $managedVolumes) {
     Invoke-Docker volume create $volume | Out-Null
   }
 
+  if ($resumeExistingRun) {
+    $matchingOutputVolume = @(
+      & docker volume ls --quiet --filter ("name=^" + $outputVolume + "$")
+    )
+    if ($LASTEXITCODE -ne 0 -or $matchingOutputVolume -notcontains $outputVolume) {
+      throw "ResumeOutputVolume does not exist."
+    }
+
+    $resumeMetadataScript = @'
+const fs = require("node:fs");
+const path = require("node:path");
+const runRoot = path.join("/output", process.env.AUDIT_RUN_ID);
+const manifest = JSON.parse(
+  fs.readFileSync(path.join(runRoot, "manifest.json"), "utf8")
+);
+const expected = {
+  runId: process.env.AUDIT_RUN_ID,
+  mode: process.env.TARGET_MODE,
+  scope: process.env.AUDIT_SCOPE,
+  commit: process.env.TARGET_COMMIT_SHA
+};
+const actual = {
+  runId: manifest.runId,
+  mode: manifest.mode,
+  scope: manifest.scope,
+  commit: manifest.expectedCommit
+};
+if (
+  actual.runId !== expected.runId ||
+  actual.mode !== expected.mode ||
+  actual.scope !== expected.scope ||
+  actual.commit !== expected.commit
+) {
+  console.error(JSON.stringify({ expected, actual }));
+  process.exit(12);
+}
+console.log(JSON.stringify(actual));
+'@
+    $resumeMetadataArguments = @(
+      "run", "--rm", "--network", "none", "--read-only", "--user", "1001:1001",
+      "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true",
+      "-v", ($outputVolume + ":/output:ro"),
+      "-e", ("AUDIT_RUN_ID=" + $runId),
+      "-e", ("TARGET_MODE=" + $TargetMode),
+      "-e", ("AUDIT_SCOPE=" + $Scope),
+      "-e", ("TARGET_COMMIT_SHA=" + $CommitSha),
+      "--entrypoint", "node", $AuditImage, "-e", $resumeMetadataScript
+    )
+    Invoke-Docker @resumeMetadataArguments
+  }
+
   $initMounts = @(
     "-v", ($dataVolume + ":/data"),
-    "-v", ($mediaVolume + ":/media"),
-    "-v", ($outputVolume + ":/output")
+    "-v", ($mediaVolume + ":/media")
   )
-  $initTargets = "/data /media /output"
+  $initTargets = "/data /media"
+  if (-not $resumeExistingRun) {
+    $initMounts += @("-v", ($outputVolume + ":/output"))
+    $initTargets += " /output"
+  }
   if ($TargetMode -eq "snapshot-lab") {
     $initMounts += @(
       "-v", ($labDataVolume + ":/lab-data"),
@@ -110,7 +208,8 @@ try {
   $initArguments += @(
     "--entrypoint", "/bin/sh", $AppImage, "-c",
     ("chown 1001:1001 " + $initTargets +
-      " && chmod 700 /data /output" +
+      " && chmod 700 /data" +
+      $(if (-not $resumeExistingRun) { " /output" } else { "" }) +
       $(if ($TargetMode -eq "snapshot-lab") { " /lab-data" } else { "" }) +
       " && chmod 755 /media" +
       $(if ($TargetMode -eq "snapshot-lab") { " /lab-media" } else { "" }))
@@ -380,7 +479,10 @@ console.log("SNAPSHOT_CLONE_QUICK_CHECK=ok");
     "-e", "WOODSMITH_ADMIN_EMAIL=woodsmithbb@proton.me",
     "-e", "ADMIN_PASSWORD_FILE=/run/secrets/admin_password",
     "-e", "AUDIT_TOKEN_FILE=/run/secrets/audit_token",
-    "-e", "AUDIT_STRICT_DIAGNOSTICS=true"
+    "-e", "AUDIT_STRICT_DIAGNOSTICS=true",
+    "-e", ("VISUAL_AUDIT_CAPTURE_WORKERS=" + $CaptureWorkers),
+    "-e", ("VISUAL_AUDIT_VALIDATION_WORKERS=" + $ValidationWorkers),
+    "-e", ("VISUAL_AUDIT_REPORT_WORKERS=" + $ReportWorkers)
   )
 
   Write-Output "CAPTURE_START"
@@ -572,6 +674,42 @@ finally {
     Write-Output "APP_LOG_TAIL_BEGIN"
     & docker logs --tail 200 $appContainer
     Write-Output "APP_LOG_TAIL_END"
+  }
+
+  if ($failed) {
+    $availableOutputVolume = @(
+      & docker volume ls --quiet --filter ("name=^" + $outputVolume + "$")
+    )
+    if ($LASTEXITCODE -ne 0 -or $availableOutputVolume -notcontains $outputVolume) {
+      Write-Output "LOCAL_AUDIT_FAILURE_SUMMARY=unavailable"
+    } else {
+      $failureSummaryScript = @'
+const fs = require("node:fs");
+const path = require("node:path");
+const validationPath = path.join(
+  "/output",
+  process.env.AUDIT_RUN_ID,
+  "validation.json"
+);
+if (!fs.existsSync(validationPath)) {
+  console.log("LOCAL_AUDIT_FAILURE_SUMMARY=unavailable");
+  process.exit(0);
+}
+const validation = JSON.parse(fs.readFileSync(validationPath, "utf8"));
+console.log(`LOCAL_AUDIT_FAILURE_SUMMARY=${JSON.stringify({
+  passed: validation.passed,
+  failureCount: validation.failures.length,
+  failures: validation.failures.slice(0, 20),
+  diagnosticCount: validation.diagnostics.length,
+  diagnostics: validation.diagnostics.slice(0, 20)
+})}`);
+'@
+      & docker run --rm --network none --read-only --user 1001:1001 `
+        --cap-drop ALL --security-opt no-new-privileges:true `
+        -v ($outputVolume + ":/output:ro") `
+        -e ("AUDIT_RUN_ID=" + $runId) `
+        --entrypoint node $AuditImage -e $failureSummaryScript 2>$null
+    }
   }
 
   & docker rm -f $appContainer 2>$null | Out-Null

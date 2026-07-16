@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { AuditScope, TargetMode, ViewportProfile } from "./types.js";
+import { parseWorkerCount } from "./worker-count.js";
 
 function required(name: string) {
   const value = process.env[name]?.trim();
@@ -55,6 +56,20 @@ const browserChannel = process.env.AUDIT_BROWSER_CHANNEL?.trim();
 if (browserChannel && !["chrome", "msedge"].includes(browserChannel)) {
   throw new Error("AUDIT_BROWSER_CHANNEL may be chrome or msedge when set.");
 }
+const validationWorkers = parseWorkerCount({
+  name: "VISUAL_AUDIT_VALIDATION_WORKERS",
+  raw: process.env.VISUAL_AUDIT_VALIDATION_WORKERS
+});
+const reportWorkers = parseWorkerCount({
+  name: "VISUAL_AUDIT_REPORT_WORKERS",
+  raw: process.env.VISUAL_AUDIT_REPORT_WORKERS ?? String(validationWorkers)
+});
+const captureWorkers = parseWorkerCount({
+  name: "VISUAL_AUDIT_CAPTURE_WORKERS",
+  raw: process.env.VISUAL_AUDIT_CAPTURE_WORKERS,
+  automaticCap: 2,
+  maximum: 6
+});
 
 export const config = {
   targetMode,
@@ -75,7 +90,10 @@ export const config = {
   maxStitchedSegmentHeight: positiveInteger("MAX_STITCHED_SEGMENT_HEIGHT", 60_000),
   baselineRoot: process.env.APPROVED_BASELINE_ROOT?.trim() ? path.resolve(process.env.APPROVED_BASELINE_ROOT) : null,
   strictDiagnostics: booleanValue("AUDIT_STRICT_DIAGNOSTICS", true),
-  browserChannel: browserChannel as "chrome" | "msedge" | undefined
+  browserChannel: browserChannel as "chrome" | "msedge" | undefined,
+  validationWorkers,
+  reportWorkers,
+  captureWorkers
 } as const;
 
 export const viewports: ViewportProfile[] = [
