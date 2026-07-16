@@ -1535,6 +1535,7 @@ async function captureInlineEditing(input: {
         continue;
       }
 
+      const urlBeforeSelection = input.page.url();
       await field.click({ timeout: 10_000 });
 
       await saveCapture({
@@ -1546,6 +1547,13 @@ async function captureInlineEditing(input: {
             .padStart(3, "0")}-selected`,
         fullPage: false
       });
+
+      const urlAfterSelection = input.page.url();
+      if (urlAfterSelection !== urlBeforeSelection) {
+        throw new Error(
+          `Inline field selection navigated from ${urlBeforeSelection} to ${urlAfterSelection}`
+        );
+      }
 
       if (identity.urlField) {
         await assistant
@@ -1588,7 +1596,7 @@ async function captureInlineEditing(input: {
         "button",
         { name: "Cancel" }
       )
-      .click();
+      .click({ timeout: 10_000 });
   }
 }
 

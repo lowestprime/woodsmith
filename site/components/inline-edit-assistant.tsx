@@ -2,6 +2,7 @@
 
 import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
+import { setInlineNavigationGuard } from "@/lib/inline-edit-navigation";
 
 type InlineMode = "update" | "add" | "cut" | "move";
 type EditablePatch = { resource: string; id?: string; field: string; index?: number; toIndex?: number; value?: unknown; expectedValue?: string; mode?: InlineMode };
@@ -70,10 +71,7 @@ function setEditableState(root: ParentNode, enabled: boolean) {
     element.classList.remove("inline-editable-active-selected");
     if (enabled) element.dataset.inlineEditOriginal = element.textContent?.trim() ?? "";
     else delete element.dataset.inlineEditOriginal;
-    if (element instanceof HTMLAnchorElement) {
-      if (enabled) element.addEventListener("click", preventAnchorNavigation, true);
-      else element.removeEventListener("click", preventAnchorNavigation, true);
-    }
+    setInlineNavigationGuard(element, enabled, preventAnchorNavigation);
   });
 }
 
@@ -220,7 +218,7 @@ export function InlineEditAssistant() {
         element.contentEditable = "false";
         element.classList.remove("inline-editable-active", "inline-editable-active-selected");
         delete element.dataset.inlineEditOriginal;
-        element.removeEventListener("click", preventAnchorNavigation, true);
+        setInlineNavigationGuard(element, false, preventAnchorNavigation);
       }
     });
     return root;
