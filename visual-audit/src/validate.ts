@@ -16,6 +16,7 @@ import {
   discoveredCoverageMatrix
 } from "./coverage-matrix.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
+import { buildNoOverlapReport, type NoOverlapReport } from "./media-overlap.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
 import type { RunManifest } from "./types.js";
 import { exists, listFiles, relativeTo, writeJsonAtomic } from "./util.js";
@@ -66,6 +67,34 @@ function stageMetric(name: string, startedAt: number, details: Record<string, un
   })}`);
 }
 
+async function validateNoOverlapReport(manifest: RunManifest, failures: string[]) {
+  const reportFile = path.join(config.runRoot, "no-overlap.json");
+  if (!await exists(reportFile)) {
+    failures.push("No-overlap report is missing.");
+    return;
+  }
+
+  let report: NoOverlapReport;
+  try {
+    report = JSON.parse(await fs.readFile(reportFile, "utf8")) as NoOverlapReport;
+  } catch {
+    failures.push("No-overlap report is not valid JSON.");
+    return;
+  }
+
+  const expected = buildNoOverlapReport({
+    runId: manifest.runId,
+    generatedAt: manifest.completedAt ?? "",
+    routes: manifest.routes
+  });
+  if (JSON.stringify(report) !== JSON.stringify(expected)) {
+    failures.push("No-overlap report does not exactly match the completed route evidence.");
+  }
+  if (!report.passed || report.findingCount > 0 || report.findings.length > 0) {
+    failures.push(`No-overlap report contains ${report.findingCount} positive-area intersection(s).`);
+  }
+}
+
 async function main() {
   const manifestFile = path.join(config.runRoot, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
@@ -77,6 +106,7 @@ async function main() {
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
+  await validateNoOverlapReport(manifest, failures);
   failures.push(...snapshotLabEvidenceFailures({
     targetMode: config.targetMode,
     captureStates: manifest.captures.map((capture) => capture.state),

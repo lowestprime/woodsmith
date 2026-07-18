@@ -49,6 +49,7 @@ import {
   waitForNavigationSettle,
   type NavigationSample
 } from "./navigation-settle.js";
+import { buildNoOverlapReport, findMediaOverlaps } from "./media-overlap.js";
 import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
 import { waitForRequestDrain } from "./request-drain.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
@@ -1028,13 +1029,35 @@ async function collectPageEvidence(page: Page, route: string) {
       );
     }).length;
 
+    const mediaCollections = Array.from(document.querySelectorAll<HTMLElement>("[data-media-collection]"))
+      .filter(visible)
+      .map((collection, collectionIndex) => ({
+        id: collection.dataset.mediaCollection || collection.dataset.auditId || `collection-${collectionIndex + 1}`,
+        variant: collection.dataset.mediaCollectionVariant || "unspecified",
+        items: Array.from(collection.querySelectorAll<HTMLElement>("[data-media-item]"))
+          .filter((item) => item.closest("[data-media-collection]") === collection && visible(item))
+          .map((item, itemIndex) => {
+            const rect = item.getBoundingClientRect();
+            return {
+              id: item.dataset.mediaId || `item-${itemIndex + 1}`,
+              slot: item.dataset.mediaSlot || "item",
+              left: rect.left,
+              top: rect.top,
+              right: rect.right,
+              bottom: rect.bottom
+            };
+          })
+      }));
+
     const surfaces = {
       details: Array.from(document.querySelectorAll("details")).filter(visible).length,
-      lightboxOpeners: Array.from(document.querySelectorAll("button.media-card")).filter(visible).length,
+      lightboxOpeners: Array.from(document.querySelectorAll('[data-media-lightbox-opener="true"]')).filter(visible).length,
       mediaPickerOpeners: Array.from(document.querySelectorAll("button")).filter((element) => visible(element) && element.textContent?.trim() === "Browse library").length,
       inlineEditLinks: Array.from(document.querySelectorAll("a.section-edit-link")).filter((link) => visible(link) && inlineCapable(link)).length,
       studioCards: Array.from(document.querySelectorAll(".studio-editor-card")).filter(visible).length,
       mediaCards: Array.from(document.querySelectorAll("[data-media-path]")).filter(visible).length,
+      mediaCollections: mediaCollections.length,
+      mediaCollectionItems: mediaCollections.reduce((total, collection) => total + collection.items.length, 0),
       validationForms: Array.from(document.querySelectorAll("form")).filter((form) => visible(form) && Boolean(form.querySelector("input[required],textarea[required],select[required]"))).length,
       interactiveElements: Array.from(document.querySelectorAll("a,button,input,textarea,select,summary,[role=button],[role=tab],[aria-pressed]")).filter(visible).length,
       scrollContainers,
@@ -1057,7 +1080,7 @@ async function collectPageEvidence(page: Page, route: string) {
           .map((element) => element.dataset.auditId || element.id || element.tagName.toLowerCase())
       : [];
 
-    return { links: [...new Set(links)], brokenMedia, overflow, documentWidth, viewportWidth: window.innerWidth, surfaces };
+    return { links: [...new Set(links)], brokenMedia, overflow, documentWidth, viewportWidth: window.innerWidth, mediaCollections, surfaces };
   }, new URL(config.baseUrl).origin);
 
   manifest.discoveredLinks = unique([...manifest.discoveredLinks, ...evidence.links]).sort();
@@ -1075,7 +1098,17 @@ async function collectPageEvidence(page: Page, route: string) {
     });
   }
 
-  return evidence;
+  const mediaOverlaps = findMediaOverlaps(evidence.mediaCollections);
+  for (const overlap of mediaOverlaps) {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "media-overlap",
+      route,
+      message: `${overlap.collectionId} (${overlap.variant}) overlaps ${overlap.firstId} and ${overlap.secondId} by ${overlap.width.toFixed(2)} x ${overlap.height.toFixed(2)} px (${overlap.area.toFixed(2)} px2).`
+    });
+  }
+
+  return { ...evidence, mediaOverlaps };
 }
 
 async function saveCapture(input: {
@@ -1338,7 +1371,7 @@ async function captureLightboxes(input: {
   status: number | null;
 }) {
   const openers =
-    input.page.locator("button.media-card");
+    input.page.locator('[data-media-lightbox-opener="true"]');
 
   const count = deepCount(await openers.count(), 4);
 
@@ -1433,6 +1466,41 @@ async function captureLightboxes(input: {
       state: "hidden",
       timeout: 10_000
     });
+  }
+}
+
+async function captureMediaCollections(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const collections = input.page.locator("[data-media-collection]");
+  const count = deepCount(await collections.count(), 8);
+
+  for (let index = 0; index < count; index += 1) {
+    const collection = collections.nth(index);
+    if (!await collection.isVisible().catch(() => false)) continue;
+    const variant = await collection.getAttribute("data-media-collection-variant") || "unspecified";
+    const statePrefix = `media-collection-${String(index + 1).padStart(3, "0")}-${safeName(variant)}`;
+
+    await saveCapture({ ...input, state: `${statePrefix}-default`, locator: collection });
+
+    if (variant !== "detail-stage") continue;
+    const thumbnails = collection.locator('[data-media-slot="thumbnail"]');
+    const thumbnailCount = await thumbnails.count();
+    if (thumbnailCount < 2) continue;
+
+    const last = thumbnails.nth(thumbnailCount - 1);
+    await last.focus();
+    await input.page.keyboard.press("Enter");
+    await input.page.waitForTimeout(80);
+    await saveCapture({ ...input, state: `${statePrefix}-last-selected`, locator: collection });
+
+    await thumbnails.first().click();
+    await input.page.waitForTimeout(80);
   }
 }
 
@@ -1706,7 +1774,7 @@ async function captureMediaPageItems(input: {
     });
 
     const preview =
-      inspector.locator("button.media-card");
+      inspector.locator('[data-media-lightbox-opener="true"]');
 
     if (
       await preview.isVisible().catch(() => false)
@@ -1978,6 +2046,12 @@ async function captureRoute(input: {
     const evidence = await collectPageEvidence(page, input.route);
     routeResult.discoveredLinks = evidence.links;
     routeResult.surfaces = evidence.surfaces;
+    routeResult.mediaCollections = evidence.mediaCollections.map((collection) => ({
+      id: collection.id,
+      variant: collection.variant,
+      itemCount: collection.items.length
+    }));
+    routeResult.mediaOverlapFindings = evidence.mediaOverlaps;
 
     const base = {
       page,
@@ -2038,6 +2112,7 @@ async function captureRoute(input: {
     if (input.deep) {
       const steps = [
         ["details", captureDetailsStates],
+        ["media-collections", captureMediaCollections],
         ["lightboxes", captureLightboxes],
         ["media-pickers", captureMediaPickers],
         ["inline-editing", captureInlineEditing],
@@ -2487,6 +2562,11 @@ async function main() {
     }
 
     manifest.completedAt = now();
+    await writeJsonAtomic(path.join(config.runRoot, "no-overlap.json"), buildNoOverlapReport({
+      runId: manifest.runId,
+      generatedAt: manifest.completedAt,
+      routes: manifest.routes
+    }));
     await persistManifest();
   } finally {
     await browser.close();

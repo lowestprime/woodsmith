@@ -1,3 +1,5 @@
+import type { MediaOverlapFinding } from "./media-overlap.js";
+
 export type TargetMode = "live-readonly" | "snapshot-lab";
 export type AuditScope = "smoke" | "full";
 export type AuthState = "anonymous" | "admin";
@@ -53,6 +55,7 @@ export type DiagnosticType =
   | "mutation-blocked"
   | "broken-media"
   | "horizontal-overflow"
+  | "media-overlap"
   | "coverage"
   | "security";
 
@@ -77,6 +80,8 @@ export type RouteResult = {
   expected: boolean;
   discoveredLinks?: string[];
   surfaces?: SurfaceInventory;
+  mediaCollections?: Array<{ id: string; variant: string; itemCount: number }>;
+  mediaOverlapFindings?: MediaOverlapFinding[];
 };
 
 export type SurfaceInventory = {
@@ -86,6 +91,8 @@ export type SurfaceInventory = {
   inlineEditLinks: number;
   studioCards: number;
   mediaCards: number;
+  mediaCollections: number;
+  mediaCollectionItems: number;
   validationForms: number;
   interactiveElements: number;
   scrollContainers: number;

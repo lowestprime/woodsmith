@@ -167,7 +167,9 @@ export function buildRoutes(
     throw new Error(`Inventory is incomplete because bounded collections were truncated: ${inventory.limits.truncatedCollections.join(", ")}`);
   }
 
+  const isSnapshotLabFixtureRoute = (route: string) => route.startsWith("/snapshot-lab/");
   const sourcePublicRoutes = source.staticRoutes.filter(route => {
+    if (isSnapshotLabFixtureRoute(route)) return false;
     return ![
       "/studio",
       "/account/profile",
@@ -185,9 +187,10 @@ export function buildRoutes(
 
   const publicRoutes = unique([
     ...sourcePublicRoutes,
-    ...inventory.staticRoutes,
+    ...inventory.staticRoutes.filter((route) => !isSnapshotLabFixtureRoute(route)),
     ...inventory.legacyRoutes,
     ...emptyAndErrorRoutes,
+    ...(config.targetMode === "snapshot-lab" ? ["/snapshot-lab/media-collections"] : []),
 
     ...inventory.pages.filter(page => page.status === "published").map(page =>
       `/${encodeURIComponent(page.slug)}`
@@ -276,7 +279,7 @@ export function buildRoutes(
     publicRoutes,
     adminRoutes: unique([
       ...publicRoutes,
-      ...source.staticRoutes,
+      ...source.staticRoutes.filter((route) => !isSnapshotLabFixtureRoute(route)),
       ...studioRoutes,
       ...privateProjectRoutes,
       ...snapshotLabRoutes,

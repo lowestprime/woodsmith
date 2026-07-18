@@ -4,6 +4,7 @@
   "description": "Deterministic two-mode visual archive for Beaman Woodworks",
   "scripts": {
     "test": "npm run build && node --test dist/*.test.js",
+    "test:media-browser": "node scripts/verify-media-collections.mjs",
     "build": "tsc -p tsconfig.json",
     "capture": "npm run build && node dist/run.js",
     "report": "npm run build && node dist/report.js",
