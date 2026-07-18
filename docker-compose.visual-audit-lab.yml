@@ -1,6 +1,6 @@
 services:
   woodsmith-audit-lab:
-    image: woodsmith:prod
+    image: "${WOODSMITH_AUDIT_APP_IMAGE:-woodsmith:prod}"
     container_name: woodsmith-audit-lab
     restart: "no"
     user: "${PUID:?PUID must be set}:${PGID:?PGID must be set}"
@@ -63,6 +63,7 @@ services:
       retries: 30
 
   visual-audit:
+    image: "${WOODSMITH_VISUAL_AUDIT_IMAGE:-woodsmith-visual-audit:latest}"
     build:
       context: .
       dockerfile: visual-audit/Dockerfile

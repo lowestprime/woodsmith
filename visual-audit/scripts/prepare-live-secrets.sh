@@ -5,10 +5,13 @@ ROOT="/volume2/docker_ssd/woodsmith"
 cd "$ROOT"
 umask 077
 
+source visual-audit/scripts/docker-command.sh
+resolve_docker_command
+
 mkdir -p secrets
 chmod 700 secrets
 
-docker inspect woodsmith --format '{{json .Config.Env}}' \
+docker_cmd inspect woodsmith --format '{{json .Config.Env}}' \
 | OUTPUT_PATH='secrets/woodsmith_audit_admin_password' python3 -c '
 import json
 import os

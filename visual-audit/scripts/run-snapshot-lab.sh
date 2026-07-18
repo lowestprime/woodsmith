@@ -5,6 +5,9 @@ ROOT="/volume2/docker_ssd/woodsmith"
 cd "$ROOT"
 umask 077
 
+source visual-audit/scripts/docker-command.sh
+resolve_docker_command
+
 LOCK="/tmp/woodsmith-visual-audit-lab.lock"
 if ! mkdir "$LOCK" 2>/dev/null; then
   printf '%s\n' "Another Woodsmith snapshot-lab audit is already running."
@@ -29,6 +32,10 @@ if [[ "${AUDIT_EVIDENCE_TIER:-}" != "tier-2-production-clone" || "${AUDIT_MEDIA_
   exit 1
 fi
 
+TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
+require_exact_app_image "${WOODSMITH_AUDIT_APP_IMAGE:?}" "$TARGET_COMMIT_SHA"
+require_linux_amd64_image "${WOODSMITH_VISUAL_AUDIT_IMAGE:?}"
+
 for directory in "${AUDIT_LAB_DATA_DIR:?}" "${AUDIT_LAB_MEDIA_DIR:?}"; do
   resolved="$(readlink -f "$directory")"
   if [[ ! -d "$resolved" || "$resolved" == "/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025" || "$resolved" == "/volume2/docker_ssd/woodsmith/site/data" ]]; then
@@ -44,14 +51,13 @@ for marker in "${AUDIT_LAB_DATA_DIR}/.woodsmith-visual-audit-lab" "${AUDIT_LAB_M
   fi
 done
 
-TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
 COMMIT_SHORT="$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
 AUDIT_RUN_ID="${AUDIT_RUN_ID:-lab-$(date -u '+%Y%m%dT%H%M%SZ')-${COMMIT_SHORT}}"
 export TARGET_COMMIT_SHA AUDIT_RUN_ID
 export AUDIT_SCOPE="${AUDIT_SCOPE:-full}"
 export AUDIT_RESUME="${AUDIT_RESUME:-true}"
 
-compose=(docker compose --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
+compose=(docker_cmd compose --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
 cleanup() {
   "${compose[@]}" down >/dev/null 2>&1 || true
   cleanup_lock

@@ -8,6 +8,9 @@ LOCK="/tmp/woodsmith-visual-audit.lock"
 cd "$ROOT"
 umask 077
 
+source visual-audit/scripts/docker-command.sh
+resolve_docker_command
+
 if ! mkdir "$LOCK" 2>/dev/null; then
   printf '%s\n' "Another Woodsmith visual audit is already running."
   exit 0
@@ -26,16 +29,17 @@ done
 TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
 COMMIT_SHORT="$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
 AUDIT_RUN_ID="${AUDIT_RUN_ID:-full-$(date -u '+%Y%m%dT%H%M%SZ')-${COMMIT_SHORT}}"
+WOODSMITH_VISUAL_AUDIT_IMAGE="${WOODSMITH_VISUAL_AUDIT_IMAGE:-woodsmith-visual-audit:candidate-${COMMIT_SHORT}}"
+require_linux_amd64_image "$WOODSMITH_VISUAL_AUDIT_IMAGE"
 
-export TARGET_COMMIT_SHA AUDIT_RUN_ID
+export TARGET_COMMIT_SHA AUDIT_RUN_ID WOODSMITH_VISUAL_AUDIT_IMAGE
 export AUDIT_SCOPE="${AUDIT_SCOPE:-full}"
 export AUDIT_RESUME="${AUDIT_RESUME:-true}"
 
 mkdir -p "$OUTPUT"
 chmod 700 "$OUTPUT"
 
-compose=(docker compose --env-file .env -f docker-compose.visual-audit-live.yml)
-"${compose[@]}" build visual-audit
+compose=(docker_cmd compose --env-file .env -f docker-compose.visual-audit-live.yml)
 "${compose[@]}" run --rm visual-audit
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/diff.js
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/report.js

@@ -14,6 +14,17 @@ BACKUP_CONTAINER_PATH="/app/site/data/backups/visual-audit-lab-${LAB_RUN_ID}.sql
 cd "$ROOT"
 umask 077
 
+source visual-audit/scripts/docker-command.sh
+resolve_docker_command
+
+TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
+COMMIT_SHORT="$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
+WOODSMITH_AUDIT_APP_IMAGE="${WOODSMITH_AUDIT_APP_IMAGE:-woodsmith:candidate-${COMMIT_SHORT}}"
+WOODSMITH_VISUAL_AUDIT_IMAGE="${WOODSMITH_VISUAL_AUDIT_IMAGE:-woodsmith-visual-audit:candidate-${COMMIT_SHORT}}"
+
+require_exact_app_image "$WOODSMITH_AUDIT_APP_IMAGE" "$TARGET_COMMIT_SHA"
+require_linux_amd64_image "$WOODSMITH_VISUAL_AUDIT_IMAGE"
+
 if [[ -e "$LAB_ROOT" || -e "$LAB_MEDIA_ROOT" ]]; then
   printf 'Refusing to overwrite an existing snapshot lab: %s\n' "$LAB_RUN_ID" >&2
   exit 1
@@ -27,7 +38,7 @@ fi
 mkdir -p "$LAB_DATA" "$LAB_MEDIA"
 chmod 700 "$LAB_ROOT" "$LAB_MEDIA_ROOT" "$LAB_DATA" "$LAB_MEDIA"
 
-docker exec -i -e BACKUP_PATH="$BACKUP_CONTAINER_PATH" woodsmith node --experimental-sqlite - <<'NODE'
+docker_cmd exec -i -e BACKUP_PATH="$BACKUP_CONTAINER_PATH" woodsmith node --experimental-sqlite - <<'NODE'
 const fs = require("node:fs");
 const { DatabaseSync } = require("node:sqlite");
 const source = "/app/site/data/woodsmith.sqlite";
@@ -79,6 +90,8 @@ AUDIT_LAB_SESSION_SECRET=${LAB_SESSION_SECRET}
 AUDIT_EVIDENCE_TIER=tier-2-production-clone
 AUDIT_MEDIA_PROVENANCE=production-clone
 LAB_RUN_ID=${LAB_RUN_ID}
+WOODSMITH_AUDIT_APP_IMAGE=${WOODSMITH_AUDIT_APP_IMAGE}
+WOODSMITH_VISUAL_AUDIT_IMAGE=${WOODSMITH_VISUAL_AUDIT_IMAGE}
 EOF
 chmod 600 .visual-audit-lab.env
 

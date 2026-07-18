@@ -1,5 +1,6 @@
 services:
   visual-audit:
+    image: "${WOODSMITH_VISUAL_AUDIT_IMAGE:-woodsmith-visual-audit:latest}"
     build:
       context: .
       dockerfile: visual-audit/Dockerfile
