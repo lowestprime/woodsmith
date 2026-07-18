@@ -192,3 +192,50 @@ class SidecarCache:
                 table: int(self.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0])
                 for table in ("files", "embeddings", "analyses", "clusters")
             }
+
+    def queue_summary(self, model: str, cluster_model_key: str) -> dict[str, int | str | bool]:
+        with self.lock:
+            indexed = int(self.connection.execute("SELECT COUNT(*) FROM files").fetchone()[0])
+            pending_embeddings = int(
+                self.connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM files AS file
+                    WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM embeddings AS embedding
+                      WHERE embedding.file_hash = file.sha256
+                        AND embedding.model = ?
+                    )
+                    """,
+                    (model,),
+                ).fetchone()[0]
+            )
+            pending_analyses = int(
+                self.connection.execute(
+                    """
+                    SELECT COUNT(*)
+                    FROM files AS file
+                    WHERE NOT EXISTS (
+                      SELECT 1
+                      FROM analyses AS analysis
+                      WHERE analysis.file_hash = file.sha256
+                    )
+                    """
+                ).fetchone()[0]
+            )
+            clustered = int(
+                self.connection.execute(
+                    "SELECT COUNT(DISTINCT relative_path) FROM clusters WHERE model_key = ?",
+                    (cluster_model_key,),
+                ).fetchone()[0]
+            )
+        return {
+            "scope": "indexed-cache-only",
+            "indexed": indexed,
+            "pendingEmbeddings": pending_embeddings,
+            "pendingAnalyses": pending_analyses,
+            "clustered": clustered,
+            "pendingClusters": max(0, indexed - clustered),
+            "unindexedFilesystemItemsUnknown": True,
+        }

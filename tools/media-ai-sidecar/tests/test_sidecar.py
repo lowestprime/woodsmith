@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from media_ai_sidecar.cache import SidecarCache
 from media_ai_sidecar.indexer import scan
@@ -54,6 +55,11 @@ class SidecarSmokeTests(unittest.TestCase):
             self.assertTrue(cache.has_embedding(second_path, "test-model", file_hash))
             cache.put_analysis({"cacheKey": f"test-analysis:{file_hash}", "relativePath": first_path, "fileHash": file_hash, "provider": "local", "model": "test-model", "analysisJson": json.dumps({"primaryObject": "table"}), "analyzedAt": "2026-01-01T00:00:00Z"})
             self.assertEqual(cache.get_latest_analysis(second_path, file_hash)["analysis"]["primaryObject"], "table")
+            queue = cache.queue_summary("test-model", "test-model-key")
+            self.assertEqual(queue["indexed"], 2)
+            self.assertEqual(queue["pendingEmbeddings"], 0)
+            self.assertEqual(queue["pendingAnalyses"], 0)
+            self.assertEqual(queue["pendingClusters"], 2)
             thumbnail = first["items"][0].get("thumbnailPath")
             if thumbnail:
                 thumbnail_path = cache.resolve_thumbnail(thumbnail)
@@ -66,12 +72,26 @@ class SidecarSmokeTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "media"
             root.mkdir()
-            service = MediaAiService(root, Path(directory) / "cache.sqlite", "sentence-transformers/clip-ViT-B-32", 4)
-            health = service.health()
-            self.assertTrue(health["ok"])
-            self.assertEqual(health["maxBatch"], 4)
-            self.assertIn("embedding", health)
-            service.cache.connection.close()
+            with patch.dict("os.environ", {"MEDIA_AI_ACCELERATOR": "cpu"}, clear=False):
+                service = MediaAiService(root, Path(directory) / "cache.sqlite", "sentence-transformers/clip-ViT-B-32", 4)
+                health = service.health()
+                self.assertTrue(health["ok"])
+                self.assertEqual(health["maxBatch"], 4)
+                self.assertEqual(health["embedding"]["accelerator"]["selected"], "cpu")
+                self.assertEqual(health["queue"]["scope"], "indexed-cache-only")
+                self.assertFalse(health["work"]["busy"])
+                result = service.dispatch("scan", {"limit": 1, "dryRun": True})
+                self.assertTrue(result["ok"])
+                self.assertEqual(result["accelerator"]["selected"], "cpu")
+                self.assertEqual(service.health()["work"]["lastOutcome"], "completed")
+                service.work_lock.acquire()
+                try:
+                    busy = service.dispatch("scan", {})
+                    self.assertTrue(busy["busy"])
+                    self.assertIn("work", busy)
+                finally:
+                    service.work_lock.release()
+                service.cache.connection.close()
 
 
 if __name__ == "__main__":

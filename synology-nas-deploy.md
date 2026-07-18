@@ -137,9 +137,15 @@ Run the sidecar against the mapped photo library (`Y:\homes\Cooper\Photos\Dad_Wo
 
 Keep `MEDIA_AI_CACHE` on a local SSD outside the mapped photo tree. It contains the resumable file index, 768px generated review thumbnails, image/text embeddings, analyses, and cluster state. Repeated bounded runs continue uncached work; this cache can be backed up independently and must never be placed in `/app/pics`.
 
+The sidecar host and website use different variable names for the same secret: set `MEDIA_AI_SIDECAR_TOKEN` on the sidecar host and `LOCAL_AI_SIDECAR_TOKEN` in the NAS application environment to one long random value. Never place it in a URL or command log. A non-loopback sidecar bind fails closed without the server token. Start and supervise the Windows process with `tools/media-ai-sidecar/scripts/run-sidecar.ps1` or `run-sidecar-supervised.ps1`, then run `probe-sidecar.ps1`; the probe reports health and verifies wrong-token rejection without printing the token.
+
+`MEDIA_AI_ACCELERATOR=auto|cpu|cuda` is a strict sidecar policy. `auto` selects a usable PyTorch CUDA device or records why CPU was selected; `cpu` never loads CUDA; forced `cuda` fails if unavailable. Bound `MEDIA_AI_EMBED_BATCH_SIZE` and the PyTorch allocator with `MEDIA_AI_GPU_MEMORY_LIMIT_MB`, and point all supervised sidecar processes on that host to the same `MEDIA_AI_GPU_LEASE_FILE`. Health reports the active operation, lease owner, memory, and indexed-cache-only pending counts. It does not recursively scan the NAS share merely to answer health.
+
+The current RTX 3070 Ti Laptop GPU benchmark used twelve disposable library copies and measured about 3.76x lower warm median latency on CUDA with identical label rankings, maximum score drift 0.000105856, and 670 MiB peak reserved VRAM. The visual archive remains CPU/SwiftShader because its tested GPU paths did not preserve canonical output with a material benefit. Keep archive and sidecar work on those separate backends; if a future audit stage qualifies for CUDA, schedule it outside sidecar training and require one shared host lease before allowing overlap.
+
 ### B. Separate GPU host
 
-Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. CUDA is used automatically when the installed PyTorch build supports it; CPU remains a valid fallback.
+Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. Automatic CUDA selection requires a usable PyTorch CUDA runtime; CPU remains the safe fallback. Keep the cache, model files, and GPU lease outside the mounted photo tree.
 
 ### C. Manual workflow only
 

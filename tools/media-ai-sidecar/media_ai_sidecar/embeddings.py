@@ -1,18 +1,21 @@
 from __future__ import annotations
 
+import gc
 import hashlib
-import importlib.util
 import importlib.metadata
+import importlib.util
 import json
+import os
 import threading
 from pathlib import Path
 from typing import Any
 
+from .accelerator import AcceleratorState
 from .cache import SidecarCache
 from .indexer import index_file, safe_media_path
 from .schemas import now_iso
 
-_MODEL = None
+_MODELS: dict[tuple[str, str], Any] = {}
 _MODEL_LOCK = threading.Lock()
 
 
@@ -20,22 +23,47 @@ def model_key(model_name: str) -> str:
     return f"sentence-transformers:{model_name}:1"
 
 
-def runtime_status(model_name: str) -> dict[str, Any]:
+def runtime_status(model_name: str, accelerator: AcceleratorState) -> dict[str, Any]:
     try:
         if importlib.util.find_spec("sentence_transformers") is None:
             raise ImportError("sentence-transformers is not installed; install the sidecar ai extra.")
-        return {"available": True, "model": model_name, "libraryVersion": importlib.metadata.version("sentence-transformers"), "device": "auto (CUDA when available, otherwise CPU)"}
+        return {
+            "available": True,
+            "model": model_name,
+            "libraryVersion": importlib.metadata.version("sentence-transformers"),
+            "accelerator": accelerator.status(),
+        }
     except Exception as error:
-        return {"available": False, "model": model_name, "reason": str(error), "device": "unavailable"}
+        return {
+            "available": False,
+            "model": model_name,
+            "reason": str(error),
+            "accelerator": accelerator.status(),
+        }
 
 
-def get_model(model_name: str):
-    global _MODEL
+def _local_files_only() -> bool:
+    return os.getenv("MEDIA_AI_MODEL_LOCAL_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def clear_models() -> None:
     with _MODEL_LOCK:
-        if _MODEL is None:
+        _MODELS.clear()
+
+
+def get_model(model_name: str, accelerator: AcceleratorState):
+    key = (model_name, accelerator.device)
+    with _MODEL_LOCK:
+        if key not in _MODELS:
+            accelerator.prepare_runtime()
             from sentence_transformers import SentenceTransformer
-            _MODEL = SentenceTransformer(model_name)
-        return _MODEL
+
+            _MODELS[key] = SentenceTransformer(
+                model_name,
+                device=accelerator.device,
+                local_files_only=_local_files_only(),
+            )
+        return _MODELS[key]
 
 
 def normalize_vector(value: Any) -> list[float]:
@@ -46,14 +74,50 @@ def normalize_vector(value: Any) -> list[float]:
     return [item / magnitude for item in vector] if magnitude else vector
 
 
-def embed_texts(texts: list[str], model_name: str) -> list[list[float]]:
+def _encode(inputs: list[Any], model_name: str, accelerator: AcceleratorState):
+    try:
+        return get_model(model_name, accelerator).encode(
+            inputs,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+            batch_size=accelerator.batch_size,
+            device=accelerator.device,
+        )
+    except Exception as error:
+        if not accelerator.fallback_to_cpu(error):
+            raise
+        clear_models()
+        gc.collect()
+        try:
+            import torch
+
+            torch.cuda.empty_cache()
+        except Exception:
+            pass
+        return get_model(model_name, accelerator).encode(
+            inputs,
+            normalize_embeddings=True,
+            show_progress_bar=False,
+            batch_size=accelerator.batch_size,
+            device=accelerator.device,
+        )
+
+
+def embed_texts(texts: list[str], model_name: str, accelerator: AcceleratorState) -> list[list[float]]:
     if not texts:
         return []
-    vectors = get_model(model_name).encode(texts, normalize_embeddings=True, show_progress_bar=False)
+    vectors = _encode(texts, model_name, accelerator)
     return [normalize_vector(value) for value in vectors]
 
 
-def embed_paths(root: Path, cache: SidecarCache, relative_paths: list[str], model_name: str, dry_run: bool) -> list[dict[str, Any]]:
+def embed_paths(
+    root: Path,
+    cache: SidecarCache,
+    relative_paths: list[str],
+    model_name: str,
+    dry_run: bool,
+    accelerator: AcceleratorState,
+) -> list[dict[str, Any]]:
     from PIL import Image, ImageOps
     key_prefix = model_key(model_name)
     results: list[dict[str, Any]] = []
@@ -78,7 +142,7 @@ def embed_paths(root: Path, cache: SidecarCache, relative_paths: list[str], mode
                 source = thumbnail if thumbnail is not None and thumbnail.is_file() else path
                 with Image.open(source) as image:
                     images.append(ImageOps.exif_transpose(image).convert("RGB").copy())
-            vectors = get_model(model_name).encode(images, normalize_embeddings=True, show_progress_bar=False)
+            vectors = _encode(images, model_name, accelerator)
             for (relative_path, _, facts, cache_key), vector in zip(pending, vectors, strict=True):
                 normalized = normalize_vector(vector)
                 computed_at = now_iso()
@@ -87,6 +151,9 @@ def embed_paths(root: Path, cache: SidecarCache, relative_paths: list[str], mode
                 results.append({"relativePath": relative_path, "embedding": normalized, "provider": "local-sidecar", "model": model_name, "version": "1", "hash": facts["sha256"], "computedAt": computed_at, "cached": False})
         except Exception as error:
             results.extend({"relativePath": relative_path, "provider": "local-sidecar", "model": model_name, "version": "1", "error": str(error)} for relative_path, _, _, _ in pending)
+        finally:
+            for image in images:
+                image.close()
     order = {path: index for index, path in enumerate(relative_paths)}
     return sorted(results, key=lambda item: order.get(item["relativePath"], len(order)))
 
