@@ -229,10 +229,12 @@ function userDraft(): Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | 
 function UserEditor({
   user,
   currentAdminEmail,
+  mediaItems,
   highlight = false
 }: {
   user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "emailVerified" | "verificationToken" | "verificationExpiresAt" | "createdAt" | "updatedAt">;
   currentAdminEmail: string;
+  mediaItems: MediaPickerItem[];
   highlight?: boolean;
 }) {
   const link = (label: string) => user.links.find((entry) => entry.label.toLowerCase() === label)?.url ?? "";
@@ -258,7 +260,7 @@ function UserEditor({
           <label><span>Role</span><select defaultValue={user.role} name="role"><option value="admin">Admin</option><option value="woodworker">Woodworker</option><option value="customer">Customer</option></select></label>
           <Field label="Headline" name="headline" defaultValue={user.headline} />
         </div>
-        <Field label="Profile image path" name="avatarPath" defaultValue={user.avatarPath ?? ""} />
+        <MediaPicker defaultValue={user.avatarPath} helperText="Choose a profile image from the mounted media library." items={mediaItems} label="Profile image" loadPageAction={loadMediaPageAction} name="avatarPath" />
         <Area label="Bio" name="bio" defaultValue={user.bio} rows={4} />
         <div className="field-grid three-up compact-grid"><Field label="Website URL" name="websiteUrl" defaultValue={link("website")} /><Field label="Instagram URL" name="instagramUrl" defaultValue={link("instagram")} /><Field label="GitHub URL" name="githubUrl" defaultValue={link("github")} /></div>
         <div className="field-grid three-up compact-grid">
@@ -454,7 +456,8 @@ export default async function StudioPage({
   const editorMediaPaths = [...new Set([
     ...(editingPage?.heroMediaPath ? [editingPage.heroMediaPath] : []),
     ...editingPieceMediaPaths,
-    ...(editingPost?.coverMediaPath ? [editingPost.coverMediaPath] : [])
+    ...(editingPost?.coverMediaPath ? [editingPost.coverMediaPath] : []),
+    ...users.flatMap((user) => user.avatarPath ? [user.avatarPath] : [])
   ])];
   const editorMediaItems = editorMediaPaths.map((relativePath) => getMedia(relativePath)).filter((item): item is NonNullable<ReturnType<typeof getMedia>> => Boolean(item));
   const panelHref = (panel: StudioPanel, extras?: Record<string, string>) => {
@@ -554,7 +557,7 @@ export default async function StudioPage({
       {currentPanel === "pieces" && editingPiece ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Pricing, inquiry and review policies, inventory, fulfillment, and normalized visual media assignment.</p></div><div className="studio-master-detail"><StudioMasterList items={pieces.map((piece) => ({ key: piece.slug, label: piece.title, meta: `${piece.publicationStatus} · ${piece.status}`, href: panelHref("pieces", { piece: piece.slug }) }))} newHref={panelHref("pieces", { piece: "new-piece-draft" })} newLabel="New piece" selectedKey={editingPiece.slug} /><PieceEditor categories={categories} highlight mediaItems={editorMediaItems} mediaLinks={editingPieceLinks} piece={editingPiece} /></div></PageSection> : null}
       {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Choose a furniture icon, import a safe custom SVG, and control order and visibility without editing code.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} />{categories.map((category) => <StudioCategoryEditor categories={categories} category={category} deleteAction={deletePieceCategoryAction} key={category.key} saveAction={savePieceCategoryAction} />)}</div></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
-      {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} user={user} />)}</div></PageSection> : null}
+      {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} mediaItems={editorMediaItems} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} mediaItems={editorMediaItems} user={user} />)}</div></PageSection> : null}
       {currentPanel === "process" && editingPost ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Select one note, edit Markdown and source details, and choose its cover media visually.</p></div><div className="studio-master-detail"><StudioMasterList items={posts.map((post) => ({ key: post.slug, label: post.title, meta: post.publicationStatus, href: panelHref("process", { post: post.slug }) }))} newHref={panelHref("process", { post: "new-process-entry" })} newLabel="New process note" selectedKey={editingPost.slug} /><PostEditor highlight mediaItems={editorMediaItems} post={editingPost} /></div></PageSection> : null}
 
       {currentPanel === "media" ? (
