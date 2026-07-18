@@ -24,6 +24,11 @@ set -a
 source ./.visual-audit-lab.env
 set +a
 
+if [[ "${AUDIT_EVIDENCE_TIER:-}" != "tier-2-production-clone" || "${AUDIT_MEDIA_PROVENANCE:-}" != "production-clone" ]]; then
+  printf '%s\n' "Refusing snapshot lab without Tier 2 production-clone provenance." >&2
+  exit 1
+fi
+
 for directory in "${AUDIT_LAB_DATA_DIR:?}" "${AUDIT_LAB_MEDIA_DIR:?}"; do
   resolved="$(readlink -f "$directory")"
   if [[ ! -d "$resolved" || "$resolved" == "/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025" || "$resolved" == "/volume2/docker_ssd/woodsmith/site/data" ]]; then

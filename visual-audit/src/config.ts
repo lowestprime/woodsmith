@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import type { AuditScope, TargetMode, ViewportProfile } from "./types.js";
+import type { AuditScope, EvidenceTier, TargetMode, ViewportProfile } from "./types.js";
 import { parseAcceleratorMode } from "./accelerator.js";
 import { parseWorkerCount } from "./worker-count.js";
 
@@ -44,10 +44,24 @@ if (!["live-readonly", "snapshot-lab"].includes(targetMode)) {
 const scope = (process.env.AUDIT_SCOPE?.trim() || "full") as AuditScope;
 if (!["smoke", "full"].includes(scope)) throw new Error("AUDIT_SCOPE must be smoke or full.");
 
+const evidenceTier = required("AUDIT_EVIDENCE_TIER") as EvidenceTier;
+if (!["tier-1-synthetic", "tier-2-production-clone", "tier-3-live-production"].includes(evidenceTier)) {
+  throw new Error("AUDIT_EVIDENCE_TIER must be tier-1-synthetic, tier-2-production-clone, or tier-3-live-production.");
+}
+if (evidenceTier === "tier-2-production-clone" && targetMode !== "snapshot-lab") {
+  throw new Error("tier-2-production-clone requires TARGET_MODE=snapshot-lab.");
+}
+if (evidenceTier === "tier-3-live-production" && targetMode !== "live-readonly") {
+  throw new Error("tier-3-live-production requires TARGET_MODE=live-readonly.");
+}
+
 const baseUrl = new URL(required("BASE_URL"));
 const loopbackHost = ["127.0.0.1", "localhost", "::1"].includes(baseUrl.hostname);
 if (targetMode === "live-readonly" && baseUrl.protocol !== "https:" && !loopbackHost) {
   throw new Error("live-readonly mode requires an HTTPS BASE_URL.");
+}
+if (evidenceTier === "tier-3-live-production" && (baseUrl.protocol !== "https:" || loopbackHost)) {
+  throw new Error("tier-3-live-production requires a non-loopback HTTPS BASE_URL.");
 }
 
 const runId = safeRunId(required("AUDIT_RUN_ID"));
@@ -75,6 +89,7 @@ const captureWorkers = parseWorkerCount({
 export const config = {
   targetMode,
   scope,
+  evidenceTier,
   baseUrl: baseUrl.toString().replace(/\/$/, ""),
   expectedCommit: required("TARGET_COMMIT_SHA"),
   runId,

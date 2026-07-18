@@ -75,6 +75,7 @@ try {
         "--tmpfs", "/tmp:rw,noexec,nosuid,nodev,size=512m,uid=1001,gid=1001,mode=700",
         "-v", "${scratchVolume}:/output:rw",
         "-e", "TARGET_MODE=live-readonly",
+        "-e", "AUDIT_EVIDENCE_TIER=tier-3-live-production",
         "-e", "BASE_URL=https://woodmat.ch",
         "-e", "TARGET_COMMIT_SHA=$TargetCommit",
         "-e", "AUDIT_RUN_ID=$RunId",

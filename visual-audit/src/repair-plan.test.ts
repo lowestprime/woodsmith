@@ -6,7 +6,7 @@ import type { RunManifest } from "./types.js";
 
 function fixtureManifest(): RunManifest {
   const inventory = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     generatedAt: "2026-01-01T00:00:00.000Z",
     buildSha: "abc123",
     staticRoutes: [],
@@ -21,6 +21,19 @@ function fixtureManifest(): RunManifest {
     reviews: [],
     notifications: [],
     counts: { pages: 0, pieces: 0, posts: 0, projects: 0, orders: 0, reviews: 0, notifications: 0, users: 0, media: 0 },
+    mediaEvidence: {
+      provenance: "production-live" as const,
+      databaseRecords: 0,
+      publicReferenced: 0,
+      publicPresent: 0,
+      missingPublic: 0,
+      publicImages: 0,
+      publicVideos: 0,
+      publicBytes: 0,
+      syntheticMarkers: 0,
+      publicReferenceDigest: "0".repeat(64),
+      publicMountDigest: "0".repeat(64)
+    },
     limits: { recordsPerCollection: 100, truncatedCollections: [] }
   };
   const route = (value: string, viewport: string, deep: boolean) => ({
@@ -57,12 +70,13 @@ function fixtureManifest(): RunManifest {
     capture("category-full", "/studio?panel=categories", "desktop-archival", "full-page-default", "png/categories-full.png")
   ];
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     runId: "fixture-run",
     startedAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T01:00:00.000Z",
     mode: "live-readonly",
     scope: "full",
+    evidenceTier: "tier-3-live-production",
     baseUrl: "https://example.test",
     expectedCommit: "abc123",
     deployedCommit: "abc123",
@@ -107,7 +121,8 @@ function fixtureManifest(): RunManifest {
     completedKeys: captures.map((item) => item.key),
     discoveredLinks: [],
     exclusions: [],
-    security: { sameOriginUnsafeRequestsBlocked: 1, successfulUnsafeRequests: 0, tokenEligibleRequests: 0, crossOriginRequests: 0 }
+    security: { sameOriginUnsafeRequestsBlocked: 1, successfulUnsafeRequests: 0, tokenEligibleRequests: 0, crossOriginRequests: 0 },
+    mediaEvidence: null
   };
 }
 

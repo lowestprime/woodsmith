@@ -17,6 +17,7 @@ import {
 } from "./coverage-matrix.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
 import { buildNoOverlapReport, type NoOverlapReport } from "./media-overlap.js";
+import { buildMediaEvidenceReports } from "./media-evidence.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
 import type { RunManifest } from "./types.js";
 import { exists, listFiles, relativeTo, writeJsonAtomic } from "./util.js";
@@ -95,6 +96,48 @@ async function validateNoOverlapReport(manifest: RunManifest, failures: string[]
   }
 }
 
+async function validateMediaEvidenceReports(manifest: RunManifest, failures: string[]) {
+  if (!manifest.mediaEvidence) {
+    failures.push("Manifest does not contain final media evidence.");
+    return;
+  }
+
+  const expected = buildMediaEvidenceReports({
+    runId: manifest.runId,
+    generatedAt: manifest.completedAt ?? "",
+    evidenceTier: manifest.evidenceTier,
+    mode: manifest.mode,
+    inventory: manifest.inventory.mediaEvidence,
+    routes: manifest.routes
+  });
+  if (JSON.stringify(manifest.mediaEvidence) !== JSON.stringify(expected)) {
+    failures.push("Manifest media evidence does not exactly match the completed inventory and route evidence.");
+  }
+
+  const reports = [
+    { name: "live-media.json", expected: expected.liveMedia },
+    { name: "placeholder-report.json", expected: expected.placeholders }
+  ];
+  for (const report of reports) {
+    const reportFile = path.join(config.runRoot, report.name);
+    if (!await exists(reportFile)) {
+      failures.push(`${report.name} is missing.`);
+      continue;
+    }
+    try {
+      const actual = JSON.parse(await fs.readFile(reportFile, "utf8")) as unknown;
+      if (JSON.stringify(actual) !== JSON.stringify(report.expected)) {
+        failures.push(`${report.name} does not exactly match the completed manifest evidence.`);
+      }
+    } catch {
+      failures.push(`${report.name} is not valid JSON.`);
+    }
+  }
+
+  failures.push(...expected.liveMedia.failures.map((failure) => `Live media gate: ${failure}`));
+  failures.push(...expected.placeholders.failures.map((failure) => `Placeholder gate: ${failure}`));
+}
+
 function validateAcceleration(manifest: RunManifest, failures: string[]) {
   const acceleration = manifest.acceleration;
   if (!acceleration) {
@@ -120,15 +163,18 @@ async function main() {
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
   const failures: string[] = [];
 
-  if (manifest.schemaVersion !== 4) failures.push("Manifest schema version is not the current accelerator-aware version.");
+  if (manifest.schemaVersion !== 5) failures.push("Manifest schema version is not the current evidence-tier version.");
   if (!manifest.completedAt) failures.push("Manifest does not contain completedAt.");
   if (manifest.runId !== config.runId) failures.push("Manifest run ID does not match AUDIT_RUN_ID.");
   if (manifest.mode !== config.targetMode) failures.push("Manifest mode does not match TARGET_MODE.");
+  if (manifest.evidenceTier !== config.evidenceTier) failures.push("Manifest evidence tier does not match AUDIT_EVIDENCE_TIER.");
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
+  if (manifest.inventory.schemaVersion !== 2 || !manifest.inventory.mediaEvidence) failures.push("Manifest inventory is not the required schema-v2 media-aware inventory.");
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
   validateAcceleration(manifest, failures);
   await validateNoOverlapReport(manifest, failures);
+  await validateMediaEvidenceReports(manifest, failures);
   failures.push(...snapshotLabEvidenceFailures({
     targetMode: config.targetMode,
     captureStates: manifest.captures.map((capture) => capture.state),

@@ -11,11 +11,21 @@ The two modes are intentionally separate:
 - `live-readonly` authenticates to the deployed site, then blocks every unsafe same-origin and cross-origin request in Playwright. Same-origin requests also carry `x-woodsmith-audit-readonly: 1`, which makes `site/proxy.ts` reject unsafe methods with HTTP 409. The one Studio login POST is the explicit authentication exception.
 - `snapshot-lab` runs against a verified SQLite `VACUUM INTO` clone and a reflink or full-copy media tree. Its Docker network is internal, provider keys are empty, paid/local model providers are disabled, and the production data/media paths are rejected.
 
-The inventory endpoint requires both normal admin authentication and a separate audit token. It returns bounded route-driving metadata and counts, not users, customer contact details, notification bodies, payment data, reset tokens, or session state. Inventory acquisition permits only the exact same-origin GET endpoint. The ordinary capture context adds the audit token only to that endpoint and authenticated `audit=all` Studio pages.
+The inventory endpoint requires both normal admin authentication and a separate audit token. It returns bounded route-driving metadata, counts, and public-media aggregates, not users, customer contact details, notification bodies, payment data, reset tokens, session state, or media paths. Public media references and mounted file versions are represented only by SHA-256 digests. Inventory acquisition permits only the exact same-origin GET endpoint. The ordinary capture context adds the audit token only to that endpoint and authenticated `audit=all` Studio pages.
 
 Network diagnostics are evidence-based. A blocked mutation is expected only when its unsafe method and exact URL match a route-guard policy record. An aborted request is expected only when it is a same-origin fetch/XHR with Next.js RSC or prefetch evidence, or a safe same-origin font/image/media request canceled after the page has completed capture, passed the final visual/request drain, and entered deliberate teardown. The teardown exception is lifecycle-scoped: aborts during navigation, screenshots, interactions, or settling remain failures, and diagnostics include the active capture phase. Aborted documents, scripts, stylesheets, API calls, inventory calls, cross-origin resources, and unrelated resources remain validation failures.
 
 Secrets, storage state, SQLite files, media, raw tiles, PNGs, HTML, PDFs, traces, and reports are ignored by Git. Authentication state is held under the runner tmpfs and removed in `finally`.
+
+## Evidence Tiers
+
+Every schema-v5 archive has one explicit evidence tier. Resume refuses a different tier, schema, mode, origin, commit, or accelerator record.
+
+- `tier-1-synthetic` is the bounded Windows/local Docker smoke. The app must report `WOODSMITH_MEDIA_PROVENANCE=synthetic-fixture`. It proves application, browser, policy, report, and cleanup behavior but is not production-media evidence.
+- `tier-2-production-clone` requires `snapshot-lab`, a verified SQLite clone, and a reflink or full copy of the production media mount. The app must report `production-clone`. It is the predeployment exact-candidate media and mutation-state gate.
+- `tier-3-live-production` requires `live-readonly` against a non-loopback HTTPS origin. The deployed app must report `production-live`. It is the postdeployment public/admin rendered-state gate and never permits a capture-time production mutation.
+
+`live-media.json` reconciles the protected public-reference aggregate with hashed rendered mounted-media observations. `placeholder-report.json` records bounded placeholder digests and reasons. Tier 2 and Tier 3 reject synthetic markers, missing public files, absence of mounted media on anonymous routes, visible load failures, and any visible placeholder without an explicit audited allowance. Intentional “media verification pending” surfaces are marked in source and remain counted rather than silently ignored. Raw media paths are never written to these reports or the shareable manifest.
 
 ## One-Time NAS Setup
 
@@ -89,7 +99,7 @@ docker buildx build \
   --load .
 ```
 
-The runner permits `WOODSMITH_BUILD_SHA=unknown` only for a loopback `live-readonly` development smoke. It rejects missing or mismatched build identity for remote, full, and snapshot-lab targets. After committing a candidate, rebuild both images with the exact commit before running snapshot-lab or release evidence.
+The runner permits `WOODSMITH_BUILD_SHA=unknown` only for the bounded loopback disposable smoke in either read-only or cloned-lab mode. It rejects missing or mismatched build identity for remote or full targets. After committing a candidate, rebuild both images with the exact commit before accepting Tier 2 or release evidence.
 
 ## Live Read-Only Smoke
 
@@ -126,9 +136,9 @@ visual-audit/scripts/run-local-disposable-smoke.ps1 `
   -CommitSha <full-40-character-sha>
 ```
 
-The default `live-readonly` mode uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It validates the archive, rejects image-cache and unhandled-rejection errors, and removes every container and volume in `finally`.
+The default `live-readonly` mode uses fake credentials, synthetic media, a network-isolated app, non-root containers, disabled external providers, and uniquely named disposable volumes. It is always labeled `tier-1-synthetic`; the harness verifies that the app reports `synthetic-fixture`, both media reports pass, and every container and volume is removed in `finally`.
 
-During a dirty pre-commit loop, build the app with its default `WOODSMITH_BUILD_SHA=unknown`; the same command accepts that identity only for this loopback smoke and reports `APP_BUILD_IDENTITY=unknown-loopback-smoke`. Never stamp a dirty image with the current committed SHA. Once the slice is committed, rebuild and require `APP_BUILD_IDENTITY=exact`.
+During a dirty pre-commit loop, build the app with its default `WOODSMITH_BUILD_SHA=unknown`; the same command accepts that identity only for its loopback disposable smoke modes and reports `APP_BUILD_IDENTITY=unknown-loopback-smoke`. Never stamp a dirty image with the current committed SHA. Once the slice is committed, rebuild and require `APP_BUILD_IDENTITY=exact`.
 
 Run the same current-image gate against an isolated local snapshot lab with `-TargetMode snapshot-lab`. The harness first initializes disposable source data/media, creates the lab database online with SQLite `VACUUM INTO`, copies media into distinct lab volumes, and then runs the app and audit only against those clones. Acceptance requires exactly one draft save and one cleanup delete, zero residual drafts, SQLite `quick_check`, unchanged source data/media fingerprints, an unchanged cloned media tree, and complete container/volume cleanup.
 
@@ -144,6 +154,8 @@ export AUDIT_RESUME=true
 
 visual-audit/scripts/run-live-audit.sh
 ```
+
+The live Compose runner fixes `AUDIT_EVIDENCE_TIER=tier-3-live-production`, while the production app fixes `WOODSMITH_MEDIA_PROVENANCE=production-live`. Do not override either value to make a mismatched archive pass.
 
 Full mode covers dark and light themes at:
 
@@ -205,7 +217,7 @@ Do not increase worker counts blindly. Re-run the matrix against representative 
 - `cpu` forces the portable canonical pipeline even when a device is visible.
 - `cuda` fails before capture when no CUDA device is visible or when this build has no deterministic benchmark-verified CUDA stage. It never falls through while claiming acceleration.
 
-The restricted manifest records the requested and selected mode, bounded CUDA-device facts, the Chromium renderer reported by `SystemInfo.getInfo`, and one backend decision for each browser, PNG, resize/print, tile/seam, hash/redaction, and PDF phase. The redacted manifest retains the mode and stage decisions but omits device identity. Resume refuses to combine output produced under different accelerator provenance. Archive schema version 4 is therefore intentionally incompatible with older incomplete manifests.
+The restricted manifest records the requested and selected mode, bounded CUDA-device facts, the Chromium renderer reported by `SystemInfo.getInfo`, and one backend decision for each browser, PNG, resize/print, tile/seam, hash/redaction, and PDF phase. The redacted manifest retains the mode and stage decisions but omits device identity. Resume refuses to combine output produced under different accelerator provenance. Archive schema version 5 also records the evidence tier, protected mounted-media aggregates, hashed rendered-source observations, and placeholder evidence. It is intentionally incompatible with older incomplete manifests.
 
 The 2026-07-17 workstation probe used Docker Engine 29.6.1, BuildKit 0.31.1, an RTX 3070 Ti Laptop GPU with 8,192 MiB, driver 573.91, CUDA compatibility 12.8, and compute capability 8.6. A minimal isolated container successfully loaded `libcuda.so.1` and enumerated one device. That proves device access, not an accelerated audit stage.
 
@@ -268,6 +280,8 @@ visual-audit/scripts/run-snapshot-lab.sh
 
 Preparation performs an online SQLite backup with `VACUUM INTO`, verifies `PRAGMA quick_check`, copies the database into a unique lab root, and creates a Btrfs reflink media copy when supported. If reflinks are unavailable, it performs a full `rsync -a` copy. Hardlinks are forbidden because lab rename/delete operations must not alter production originals.
 
+Preparation writes the ignored lab environment with `AUDIT_EVIDENCE_TIER=tier-2-production-clone` and `AUDIT_MEDIA_PROVENANCE=production-clone`. The runner refuses a mismatch before starting Compose.
+
 Both lab mounts contain a matching run marker. The runner rejects missing markers, production paths, mismatched run IDs, and unavailable clones. The lab container health check verifies the cloned database before capture begins. The internal Docker network blocks outbound provider access.
 
 The Compose files assign the private audit and image-cache tmpfs mounts to the configured `PUID:PGID`. Keep those values aligned with the container user; a root-owned mode-700 tmpfs prevents the non-root app or runner from writing its disposable cache.
@@ -284,6 +298,8 @@ Each restricted run directory uses mode 700 and contains mode-600 files:
 visual-audits/<run-id>/
   coverage-plan.json
   manifest.json
+  live-media.json
+  placeholder-report.json
   comparison.json
   validation.json
   checksums.json
@@ -308,6 +324,10 @@ The shareable edition includes the same deterministic representatives filtered t
 `dist/validate.js` fails the run for:
 
 - incomplete or truncated inventory;
+- evidence-tier, target-mode, or media-provenance mismatch;
+- missing public mounted files, synthetic markers in production tiers, or no anonymous mounted-media observation;
+- visible media load failures or unapproved visible placeholders;
+- media/placeholder report content that does not exactly reproduce from the final manifest;
 - missing canonical or discovered-link route/theme/viewport combinations;
 - missing focused or activated skip-link evidence for any rendered route;
 - discovered same-origin links not captured;

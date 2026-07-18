@@ -75,12 +75,11 @@ $appBuildIdentity = if ($appBuildSha -eq $expectedBuildSha) {
   "exact"
 } elseif (
   $appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and
-  $TargetMode -eq "live-readonly" -and
   $Scope -eq "smoke"
 ) {
   "unknown-loopback-smoke"
 } else {
-  throw "The app image build identity does not match CommitSha. Only an unstamped live-readonly loopback smoke is permitted before commit."
+  throw "The app image build identity does not match CommitSha. Only an unstamped loopback disposable smoke is permitted before commit."
 }
 
 $shortSha = $CommitSha.Substring(0, 8)
@@ -153,18 +152,21 @@ const expected = {
   runId: process.env.AUDIT_RUN_ID,
   mode: process.env.TARGET_MODE,
   scope: process.env.AUDIT_SCOPE,
+  evidenceTier: process.env.AUDIT_EVIDENCE_TIER,
   commit: process.env.TARGET_COMMIT_SHA
 };
 const actual = {
   runId: manifest.runId,
   mode: manifest.mode,
   scope: manifest.scope,
+  evidenceTier: manifest.evidenceTier,
   commit: manifest.expectedCommit
 };
 if (
   actual.runId !== expected.runId ||
   actual.mode !== expected.mode ||
   actual.scope !== expected.scope ||
+  actual.evidenceTier !== expected.evidenceTier ||
   actual.commit !== expected.commit
 ) {
   console.error(JSON.stringify({ expected, actual }));
@@ -179,6 +181,7 @@ console.log(JSON.stringify(actual));
       "-e", ("AUDIT_RUN_ID=" + $runId),
       "-e", ("TARGET_MODE=" + $TargetMode),
       "-e", ("AUDIT_SCOPE=" + $Scope),
+      "-e", "AUDIT_EVIDENCE_TIER=tier-1-synthetic",
       "-e", ("TARGET_COMMIT_SHA=" + $CommitSha),
       "--entrypoint", "node", $AuditImage, "-e", $resumeMetadataScript
     )
@@ -322,6 +325,7 @@ const files = [
       "-e", ("SESSION_SECRET=" + $sessionSecret),
       "-e", "VISUAL_AUDIT_TOKEN_FILE=/run/secrets/audit_token",
       "-e", "VISUAL_AUDIT_MAX_RECORDS=5000",
+      "-e", "WOODSMITH_MEDIA_PROVENANCE=synthetic-fixture",
       "-e", "STRIPE_SECRET_KEY=",
       "-e", "STRIPE_PUBLISHABLE_KEY=",
       "-e", "EASYPOST_API_KEY=",
@@ -468,6 +472,7 @@ console.log("SNAPSHOT_CLONE_QUICK_CHECK=ok");
     "-v", ($outputVolume + ":/output:rw"),
     "-v", ($secretVolume + ":/run/secrets:ro"),
     "-e", ("TARGET_MODE=" + $TargetMode),
+    "-e", "AUDIT_EVIDENCE_TIER=tier-1-synthetic",
     "-e", "BASE_URL=http://127.0.0.1:3002",
     "-e", ("TARGET_COMMIT_SHA=" + $CommitSha),
     "-e", ("AUDIT_RUN_ID=" + $runId),
@@ -544,6 +549,10 @@ const routeKeys = new Set(
 const result = {
   runId: process.env.AUDIT_RUN_ID,
   targetMode: process.env.TARGET_MODE,
+  evidenceTier: manifest.evidenceTier,
+  mediaProvenance: manifest.inventory.mediaEvidence.provenance,
+  liveMediaPassed: manifest.mediaEvidence?.liveMedia?.passed === true,
+  placeholderGatePassed: manifest.mediaEvidence?.placeholders?.passed === true,
   passed: validation.passed,
   failures: validation.failures.length,
   unexpectedDiagnostics: validation.diagnostics.length,
@@ -577,6 +586,10 @@ const expectedUnsafeSuccessful = Number(
 
 if (
   !result.passed ||
+  result.evidenceTier !== "tier-1-synthetic" ||
+  result.mediaProvenance !== "synthetic-fixture" ||
+  !result.liveMediaPassed ||
+  !result.placeholderGatePassed ||
   result.failures !== 0 ||
   result.unexpectedDiagnostics !== 0 ||
   result.unsafeSuccessful !== expectedUnsafeSuccessful ||

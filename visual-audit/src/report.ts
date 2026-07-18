@@ -124,11 +124,15 @@ function htmlDocument(input: {
     <section class="summary" aria-label="Run summary">
       <div><dt>Run</dt><dd>${escapeHtml(input.manifest.runId)}</dd></div>
       <div><dt>Mode</dt><dd>${escapeHtml(input.manifest.mode)}</dd></div>
+      <div><dt>Evidence tier</dt><dd>${escapeHtml(input.manifest.evidenceTier)}</dd></div>
       <div><dt>Commit</dt><dd>${escapeHtml(input.manifest.deployedCommit)}</dd></div>
       <div><dt>Accelerator</dt><dd>${escapeHtml(input.manifest.acceleration.selected)}</dd></div>
       <div><dt>Browser backend</dt><dd>${escapeHtml(input.manifest.acceleration.browser.backend)}</dd></div>
       <div><dt>Captures</dt><dd>${input.captures.length}</dd></div>
       <div><dt>Routes</dt><dd>${new Set(input.captures.map((capture) => `${capture.auth}:${capture.route}`)).size}</dd></div>
+      <div><dt>Mounted public media</dt><dd>${input.manifest.inventory.mediaEvidence.publicPresent} / ${input.manifest.inventory.mediaEvidence.publicReferenced}</dd></div>
+      <div><dt>Media provenance</dt><dd>${escapeHtml(input.manifest.inventory.mediaEvidence.provenance)}</dd></div>
+      <div><dt>Visible placeholders</dt><dd>${input.manifest.mediaEvidence?.placeholders.visible ?? 0}</dd></div>
       <div><dt>Unexpected diagnostics</dt><dd>${diagnostics.length}</dd></div>
     </section>
     ${input.redacted ? '<p class="notice">Private routes, authenticated captures, account details, and customer references are excluded from this edition. This edition uses the deterministic representative selection recorded in its manifest; the restricted raw archive remains complete.</p>' : ""}
@@ -202,6 +206,7 @@ async function main() {
     completedAt: manifest.completedAt,
     mode: manifest.mode,
     scope: manifest.scope,
+    evidenceTier: manifest.evidenceTier,
     deployedCommit: manifest.deployedCommit,
     acceleration: {
       requested: manifest.acceleration.requested,
@@ -216,6 +221,17 @@ async function main() {
     sourceCaptureCount: shareableSourceCaptures.length,
     captureCount: shareableCaptures.length,
     selectionPolicy: REPORT_SELECTION_POLICY,
+    mediaEvidence: manifest.mediaEvidence ? {
+      provenance: manifest.mediaEvidence.liveMedia.inventory.provenance,
+      publicReferenced: manifest.mediaEvidence.liveMedia.inventory.publicReferenced,
+      publicPresent: manifest.mediaEvidence.liveMedia.inventory.publicPresent,
+      missingPublic: manifest.mediaEvidence.liveMedia.inventory.missingPublic,
+      renderedMountedSources: manifest.mediaEvidence.liveMedia.rendered.uniqueMountedSourceDigests,
+      anonymousRenderedMountedSources: manifest.mediaEvidence.liveMedia.rendered.anonymousUniqueMountedSourceDigests,
+      allowedVisiblePlaceholders: manifest.mediaEvidence.placeholders.allowedVisible,
+      unexpectedVisiblePlaceholders: manifest.mediaEvidence.placeholders.unexpectedVisible,
+      passed: manifest.mediaEvidence.liveMedia.passed && manifest.mediaEvidence.placeholders.passed
+    } : null,
     routes: [...new Set(shareableCaptures.map((capture) => redact(capture.route)))].sort(),
     exclusions: manifest.exclusions
   };
@@ -326,6 +342,7 @@ async function main() {
     edition: "Beaman Woodworks QA archive - restricted edition",
     runId: manifest.runId,
     mode: manifest.mode,
+    evidenceTier: manifest.evidenceTier,
     commit: manifest.deployedCommit,
     createdAt: manifest.startedAt,
     captureCount: printCaptures.length,
@@ -340,6 +357,7 @@ async function main() {
     edition: "Beaman Woodworks QA archive - shareable redacted edition",
     runId: manifest.runId,
     mode: manifest.mode,
+    evidenceTier: manifest.evidenceTier,
     commit: manifest.deployedCommit,
     createdAt: manifest.startedAt,
     captureCount: shareableCaptures.length,

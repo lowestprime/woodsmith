@@ -400,7 +400,7 @@ function MediaInspector({
           title={item.fileName}
           variant="single"
         />
-      ) : <div className="piece-card-placeholder">{item.kind}</div>}
+      ) : <div className="piece-card-placeholder" data-audit-placeholder="media-type-fallback" data-audit-placeholder-allowed="non-image-media-preview">{item.kind}</div>}
       <div className="studio-media-inspector-head">
         <div>
           <h3>{item.fileName}</h3>

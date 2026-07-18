@@ -10,6 +10,7 @@ services:
     user: "${PUID:?PUID must be set}:${PGID:?PGID must be set}"
     environment:
       TARGET_MODE: live-readonly
+      AUDIT_EVIDENCE_TIER: tier-3-live-production
       BASE_URL: "${VISUAL_AUDIT_BASE_URL:-https://woodmat.ch}"
       TARGET_COMMIT_SHA: "${TARGET_COMMIT_SHA:?TARGET_COMMIT_SHA must be set}"
       AUDIT_RUN_ID: "${AUDIT_RUN_ID:?AUDIT_RUN_ID must be set}"

@@ -119,7 +119,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           {mediaItems.length > 0 ? (
             <MediaCollection collectionId={`${piece.slug}:gallery`} items={mediaItems} preloadFirst title={piece.title} variant="detail-stage" />
           ) : (
-            <div className="piece-card-placeholder tall-placeholder">Archival media is being verified for this piece before additional images are shown publicly.</div>
+            <div className="piece-card-placeholder tall-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Archival media is being verified for this piece before additional images are shown publicly.</div>
           )}
         </div>
       </PageSection>

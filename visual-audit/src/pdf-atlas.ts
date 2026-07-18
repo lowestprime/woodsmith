@@ -28,6 +28,7 @@ export type PdfAtlasInput = {
   edition: string;
   runId: string;
   mode: string;
+  evidenceTier?: string;
   commit: string;
   createdAt: string;
   captureCount: number;
@@ -75,6 +76,7 @@ function addCover(document: PDFKit.PDFDocument, input: PdfAtlasInput) {
   const summary = [
     ["Run", input.runId],
     ["Mode", input.mode],
+    ...(input.evidenceTier ? [["Evidence tier", input.evidenceTier]] : []),
     ["Commit", input.commit],
     ["Captures", input.captureCount],
     ["Routes", input.routeCount],

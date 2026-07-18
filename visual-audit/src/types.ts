@@ -3,6 +3,8 @@ import type { AccelerationProvenance } from "./accelerator.js";
 
 export type TargetMode = "live-readonly" | "snapshot-lab";
 export type AuditScope = "smoke" | "full";
+export type EvidenceTier = "tier-1-synthetic" | "tier-2-production-clone" | "tier-3-live-production";
+export type MediaProvenance = "synthetic-fixture" | "production-clone" | "production-live" | "unverified";
 export type AuthState = "anonymous" | "admin";
 export type ThemeMode = "dark" | "light";
 export type CoverageTier = "canonical" | "discovered" | "special";
@@ -42,10 +44,94 @@ export type Inventory = {
     users: number;
     media: number;
   };
+  mediaEvidence: InventoryMediaEvidence;
   limits: {
     recordsPerCollection: number;
     truncatedCollections: string[];
   };
+};
+
+export type InventoryMediaEvidence = {
+  provenance: MediaProvenance;
+  databaseRecords: number;
+  publicReferenced: number;
+  publicPresent: number;
+  missingPublic: number;
+  publicImages: number;
+  publicVideos: number;
+  publicBytes: number;
+  syntheticMarkers: number;
+  publicReferenceDigest: string;
+  publicMountDigest: string;
+};
+
+export type PlaceholderObservation = {
+  digest: string;
+  kind: string;
+  reason: string;
+  allowed: boolean;
+  visible: boolean;
+};
+
+export type RenderedMediaEvidence = {
+  total: number;
+  visible: number;
+  loaded: number;
+  failedVisible: number;
+  directMounted: number;
+  optimizedMounted: number;
+  staticSameOrigin: number;
+  external: number;
+  inline: number;
+  empty: number;
+  missingAlt: number;
+  sourceDigests: string[];
+  mountedSourceDigests: string[];
+  placeholders: PlaceholderObservation[];
+};
+
+export type LiveMediaReport = {
+  schemaVersion: 1;
+  runId: string;
+  generatedAt: string;
+  evidenceTier: EvidenceTier;
+  mode: TargetMode;
+  inventory: InventoryMediaEvidence;
+  rendered: {
+    routeObservations: number;
+    anonymousRouteObservations: number;
+    mediaElementsObserved: number;
+    visibleMediaElements: number;
+    loadedMediaElements: number;
+    failedVisibleMediaElements: number;
+    missingAltAttributes: number;
+    mountedReferencesObserved: number;
+    uniqueSourceDigests: number;
+    uniqueMountedSourceDigests: number;
+    anonymousUniqueMountedSourceDigests: number;
+  };
+  expectedProvenance: Exclude<MediaProvenance, "unverified">;
+  failures: string[];
+  passed: boolean;
+};
+
+export type PlaceholderReport = {
+  schemaVersion: 1;
+  runId: string;
+  generatedAt: string;
+  evidenceTier: EvidenceTier;
+  observed: number;
+  visible: number;
+  allowedVisible: number;
+  unexpectedVisible: number;
+  entries: PlaceholderObservation[];
+  failures: string[];
+  passed: boolean;
+};
+
+export type RunMediaEvidence = {
+  liveMedia: LiveMediaReport;
+  placeholders: PlaceholderReport;
 };
 
 export type DiagnosticType =
@@ -83,6 +169,7 @@ export type RouteResult = {
   surfaces?: SurfaceInventory;
   mediaCollections?: Array<{ id: string; variant: string; itemCount: number }>;
   mediaOverlapFindings?: MediaOverlapFinding[];
+  mediaEvidence?: RenderedMediaEvidence;
 };
 
 export type SurfaceInventory = {
@@ -136,6 +223,7 @@ export type RunManifest = {
   completedAt: string | null;
   mode: TargetMode;
   scope: AuditScope;
+  evidenceTier: EvidenceTier;
   baseUrl: string;
   expectedCommit: string;
   deployedCommit: string;
@@ -149,6 +237,7 @@ export type RunManifest = {
   discoveredLinks: string[];
   exclusions: CoverageExclusion[];
   security: SecuritySummary;
+  mediaEvidence: RunMediaEvidence | null;
 };
 
 export type RouteCollection = {

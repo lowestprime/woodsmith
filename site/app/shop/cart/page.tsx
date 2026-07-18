@@ -39,7 +39,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
           <div aria-label="Cart items" className="cart-items" data-media-collection="cart-items" data-media-collection-variant="editorial-grid" role="region">
             {lines.length > 0 ? lines.map(({ item, piece, firstImage }, index) => (
               <article className="cart-line" data-media-id={`cart:${item.id}`} data-media-item="true" data-media-order={index} key={item.id}>
-                {firstImage ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(firstImage)} width={320} /> : <div className="piece-card-placeholder">No image</div>}
+                {firstImage ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(firstImage)} width={320} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">No image</div>}
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>

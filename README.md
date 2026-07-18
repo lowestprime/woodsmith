@@ -93,6 +93,7 @@ Required for a secure deployment:
 Required only when the private visual archive is enabled:
 
 - `VISUAL_AUDIT_TOKEN` and optional `VISUAL_AUDIT_MAX_RECORDS`
+- `WOODSMITH_MEDIA_PROVENANCE=production-live` for the production app; isolated runners set stricter provenance themselves
 - private ignored secret files prepared by `visual-audit/scripts/prepare-live-secrets.sh`
 
 Local-first media AI configuration:

@@ -20,6 +20,7 @@ services:
       VISUAL_AUDIT_TOKEN_FILE: /run/secrets/audit_token
       VISUAL_AUDIT_MAX_RECORDS: "${VISUAL_AUDIT_MAX_RECORDS:-5000}"
       VISUAL_AUDIT_SNAPSHOT_LAB: "true"
+      WOODSMITH_MEDIA_PROVENANCE: "${AUDIT_MEDIA_PROVENANCE:?AUDIT_MEDIA_PROVENANCE must be set by prepare-snapshot-lab.sh}"
       STRIPE_SECRET_KEY: ""
       STRIPE_PUBLISHABLE_KEY: ""
       EASYPOST_API_KEY: ""
@@ -75,6 +76,7 @@ services:
         condition: service_healthy
     environment:
       TARGET_MODE: snapshot-lab
+      AUDIT_EVIDENCE_TIER: "${AUDIT_EVIDENCE_TIER:?AUDIT_EVIDENCE_TIER must be set by prepare-snapshot-lab.sh}"
       BASE_URL: http://woodsmith-audit-lab:3002
       TARGET_COMMIT_SHA: "${TARGET_COMMIT_SHA:?TARGET_COMMIT_SHA must be set}"
       AUDIT_RUN_ID: "${AUDIT_RUN_ID:?AUDIT_RUN_ID must be set}"

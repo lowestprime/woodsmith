@@ -57,6 +57,7 @@ import {
   type NavigationSample
 } from "./navigation-settle.js";
 import { buildNoOverlapReport, findMediaOverlaps } from "./media-overlap.js";
+import { buildMediaEvidenceReports } from "./media-evidence.js";
 import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
 import { waitForRequestDrain } from "./request-drain.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
@@ -208,7 +209,8 @@ async function loadOrCreateManifest(
       existing.mode !== config.targetMode ||
       existing.baseUrl !== config.baseUrl ||
       existing.expectedCommit !== config.expectedCommit ||
-      existing.schemaVersion !== 4 ||
+      existing.schemaVersion !== 5 ||
+      existing.evidenceTier !== config.evidenceTier ||
       JSON.stringify(existing.acceleration) !== JSON.stringify(acceleration)
     ) {
       throw new Error("AUDIT_RESUME refused to combine output from a different schema, run, mode, origin, or commit.");
@@ -218,6 +220,7 @@ async function loadOrCreateManifest(
       ...existing,
       completedAt: null,
       scope: existing.scope ?? config.scope,
+      evidenceTier: existing.evidenceTier,
       discoveredLinks: existing.discoveredLinks ?? [],
       exclusions: existing.exclusions ?? [...coverageExclusions],
       security: existing.security ?? {
@@ -225,17 +228,19 @@ async function loadOrCreateManifest(
         successfulUnsafeRequests: 0,
         tokenEligibleRequests: 0,
         crossOriginRequests: 0
-      }
+      },
+      mediaEvidence: null
     };
   }
 
   return {
-    schemaVersion: 4,
+    schemaVersion: 5,
     runId: config.runId,
     startedAt: now(),
     completedAt: null,
     mode: config.targetMode,
     scope: config.scope,
+    evidenceTier: config.evidenceTier,
     baseUrl: config.baseUrl,
     expectedCommit: config.expectedCommit,
     deployedCommit: inventory.buildSha,
@@ -253,7 +258,8 @@ async function loadOrCreateManifest(
       successfulUnsafeRequests: 0,
       tokenEligibleRequests: 0,
       crossOriginRequests: 0
-    }
+    },
+    mediaEvidence: null
   } satisfies RunManifest;
 }
 
@@ -1059,6 +1065,74 @@ async function collectPageEvidence(page: Page, route: string) {
           })
       }));
 
+    const renderedMediaItems = Array.from(document.querySelectorAll<HTMLImageElement | HTMLVideoElement>("img,video")).map((element) => {
+      const isImage = element instanceof HTMLImageElement;
+      const source = (element.currentSrc || element.getAttribute("src") || "").trim();
+      let classification = "empty";
+      let fingerprintKey = "empty";
+
+      if (source.startsWith("data:") || source.startsWith("blob:")) {
+        classification = "inline";
+        fingerprintKey = source.slice(0, source.indexOf(":"));
+      } else if (source) {
+        try {
+          const url = new URL(source, window.location.href);
+          if (url.origin !== targetOrigin) {
+            classification = "external";
+            fingerprintKey = `${url.origin}${url.pathname}`;
+          } else if (url.pathname.startsWith("/media/")) {
+            classification = "direct-mounted";
+            fingerprintKey = `mounted:${url.pathname}`;
+          } else if (url.pathname === "/_next/image") {
+            const nestedValue = url.searchParams.get("url") ?? "";
+            const nested = new URL(nestedValue, targetOrigin);
+            if (nested.origin === targetOrigin && nested.pathname.startsWith("/media/")) {
+              classification = "optimized-mounted";
+              fingerprintKey = `mounted:${nested.pathname}`;
+            } else {
+              classification = "static-same-origin";
+              fingerprintKey = `${url.pathname}?url=${nested.pathname}`;
+            }
+          } else {
+            classification = "static-same-origin";
+            fingerprintKey = url.pathname;
+          }
+        } catch {
+          classification = "empty";
+          fingerprintKey = "invalid-source";
+        }
+      }
+
+      const isVisible = visible(element);
+      const loaded = isImage
+        ? element.complete && element.naturalWidth > 0
+        : !element.error && element.readyState >= HTMLMediaElement.HAVE_METADATA;
+
+      return {
+        classification,
+        fingerprintKey,
+        visible: isVisible,
+        loaded,
+        failedVisible: isVisible && Boolean(source) && !loaded,
+        missingAlt: isImage && !element.hasAttribute("alt")
+      };
+    });
+
+    const placeholders = Array.from(document.querySelectorAll<HTMLElement>("[data-audit-placeholder], .piece-card-placeholder"))
+      .map((element, index) => {
+        const allowedReason = element.dataset.auditPlaceholderAllowed?.trim() ?? "";
+        const marker = element.dataset.auditPlaceholder?.trim() || (element.classList.contains("piece-card-placeholder") ? "piece-card-placeholder" : element.tagName.toLowerCase());
+        const safeMarker = marker.replace(/[^a-zA-Z0-9._:-]+/g, "-").slice(0, 80) || "placeholder";
+        const safeReason = (allowedReason || safeMarker).replace(/[^a-zA-Z0-9._:-]+/g, "-").slice(0, 120) || "placeholder";
+        return {
+          index,
+          kind: safeMarker,
+          reason: safeReason,
+          allowed: Boolean(allowedReason),
+          visible: visible(element)
+        };
+      });
+
     const surfaces = {
       details: Array.from(document.querySelectorAll("details")).filter(visible).length,
       lightboxOpeners: Array.from(document.querySelectorAll('[data-media-lightbox-opener="true"]')).filter(visible).length,
@@ -1090,13 +1164,23 @@ async function collectPageEvidence(page: Page, route: string) {
           .map((element) => element.dataset.auditId || element.id || element.tagName.toLowerCase())
       : [];
 
-    return { links: [...new Set(links)], brokenMedia, overflow, documentWidth, viewportWidth: window.innerWidth, mediaCollections, surfaces };
+    return {
+      links: [...new Set(links)],
+      brokenMedia,
+      overflow,
+      documentWidth,
+      viewportWidth: window.innerWidth,
+      mediaCollections,
+      surfaces,
+      renderedMedia: { items: renderedMediaItems, placeholders }
+    };
   }, new URL(config.baseUrl).origin);
 
   manifest.discoveredLinks = unique([...manifest.discoveredLinks, ...evidence.links]).sort();
 
   for (const source of evidence.brokenMedia) {
-    manifest.diagnostics.push({ timestamp: now(), type: "broken-media", route, message: source });
+    const digest = createHash("sha256").update(source).digest("hex");
+    manifest.diagnostics.push({ timestamp: now(), type: "broken-media", route, message: `sha256:${digest}` });
   }
 
   if (evidence.overflow.length > 0) {
@@ -1118,7 +1202,36 @@ async function collectPageEvidence(page: Page, route: string) {
     });
   }
 
-  return { ...evidence, mediaOverlaps };
+  const sourceDigests = unique(evidence.renderedMedia.items
+    .filter((item) => item.classification !== "empty")
+    .map((item) => createHash("sha256").update(item.fingerprintKey).digest("hex"))).sort();
+  const mountedSourceDigests = unique(evidence.renderedMedia.items
+    .filter((item) => item.classification === "direct-mounted" || item.classification === "optimized-mounted")
+    .map((item) => createHash("sha256").update(item.fingerprintKey).digest("hex"))).sort();
+  const renderedMedia = {
+    total: evidence.renderedMedia.items.length,
+    visible: evidence.renderedMedia.items.filter((item) => item.visible).length,
+    loaded: evidence.renderedMedia.items.filter((item) => item.loaded).length,
+    failedVisible: evidence.renderedMedia.items.filter((item) => item.failedVisible).length,
+    directMounted: evidence.renderedMedia.items.filter((item) => item.classification === "direct-mounted").length,
+    optimizedMounted: evidence.renderedMedia.items.filter((item) => item.classification === "optimized-mounted").length,
+    staticSameOrigin: evidence.renderedMedia.items.filter((item) => item.classification === "static-same-origin").length,
+    external: evidence.renderedMedia.items.filter((item) => item.classification === "external").length,
+    inline: evidence.renderedMedia.items.filter((item) => item.classification === "inline").length,
+    empty: evidence.renderedMedia.items.filter((item) => item.classification === "empty").length,
+    missingAlt: evidence.renderedMedia.items.filter((item) => item.missingAlt).length,
+    sourceDigests,
+    mountedSourceDigests,
+    placeholders: evidence.renderedMedia.placeholders.map((placeholder) => ({
+      digest: createHash("sha256").update(`${route}\0${placeholder.index}\0${placeholder.kind}\0${placeholder.reason}`).digest("hex"),
+      kind: placeholder.kind,
+      reason: placeholder.reason,
+      allowed: placeholder.allowed,
+      visible: placeholder.visible
+    }))
+  };
+
+  return { ...evidence, renderedMedia, mediaOverlaps };
 }
 
 async function saveCapture(input: {
@@ -2062,6 +2175,7 @@ async function captureRoute(input: {
       itemCount: collection.items.length
     }));
     routeResult.mediaOverlapFindings = evidence.mediaOverlaps;
+    routeResult.mediaEvidence = evidence.renderedMedia;
 
     const base = {
       page,
@@ -2486,6 +2600,10 @@ async function main() {
         config.authStatePath
       );
 
+    if (inventory.schemaVersion !== 2 || !inventory.mediaEvidence) {
+      throw new Error("The target does not expose the schema-v2 protected media inventory required for evidence-tier capture.");
+    }
+
     const targetHost = new URL(config.baseUrl).hostname;
     const localTarget = ["127.0.0.1", "localhost", "::1"].includes(targetHost);
     if (inventory.buildSha === "unknown" && !localTarget) {
@@ -2526,6 +2644,14 @@ async function main() {
         runId: config.runId,
         mode: config.targetMode,
         scope: config.scope,
+        evidenceTier: config.evidenceTier,
+        mediaPolicy: {
+          provenance: inventory.mediaEvidence.provenance,
+          publicReferenced: inventory.mediaEvidence.publicReferenced,
+          publicPresent: inventory.mediaEvidence.publicPresent,
+          syntheticMarkers: inventory.mediaEvidence.syntheticMarkers,
+          rawPathsRecorded: false
+        },
         source,
         inventoryCounts:
           inventory.counts,
@@ -2580,6 +2706,16 @@ async function main() {
     }
 
     manifest.completedAt = now();
+    manifest.mediaEvidence = buildMediaEvidenceReports({
+      runId: manifest.runId,
+      generatedAt: manifest.completedAt,
+      evidenceTier: manifest.evidenceTier,
+      mode: manifest.mode,
+      inventory: manifest.inventory.mediaEvidence,
+      routes: manifest.routes
+    });
+    await writeJsonAtomic(path.join(config.runRoot, "live-media.json"), manifest.mediaEvidence.liveMedia);
+    await writeJsonAtomic(path.join(config.runRoot, "placeholder-report.json"), manifest.mediaEvidence.placeholders);
     await writeJsonAtomic(path.join(config.runRoot, "no-overlap.json"), buildNoOverlapReport({
       runId: manifest.runId,
       generatedAt: manifest.completedAt,

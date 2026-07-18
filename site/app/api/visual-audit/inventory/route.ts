@@ -4,9 +4,11 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import {
   countMedia,
+  listMedia,
   listNotifications,
   listOrders,
   listPages,
+  listPieceMediaLinks,
   listPieces,
   listPosts,
   listProjects,
@@ -14,6 +16,7 @@ import {
   listUsers
 } from "@/lib/db";
 import { visualAuditTokenValid } from "@/lib/visual-audit";
+import { buildPublicMediaEvidence, parseMediaProvenance } from "@/lib/visual-audit-media-evidence";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -101,6 +104,18 @@ export async function GET(request: NextRequest) {
   const notifications = listNotifications();
   const users = listUsers();
   const mediaCount = countMedia({ includeUnreviewed: true });
+  const media = listMedia({ includeUnreviewed: true });
+  const pieceMediaLinks = pieces.flatMap((piece) => listPieceMediaLinks(piece.slug));
+  const mediaEvidence = buildPublicMediaEvidence({
+    provenance: parseMediaProvenance(process.env.WOODSMITH_MEDIA_PROVENANCE),
+    databaseRecords: mediaCount,
+    pages,
+    pieces,
+    pieceMediaLinks,
+    posts,
+    users,
+    media
+  });
   const truncatedCollections: string[] = [];
 
   function bounded<T>(name: string, records: T[]) {
@@ -110,7 +125,7 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     {
-      schemaVersion: 1,
+      schemaVersion: 2,
       generatedAt: new Date().toISOString(),
       buildSha: process.env.WOODSMITH_BUILD_SHA ?? "unknown",
 
@@ -180,6 +195,8 @@ export async function GET(request: NextRequest) {
         users: users.length,
         media: mediaCount
       },
+
+      mediaEvidence,
 
       limits: {
         recordsPerCollection: INVENTORY_RECORD_LIMIT,
