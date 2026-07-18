@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { submitContactRequestAction } from "@/lib/actions";
+import { browserOperationId } from "@/lib/browser-id";
 import type { CommissionTypeRecord } from "@/lib/db";
 import { CustomWorkVisualizer3D } from "@/components/visualizer";
 
@@ -53,7 +54,7 @@ function restoreForm(form: HTMLFormElement, values: Record<string, string>) {
 export function IdempotencyInput() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   useEffect(() => {
-    if (inputRef.current && !inputRef.current.value) inputRef.current.value = crypto.randomUUID();
+    if (inputRef.current && !inputRef.current.value) inputRef.current.value = browserOperationId();
   }, []);
   return <input defaultValue="" name="idempotencyKey" ref={inputRef} required type="hidden" />;
 }
@@ -104,7 +105,7 @@ export function CommissionWorkflow({
     if (!form) return;
     let stored: StoredDraft = {};
     try { stored = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}") as StoredDraft; } catch { stored = {}; }
-    const key = stored.idempotencyKey && /^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(stored.idempotencyKey) ? stored.idempotencyKey : crypto.randomUUID();
+    const key = stored.idempotencyKey && /^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(stored.idempotencyKey) ? stored.idempotencyKey : browserOperationId();
     idempotencyRef.current = key;
     draftIdRef.current = stored.draftId ?? "";
     draftUpdatedAtRef.current = stored.draftUpdatedAt ?? "";

@@ -1,6 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { browserOperationId } from "./browser-id.ts";
 import { clampLightboxZoom, clampPanOffset, isNavigationCurrent } from "./ui-behavior.ts";
+
+test("browser operation IDs prefer randomUUID and fall back outside secure contexts", () => {
+  assert.equal(browserOperationId({ randomUUID: () => "exact-browser-uuid" }), "exact-browser-uuid");
+
+  const fallback = browserOperationId({
+    randomUUID: () => { throw new TypeError("secure context required"); },
+    getRandomValues: (bytes) => {
+      bytes.forEach((_, index) => { bytes[index] = index; });
+      return bytes;
+    }
+  });
+  assert.match(fallback, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+});
 
 test("navigation current state matches exact roots and nested routes", () => {
   assert.equal(isNavigationCurrent("/", "/"), true);
