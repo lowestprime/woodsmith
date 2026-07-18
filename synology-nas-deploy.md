@@ -307,7 +307,7 @@ Worker settings default to `auto`: capture uses at most 2 workers, while validat
 
 Mutation-dependent success/error states require `visual-audit/scripts/prepare-snapshot-lab.sh` followed by `visual-audit/scripts/run-snapshot-lab.sh`. The lab uses a `VACUUM INTO` database clone, reflink/full-copy media, verified run markers, an internal Docker network, disabled external integrations, and fixed Tier 2 production-clone provenance. It never mounts production data or media read-write.
 
-Both scripts default to the preloaded `woodsmith:candidate-<short-sha>` and `woodsmith-visual-audit:candidate-<short-sha>` images. They fail unless both are `linux/amd64` and the app image reports the exact full commit. Set `WOODSMITH_AUDIT_APP_IMAGE` or `WOODSMITH_VISUAL_AUDIT_IMAGE` only when using equivalent prevalidated tags. On Synology SSH accounts without Docker-socket membership, the scripts automatically use noninteractive `/usr/local/bin/docker` through `sudo -n`; they do not rebuild or retag images.
+Both scripts default to the preloaded `woodsmith:candidate-<short-sha>` and `woodsmith-visual-audit:candidate-<short-sha>` images. They fail unless both are `linux/amd64` and the app image reports the exact full commit. Set `WOODSMITH_AUDIT_APP_IMAGE` or `WOODSMITH_VISUAL_AUDIT_IMAGE` only when using equivalent prevalidated tags. On Synology SSH accounts without Docker-socket membership, the scripts automatically use noninteractive `/usr/local/bin/docker` through `sudo -n`, forwarding only named nonsecret Compose selectors; passwords and tokens stay in restricted files and env files. The scripts do not rebuild or retag images.
 
 Full commands, artifacts, permissions, retention, and acceptance criteria are in [`docs/visual-archive.md`](docs/visual-archive.md).
 

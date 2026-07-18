@@ -18,6 +18,39 @@ resolve_docker_command() {
 }
 
 docker_cmd() {
+  if [[ "${WOODSMITH_DOCKER_COMMAND[0]}" == "sudo" && "${1:-}" == "compose" ]]; then
+    local name
+    local -a environment=()
+    local -a allowed=(
+      TARGET_COMMIT_SHA
+      AUDIT_RUN_ID
+      AUDIT_SCOPE
+      AUDIT_RESUME
+      AUDIT_EVIDENCE_TIER
+      AUDIT_MEDIA_PROVENANCE
+      WOODSMITH_AUDIT_APP_IMAGE
+      WOODSMITH_VISUAL_AUDIT_IMAGE
+      VISUAL_AUDIT_BASE_URL
+      APPROVED_BASELINE_ROOT
+      WOODSMITH_ADMIN_EMAIL
+      MAX_FULL_PAGE_DEVICE_HEIGHT
+      MAX_STITCHED_SEGMENT_HEIGHT
+      AUDIT_STRICT_DIAGNOSTICS
+      VISUAL_AUDIT_ACCELERATOR
+      VISUAL_AUDIT_CAPTURE_WORKERS
+      VISUAL_AUDIT_VALIDATION_WORKERS
+      VISUAL_AUDIT_REPORT_WORKERS
+    )
+
+    for name in "${allowed[@]}"; do
+      if [[ -v "$name" ]]; then
+        environment+=("${name}=${!name}")
+      fi
+    done
+    sudo -n /usr/bin/env "${environment[@]}" /usr/local/bin/docker "$@"
+    return
+  fi
+
   "${WOODSMITH_DOCKER_COMMAND[@]}" "$@"
 }
 
