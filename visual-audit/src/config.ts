@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { AuditScope, TargetMode, ViewportProfile } from "./types.js";
+import { parseAcceleratorMode } from "./accelerator.js";
 import { parseWorkerCount } from "./worker-count.js";
 
 function required(name: string) {
@@ -91,6 +92,7 @@ export const config = {
   baselineRoot: process.env.APPROVED_BASELINE_ROOT?.trim() ? path.resolve(process.env.APPROVED_BASELINE_ROOT) : null,
   strictDiagnostics: booleanValue("AUDIT_STRICT_DIAGNOSTICS", true),
   browserChannel: browserChannel as "chrome" | "msedge" | undefined,
+  accelerator: parseAcceleratorMode(process.env.VISUAL_AUDIT_ACCELERATOR),
   validationWorkers,
   reportWorkers,
   captureWorkers

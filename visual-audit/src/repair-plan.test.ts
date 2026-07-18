@@ -57,7 +57,7 @@ function fixtureManifest(): RunManifest {
     capture("category-full", "/studio?panel=categories", "desktop-archival", "full-page-default", "png/categories-full.png")
   ];
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId: "fixture-run",
     startedAt: "2026-01-01T00:00:00.000Z",
     completedAt: "2026-01-01T01:00:00.000Z",
@@ -67,6 +67,32 @@ function fixtureManifest(): RunManifest {
     expectedCommit: "abc123",
     deployedCommit: "abc123",
     browserVersion: "fixture",
+    acceleration: {
+      requested: "cpu",
+      selected: "cpu",
+      cuda: {
+        detected: false,
+        source: "unavailable",
+        deviceName: null,
+        driverVersion: null,
+        computeCapability: null,
+        memoryMiB: null,
+        reason: "fixture"
+      },
+      verifiedCudaStages: [],
+      reason: "fixture",
+      browser: {
+        backend: "swiftshader",
+        hardwareAccelerated: false,
+        renderer: "SwiftShader",
+        driverVendor: "SwANGLE",
+        driverVersion: "5.0",
+        displayType: "ANGLE_SWIFTSHADER",
+        implementation: "swiftshader",
+        featureStatus: {}
+      },
+      stages: [{ name: "fixture", backend: "cpu", accelerated: false, reason: "fixture" }]
+    },
     inventory,
     captures,
     routes: [

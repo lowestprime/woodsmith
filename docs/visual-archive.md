@@ -197,6 +197,65 @@ visual-audit/scripts/benchmark-validator-volume.ps1 `
 
 Do not increase worker counts blindly. Re-run the matrix against representative full-run evidence after changing the capture matrix, image sizes, NAS CPU/memory limits, Sharp, libvips, Playwright, or report selection logic.
 
+## Accelerator Contract And GPU Evidence
+
+`VISUAL_AUDIT_ACCELERATOR` accepts only `auto`, `cpu`, or `cuda`:
+
+- `auto` probes `nvidia-smi` with a three-second bound and selects CUDA only for stages that this build explicitly marks benchmark-verified.
+- `cpu` forces the portable canonical pipeline even when a device is visible.
+- `cuda` fails before capture when no CUDA device is visible or when this build has no deterministic benchmark-verified CUDA stage. It never falls through while claiming acceleration.
+
+The restricted manifest records the requested and selected mode, bounded CUDA-device facts, the Chromium renderer reported by `SystemInfo.getInfo`, and one backend decision for each browser, PNG, resize/print, tile/seam, hash/redaction, and PDF phase. The redacted manifest retains the mode and stage decisions but omits device identity. Resume refuses to combine output produced under different accelerator provenance. Archive schema version 4 is therefore intentionally incompatible with older incomplete manifests.
+
+The 2026-07-17 workstation probe used Docker Engine 29.6.1, BuildKit 0.31.1, an RTX 3070 Ti Laptop GPU with 8,192 MiB, driver 573.91, CUDA compatibility 12.8, and compute capability 8.6. A minimal isolated container successfully loaded `libcuda.so.1` and enumerated one device. That proves device access, not an accelerated audit stage.
+
+Three browser launches per candidate used the pinned Playwright image, `linux/amd64`, `--gpus all`, no network, a four-GiB memory limit, twelve CPUs, and the deterministic 1440 x 900 benchmark surface:
+
+| Candidate | CDP renderer | Warm total seconds | Pixel result | Decision |
+|---|---|---:|---|---|
+| Canonical | ANGLE SwiftShader | 0.257-0.280 | Stable `a38cf990...` | Retain |
+| Explicit SwiftShader GPU flags | ANGLE SwiftShader | 0.571-0.579 | Different `1b150fc8...` | Reject: slower and noncanonical |
+| CUDA/Vulkan flags | ANGLE SwiftShader | 0.290-0.295 | Canonical | Reject: hardware backend unavailable |
+| CUDA/GL flags | ANGLE SwiftShader | 0.263-0.281 | Canonical | Reject: hardware backend unavailable |
+
+NVIDIA nvImageCodec 0.9.0.20 was evaluated separately against all 299 retained PNGs (24,768,208 encoded bytes; 288 RGB and 11 RGBA). `CPU_ONLY` with `I_UNCHANGED` reproduced every Sharp raw-pixel hash, including alpha. `GPU_ONLY`, `HYBRID_CPU_GPU`, and `HW_GPU_ONLY` could not create a PNG decoder. The default decoder used the CPU PNG plugin and copied its result to device memory; that is transfer overhead, not GPU decode. The 32.1-MiB wheel and temporary 399-MiB benchmark image are not production dependencies.
+
+The reproducible three-pass phase profiler preserved the same semantic digest on every pass and removed its scratch root in `finally`:
+
+| Phase | Cold seconds | Warm seconds |
+|---|---:|---:|
+| Directory inventory | 0.012 | 0.008 |
+| Streaming SHA-256 | 0.058 | 0.042-0.049 |
+| PNG metadata | 0.031 | 0.027-0.029 |
+| PNG decode and blankness | 4.442 | 3.215-3.235 |
+| PNG thumbnail resize/encode | 0.542 | 0.527-0.531 |
+| Seam resize/difference (64 pairs) | 0.293 | 0.283-0.301 |
+| Tile composite/PNG (16 tiles) | 0.113 | 0.106-0.108 |
+| Print resize/JPEG (12 files) | 0.365 | 0.356-0.357 |
+| Redacted copy/hash (64 files) | 0.031 | 0.022-0.024 |
+| JSON manifest | 0.001 | 0.001 |
+| PDF atlas (12 image pages) | 0.058 | 0.014 |
+
+The decode/blankness phase is the only material post-processing hotspot in this representative corpus, and the tested NVIDIA library provides no PNG GPU backend. NPP resize/composite would not preserve Sharp/libvips interpolation, blend, PNG, and JPEG byte semantics without a separately maintained native implementation; the measured resize/composite phases are also subsecond. Hashing, JSON, copy/redaction, and PDF assembly are I/O or serial metadata/document work rather than suitable GPU kernels. The current zero-stage CUDA allowlist is therefore an evidence-based result, not a claim that CUDA was enabled.
+
+Re-run the source-controlled benchmarks after changing Playwright, Chromium, Sharp/libvips, capture sizes, codecs, GPU runtime, or the representative corpus:
+
+```bash
+BENCHMARK_RUN_ROOT=/restricted/archive/png \
+BENCHMARK_REPEATS=3 \
+VISUAL_AUDIT_VALIDATION_WORKERS=6 \
+npm --prefix visual-audit run benchmark:phases
+
+docker run --rm --init --gpus all --network none \
+  --ipc private --shm-size 1g --memory 4g --cpus 12 \
+  -e BENCHMARK_BROWSER_VARIANTS=all \
+  -e BENCHMARK_REPEATS=3 \
+  --entrypoint node woodsmith-visual-audit:<exact-sha> \
+  dist/benchmark-browser-gpu.js
+```
+
+The browser procedure follows Chromium's official headless GPU guidance and verifies the actual renderer rather than flags alone. nvImageCodec backend expectations follow NVIDIA's codec documentation. See [Chromium headless GPU guidance](https://chromium.googlesource.com/chromium/src/+/HEAD/docs/gpu/using-gpu-hardware-in-headless-chrome.md), [Docker Desktop GPU support](https://docs.docker.com/desktop/features/gpu/), and [NVIDIA nvImageCodec](https://docs.nvidia.com/cuda/nvimagecodec/).
+
 ## Snapshot Lab
 
 Prepare a new isolated lab for every mutation-state run:

@@ -31,7 +31,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Programmatic Beaman Woodworks favicon and brand mark
 - Safe profile administration for renaming accounts, replacing legacy developer emails, and deleting non-current users from the dashboard
 - Compact auto-hide navigation that keeps the public and dashboard workspaces usable on narrow and desktop viewports
-- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, complete restricted searchable HTML, deterministic representative bookmarked PDF/shareable atlases, checksums, and baseline comparisons
+- A pinned two-mode Playwright visual archive with protected source/database/link inventory, evidence-based network diagnostics, keyboard skip-link states, read-only production capture, clone-only bounded mutation states, viewport-correct high-resolution tiles, complete restricted searchable HTML, deterministic representative bookmarked PDF/shareable atlases, checksums, baseline comparisons, and strict benchmark-gated CPU/CUDA provenance
 - A fail-closed paired recovery tool that creates and verifies an online-consistent SQLite backup, a hashed copy of the mounted media tree, and an optional protected environment-file copy, then restores only to new staging destinations
 
 ## 📃 Production Notes

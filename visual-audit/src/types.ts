@@ -1,4 +1,5 @@
 import type { MediaOverlapFinding } from "./media-overlap.js";
+import type { AccelerationProvenance } from "./accelerator.js";
 
 export type TargetMode = "live-readonly" | "snapshot-lab";
 export type AuditScope = "smoke" | "full";
@@ -139,6 +140,7 @@ export type RunManifest = {
   expectedCommit: string;
   deployedCommit: string;
   browserVersion: string;
+  acceleration: AccelerationProvenance;
   inventory: Inventory;
   captures: CaptureRecord[];
   routes: RouteResult[];

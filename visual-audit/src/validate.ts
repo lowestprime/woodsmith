@@ -95,17 +95,39 @@ async function validateNoOverlapReport(manifest: RunManifest, failures: string[]
   }
 }
 
+function validateAcceleration(manifest: RunManifest, failures: string[]) {
+  const acceleration = manifest.acceleration;
+  if (!acceleration) {
+    failures.push("Manifest does not contain accelerator provenance.");
+    return;
+  }
+  if (!["auto", "cpu", "cuda"].includes(acceleration.requested)) failures.push("Manifest contains an invalid requested accelerator.");
+  if (!["cpu", "cuda"].includes(acceleration.selected)) failures.push("Manifest contains an invalid selected accelerator.");
+  if (acceleration.selected === "cuda" && !acceleration.cuda.detected) failures.push("Manifest selected CUDA without detecting a CUDA device.");
+  if (acceleration.selected === "cuda" && acceleration.verifiedCudaStages.length === 0) failures.push("Manifest selected CUDA without a benchmark-verified CUDA stage.");
+  if (acceleration.browser.backend === "swiftshader" && acceleration.browser.hardwareAccelerated) failures.push("Manifest incorrectly classifies SwiftShader as hardware accelerated.");
+  if (acceleration.stages.length === 0) failures.push("Manifest contains no accelerator stage decisions.");
+  const names = new Set<string>();
+  for (const stage of acceleration.stages) {
+    if (!stage.name || !stage.backend || !stage.reason) failures.push("Manifest contains an incomplete accelerator stage decision.");
+    if (names.has(stage.name)) failures.push(`Manifest contains a duplicate accelerator stage: ${stage.name}`);
+    names.add(stage.name);
+  }
+}
+
 async function main() {
   const manifestFile = path.join(config.runRoot, "manifest.json");
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
   const failures: string[] = [];
 
+  if (manifest.schemaVersion !== 4) failures.push("Manifest schema version is not the current accelerator-aware version.");
   if (!manifest.completedAt) failures.push("Manifest does not contain completedAt.");
   if (manifest.runId !== config.runId) failures.push("Manifest run ID does not match AUDIT_RUN_ID.");
   if (manifest.mode !== config.targetMode) failures.push("Manifest mode does not match TARGET_MODE.");
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
+  validateAcceleration(manifest, failures);
   await validateNoOverlapReport(manifest, failures);
   failures.push(...snapshotLabEvidenceFailures({
     targetMode: config.targetMode,

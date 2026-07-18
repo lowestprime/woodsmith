@@ -125,6 +125,8 @@ function htmlDocument(input: {
       <div><dt>Run</dt><dd>${escapeHtml(input.manifest.runId)}</dd></div>
       <div><dt>Mode</dt><dd>${escapeHtml(input.manifest.mode)}</dd></div>
       <div><dt>Commit</dt><dd>${escapeHtml(input.manifest.deployedCommit)}</dd></div>
+      <div><dt>Accelerator</dt><dd>${escapeHtml(input.manifest.acceleration.selected)}</dd></div>
+      <div><dt>Browser backend</dt><dd>${escapeHtml(input.manifest.acceleration.browser.backend)}</dd></div>
       <div><dt>Captures</dt><dd>${input.captures.length}</dd></div>
       <div><dt>Routes</dt><dd>${new Set(input.captures.map((capture) => `${capture.auth}:${capture.route}`)).size}</dd></div>
       <div><dt>Unexpected diagnostics</dt><dd>${diagnostics.length}</dd></div>
@@ -201,6 +203,16 @@ async function main() {
     mode: manifest.mode,
     scope: manifest.scope,
     deployedCommit: manifest.deployedCommit,
+    acceleration: {
+      requested: manifest.acceleration.requested,
+      selected: manifest.acceleration.selected,
+      reason: manifest.acceleration.reason,
+      browser: {
+        backend: manifest.acceleration.browser.backend,
+        hardwareAccelerated: manifest.acceleration.browser.hardwareAccelerated
+      },
+      stages: manifest.acceleration.stages
+    },
     sourceCaptureCount: shareableSourceCaptures.length,
     captureCount: shareableCaptures.length,
     selectionPolicy: REPORT_SELECTION_POLICY,

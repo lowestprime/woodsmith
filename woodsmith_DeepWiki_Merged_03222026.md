@@ -200,7 +200,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/components/visitor-tracker.tsx` + `site/components/visitor-insights.tsx`: client visit logging and dashboard visitor map/list
 - `site/components/visualizer.tsx`: route-local R3F conceptual preview orchestration, deterministic SVG/text fallback payloads, optional AI preview trigger, and server-authoritative estimator fields
 - `site/components/commission-scene.tsx`: route-local React Three Fiber templates, cameras, lighting, dimensions, and fallback-safe scene controls
-- `visual-audit/`: deterministic two-mode visual archive, reports, validation, comparison, and NAS scripts
+- `visual-audit/`: deterministic two-mode visual archive, reports, validation, comparison, NAS scripts, strict benchmark-gated accelerator selection, and recorded per-stage/browser backend provenance
 - `docs/visual-archive.md`: visual-archive security and operations manual
 - `site/app/icon.tsx`: generated favicon
 - `site/app/studio/page.tsx`: private Woodshop dashboard

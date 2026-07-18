@@ -14,6 +14,13 @@ import {
 
 import { chromiumLaunchOptions } from "./browser-launch.js";
 import {
+  buildAccelerationProvenance,
+  probeBrowserGpu,
+  probeCuda,
+  selectAccelerator,
+  type AccelerationProvenance
+} from "./accelerator.js";
+import {
   canonicalCoverageMatrix,
   discoveredCoverageMatrix,
   type CoverageMatrixEntry
@@ -185,7 +192,8 @@ async function persistManifest() {
 
 async function loadOrCreateManifest(
   browserVersion: string,
-  inventory: Inventory
+  inventory: Inventory,
+  acceleration: AccelerationProvenance
 ) {
   if (
     config.resume &&
@@ -200,7 +208,8 @@ async function loadOrCreateManifest(
       existing.mode !== config.targetMode ||
       existing.baseUrl !== config.baseUrl ||
       existing.expectedCommit !== config.expectedCommit ||
-      existing.schemaVersion !== 3
+      existing.schemaVersion !== 4 ||
+      JSON.stringify(existing.acceleration) !== JSON.stringify(acceleration)
     ) {
       throw new Error("AUDIT_RESUME refused to combine output from a different schema, run, mode, origin, or commit.");
     }
@@ -221,7 +230,7 @@ async function loadOrCreateManifest(
   }
 
   return {
-    schemaVersion: 3,
+    schemaVersion: 4,
     runId: config.runId,
     startedAt: now(),
     completedAt: null,
@@ -231,6 +240,7 @@ async function loadOrCreateManifest(
     expectedCommit: config.expectedCommit,
     deployedCommit: inventory.buildSha,
     browserVersion,
+    acceleration,
     inventory,
     captures: [],
     routes: [],
@@ -2456,11 +2466,18 @@ async function main() {
   await ensureDirectory(config.runRoot);
   await ensureDirectory(captureRoot);
 
-  const browser = await chromium.launch(
-    chromiumLaunchOptions(config.browserChannel)
-  );
+  const accelerator = selectAccelerator(config.accelerator, await probeCuda());
+  const browser = await chromium.launch(chromiumLaunchOptions(
+    config.browserChannel,
+    accelerator.selected === "cuda" ? "cuda-vulkan" : "canonical"
+  ));
 
   try {
+    const browserGpu = await probeBrowserGpu(browser);
+    if (accelerator.selected === "cuda" && !browserGpu.hardwareAccelerated) {
+      throw new Error("CUDA acceleration was selected, but Chromium CDP reported a software renderer.");
+    }
+    const acceleration = buildAccelerationProvenance(accelerator, browserGpu);
     await authenticateAdmin(browser);
 
     const inventory =
@@ -2492,7 +2509,8 @@ async function main() {
     manifest =
       await loadOrCreateManifest(
         browser.version(),
-        inventory
+        inventory,
+        acceleration
       );
 
     manifest.diagnostics.push(...preAuthenticationDiagnostics);
