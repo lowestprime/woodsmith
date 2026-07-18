@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 ROOT="/volume2/docker_ssd/woodsmith"
+OUTPUT="${ROOT}/visual-audits"
 cd "$ROOT"
 umask 077
 
@@ -57,7 +58,10 @@ export TARGET_COMMIT_SHA AUDIT_RUN_ID
 export AUDIT_SCOPE="${AUDIT_SCOPE:-full}"
 export AUDIT_RESUME="${AUDIT_RESUME:-true}"
 
-compose=(docker_cmd compose --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
+mkdir -p "$OUTPUT"
+chmod 700 "$OUTPUT"
+
+compose=(docker_cmd compose --project-name woodsmith-visual-audit-lab --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
 cleanup() {
   "${compose[@]}" down >/dev/null 2>&1 || true
   cleanup_lock
@@ -70,5 +74,5 @@ trap cleanup EXIT
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/report.js
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/validate.js
 
-chmod -R go-rwx "/volume2/docker_ssd/woodsmith/visual-audits/${AUDIT_RUN_ID}"
+chmod -R go-rwx "${OUTPUT}/${AUDIT_RUN_ID}"
 printf 'Completed snapshot-lab audit: %s\n' "$AUDIT_RUN_ID"

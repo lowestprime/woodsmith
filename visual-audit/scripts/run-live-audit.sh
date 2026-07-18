@@ -39,7 +39,7 @@ export AUDIT_RESUME="${AUDIT_RESUME:-true}"
 mkdir -p "$OUTPUT"
 chmod 700 "$OUTPUT"
 
-compose=(docker_cmd compose --env-file .env -f docker-compose.visual-audit-live.yml)
+compose=(docker_cmd compose --project-name woodsmith-visual-audit-live --env-file .env -f docker-compose.visual-audit-live.yml)
 "${compose[@]}" run --rm visual-audit
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/diff.js
 "${compose[@]}" run --rm --entrypoint node visual-audit dist/report.js

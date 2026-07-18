@@ -286,6 +286,8 @@ Preparation also resolves `woodsmith:candidate-<short-sha>` and `woodsmith-visua
 
 Both lab mounts contain a matching run marker. The runner rejects missing markers, production paths, mismatched run IDs, and unavailable clones. The lab container health check verifies the cloned database before capture begins. The internal Docker network blocks outbound provider access.
 
+The runner creates the restricted `visual-audits/` root before Compose starts and uses a dedicated `woodsmith-visual-audit-lab` Compose project. Live runs use `woodsmith-visual-audit-live`. This keeps archive networks and lifecycle cleanup separate from the production Compose project.
+
 The Compose files assign the private audit and image-cache tmpfs mounts to the configured `PUID:PGID`. Keep those values aligned with the container user; a root-owned mode-700 tmpfs prevents the non-root app or runner from writing its disposable cache.
 
 The lab archive performs one bounded commission-draft save, reads the saved record back, captures the visible saved state, and deletes the draft before continuing. Validation requires exactly those two successful unsafe responses and the saved-state capture. Form error-state capture uses browser-native constraint validation without submitting, and synthetic `/api/visits` telemetry is blocked so the archive does not create visitor sessions. These mutations run only in `snapshot-lab`; `live-readonly` continues to reject every capture-time unsafe request.

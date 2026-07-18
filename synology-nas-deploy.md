@@ -309,6 +309,8 @@ Mutation-dependent success/error states require `visual-audit/scripts/prepare-sn
 
 Both scripts default to the preloaded `woodsmith:candidate-<short-sha>` and `woodsmith-visual-audit:candidate-<short-sha>` images. They fail unless both are `linux/amd64` and the app image reports the exact full commit. Set `WOODSMITH_AUDIT_APP_IMAGE` or `WOODSMITH_VISUAL_AUDIT_IMAGE` only when using equivalent prevalidated tags. On Synology SSH accounts without Docker-socket membership, the scripts automatically use noninteractive `/usr/local/bin/docker` through `sudo -n`, forwarding only named nonsecret Compose selectors; passwords and tokens stay in restricted files and env files. The scripts do not rebuild or retag images.
 
+Archive runners create the mode-700 `visual-audits/` root before startup and use dedicated `woodsmith-visual-audit-lab` or `woodsmith-visual-audit-live` Compose project names. Never run them in the production Compose namespace.
+
 Full commands, artifacts, permissions, retention, and acceptance criteria are in [`docs/visual-archive.md`](docs/visual-archive.md).
 
 ## Paired backup and recovery
