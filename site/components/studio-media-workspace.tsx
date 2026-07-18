@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useTransition, type MouseEvent as ReactMouseEvent } from "react";
 import { ActionForm } from "@/components/action-form";
-import { MediaLightbox } from "@/components/lightbox";
+import { MediaCollection } from "@/components/media-collection";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { toMediaUrl } from "@/lib/format";
 import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
@@ -383,18 +383,22 @@ function MediaInspector({
   return (
     <article className="studio-panel studio-media-inspector" key={item.relativePath}>
       {item.kind === "image" || item.kind === "video" ? (
-        <MediaLightbox
-          className={`studio-media-preview cleanup-${cleanupMode}`}
+        <MediaCollection
+          className="studio-media-preview"
+          collectionId={`studio-inspector:${item.relativePath}`}
           items={[{
+            id: `media:${item.relativePath}`,
             alt: item.altText || item.fileName,
             cleanupMode,
             focalX: item.focalX,
             focalY: item.focalY,
             kind: item.kind,
+            order: 0,
             src: toMediaUrl(item.relativePath),
             zoom: item.zoom
           }]}
           title={item.fileName}
+          variant="single"
         />
       ) : <div className="piece-card-placeholder">{item.kind}</div>}
       <div className="studio-media-inspector-head">
@@ -934,11 +938,11 @@ export function StudioMediaWorkspace({
                     </div>
                     {entry.needsReview ? <span className="eyebrow">Needs review</span> : null}
                   </div>
-                  <div className="project-media-strip">
+                   <div aria-label={`${entry.pieceTitle} verification candidates`} className="project-media-strip" data-media-collection={`verification:${entry.pieceSlug}`} data-media-collection-variant="picker-grid" role="region">
                     {entry.suggestions.length > 0 ? entry.suggestions.map((candidate) => {
                       const { item, score, evidence, margin, reasonCodes } = candidate;
                       return (
-                      <div className="candidate-assignment-card" key={item.relativePath}>
+                      <div className="candidate-assignment-card" data-media-id={item.relativePath} data-media-item="true" data-media-order={entry.suggestions.indexOf(candidate)} key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
                           <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath, item.projectReference)} />
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
@@ -993,7 +997,7 @@ export function StudioMediaWorkspace({
           </div>
           <span aria-live="polite" className="muted-copy studio-media-result-count">{pageMessage ?? `${items.length} shown · ${total} indexed`} · {selectedPaths.size} selected {selectedPaths.size > 0 ? <button className="text-button" onClick={() => setSelectedPaths(new Set())} type="button">Clear</button> : null}</span>
         </div>
-        <div className="studio-media-browser-grid">
+        <div aria-label="Mounted media library" className="studio-media-browser-grid" data-media-collection="studio-media-library" data-media-collection-variant="picker-grid" role="region">
           {items.map((item, index) => {
             const selectedForAutomation = selectedPaths.has(item.relativePath);
             const analyzed = Boolean(item.metadata.aiAnalyzed);
@@ -1001,7 +1005,7 @@ export function StudioMediaWorkspace({
             const clusterId = typeof item.metadata.aiClusterId === "string" ? item.metadata.aiClusterId : "";
             const highCandidate = Number(item.metadata.aiConfidence ?? 0) >= 0.82 && Number(item.metadata.aiAmbiguity ?? 1) < 0.3;
             const disposition = analysisDisposition(item);
-            return <div className={`studio-media-browser-card-wrap${selectedForAutomation ? " is-selected" : ""}`} key={item.relativePath}>
+            return <div className={`studio-media-browser-card-wrap${selectedForAutomation ? " is-selected" : ""}`} data-media-id={item.relativePath} data-media-item="true" data-media-order={index} key={item.relativePath}>
               <button
                 className={`studio-media-browser-card${item.relativePath === selectedItem?.relativePath ? " is-active" : ""}`}
                 data-media-active={item.relativePath === selectedItem?.relativePath ? "true" : "false"}

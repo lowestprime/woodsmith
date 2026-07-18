@@ -73,10 +73,10 @@ export function PieceMediaEditor({
       <MediaPicker defaultValue={displayPaths} helperText="The first selected file is the hero. Detail and context roles can be refined below." items={items} label="Public gallery" loadPageAction={loadPageAction} maxSelections={12} name="galleryMediaSelection" onSelectionChange={(paths) => synchronizeGroup(DISPLAY_ROLES, paths, "gallery")} selectionMode="multiple" />
       <MediaPicker defaultValue={buildPaths} helperText="Add build progress, drawings, plans, and installation records. Nothing becomes public until its Public switch is enabled and the file is reviewed." items={items} label="Build record media" loadPageAction={loadPageAction} maxSelections={24} name="buildMediaSelection" onSelectionChange={(paths) => synchronizeGroup(BUILD_ROLES, paths, "process")} selectionMode="multiple" />
 
-      {links.length > 0 ? <details className="piece-media-relations" open><summary>Roles, captions, stages, and publication</summary><div className="piece-media-relation-list">{links.map((link, index) => {
+      {links.length > 0 ? <details className="piece-media-relations" open><summary>Roles, captions, stages, and publication</summary><div aria-label="Piece media roles and order" className="piece-media-relation-list" data-media-collection="piece-media-relations" data-media-collection-variant="picker-grid" role="region">{links.map((link, index) => {
         const item = itemMap.get(link.relativePath);
         const buildRole = BUILD_ROLES.includes(link.role);
-        return <article className="piece-media-relation" key={`${link.relativePath}-${index}`}>
+        return <article className="piece-media-relation" data-media-id={link.relativePath} data-media-item="true" data-media-order={index} key={`${link.relativePath}-${index}`}>
           <div className="piece-media-relation-preview">{item?.kind === "image" ? <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(link.relativePath)} unoptimized={!link.public || Boolean(item.projectReference)} /> : <span>{item?.kind || "media"}</span>}</div>
           <div className="piece-media-relation-fields">
             <strong>{item?.fileName || link.relativePath.split("/").pop()}</strong>

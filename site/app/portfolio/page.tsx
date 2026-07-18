@@ -61,7 +61,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
             })}
           </nav>
           <h2 className="visually-hidden">Portfolio pieces</h2>
-          <div className="piece-grid portfolio-grid">{pieces.map((piece) => <PieceCard categories={categories} key={piece.slug} piece={piece} />)}</div>
+          <div aria-label="Portfolio pieces" className="piece-grid portfolio-grid" data-media-collection="portfolio-pieces" data-media-collection-variant="editorial-grid" role="region">{pieces.map((piece, index) => <PieceCard categories={categories} key={piece.slug} order={index} piece={piece} />)}</div>
         </PageSection>
       </Shell>
     </>

@@ -34,8 +34,8 @@ export default async function ShopPage() {
         />
         {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "shop", field: "body" })}>{page.body}</p> : null}
         <p className="fulfillment-note">Most pieces default to in-person pickup near the woodshop or local drop-off review. Shipping appears only when explicitly enabled for a piece.</p>
-        <div className="shop-grid">
-          {pieces.map((piece) => {
+        <div aria-label="Available pieces" className="shop-grid" data-media-collection="shop-pieces" data-media-collection-variant="editorial-grid" role="region">
+          {pieces.map((piece, index) => {
             const firstImage = getDisplayMediaPaths(piece)[0];
             const fulfillment = getFulfillmentOptions(piece);
             const shippingEnabled = pieceShippingEnabled(piece);
@@ -49,7 +49,7 @@ export default async function ShopPage() {
             const canAsk = pieceAllowsInquiry(piece);
 
             return (
-              <article className="shop-card" id={`piece-${piece.slug}`} key={piece.slug}>
+              <article className="shop-card" data-media-id={`shop:${piece.slug}`} data-media-item="true" data-media-order={index} id={`piece-${piece.slug}`} key={piece.slug}>
                 {firstImage ? <Image alt={piece.title} className="shop-card-image" height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} width={1200} /> : <div className="piece-card-placeholder">Media under review</div>}
                 <div className="shop-card-body">
                   <div className="piece-card-meta"><span>{piece.category}</span><span>{piece.inventoryCount} available</span></div>

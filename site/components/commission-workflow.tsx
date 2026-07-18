@@ -316,7 +316,7 @@ export function CommissionWorkflow({
       <section data-commission-step="6" hidden={currentStep !== 6}>
         <h2>Add room photos, sketches, or measurements</h2>
         <label><span>Up to 8 images, 20 MB each, 60 MB total</span><input accept="image/avif,image/gif,image/heic,image/heif,image/jpeg,image/png,image/webp" multiple name="attachments" onChange={updateFiles} ref={fileInputRef} type="file" /></label>
-        {filePreviews.length ? <div className="commission-upload-previews">{filePreviews.map((preview, index) => <figure key={`${preview.name}-${index}`}><img alt="" src={preview.url} /><figcaption>{preview.name}</figcaption><button onClick={() => removeFile(index)} type="button">Remove</button></figure>)}</div> : <p className="muted-copy">No files selected. References are optional and remain private to this project.</p>}
+        {filePreviews.length ? <div aria-label="Commission reference previews" className="commission-upload-previews" data-media-collection="commission-reference-previews" data-media-collection-variant="editorial-grid" role="region">{filePreviews.map((preview, index) => <figure data-media-id={`${preview.name}:${index}`} data-media-item="true" data-media-order={index} key={`${preview.name}-${index}`}><img alt={`Reference preview: ${preview.name}`} src={preview.url} /><figcaption>{preview.name}</figcaption><button onClick={() => removeFile(index)} type="button">Remove</button></figure>)}</div> : <p className="muted-copy">No files selected. References are optional and remain private to this project.</p>}
       </section>
 
       <section data-commission-step="7" hidden={currentStep !== 7}>

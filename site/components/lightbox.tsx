@@ -1,36 +1,35 @@
 "use client";
 
-import Image from "next/image";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { clampLightboxZoom, clampPanOffset, type PanOffset } from "@/lib/ui-behavior";
-
-type LightboxItem = {
-  src: string;
-  alt: string;
-  kind?: "image" | "video";
-  focalX?: number;
-  focalY?: number;
-  zoom?: number;
-  cleanupMode?: string;
-};
+import type { MediaCollectionItem } from "@/lib/media-collection";
 
 type ViewState = { zoom: number; offset: PanOffset };
 
 const INITIAL_VIEW: ViewState = { zoom: 1, offset: { x: 0, y: 0 } };
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), video[controls], [tabindex]:not([tabindex="-1"])';
 
-export function MediaLightbox({ items, title, className = "gallery-grid", preloadFirst = false }: { items: LightboxItem[]; title: string; className?: string; preloadFirst?: boolean }) {
-  const [activeIndex, setActiveIndex] = useState<number | null>(null);
-  const [cursor, setCursor] = useState(0);
+export function MediaLightboxDialog({
+  items,
+  title,
+  activeIndex,
+  onActiveIndexChange,
+  onClose,
+  returnFocus
+}: {
+  items: MediaCollectionItem[];
+  title: string;
+  activeIndex: number | null;
+  onActiveIndexChange: (index: number) => void;
+  onClose: () => void;
+  returnFocus: HTMLElement | null;
+}) {
   const [view, setView] = useState<ViewState>(INITIAL_VIEW);
   const closeRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
-  const trackRef = useRef<HTMLDivElement>(null);
-  const returnFocusRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
-  const scrollFrameRef = useRef<number | null>(null);
   const statusId = useId();
   const instructionsId = useId();
 
@@ -40,15 +39,15 @@ export function MediaLightbox({ items, title, className = "gallery-grid", preloa
   const resetView = useCallback(() => setView(INITIAL_VIEW), []);
 
   const close = useCallback(() => {
-    setActiveIndex(null);
+    onClose();
     resetView();
-  }, [resetView]);
+  }, [onClose, resetView]);
 
   const navigate = useCallback((direction: 1 | -1) => {
     if (items.length < 2) return;
-    setActiveIndex((current) => ((current ?? 0) + direction + items.length) % items.length);
+    onActiveIndexChange(((activeIndex ?? 0) + direction + items.length) % items.length);
     resetView();
-  }, [items.length, resetView]);
+  }, [activeIndex, items.length, onActiveIndexChange, resetView]);
 
   const updateZoom = useCallback((delta: number) => {
     setView((current) => {
@@ -75,46 +74,6 @@ export function MediaLightbox({ items, title, className = "gallery-grid", preloa
     });
   }, []);
 
-  function openAt(index: number, opener: HTMLElement) {
-    returnFocusRef.current = opener;
-    setActiveIndex(index);
-    setCursor(index);
-    resetView();
-  }
-
-  function scrollToIndex(index: number) {
-    const track = trackRef.current;
-    const target = track?.querySelector<HTMLElement>(`[data-carousel-index="${index}"]`);
-    if (!track || !target) return;
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    track.scrollTo({ left: target.offsetLeft - track.offsetLeft, behavior: reduceMotion ? "auto" : "smooth" });
-    setCursor(index);
-  }
-
-  function syncCursorFromScroll() {
-    if (scrollFrameRef.current != null) return;
-    scrollFrameRef.current = window.requestAnimationFrame(() => {
-      scrollFrameRef.current = null;
-      const track = trackRef.current;
-      if (!track) return;
-      const children = [...track.querySelectorAll<HTMLElement>("[data-carousel-index]")];
-      let closest = cursor;
-      let distance = Number.POSITIVE_INFINITY;
-      children.forEach((child, index) => {
-        const nextDistance = Math.abs((child.offsetLeft - track.offsetLeft) - track.scrollLeft);
-        if (nextDistance < distance) {
-          closest = index;
-          distance = nextDistance;
-        }
-      });
-      if (closest !== cursor) setCursor(closest);
-    });
-  }
-
-  useEffect(() => () => {
-    if (scrollFrameRef.current != null) window.cancelAnimationFrame(scrollFrameRef.current);
-  }, []);
-
   useEffect(() => {
     if (!isOpen) return;
     const previousOverflow = document.body.style.overflow;
@@ -122,12 +81,12 @@ export function MediaLightbox({ items, title, className = "gallery-grid", preloa
     window.requestAnimationFrame(() => closeRef.current?.focus());
     return () => {
       document.body.style.overflow = previousOverflow;
-      const returnTarget = returnFocusRef.current;
+      const returnTarget = returnFocus;
       window.requestAnimationFrame(() => {
         if (returnTarget?.isConnected) returnTarget.focus();
       });
     };
-  }, [isOpen]);
+  }, [isOpen, returnFocus]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -187,44 +146,6 @@ export function MediaLightbox({ items, title, className = "gallery-grid", preloa
 
   return (
     <>
-      <div className="media-gallery-shell">
-        <div className="media-gallery-controls">
-          <span aria-live="polite" role="status">Image {cursor + 1} of {items.length}</span>
-          <div>
-            <button aria-label={`Show previous image in ${title}`} className="carousel-nav-button" disabled={cursor === 0} onClick={() => scrollToIndex(Math.max(0, cursor - 1))} type="button">&#x2190;</button>
-            <button aria-label={`Show next image in ${title}`} className="carousel-nav-button" disabled={cursor === items.length - 1} onClick={() => scrollToIndex(Math.min(items.length - 1, cursor + 1))} type="button">&#x2192;</button>
-          </div>
-        </div>
-        <div aria-label={`${title} media`} aria-roledescription="carousel" className={className} onScroll={syncCursorFromScroll} ref={trackRef} role="region">
-          {items.map((item, index) => (
-            <button
-              aria-label={`Open ${item.alt}, image ${index + 1} of ${items.length}`}
-              className={`media-card cleanup-${item.cleanupMode ?? "original"}`}
-              data-carousel-index={index}
-              key={`${item.src}-${index}`}
-              onClick={(event) => openAt(index, event.currentTarget)}
-              type="button"
-            >
-              {item.kind === "video" ? (
-                <video className="media-card-image" muted playsInline preload="metadata" src={item.src} />
-              ) : (
-                <Image
-                  alt={item.alt}
-                  className="media-card-image"
-                  height={900}
-                  preload={preloadFirst && index === 0}
-                  quality={88}
-                  sizes="(max-width: 720px) 72vw, (max-width: 1200px) 46vw, 36vw"
-                  src={item.src}
-                  style={{ objectPosition: `${item.focalX ?? 50}% ${item.focalY ?? 50}%`, transform: `scale(${item.zoom ?? 1})` }}
-                  width={1200}
-                />
-              )}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {activeItem && typeof document !== "undefined"
         ? createPortal(
             <div
@@ -263,6 +184,11 @@ export function MediaLightbox({ items, title, className = "gallery-grid", preloa
                   dragRef.current = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
                 }}
                 onPointerUp={(event) => {
+                  if (dragRef.current?.pointerId !== event.pointerId) return;
+                  dragRef.current = null;
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                }}
+                onPointerCancel={(event) => {
                   if (dragRef.current?.pointerId !== event.pointerId) return;
                   dragRef.current = null;
                   if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);

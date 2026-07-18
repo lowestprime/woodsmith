@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
-import { MediaLightbox } from "@/components/lightbox";
+import { MediaCollection } from "@/components/media-collection";
 import { ContactRequestForm, ReviewForm } from "@/components/forms";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getDisplayMediaPaths, getFulfillmentOptions, getPieceProcessMediaLinks, pieceAcceptsReviews, pieceAllowsInquiry, pieceDisplaysReviews } from "@/lib/catalog";
 import { PageSection, ShareLinks, Shell } from "@/components/site-chrome";
-import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listReviews } from "@/lib/db";
+import { getBandwidthSnapshot, getMedia, getPiece, listCommissionTypes, listPieceMediaLinks, listReviews } from "@/lib/db";
 import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/format";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
@@ -41,15 +41,24 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
   const acceptReviews = pieceAcceptsReviews(piece);
   const allowInquiry = pieceAllowsInquiry(piece);
   const reviews = showReviews ? listReviews(piece.slug).filter((review) => review.status === "published") : [];
-  const mediaItems = getDisplayMediaPaths(piece).map((path) => {
+  const displayPaths = getDisplayMediaPaths(piece);
+  const displayLinkByPath = new Map(listPieceMediaLinks(piece.slug, { publicOnly: true, roles: ["hero", "gallery", "detail", "context"] }).map((link) => [link.relativePath, link]));
+  const mediaItems = displayPaths.map((path, index) => {
     const media = getMedia(path);
+    const link = displayLinkByPath.get(path);
     return {
+      id: link?.id ?? `piece:${piece.slug}:${path}`,
       src: toMediaUrl(path),
       alt: media?.altText || piece.title,
+      kind: media?.kind === "video" ? "video" as const : "image" as const,
       focalX: media?.focalX,
       focalY: media?.focalY,
       zoom: media?.zoom,
-      cleanupMode: typeof media?.metadata.cleanupMode === "string" ? media.metadata.cleanupMode : undefined
+      cleanupMode: typeof media?.metadata.cleanupMode === "string" ? media.metadata.cleanupMode : undefined,
+      caption: link?.caption,
+      title: link?.title,
+      role: link?.role,
+      order: link?.displayOrder ?? index
     };
   });
   const fulfillment = getFulfillmentOptions(piece);
@@ -57,7 +66,22 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
   const processMediaItems = processLinks.flatMap((link) => {
     const media = getMedia(link.relativePath);
     if (!media) return [];
-    return [{ src: toMediaUrl(link.relativePath), alt: link.altOverride || media.altText || link.caption || piece.title, kind: media.kind === "video" ? "video" as const : "image" as const, focalX: media.focalX, focalY: media.focalY, zoom: media.zoom }];
+    return [{
+      id: link.id,
+      src: toMediaUrl(link.relativePath),
+      alt: link.altOverride || media.altText || link.caption || piece.title,
+      kind: media.kind === "video" ? "video" as const : "image" as const,
+      focalX: media.focalX,
+      focalY: media.focalY,
+      zoom: media.zoom,
+      cleanupMode: typeof media.metadata.cleanupMode === "string" ? media.metadata.cleanupMode : undefined,
+      caption: link.caption,
+      title: link.title,
+      stage: link.stage,
+      occurredAt: link.occurredAt,
+      role: link.role,
+      order: link.displayOrder
+    }];
   });
 
   return (
@@ -93,7 +117,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         </div>
         <div>
           {mediaItems.length > 0 ? (
-            <MediaLightbox className="piece-media-carousel" items={mediaItems} preloadFirst title={piece.title} />
+            <MediaCollection collectionId={`${piece.slug}:gallery`} items={mediaItems} preloadFirst title={piece.title} variant="detail-stage" />
           ) : (
             <div className="piece-card-placeholder tall-placeholder">Archival media is being verified for this piece before additional images are shown publicly.</div>
           )}
@@ -102,10 +126,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
 
       {processLinks.length > 0 ? <PageSection className="piece-process-section" editHref={`/studio?panel=pieces&piece=${encodeURIComponent(piece.slug)}#piece-${piece.slug}`}>
         <div className="section-heading"><p className="eyebrow">Build record</p><h2>{piece.processSectionTitle || "Build record"}</h2>{piece.processSectionIntro ? <p>{piece.processSectionIntro}</p> : null}</div>
-        <div className="piece-process-layout">
-          <ol className="piece-process-timeline">{processLinks.map((link, index) => <li key={link.id}><span>{String(index + 1).padStart(2, "0")}</span><div><strong>{link.stage || link.title || link.role.replace("-", " ")}</strong>{link.occurredAt ? <time dateTime={link.occurredAt}>{formatDate(link.occurredAt)}</time> : null}{link.caption ? <p>{link.caption}</p> : null}</div></li>)}</ol>
-          {processMediaItems.length > 0 ? <MediaLightbox className="piece-process-carousel" items={processMediaItems} title={`${piece.title} build record`} /> : null}
-        </div>
+        {processMediaItems.length > 0 ? <MediaCollection collectionId={`${piece.slug}:build-record`} items={processMediaItems} title={`${piece.title} build record`} variant="process-sequence" /> : null}
       </PageSection> : null}
 
       {allowInquiry ? <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>

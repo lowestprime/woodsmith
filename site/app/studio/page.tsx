@@ -606,9 +606,9 @@ export default async function StudioPage({
           {projects.map((project) => (
             <article className={`studio-panel studio-editor-card${projectHighlight === project.reference ? " highlight-card" : ""}`} id={`project-${project.reference}`} key={project.reference}>
               <div className="studio-editor-head"><h3>{project.reference}</h3><span>{project.status} · {project.stage}</span></div>
-              <div className="project-media-strip">
+              <div aria-label={`${project.reference} project media`} className="project-media-strip" data-media-collection={`project:${project.reference}`} data-media-collection-variant="editorial-grid" role="region">
                 {projectMedia.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (
-                  <a href={toMediaUrl(item.relativePath)} key={item.relativePath}><img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} /></a>
+                   <a data-media-id={item.relativePath} data-media-item="true" data-media-order={Number(item.metadata.displayOrder ?? 0)} href={toMediaUrl(item.relativePath)} key={item.relativePath}><img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} /></a>
                 ))}
               </div>
               <form action={saveProjectAction} className="request-form compact-form">

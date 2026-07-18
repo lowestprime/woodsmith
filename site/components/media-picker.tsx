@@ -193,11 +193,11 @@ export function MediaPicker({
         <div className="media-picker-actions"><button className="button-secondary" onClick={openBrowser} ref={openerRef} type="button">Browse library</button>{selectedPaths.length > 0 ? <button className="text-button" onClick={() => { setSelection(multiple ? [] : ""); onSelectionChange?.([]); }} type="button">Clear</button> : null}</div>
       </div>
 
-      <div className={cn("media-picker-strip", selectedPaths.length === 0 && "is-empty")}>
+      <div aria-label={`${label} selected media`} className={cn("media-picker-strip", selectedPaths.length === 0 && "is-empty")} data-media-collection={`${name}:selected`} data-media-collection-variant="picker-grid" role="region">
         {selectedPaths.length > 0 ? selectedPaths.map((relativePath, index) => {
           const item = itemByPath.get(relativePath);
           return (
-            <article className="media-picker-chip" key={relativePath}>
+            <article className="media-picker-chip" data-media-id={relativePath} data-media-item="true" data-media-order={index} key={relativePath}>
               {item?.kind === "image" ? <Image alt={item.altText || item.fileName} className="media-picker-chip-image" height={96} sizes="96px" src={toMediaUrl(relativePath)} unoptimized width={128} /> : <span className="media-picker-chip-fallback">{item?.kind?.toUpperCase() || "MEDIA"}</span>}
               <span className="media-picker-chip-copy"><strong>{item?.fileName || relativePath.split("/").pop()}</strong><small>{item?.folder || relativePath}</small></span>
               {multiple ? <span className="media-picker-chip-actions"><button aria-label={`Move ${item?.fileName || relativePath} earlier`} disabled={index === 0} onClick={() => moveSelected(index, -1)} type="button">↑</button><button aria-label={`Move ${item?.fileName || relativePath} later`} disabled={index === selectedPaths.length - 1} onClick={() => moveSelected(index, 1)} type="button">↓</button></span> : null}
@@ -218,10 +218,10 @@ export function MediaPicker({
               <p className="media-picker-count" role="status">{loading ? "Loading..." : `${total.toLocaleString()} indexed files`}</p>
             </div>
             {loadError ? <p className="studio-inline-notice is-error" role="alert">{loadError}</p> : null}
-            <div aria-busy={loading} className="media-picker-grid">
-              {visibleItems.map((item) => {
+            <div aria-busy={loading} aria-label={`${label} library results`} className="media-picker-grid" data-media-collection={`${name}:library`} data-media-collection-variant="picker-grid" role="region">
+              {visibleItems.map((item, index) => {
                 const selected = selectedPaths.includes(item.relativePath);
-                return <button aria-pressed={selected} className={cn("media-picker-card", selected && "is-selected")} key={item.relativePath} onClick={() => toggleItem(item.relativePath)} type="button"><div className="media-picker-card-media">{item.kind === "image" ? <Image alt={item.altText || item.fileName} fill loading="lazy" sizes="(max-width: 640px) 44vw, 180px" src={toMediaUrl(item.relativePath)} unoptimized /> : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}</div><div className="media-picker-card-body"><strong>{item.fileName}</strong><p>{item.folder}</p><small>{item.pieceSlug || item.pageSlug || item.postSlug || item.projectReference || "Unassigned"}{item.reviewed ? " · reviewed" : " · review needed"}</small></div></button>;
+                return <button aria-pressed={selected} className={cn("media-picker-card", selected && "is-selected")} data-media-id={item.relativePath} data-media-item="true" data-media-order={index} key={item.relativePath} onClick={() => toggleItem(item.relativePath)} type="button"><div className="media-picker-card-media">{item.kind === "image" ? <Image alt={item.altText || item.fileName} fill loading="lazy" sizes="(max-width: 640px) 44vw, 180px" src={toMediaUrl(item.relativePath)} unoptimized /> : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}</div><div className="media-picker-card-body"><strong>{item.fileName}</strong><p>{item.folder}</p><small>{item.pieceSlug || item.pageSlug || item.postSlug || item.projectReference || "Unassigned"}{item.reviewed ? " · reviewed" : " · review needed"}</small></div></button>;
               })}
               {!loading && visibleItems.length === 0 ? <p className="media-picker-empty">No media matches this page and folder filter.</p> : null}
             </div>

@@ -54,7 +54,7 @@ export default async function HomePage() {
             title="Current collection and established build patterns"
             copy="Public piece pages stay selective and accurate. Available work can be reserved from the shop, while custom work starts with a direct contact request."
           />
-          <div className="piece-grid">{pieces.map((piece) => <PieceCard categories={categories} key={piece.slug} piece={piece} />)}</div>
+          <div aria-label="Featured work" className="piece-grid" data-media-collection="workshop-featured-pieces" data-media-collection-variant="editorial-grid" role="region">{pieces.map((piece, index) => <PieceCard categories={categories} key={piece.slug} order={index} piece={piece} />)}</div>
         </PageSection>
 
         <PageSection editHref="/studio?panel=pages&page=home#page-home">
