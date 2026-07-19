@@ -62,10 +62,49 @@ mkdir -p "$OUTPUT"
 chmod 700 "$OUTPUT"
 
 compose=(docker_cmd compose --project-name woodsmith-visual-audit-lab --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
+
 cleanup() {
+  status=$?
+  trap - EXIT
+  set +e
+
+  if [[ "$status" -ne 0 ]]; then
+    failure_stamp="$(date -u '+%Y%m%dT%H%M%SZ')"
+    failure_root="${OUTPUT}/failed-${AUDIT_RUN_ID}-${failure_stamp}"
+
+    mkdir -p "$failure_root"
+    chmod 700 "$failure_root"
+
+    {
+      printf 'captured_at=%s\n' "$failure_stamp"
+      printf 'audit_run_id=%s\n' "$AUDIT_RUN_ID"
+      printf 'target_commit_sha=%s\n' "$TARGET_COMMIT_SHA"
+      printf 'exit_status=%s\n' "$status"
+      printf '\n[compose ps]\n'
+      "${compose[@]}" ps -a
+    } > "${failure_root}/compose-state.txt" 2>&1
+
+    "${compose[@]}" logs       --no-color       > "${failure_root}/compose.log"       2>&1 ||
+      true
+
+    for container in       woodsmith-audit-lab       woodsmith-visual-audit-lab-runner
+    do
+      if docker_cmd inspect "$container" >/dev/null 2>&1; then
+        docker_cmd inspect           "$container"           --format           'container={{.Id}} image={{.Image}} user={{.Config.User}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{json .State.Error}}'           > "${failure_root}/${container}-state.txt"           2>&1 ||
+          true
+      fi
+    done
+
+    chmod -R go-rwx "$failure_root"
+
+    printf 'Snapshot-lab failure evidence: %s\n'       "$failure_root"       >&2
+  fi
+
   "${compose[@]}" down >/dev/null 2>&1 || true
   cleanup_lock
+  exit "$status"
 }
+
 trap cleanup EXIT
 
 "${compose[@]}" up -d woodsmith-audit-lab

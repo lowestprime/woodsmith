@@ -14,6 +14,36 @@ BACKUP_CONTAINER_PATH="/app/site/data/backups/visual-audit-lab-${LAB_RUN_ID}.sql
 cd "$ROOT"
 umask 077
 
+if [[ ! -s .env ]]; then
+  printf '%s\n' "Required runtime .env file is missing or empty." >&2
+  exit 1
+fi
+
+read_required_runtime_id() {
+  local name="$1"
+  local value
+
+  value="$(
+    sed -nE       "s/^[[:space:]]*${name}[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p"       .env |
+      tail -n 1
+  )"
+
+  if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+    printf 'Missing or invalid numeric %s in .env.\n' "$name" >&2
+    exit 1
+  fi
+
+  printf '%s' "$value"
+}
+
+runtime_uid="$(read_required_runtime_id PUID)"
+runtime_gid="$(read_required_runtime_id PGID)"
+
+if [[ "$runtime_uid" == "0" || "$runtime_gid" == "0" ]]; then
+  printf '%s\n' "Refusing a root-owned snapshot-lab runtime." >&2
+  exit 1
+fi
+
 source visual-audit/scripts/docker-command.sh
 resolve_docker_command
 
@@ -75,6 +105,20 @@ fi
 
 printf '%s\n' "$LAB_RUN_ID" > "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
 chmod 600 "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
+
+chown -R   "${runtime_uid}:${runtime_gid}"   "$LAB_ROOT"   "$LAB_MEDIA_ROOT"
+
+chmod -R   u+rwX,go-rwx   "$LAB_ROOT"   "$LAB_MEDIA_ROOT"
+
+for required_path in   "$LAB_ROOT"   "$LAB_DATA"   "${LAB_DATA}/woodsmith.sqlite"   "${LAB_DATA}/.woodsmith-visual-audit-lab"   "$LAB_MEDIA_ROOT"   "$LAB_MEDIA"   "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
+do
+  actual_owner="$(stat -c '%u:%g' "$required_path")"
+
+  if [[ "$actual_owner" != "${runtime_uid}:${runtime_gid}" ]]; then
+    printf       'Snapshot-lab ownership mismatch: %s is %s, expected %s:%s.\n'       "$required_path"       "$actual_owner"       "$runtime_uid"       "$runtime_gid"       >&2
+    exit 1
+  fi
+done
 
 LAB_STUDIO_PASSWORD="$(openssl rand -hex 36)"
 LAB_SESSION_SECRET="$(openssl rand -hex 48)"
