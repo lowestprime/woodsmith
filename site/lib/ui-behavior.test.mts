@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { browserOperationId } from "./browser-id.ts";
+import { secureCookieRequired } from "./cookie-policy.ts";
 import { clampLightboxZoom, clampPanOffset, isNavigationCurrent } from "./ui-behavior.ts";
+
+test("production cookies stay secure outside an explicitly isolated HTTP audit", () => {
+  assert.equal(secureCookieRequired({ NODE_ENV: "production" }), true);
+  assert.equal(secureCookieRequired({
+    NODE_ENV: "production",
+    VISUAL_AUDIT_SNAPSHOT_LAB: "true"
+  }), true);
+  assert.equal(secureCookieRequired({
+    NODE_ENV: "production",
+    ALLOW_INSECURE_AUDIT_COOKIES: "true"
+  }), true);
+  assert.equal(secureCookieRequired({
+    NODE_ENV: "production",
+    VISUAL_AUDIT_SNAPSHOT_LAB: "true",
+    ALLOW_INSECURE_AUDIT_COOKIES: "true"
+  }), false);
+  assert.equal(secureCookieRequired({ NODE_ENV: "development" }), false);
+});
 
 test("browser operation IDs prefer randomUUID and fall back outside secure contexts", () => {
   assert.equal(browserOperationId({ randomUUID: () => "exact-browser-uuid" }), "exact-browser-uuid");

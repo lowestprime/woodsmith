@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { secureCookieRequired } from "@/lib/cookie-policy";
 import {
   PIECE_MEDIA_ROLES,
   applyMediaOperationSnapshots,
@@ -270,7 +271,7 @@ async function getCartToken() {
   cookieStore.set("beaman-cart", next, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookieRequired(),
     path: "/",
     maxAge: 60 * 60 * 24 * 30
   });

@@ -286,7 +286,7 @@ Preparation also resolves `woodsmith:candidate-<short-sha>` and `woodsmith-visua
 
 Both lab mounts contain a matching run marker. The runner rejects missing markers, production paths, mismatched run IDs, and unavailable clones. The lab container health check verifies the cloned database before capture begins. The internal Docker network blocks outbound provider access.
 
-The lab uses an internal HTTP origin. Client-only operation and telemetry IDs therefore prefer `crypto.randomUUID()` but fall back to `crypto.getRandomValues()` when secure-context-only APIs are unavailable; authentication and access secrets remain server-generated.
+The lab uses an internal HTTP origin. Client-only operation and telemetry IDs therefore prefer `crypto.randomUUID()` but fall back to `crypto.getRandomValues()` when secure-context-only APIs are unavailable; authentication and access secrets remain server-generated. Session, cart, and project cookies omit `Secure` only when both `VISUAL_AUDIT_SNAPSHOT_LAB=true` and the lab-only `ALLOW_INSECURE_AUDIT_COOKIES=true` guard are present. Normal production cookies remain `Secure`.
 
 The runner creates the restricted `visual-audits/` root before Compose starts and uses a dedicated `woodsmith-visual-audit-lab` Compose project. Live runs use `woodsmith-visual-audit-live`. This keeps archive networks and lifecycle cleanup separate from the production Compose project.
 

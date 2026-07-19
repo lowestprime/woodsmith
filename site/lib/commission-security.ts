@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 
+import { secureCookieRequired } from "@/lib/cookie-policy";
 import { createProjectAccessGrant, projectAccessGrantValid, type ProjectRecord, type UserRecord } from "@/lib/db";
 
 function projectCookieName(reference: string) {
@@ -23,7 +24,7 @@ export async function grantProjectBrowserAccess(reference: string) {
   cookieStore.set(projectCookieName(reference), token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookieRequired(),
     path: "/",
     maxAge: 60 * 60 * 24 * 30
   });
