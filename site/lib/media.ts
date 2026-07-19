@@ -30,7 +30,9 @@ export function getMediaRoot() {
 }
 
 export function getMediaUrl(relativePath: string) {
-  return `/media/${relativePath
+  const normalized = normalizeRelativePath(relativePath);
+
+  return `/media/${normalized
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;
