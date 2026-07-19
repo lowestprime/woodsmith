@@ -61,7 +61,18 @@ export AUDIT_RESUME="${AUDIT_RESUME:-true}"
 mkdir -p "$OUTPUT"
 chmod 700 "$OUTPUT"
 
-compose=(docker_cmd compose --project-name woodsmith-visual-audit-lab --env-file .env --env-file .visual-audit-lab.env -f docker-compose.visual-audit-lab.yml)
+compose=(
+  docker_cmd
+  compose
+  --project-name
+  woodsmith-visual-audit-lab
+  --env-file
+  .env
+  --env-file
+  .visual-audit-lab.env
+  -f
+  docker-compose.visual-audit-lab.yml
+)
 
 cleanup() {
   status=$?
@@ -84,20 +95,33 @@ cleanup() {
       "${compose[@]}" ps -a
     } > "${failure_root}/compose-state.txt" 2>&1
 
-    "${compose[@]}" logs       --no-color       > "${failure_root}/compose.log"       2>&1 ||
+    "${compose[@]}" logs \
+      --no-color \
+      > "${failure_root}/compose.log" \
+      2>&1 ||
       true
 
-    for container in       woodsmith-audit-lab       woodsmith-visual-audit-lab-runner
+    for container in \
+      woodsmith-audit-lab \
+      woodsmith-visual-audit-lab-runner
     do
       if docker_cmd inspect "$container" >/dev/null 2>&1; then
-        docker_cmd inspect           "$container"           --format           'container={{.Id}} image={{.Image}} user={{.Config.User}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{json .State.Error}}'           > "${failure_root}/${container}-state.txt"           2>&1 ||
+        docker_cmd inspect \
+          "$container" \
+          --format \
+          'container={{.Id}} image={{.Image}} user={{.Config.User}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}} exit={{.State.ExitCode}} error={{json .State.Error}}' \
+          > "${failure_root}/${container}-state.txt" \
+          2>&1 ||
           true
       fi
     done
 
     chmod -R go-rwx "$failure_root"
 
-    printf 'Snapshot-lab failure evidence: %s\n'       "$failure_root"       >&2
+    printf \
+      'Snapshot-lab failure evidence: %s\n' \
+      "$failure_root" \
+      >&2
   fi
 
   "${compose[@]}" down >/dev/null 2>&1 || true
@@ -108,10 +132,10 @@ cleanup() {
 trap cleanup EXIT
 
 "${compose[@]}" up -d woodsmith-audit-lab
-"${compose[@]}" run --rm visual-audit
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/diff.js
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/report.js
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/validate.js
+"${compose[@]}" run -T --rm visual-audit
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/diff.js
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/report.js
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/validate.js
 
 chmod -R go-rwx "${OUTPUT}/${AUDIT_RUN_ID}"
 printf 'Completed snapshot-lab audit: %s\n' "$AUDIT_RUN_ID"

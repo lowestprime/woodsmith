@@ -96,3 +96,40 @@ test(
     assert.ok(down > logs);
   },
 );
+
+test(
+  "NAS audit runners disable TTY allocation for every Compose one-off container",
+  async () => {
+    for (const name of [
+      "run-snapshot-lab.sh",
+      "run-live-audit.sh",
+    ]) {
+      const source = await readScript(name);
+
+      const composeRuns = source
+        .split(/\r?\n/)
+        .filter((line) =>
+          line.includes('"${compose[@]}" run')
+        );
+
+      assert.equal(
+        composeRuns.length,
+        4,
+        `${name} must retain exactly four Compose run phases`,
+      );
+
+      for (const command of composeRuns) {
+        assert.match(
+          command,
+          /"\$\{compose\[@\]\}" run -T --rm(?: |$)/,
+          `${name} must disable TTY allocation: ${command}`,
+        );
+      }
+
+      assert.doesNotMatch(
+        source,
+        /"\$\{compose\[@\]\}" run --rm/,
+      );
+    }
+  },
+);

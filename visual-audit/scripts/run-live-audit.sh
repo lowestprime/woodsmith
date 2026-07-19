@@ -40,10 +40,10 @@ mkdir -p "$OUTPUT"
 chmod 700 "$OUTPUT"
 
 compose=(docker_cmd compose --project-name woodsmith-visual-audit-live --env-file .env -f docker-compose.visual-audit-live.yml)
-"${compose[@]}" run --rm visual-audit
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/diff.js
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/report.js
-"${compose[@]}" run --rm --entrypoint node visual-audit dist/validate.js
+"${compose[@]}" run -T --rm visual-audit
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/diff.js
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/report.js
+"${compose[@]}" run -T --rm --entrypoint node visual-audit dist/validate.js
 
 chmod -R go-rwx "${OUTPUT}/${AUDIT_RUN_ID}"
 

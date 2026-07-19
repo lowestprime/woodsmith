@@ -24,7 +24,9 @@ read_required_runtime_id() {
   local value
 
   value="$(
-    sed -nE       "s/^[[:space:]]*${name}[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p"       .env |
+    sed -nE \
+      "s/^[[:space:]]*${name}[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p" \
+      .env |
       tail -n 1
   )"
 
@@ -106,16 +108,35 @@ fi
 printf '%s\n' "$LAB_RUN_ID" > "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
 chmod 600 "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
 
-chown -R   "${runtime_uid}:${runtime_gid}"   "$LAB_ROOT"   "$LAB_MEDIA_ROOT"
+chown -R \
+  "${runtime_uid}:${runtime_gid}" \
+  "$LAB_ROOT" \
+  "$LAB_MEDIA_ROOT"
 
-chmod -R   u+rwX,go-rwx   "$LAB_ROOT"   "$LAB_MEDIA_ROOT"
+chmod -R \
+  u+rwX,go-rwx \
+  "$LAB_ROOT" \
+  "$LAB_MEDIA_ROOT"
 
-for required_path in   "$LAB_ROOT"   "$LAB_DATA"   "${LAB_DATA}/woodsmith.sqlite"   "${LAB_DATA}/.woodsmith-visual-audit-lab"   "$LAB_MEDIA_ROOT"   "$LAB_MEDIA"   "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
+for required_path in \
+  "$LAB_ROOT" \
+  "$LAB_DATA" \
+  "${LAB_DATA}/woodsmith.sqlite" \
+  "${LAB_DATA}/.woodsmith-visual-audit-lab" \
+  "$LAB_MEDIA_ROOT" \
+  "$LAB_MEDIA" \
+  "${LAB_MEDIA}/.woodsmith-visual-audit-lab"
 do
   actual_owner="$(stat -c '%u:%g' "$required_path")"
 
   if [[ "$actual_owner" != "${runtime_uid}:${runtime_gid}" ]]; then
-    printf       'Snapshot-lab ownership mismatch: %s is %s, expected %s:%s.\n'       "$required_path"       "$actual_owner"       "$runtime_uid"       "$runtime_gid"       >&2
+    printf \
+      'Snapshot-lab ownership mismatch: %s is %s, expected %s:%s.\n' \
+      "$required_path" \
+      "$actual_owner" \
+      "$runtime_uid" \
+      "$runtime_gid" \
+      >&2
     exit 1
   fi
 done
