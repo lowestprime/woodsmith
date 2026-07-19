@@ -50,7 +50,9 @@ export function cn(...values: Array<string | false | null | undefined>) {
 }
 
 export function toMediaUrl(assetPath: string) {
-  return `/media/${assetPath
+  const normalized = assetPath.replace(/\\/g, "/").replace(/^\/+/, "");
+
+  return `/media/${normalized
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;
