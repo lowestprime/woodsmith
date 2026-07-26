@@ -155,7 +155,7 @@ test("media batches update and roll back files, metadata, and all reference mode
     ]);
     assert.equal(db.getMediaOperationBatch(batch.id)?.status, "rolled-back");
     assert.equal(db.getMediaOperationBatch(rollbackBatch.id)?.status, "completed");
-    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 6);
+    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 7);
     assert.equal(db.getRuntimePersistenceStatus().quickCheck, "ok");
   } finally {
     db.closeDatabaseForTests();

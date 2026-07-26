@@ -4,7 +4,6 @@ import {
   assignMediaCandidateAction,
   cleanupMediaBackgroundAction,
   deleteMediaAction,
-  deletePageAction,
   deletePieceAction,
   deletePostAction,
   deleteReviewAdminAction,
@@ -22,7 +21,6 @@ import {
   savePieceCategoryAction,
   saveMediaMetadataAction,
   saveOrderAction,
-  savePageAction,
   savePieceAction,
   savePostAction,
   saveProjectAction,
@@ -30,7 +28,8 @@ import {
   saveSiteSettingsAction,
   saveSiteStructureAction,
   saveUserProfileAdminAction,
-  uploadMediaAction
+  uploadMediaAction,
+  savePageAction,
 } from "@/lib/actions";
 import { requireAdmin } from "@/lib/auth";
 import Link from "next/link";
@@ -57,7 +56,6 @@ import {
   type MediaAssignmentFilter,
   type MediaAiFilter,
   type MediaKindFilter,
-  type PageRecord,
   type PieceRecord,
   type PostRecord,
   type UserRecord
@@ -69,6 +67,13 @@ import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { StudioScrollRestore } from "@/components/studio-form";
 import { StudioMediaWorkspace } from "@/components/studio-media-workspace";
 import { StudioCategoryEditor } from "@/components/studio-category-editor";
+import {
+  StudioPageEditor,
+  type StudioPageEditorRecord
+} from "@/components/studio/studio-page-editor";
+import {
+  StudioNavigationState
+} from "@/components/studio/studio-navigation-state";
 import { SiteStructureEditor } from "@/components/site-structure-editor";
 import { MediaPicker, type MediaPickerItem } from "@/components/media-picker";
 import { PieceMediaEditor } from "@/components/piece-media-editor";
@@ -119,26 +124,184 @@ function studioMessage(code: string) {
   return messages[code] ?? code;
 }
 
-function PageEditor({ page, mediaItems, highlight = false }: { page: Omit<PageRecord, "createdAt" | "updatedAt">; mediaItems: MediaPickerItem[]; highlight?: boolean }) {
+function NewPageEditor({
+  page,
+  mediaItems,
+  highlight = false
+}: {
+  page: Extract<
+    StudioPageEditorRecord,
+    {
+      updatedAt: null;
+    }
+  >;
+  mediaItems: MediaPickerItem[];
+  highlight?: boolean;
+}) {
   return (
-    <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("page", page.slug)}>
+    <article
+      className={
+        `studio-panel studio-editor-card${
+          highlight
+            ? " highlight-card"
+            : ""
+        }`.trim()
+      }
+      id={toDomId(
+        "page",
+        page.slug
+      )}
+    >
       <div className="studio-editor-head">
         <h3>{page.title}</h3>
-        {page.slug !== "new-page-draft" ? <form action={deletePageAction}><input name="slug" type="hidden" value={page.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
       </div>
-      <form action={savePageAction} className="request-form compact-form">
-        <div className="field-grid two-up compact-grid"><Field label="Slug" name="slug" defaultValue={page.slug} required /><Field label="Title" name="title" defaultValue={page.title} required /></div>
+
+      <form
+        action={savePageAction}
+        className="request-form compact-form"
+      >
         <div className="field-grid two-up compact-grid">
-          <Field label="Navigation label" name="navLabel" defaultValue={page.navLabel} />
-          <label><span>Status</span><select defaultValue={page.status} name="status"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
+          <label>
+            <span>Slug</span>
+            <input
+              defaultValue=""
+              name="slug"
+              required
+              type="text"
+            />
+          </label>
+
+          <label>
+            <span>Title</span>
+            <input
+              defaultValue={page.title}
+              name="title"
+              required
+              type="text"
+            />
+          </label>
         </div>
-        <Field label="Layout" name="layout" defaultValue={page.layout} />
-        <MediaPicker defaultValue={page.heroMediaPath} helperText="Choose one image or video from the mounted media library." items={mediaItems} label="Hero media" loadPageAction={loadMediaPageAction} name="heroMediaPath" />
-        <Area label="Intro" name="intro" defaultValue={page.intro} rows={3} />
-        <Area label="Body" name="body" defaultValue={page.body} rows={5} />
-        <button className="button-primary" type="submit">Save page</button>
+
+        <div className="field-grid two-up compact-grid">
+          <label>
+            <span>Navigation label</span>
+            <input
+              defaultValue={page.navLabel}
+              name="navLabel"
+              type="text"
+            />
+          </label>
+
+          <label>
+            <span>Status</span>
+            <select
+              defaultValue={page.status}
+              name="status"
+            >
+              <option value="published">
+                Published
+              </option>
+
+              <option value="draft">
+                Draft
+              </option>
+
+              <option value="archived">
+                Archived
+              </option>
+            </select>
+          </label>
+        </div>
+
+        <label>
+          <span>Layout</span>
+          <input
+            defaultValue={page.layout}
+            name="layout"
+            type="text"
+          />
+        </label>
+
+        <MediaPicker
+          defaultValue={
+            page.heroMediaPath
+          }
+          helperText="Choose one image or video from the mounted media library."
+          items={mediaItems}
+          label="Hero media"
+          loadPageAction={
+            loadMediaPageAction
+          }
+          name="heroMediaPath"
+        />
+
+        <label>
+          <span>Intro</span>
+          <textarea
+            defaultValue={page.intro}
+            name="intro"
+            rows={3}
+          />
+        </label>
+
+        <label>
+          <span>Body</span>
+          <textarea
+            defaultValue={page.body}
+            name="body"
+            rows={5}
+          />
+        </label>
+
+        <input
+          defaultValue={
+            JSON.stringify(
+              page.sections
+            )
+          }
+          name="sections"
+          type="hidden"
+        />
+
+        <button
+          className="button-primary"
+          type="submit"
+        >
+          Save page
+        </button>
       </form>
     </article>
+  );
+}
+
+function PageEditor({
+  page,
+  mediaItems,
+  highlight = false
+}: {
+  page: StudioPageEditorRecord;
+  mediaItems: MediaPickerItem[];
+  highlight?: boolean;
+}) {
+  if (page.updatedAt === null) {
+    return (
+      <NewPageEditor
+        highlight={highlight}
+        mediaItems={mediaItems}
+        page={page}
+      />
+    );
+  }
+
+  return (
+    <StudioPageEditor
+      highlight={highlight}
+      key={`${page.slug}:${
+        page.updatedAt
+      }`}
+      mediaItems={mediaItems}
+      page={page}
+    />
   );
 }
 
@@ -206,8 +369,20 @@ function PostEditor({ post, mediaItems, highlight = false }: { post: Omit<PostRe
   );
 }
 
-function pageDraft(): Omit<PageRecord, "createdAt" | "updatedAt"> {
-  return { slug: "new-page-draft", title: "New Page Draft", navLabel: "New Page", status: "draft", intro: "", body: "", layout: "document", sections: [], heroMediaPath: null };
+function pageDraft():
+StudioPageEditorRecord {
+  return {
+    slug: "new-page-draft",
+    title: "New Page Draft",
+    navLabel: "New Page",
+    status: "draft",
+    intro: "",
+    body: "",
+    layout: "document",
+    sections: [],
+    heroMediaPath: null,
+    updatedAt: null
+  };
 }
 
 function pieceDraft(ownerEmail: string): Omit<PieceRecord, "createdAt" | "updatedAt"> {
@@ -479,6 +654,7 @@ export default async function StudioPage({
   return (
     <Shell>
       <StudioScrollRestore />
+      <StudioNavigationState />
       <div data-studio-root="true">
       <PageSection className={`studio-command-header${currentPanel === "overview" ? "" : " is-workspace"}`}>
         {currentPanel === "overview" ? (

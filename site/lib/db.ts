@@ -159,6 +159,15 @@ export type AdminEditAuditRecord = {
   createdAt: string;
 };
 
+export type StudioMutationOperationRecord<TResponse = unknown> = {
+  operationId: string;
+  actorEmail: string | null;
+  mutationScope: string;
+  requestHash: string;
+  response: TResponse;
+  createdAt: string;
+};
+
 export type MediaRenameHistoryRecord = {
   id: string;
   previousPath: string;
@@ -2301,6 +2310,188 @@ export function recordAdminEditAudit(input: {
     nowIso()
   );
   return id;
+}
+
+export function getStudioMutationOperation<TResponse = unknown>(
+  operationId: string
+): StudioMutationOperationRecord<TResponse> | null {
+  const normalizedOperationId = operationId.trim();
+  if (!normalizedOperationId) {
+    return null;
+  }
+
+  const row = getDatabase()
+    .prepare(`
+      SELECT
+        operation_id AS operationId,
+        actor_email AS actorEmail,
+        mutation_scope AS mutationScope,
+        request_hash AS requestHash,
+        response_json AS responseJson,
+        created_at AS createdAt
+      FROM studio_mutation_operations
+      WHERE operation_id = ?
+      LIMIT 1
+    `)
+    .get(normalizedOperationId) as Record<string, unknown> | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    operationId: String(row.operationId),
+    actorEmail: row.actorEmail ? String(row.actorEmail) : null,
+    mutationScope: String(row.mutationScope),
+    requestHash: String(row.requestHash),
+    response: readJson<TResponse>(
+      row.responseJson,
+      null as TResponse
+    ),
+    createdAt: String(row.createdAt)
+  };
+}
+
+export function recordStudioMutationOperation<TResponse>(input: {
+  operationId: string;
+  actorEmail?: string | null;
+  mutationScope: string;
+  requestHash: string;
+  response: TResponse;
+}): StudioMutationOperationRecord<TResponse> {
+  const operationId = input.operationId.trim();
+  const mutationScope = input.mutationScope.trim();
+  const requestHash = input.requestHash.trim();
+
+  if (!operationId) {
+    throw new Error("Studio mutation operation ID is required.");
+  }
+  if (!mutationScope) {
+    throw new Error("Studio mutation scope is required.");
+  }
+  if (!requestHash) {
+    throw new Error("Studio mutation request hash is required.");
+  }
+
+  const actorEmail = input.actorEmail?.trim().toLowerCase() || null;
+  const createdAt = nowIso();
+
+  getDatabase()
+    .prepare(`
+      INSERT INTO studio_mutation_operations (
+        operation_id,
+        actor_email,
+        mutation_scope,
+        request_hash,
+        response_json,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    `)
+    .run(
+      operationId,
+      actorEmail,
+      mutationScope,
+      requestHash,
+      writeJson(input.response),
+      createdAt
+    );
+
+  return {
+    operationId,
+    actorEmail,
+    mutationScope,
+    requestHash,
+    response: input.response,
+    createdAt
+  };
+}
+
+export function getAdminEditAuditByRequestId(input: {
+  requestId: string;
+  entityType: string;
+  entityKey: string;
+}): AdminEditAuditRecord | null {
+  const requestId =
+    input.requestId.trim();
+  const entityType =
+    input.entityType.trim();
+  const entityKey =
+    input.entityKey.trim();
+
+  if (
+    !requestId ||
+    !entityType ||
+    !entityKey
+  ) {
+    return null;
+  }
+
+  const row =
+    getDatabase()
+      .prepare(`
+        SELECT
+          id,
+          actor_email AS actorEmail,
+          entity_type AS entityType,
+          entity_key AS entityKey,
+          operation,
+          before_json AS beforeJson,
+          after_json AS afterJson,
+          request_id AS requestId,
+          reverted_by_id AS revertedById,
+          created_at AS createdAt
+        FROM admin_edit_audit
+        WHERE request_id = ?
+          AND entity_type = ?
+          AND entity_key = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+      `)
+      .get(
+        requestId,
+        entityType,
+        entityKey
+      ) as
+        | Record<string, unknown>
+        | undefined;
+
+  if (!row) {
+    return null;
+  }
+
+  return {
+    id: String(row.id),
+    actorEmail:
+      row.actorEmail
+        ? String(row.actorEmail)
+        : null,
+    entityType:
+      String(row.entityType),
+    entityKey:
+      String(row.entityKey),
+    operation:
+      String(row.operation),
+    before:
+      readJson(
+        row.beforeJson,
+        null
+      ),
+    after:
+      readJson(
+        row.afterJson,
+        null
+      ),
+    requestId:
+      row.requestId
+        ? String(row.requestId)
+        : null,
+    revertedById:
+      row.revertedById
+        ? String(row.revertedById)
+        : null,
+    createdAt:
+      String(row.createdAt)
+  };
 }
 
 export function listAdminEditAudit(options: { entityType?: string; entityKey?: string; limit?: number } = {}) {

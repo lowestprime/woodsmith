@@ -1,6 +1,7 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { createHash } from "node:crypto";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { secureCookieRequired } from "@/lib/cookie-policy";
@@ -33,6 +34,7 @@ import {
   getPost,
   getProject,
   getSiteSettings,
+  getStudioMutationOperation,
   getUserByEmail,
   getUserByVerificationToken,
   listCartItems,
@@ -64,6 +66,7 @@ import {
   getMediaOperationBatch,
   listMediaOperationBatches,
   recordAdminEditAudit,
+  recordStudioMutationOperation,
   renameMediaRecordAndReferences,
   replacePieceMediaLinks,
   startMediaRenameHistory,
@@ -81,6 +84,18 @@ import {
   type UserRecord
 } from "@/lib/db";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
+import {
+  executeStudioServerMutation,
+  StudioMutationConflictError,
+  StudioMutationTransientError,
+  StudioMutationValidationError,
+  type StudioMutationResult,
+  type StudioServerMutationCommit,
+  type StudioServerMutationInput
+} from "@/lib/studio-mutations";
+import {
+  mutationOriginAllowed
+} from "@/lib/request-security";
 import {
   finalizeStagedMediaDeletion,
   deleteMediaAsset,
@@ -1056,6 +1071,519 @@ export async function deletePieceCategoryAction(_: CategoryActionState, formData
   revalidatePath("/portfolio");
   revalidatePath("/studio");
   return { status: "success", message: "Category deleted.", categoryKey: key };
+}
+
+export type PageAutosavePatch =
+  Omit<
+    PageRecord,
+    "createdAt" | "updatedAt"
+  >;
+
+const PAGE_AUTOSAVE_MUTATION_SCOPE =
+  "page-autosave";
+
+const PAGE_AUTOSAVE_STATUSES =
+  [
+    "published",
+    "draft",
+    "archived"
+  ] as const;
+
+function pageAutosaveString(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+  required = false
+): string {
+  if (typeof value !== "string") {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a string.`
+      );
+  }
+
+  const normalized = value.trim();
+
+  if (
+    required &&
+    !normalized
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is required.`
+      );
+  }
+
+  if (
+    Buffer.byteLength(
+      normalized,
+      "utf8"
+    ) > maximumLength
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is too long.`
+      );
+  }
+
+  return normalized;
+}
+
+function validatePageAutosavePatch(
+  patch: PageAutosavePatch
+): PageAutosavePatch {
+  if (
+    !patch ||
+    typeof patch !== "object" ||
+    Array.isArray(patch)
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "A complete page patch is required."
+      );
+  }
+
+  const slug =
+    pageAutosaveString(
+      patch.slug,
+      "Page slug",
+      160,
+      true
+    );
+
+  if (
+    !/^[a-z0-9][a-z0-9-]{0,159}$/.test(
+      slug
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page slug must use lowercase letters, numbers, and hyphens."
+      );
+  }
+
+  const title =
+    pageAutosaveString(
+      patch.title,
+      "Page title",
+      240,
+      true
+    );
+
+  const navLabel =
+    pageAutosaveString(
+      patch.navLabel,
+      "Navigation label",
+      160
+    );
+
+  if (
+    !PAGE_AUTOSAVE_STATUSES.includes(
+      patch.status
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page publication status is invalid."
+      );
+  }
+
+  if (
+    typeof patch.intro !== "string" ||
+    Buffer.byteLength(
+      patch.intro,
+      "utf8"
+    ) > 50_000
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page introduction is invalid or too long."
+      );
+  }
+
+  if (
+    typeof patch.body !== "string" ||
+    Buffer.byteLength(
+      patch.body,
+      "utf8"
+    ) > 1_000_000
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page body is invalid or too long."
+      );
+  }
+
+  const layout =
+    pageAutosaveString(
+      patch.layout,
+      "Page layout",
+      120,
+      true
+    );
+
+  if (
+    !Array.isArray(
+      patch.sections
+    ) ||
+    patch.sections.some(
+      (section) =>
+        !section ||
+        typeof section !== "object" ||
+        Array.isArray(section)
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page sections must be an array of objects."
+      );
+  }
+
+  let sectionsJson = "";
+
+  try {
+    const serialized =
+      JSON.stringify(
+        patch.sections
+      );
+
+    if (
+      typeof serialized !== "string"
+    ) {
+      throw new Error(
+        "Sections are not serializable."
+      );
+    }
+
+    sectionsJson = serialized;
+  } catch {
+    throw new
+      StudioMutationValidationError(
+        "Page sections must be JSON-serializable."
+      );
+  }
+
+  if (
+    Buffer.byteLength(
+      sectionsJson,
+      "utf8"
+    ) > 1_000_000
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Page sections are too large."
+      );
+  }
+
+  if (
+    patch.heroMediaPath !== null &&
+    typeof patch.heroMediaPath !==
+      "string"
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Hero media path must be a string or null."
+      );
+  }
+
+  const heroMediaPath =
+    patch.heroMediaPath
+      ?.trim() ||
+    null;
+
+  if (
+    heroMediaPath &&
+    Buffer.byteLength(
+      heroMediaPath,
+      "utf8"
+    ) > 1_024
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Hero media path is too long."
+      );
+  }
+
+  return {
+    slug,
+    title,
+    navLabel,
+    status: patch.status,
+    intro: patch.intro,
+    body: patch.body,
+    layout,
+    sections:
+      JSON.parse(
+        sectionsJson
+      ) as Array<
+        Record<string, unknown>
+      >,
+    heroMediaPath
+  };
+}
+
+function pageAutosaveRequestHash(
+  patch: PageAutosavePatch
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(patch)
+    )
+    .digest("hex");
+}
+
+async function
+studioServerActionOriginAllowed():
+Promise<boolean> {
+  const requestHeaders =
+    await headers();
+
+  const host =
+    requestHeaders
+      .get("host")
+      ?.trim() ||
+    "";
+
+  const configuredOrigins = [
+    process.env.SITE_URL,
+    process.env.NEXT_PUBLIC_SITE_URL
+  ];
+
+  const fallbackRequestUrl =
+    configuredOrigins.find(
+      (value): value is string =>
+        Boolean(
+          value?.trim()
+        )
+    )?.trim() ||
+    "";
+
+  const requestUrl =
+    host
+      ? `${
+          secureCookieRequired()
+            ? "https"
+            : "http"
+        }://${host}`
+      : fallbackRequestUrl;
+
+  return mutationOriginAllowed({
+    requestUrl,
+    origin:
+      requestHeaders.get("origin"),
+    configuredOrigins
+  });
+}
+
+function revalidatePageAutosaveSurface(
+  slug: string
+) {
+  revalidatePath(
+    slug === "home"
+      ? "/"
+      : `/${slug}`
+  );
+}
+
+export async function
+savePageAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      PageAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<PageRecord>
+> {
+  let actorEmail = "";
+  let requestHash = "";
+
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user =
+          await getCurrentUser();
+
+        if (
+          !user ||
+          user.role !== "admin"
+        ) {
+          return null;
+        }
+
+        actorEmail =
+          user.email
+            .trim()
+            .toLowerCase();
+
+        return {
+          email: actorEmail
+        };
+      },
+
+      originAllowed:
+        studioServerActionOriginAllowed,
+
+      validate: (patch) => {
+        const validated =
+          validatePageAutosavePatch(
+            patch
+          );
+
+        requestHash =
+          pageAutosaveRequestHash(
+            validated
+          );
+
+        return validated;
+      },
+
+      transaction: (work) =>
+        withDatabaseTransaction(
+          () => work()
+        ),
+
+      findCompletedOperation:
+        (
+          operationId,
+          patch
+        ) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                PageRecord
+              >
+            >(
+              operationId
+            );
+
+          if (!completed) {
+            return null;
+          }
+
+          const expectedHash =
+            pageAutosaveRequestHash(
+              patch
+            );
+
+          if (
+            completed.mutationScope !==
+              PAGE_AUTOSAVE_MUTATION_SCOPE ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              expectedHash
+          ) {
+            throw new
+              StudioMutationConflictError(
+                "This Studio operation ID has already been used for a different page save."
+              );
+          }
+
+          return completed.response;
+        },
+
+      loadCurrent: (patch) =>
+        getPage(
+          patch.slug
+        ),
+
+      save: (
+        _current,
+        patch
+      ) => {
+        savePage(patch);
+
+        const saved =
+          getPage(
+            patch.slug
+          );
+
+        if (!saved) {
+          throw new
+            StudioMutationTransientError(
+              "The saved page could not be reloaded."
+            );
+        }
+
+        return saved;
+      },
+
+      loadCanonical:
+        (
+          _saved,
+          patch
+        ) =>
+          getPage(
+            patch.slug
+          ),
+
+      updatedAt: (entity) =>
+        entity.updatedAt,
+
+      entityType: "page",
+
+      entityKey: (entity) =>
+        entity.slug,
+
+      operation: (current) =>
+        current
+          ? "update"
+          : "create",
+
+      audit: (auditInput) => {
+        if (!requestHash) {
+          throw new
+            StudioMutationTransientError(
+              "The page autosave request identity is unavailable."
+            );
+        }
+
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              auditInput.actorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before:
+              auditInput.before,
+            after:
+              auditInput.after,
+            requestId:
+              auditInput.requestId
+          });
+
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            auditInput.actorEmail,
+          mutationScope:
+            PAGE_AUTOSAVE_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity:
+              auditInput.after,
+            updatedAt:
+              auditInput.after.updatedAt,
+            auditId
+          }
+        });
+
+        return auditId;
+      },
+
+      invalidate: (entity) => {
+        revalidatePageAutosaveSurface(
+          entity.slug
+        );
+      }
+    }
+  );
 }
 
 export async function savePageAction(formData: FormData) {

@@ -360,6 +360,30 @@ const migrations: Migration[] = [
       `);
       return { tables: ["media_operation_batches", "media_operation_items"] };
     }
+  },
+  {
+    version: 7,
+    name: "durable-studio-mutation-operations",
+    checksum: "2026-07-studio-mutation-operations-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS studio_mutation_operations (
+          operation_id TEXT PRIMARY KEY,
+          actor_email TEXT,
+          mutation_scope TEXT NOT NULL,
+          request_hash TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_studio_mutation_operations_created
+          ON studio_mutation_operations(created_at DESC);
+      `);
+
+      return {
+        tables: ["studio_mutation_operations"]
+      };
+    }
   }
 ];
 
