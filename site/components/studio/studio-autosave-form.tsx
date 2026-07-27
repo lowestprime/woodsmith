@@ -321,16 +321,28 @@ export function StudioAutosaveForm<
         return false;
       }
 
+      const current =
+        captureCurrent();
+
+      const payload =
+        current.hasValue
+          ? current.value
+          : pending.value;
+
       pendingPayloadRef.current = {
         hasValue: false
       };
 
       queue.enqueue(
-        pending.value
+        payload
       );
 
       return true;
-    }, [cancelTimer, queue]);
+    }, [
+      cancelTimer,
+      captureCurrent,
+      queue
+    ]);
 
   const enqueueCurrent =
     useCallback(() => {

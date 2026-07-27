@@ -1,95 +1,705 @@
 "use client";
 
 import Image from "next/image";
-import { useState } from "react";
-import { MediaPicker, type MediaPickerItem } from "@/components/media-picker";
-import type { MediaPageRequest, MediaPageResult } from "@/lib/actions";
-import type { PieceMediaLinkRecord } from "@/lib/db";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from "react";
+import {
+  MediaPicker,
+  type MediaPickerItem
+} from "@/components/media-picker";
+import type {
+  MediaPageRequest,
+  MediaPageResult
+} from "@/lib/actions";
 import { toMediaUrl } from "@/lib/format";
-import type { EditablePieceMediaRole, NormalizedPieceMediaLink } from "@/lib/piece-media";
+import {
+  buildInitialPieceMediaLinks,
+  type EditablePieceMediaRole,
+  type NormalizedPieceMediaLink,
+  type PieceMediaEditorLinkInput
+} from "@/lib/piece-media";
 
-const DISPLAY_ROLES: EditablePieceMediaRole[] = ["hero", "gallery", "detail", "context"];
-const BUILD_ROLES: EditablePieceMediaRole[] = ["process", "drawing", "plan", "installation", "source"];
+const DISPLAY_ROLES:
+  EditablePieceMediaRole[] = [
+    "hero",
+    "gallery",
+    "detail",
+    "context"
+  ];
 
-function editableLink(link: PieceMediaLinkRecord): NormalizedPieceMediaLink {
-  return {
-    relativePath: link.relativePath,
-    role: link.role === "private-project" ? "source" : link.role,
-    stage: link.stage,
-    occurredAt: link.occurredAt,
-    title: link.title,
-    caption: link.caption,
-    technicalNote: link.technicalNote,
-    altOverride: link.altOverride,
-    displayOrder: link.displayOrder,
-    public: link.public
-  };
+const BUILD_ROLES:
+  EditablePieceMediaRole[] = [
+    "process",
+    "drawing",
+    "plan",
+    "installation",
+    "source"
+  ];
+
+export type PieceMediaEditorChangeMode =
+  | "form-event"
+  | "immediate";
+
+type PieceMediaEditorProps = {
+  entityKey: string;
+  items: MediaPickerItem[];
+  legacyPaths: string[];
+  links: PieceMediaEditorLinkInput[];
+  loadPageAction:
+    (
+      request: MediaPageRequest
+    ) => Promise<MediaPageResult>;
+  onLinksChange?: (
+    links: NormalizedPieceMediaLink[],
+    mode: PieceMediaEditorChangeMode
+  ) => void;
+};
+
+function initialStateSignature(
+  links: readonly PieceMediaEditorLinkInput[],
+  legacyPaths: readonly string[]
+): string {
+  return JSON.stringify({
+    links: links.map(
+      (link):
+        PieceMediaEditorLinkInput => ({
+          relativePath:
+            link.relativePath,
+          role:
+            link.role,
+          stage:
+            link.stage,
+          occurredAt:
+            link.occurredAt,
+          title:
+            link.title,
+          caption:
+            link.caption,
+          technicalNote:
+            link.technicalNote,
+          altOverride:
+            link.altOverride,
+          displayOrder:
+            link.displayOrder,
+          public:
+            link.public
+        })
+    ),
+    legacyPaths
+  });
 }
 
 export function PieceMediaEditor({
+  entityKey,
   items,
   legacyPaths,
   links: initialLinks,
-  loadPageAction
-}: {
-  items: MediaPickerItem[];
-  legacyPaths: string[];
-  links: PieceMediaLinkRecord[];
-  loadPageAction: (request: MediaPageRequest) => Promise<MediaPageResult>;
-}) {
-  const normalizedInitialLinks = initialLinks.map(editableLink);
-  const initialDisplayPaths = new Set(normalizedInitialLinks.filter((link) => DISPLAY_ROLES.includes(link.role)).map((link) => link.relativePath));
-  const legacyLinks = legacyPaths.filter((path) => !initialDisplayPaths.has(path)).map((relativePath, index): NormalizedPieceMediaLink => ({ relativePath, role: initialDisplayPaths.size === 0 && index === 0 ? "hero" : "gallery", stage: null, occurredAt: null, title: "", caption: "", technicalNote: "", altOverride: null, displayOrder: index, public: true }));
-  const [links, setLinks] = useState<NormalizedPieceMediaLink[]>([...normalizedInitialLinks, ...legacyLinks]);
-  const itemMap = new Map(items.map((item) => [item.relativePath, item]));
-  const displayPaths = links.filter((link) => DISPLAY_ROLES.includes(link.role)).sort((left, right) => left.displayOrder - right.displayOrder).map((link) => link.relativePath);
-  const buildPaths = links.filter((link) => BUILD_ROLES.includes(link.role)).sort((left, right) => left.displayOrder - right.displayOrder).map((link) => link.relativePath);
-  const serializedLinks = links.map((link, index) => ({ ...link, displayOrder: index }));
+  loadPageAction,
+  onLinksChange
+}: PieceMediaEditorProps) {
+  const signature =
+    initialStateSignature(
+      initialLinks,
+      legacyPaths
+    );
 
-  function synchronizeGroup(groupRoles: EditablePieceMediaRole[], paths: string[], defaultRole: EditablePieceMediaRole) {
-    setLinks((current) => {
-      const retained = current.filter((link) => !groupRoles.includes(link.role));
-      const previous = current.filter((link) => groupRoles.includes(link.role));
-      const nextGroup = paths.map((relativePath, index): NormalizedPieceMediaLink => {
-        const existing = previous.find((link) => link.relativePath === relativePath);
-        const role = defaultRole === "gallery"
-          ? index === 0 ? "hero" : existing && DISPLAY_ROLES.includes(existing.role) && existing.role !== "hero" ? existing.role : "gallery"
-          : existing && BUILD_ROLES.includes(existing.role) ? existing.role : defaultRole;
-        return existing
-          ? { ...existing, role, displayOrder: index }
-          : { relativePath, role, stage: null, occurredAt: null, title: "", caption: "", technicalNote: "", altOverride: null, displayOrder: index, public: false };
-      });
-      return [...nextGroup, ...retained].map((link, index) => ({ ...link, displayOrder: index }));
-    });
+  const initialState =
+    useMemo(() => {
+      const parsed =
+        JSON.parse(signature) as {
+          links:
+            PieceMediaEditorLinkInput[];
+          legacyPaths: string[];
+        };
+
+      return buildInitialPieceMediaLinks(
+        parsed.links,
+        parsed.legacyPaths
+      );
+    }, [signature]);
+
+  const [links, setLinks] =
+    useState<NormalizedPieceMediaLink[]>(
+      initialState
+    );
+
+  const linksRef =
+    useRef<NormalizedPieceMediaLink[]>(
+      initialState
+    );
+
+  useEffect(() => {
+    linksRef.current =
+      initialState;
+
+    // The entity-scoped local relation editor must discard the
+    // previous piece snapshot when server props identify a new one.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLinks(initialState);
+  }, [
+    entityKey,
+    initialState
+  ]);
+
+  const itemMap =
+    useMemo(
+      () =>
+        new Map(
+          items.map(
+            (item) => [
+              item.relativePath,
+              item
+            ]
+          )
+        ),
+      [items]
+    );
+
+  const displayPaths =
+    links
+      .filter((link) =>
+        DISPLAY_ROLES.includes(
+          link.role
+        )
+      )
+      .sort(
+        (left, right) =>
+          left.displayOrder -
+          right.displayOrder
+      )
+      .map(
+        (link) =>
+          link.relativePath
+      );
+
+  const buildPaths =
+    links
+      .filter((link) =>
+        BUILD_ROLES.includes(
+          link.role
+        )
+      )
+      .sort(
+        (left, right) =>
+          left.displayOrder -
+          right.displayOrder
+      )
+      .map(
+        (link) =>
+          link.relativePath
+      );
+
+  const serializedLinks =
+    links.map(
+      (link, index) => ({
+        ...link,
+        displayOrder: index
+      })
+    );
+
+  function commitLinks(
+    update: (
+      current:
+        NormalizedPieceMediaLink[]
+    ) =>
+      NormalizedPieceMediaLink[],
+    mode:
+      PieceMediaEditorChangeMode
+  ) {
+    const next =
+      update(
+        linksRef.current
+      ).map(
+        (link, index) => ({
+          ...link,
+          displayOrder: index
+        })
+      );
+
+    linksRef.current =
+      next;
+
+    setLinks(next);
+
+    onLinksChange?.(
+      next,
+      mode
+    );
   }
 
-  function patchLink(index: number, patch: Partial<NormalizedPieceMediaLink>) {
-    setLinks((current) => current.map((link, currentIndex) => currentIndex === index ? { ...link, ...patch } : link));
+  function synchronizeGroup(
+    groupRoles:
+      EditablePieceMediaRole[],
+    paths: string[],
+    defaultRole:
+      EditablePieceMediaRole
+  ) {
+    commitLinks(
+      (current) => {
+        const retained =
+          current.filter(
+            (link) =>
+              !groupRoles.includes(
+                link.role
+              )
+          );
+
+        const previous =
+          current.filter(
+            (link) =>
+              groupRoles.includes(
+                link.role
+              )
+          );
+
+        const nextGroup =
+          paths.map(
+            (
+              relativePath,
+              index
+            ):
+              NormalizedPieceMediaLink => {
+              const existing =
+                previous.find(
+                  (link) =>
+                    link.relativePath ===
+                    relativePath
+                );
+
+              const role =
+                defaultRole ===
+                  "gallery"
+                  ? index === 0
+                    ? "hero"
+                    : existing &&
+                        DISPLAY_ROLES.includes(
+                          existing.role
+                        ) &&
+                        existing.role !==
+                          "hero"
+                      ? existing.role
+                      : "gallery"
+                  : existing &&
+                      BUILD_ROLES.includes(
+                        existing.role
+                      )
+                    ? existing.role
+                    : defaultRole;
+
+              return existing
+                ? {
+                    ...existing,
+                    role,
+                    displayOrder:
+                      index
+                  }
+                : {
+                    relativePath,
+                    role,
+                    stage: null,
+                    occurredAt: null,
+                    title: "",
+                    caption: "",
+                    technicalNote: "",
+                    altOverride: null,
+                    displayOrder:
+                      index,
+                    public: false
+                  };
+            }
+          );
+
+        return [
+          ...nextGroup,
+          ...retained
+        ];
+      },
+      "immediate"
+    );
+  }
+
+  function patchLink(
+    index: number,
+    patch:
+      Partial<
+        NormalizedPieceMediaLink
+      >
+  ) {
+    commitLinks(
+      (current) =>
+        current.map(
+          (
+            link,
+            currentIndex
+          ) =>
+            currentIndex === index
+              ? {
+                  ...link,
+                  ...patch
+                }
+              : link
+        ),
+      "form-event"
+    );
   }
 
   return (
-    <section className="piece-media-editor">
-      <input name="mediaLinksJson" type="hidden" value={JSON.stringify(serializedLinks)} />
-      <MediaPicker defaultValue={displayPaths} helperText="The first selected file is the hero. Detail and context roles can be refined below." items={items} label="Public gallery" loadPageAction={loadPageAction} maxSelections={12} name="galleryMediaSelection" onSelectionChange={(paths) => synchronizeGroup(DISPLAY_ROLES, paths, "gallery")} selectionMode="multiple" />
-      <MediaPicker defaultValue={buildPaths} helperText="Add build progress, drawings, plans, and installation records. Nothing becomes public until its Public switch is enabled and the file is reviewed." items={items} label="Build record media" loadPageAction={loadPageAction} maxSelections={24} name="buildMediaSelection" onSelectionChange={(paths) => synchronizeGroup(BUILD_ROLES, paths, "process")} selectionMode="multiple" />
+    <section
+      className="piece-media-editor"
+      data-piece-media-entity-key={
+        entityKey
+      }
+    >
+      <input
+        name="mediaLinksJson"
+        readOnly
+        type="hidden"
+        value={
+          JSON.stringify(
+            serializedLinks
+          )
+        }
+      />
 
-      {links.length > 0 ? <details className="piece-media-relations" open><summary>Roles, captions, stages, and publication</summary><div aria-label="Piece media roles and order" className="piece-media-relation-list" data-media-collection="piece-media-relations" data-media-collection-variant="picker-grid" role="region">{links.map((link, index) => {
-        const item = itemMap.get(link.relativePath);
-        const buildRole = BUILD_ROLES.includes(link.role);
-        return <article className="piece-media-relation" data-media-id={link.relativePath} data-media-item="true" data-media-order={index} key={`${link.relativePath}-${index}`}>
-          <div className="piece-media-relation-preview">{item?.kind === "image" ? <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(link.relativePath)} unoptimized={!link.public || Boolean(item.projectReference)} /> : <span>{item?.kind || "media"}</span>}</div>
-          <div className="piece-media-relation-fields">
-            <strong>{item?.fileName || link.relativePath.split("/").pop()}</strong>
-            <div className="field-grid three-up compact-grid">
-              <label><span>Role</span><select onChange={(event) => patchLink(index, { role: event.target.value as EditablePieceMediaRole })} value={link.role}>{(buildRole ? BUILD_ROLES : DISPLAY_ROLES).map((role) => <option key={role} value={role}>{role.replace("-", " ")}</option>)}</select></label>
-              <label><span>{buildRole ? "Build stage" : "Short title"}</span><input onChange={(event) => patchLink(index, buildRole ? { stage: event.target.value || null } : { title: event.target.value })} value={buildRole ? link.stage ?? "" : link.title} /></label>
-              <label><span>Date</span><input disabled={!buildRole} onChange={(event) => patchLink(index, { occurredAt: event.target.value || null })} type="datetime-local" value={buildRole && link.occurredAt ? link.occurredAt.slice(0, 16) : ""} /></label>
-            </div>
-            <div className="field-grid two-up compact-grid"><label><span>Caption</span><input onChange={(event) => patchLink(index, { caption: event.target.value })} value={link.caption} /></label><label><span>Alt text override</span><input onChange={(event) => patchLink(index, { altOverride: event.target.value || null })} value={link.altOverride ?? ""} /></label></div>
-            <label className="checkbox-row"><input checked={link.public} onChange={(event) => patchLink(index, { public: event.target.checked })} type="checkbox" /><span>Public after media review</span></label>
+      <MediaPicker
+        defaultValue={displayPaths}
+        helperText="The first selected file is the hero. Detail and context roles can be refined below."
+        items={items}
+        key={`${entityKey}:display:${displayPaths.join("\u0000")}`}
+        label="Public gallery"
+        loadPageAction={
+          loadPageAction
+        }
+        maxSelections={12}
+        name="galleryMediaSelection"
+        onSelectionChange={(
+          paths
+        ) =>
+          synchronizeGroup(
+            DISPLAY_ROLES,
+            paths,
+            "gallery"
+          )
+        }
+        selectionMode="multiple"
+      />
+
+      <MediaPicker
+        defaultValue={buildPaths}
+        helperText="Add build progress, drawings, plans, and installation records. Nothing becomes public until its Public switch is enabled and the file is reviewed."
+        items={items}
+        key={`${entityKey}:build:${buildPaths.join("\u0000")}`}
+        label="Build record media"
+        loadPageAction={
+          loadPageAction
+        }
+        maxSelections={24}
+        name="buildMediaSelection"
+        onSelectionChange={(
+          paths
+        ) =>
+          synchronizeGroup(
+            BUILD_ROLES,
+            paths,
+            "process"
+          )
+        }
+        selectionMode="multiple"
+      />
+
+      {links.length > 0 ? (
+        <details
+          className="piece-media-relations"
+          open
+        >
+          <summary>
+            Roles, captions, stages,
+            and publication
+          </summary>
+
+          <div
+            aria-label="Piece media roles and order"
+            className="piece-media-relation-list"
+            data-media-collection="piece-media-relations"
+            data-media-collection-variant="picker-grid"
+            role="region"
+          >
+            {links.map(
+              (link, index) => {
+                const item =
+                  itemMap.get(
+                    link.relativePath
+                  );
+
+                const buildRole =
+                  BUILD_ROLES.includes(
+                    link.role
+                  );
+
+                return (
+                  <article
+                    className="piece-media-relation"
+                    data-media-id={
+                      link.relativePath
+                    }
+                    data-media-item="true"
+                    data-media-order={
+                      index
+                    }
+                    key={
+                      `${link.relativePath}-` +
+                      `${link.role}-` +
+                      `${index}`
+                    }
+                  >
+                    <div className="piece-media-relation-preview">
+                      {item?.kind ===
+                      "image" ? (
+                        <Image
+                          alt={
+                            item.altText ||
+                            item.fileName
+                          }
+                          fill
+                          sizes="96px"
+                          src={toMediaUrl(
+                            link.relativePath
+                          )}
+                          unoptimized={
+                            !link.public ||
+                            Boolean(
+                              item.projectReference
+                            )
+                          }
+                        />
+                      ) : (
+                        <span>
+                          {item?.kind ||
+                            "media"}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="piece-media-relation-fields">
+                      <strong>
+                        {item?.fileName ||
+                          link.relativePath
+                            .split("/")
+                            .pop()}
+                      </strong>
+
+                      <div className="field-grid three-up compact-grid">
+                        <label>
+                          <span>Role</span>
+
+                          <select
+                            onChange={(
+                              event
+                            ) =>
+                              patchLink(
+                                index,
+                                {
+                                  role:
+                                    event
+                                      .target
+                                      .value as
+                                      EditablePieceMediaRole
+                                }
+                              )
+                            }
+                            value={
+                              link.role
+                            }
+                          >
+                            {(
+                              buildRole
+                                ? BUILD_ROLES
+                                : DISPLAY_ROLES
+                            ).map(
+                              (role) => (
+                                <option
+                                  key={
+                                    role
+                                  }
+                                  value={
+                                    role
+                                  }
+                                >
+                                  {role.replace(
+                                    "-",
+                                    " "
+                                  )}
+                                </option>
+                              )
+                            )}
+                          </select>
+                        </label>
+
+                        <label>
+                          <span>
+                            {buildRole
+                              ? "Build stage"
+                              : "Short title"}
+                          </span>
+
+                          <input
+                            onChange={(
+                              event
+                            ) =>
+                              patchLink(
+                                index,
+                                buildRole
+                                  ? {
+                                      stage:
+                                        event
+                                          .target
+                                          .value ||
+                                        null
+                                    }
+                                  : {
+                                      title:
+                                        event
+                                          .target
+                                          .value
+                                    }
+                              )
+                            }
+                            value={
+                              buildRole
+                                ? link.stage ??
+                                  ""
+                                : link.title
+                            }
+                          />
+                        </label>
+
+                        <label>
+                          <span>Date</span>
+
+                          <input
+                            disabled={
+                              !buildRole
+                            }
+                            onChange={(
+                              event
+                            ) =>
+                              patchLink(
+                                index,
+                                {
+                                  occurredAt:
+                                    event
+                                      .target
+                                      .value ||
+                                    null
+                                }
+                              )
+                            }
+                            type="datetime-local"
+                            value={
+                              buildRole &&
+                              link.occurredAt
+                                ? link.occurredAt.slice(
+                                    0,
+                                    16
+                                  )
+                                : ""
+                            }
+                          />
+                        </label>
+                      </div>
+
+                      <div className="field-grid two-up compact-grid">
+                        <label>
+                          <span>
+                            Caption
+                          </span>
+
+                          <input
+                            onChange={(
+                              event
+                            ) =>
+                              patchLink(
+                                index,
+                                {
+                                  caption:
+                                    event
+                                      .target
+                                      .value
+                                }
+                              )
+                            }
+                            value={
+                              link.caption
+                            }
+                          />
+                        </label>
+
+                        <label>
+                          <span>
+                            Alt text override
+                          </span>
+
+                          <input
+                            onChange={(
+                              event
+                            ) =>
+                              patchLink(
+                                index,
+                                {
+                                  altOverride:
+                                    event
+                                      .target
+                                      .value ||
+                                    null
+                                }
+                              )
+                            }
+                            value={
+                              link.altOverride ??
+                              ""
+                            }
+                          />
+                        </label>
+                      </div>
+
+                      <label className="checkbox-row">
+                        <input
+                          checked={
+                            link.public
+                          }
+                          onChange={(
+                            event
+                          ) =>
+                            patchLink(
+                              index,
+                              {
+                                public:
+                                  event
+                                    .target
+                                    .checked
+                              }
+                            )
+                          }
+                          type="checkbox"
+                        />
+
+                        <span>
+                          Public after media
+                          review
+                        </span>
+                      </label>
+                    </div>
+                  </article>
+                );
+              }
+            )}
           </div>
-        </article>;
-      })}</div></details> : null}
+        </details>
+      ) : null}
     </section>
   );
 }

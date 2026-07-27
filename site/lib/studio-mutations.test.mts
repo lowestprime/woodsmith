@@ -838,7 +838,7 @@ test(
 );
 
 test(
-  "autosave navigation flush includes the captured debounce payload",
+  "autosave navigation flush recaptures the latest controlled payload before enqueue",
   () => {
     const source = readStudioPrimitive(
       "studio-autosave-form.tsx"
@@ -861,7 +861,32 @@ test(
 
     assert.match(
       source,
+      /const current =\s*captureCurrent\(\)/
+    );
+
+    assert.match(
+      source,
+      /const payload =\s*current\.hasValue\s*\?\s*current\.value\s*:\s*pending\.value/
+    );
+
+    assert.match(
+      source,
+      /queue\.enqueue\(\s*payload\s*\)/
+    );
+
+    assert.match(
+      source,
+      /cancelTimer,\s*captureCurrent,\s*queue/
+    );
+
+    assert.match(
+      source,
       /enqueuePending\(\);\s*await queue\.flush\(\)/
+    );
+
+    assert.doesNotMatch(
+      source,
+      /queue\.enqueue\(\s*pending\.value\s*\)/
     );
 
     assert.doesNotMatch(

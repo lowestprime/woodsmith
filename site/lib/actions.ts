@@ -78,6 +78,7 @@ import {
   type MediaRecord,
   type OrderRecord,
   type PageRecord,
+  type PieceMediaLinkRecord,
   type PieceRecord,
   type PostRecord,
   type SiteSettings,
@@ -123,7 +124,10 @@ import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/med
 import { categoryKey, normalizePieceCategories } from "@/lib/categories";
 import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/category-icons";
 import { normalizeFooterConfiguration, normalizeHomeServices } from "@/lib/site-structure";
-import { normalizePieceMediaLinks } from "@/lib/piece-media";
+import {
+  normalizePieceMediaLinks,
+  type NormalizedPieceMediaLink
+} from "@/lib/piece-media";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceAcceptsReviews, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/piece-model";
 import { calculateEstimate, normalizeVisualizerState } from "@/lib/estimator";
 import { commissionOwnerKey, grantProjectBrowserAccess, userCanAccessProject } from "@/lib/commission-security";
@@ -1616,6 +1620,907 @@ export async function deletePageAction(formData: FormData) {
   redirect("/studio?panel=pages&deleted=page");
 }
 
+
+export type PieceAutosaveInquiryMode =
+  | "exact-piece"
+  | "related-commission"
+  | "disabled";
+
+export type PieceAutosavePatch =
+  Omit<
+    PieceRecord,
+    | "createdAt"
+    | "updatedAt"
+    | "mediaPaths"
+    | "inquiryMode"
+  > & {
+    inquiryMode:
+      PieceAutosaveInquiryMode;
+    mediaLinks:
+      NormalizedPieceMediaLink[];
+  };
+
+export type PieceAutosaveEntity = {
+  piece: PieceRecord;
+  mediaLinks:
+    PieceMediaLinkRecord[];
+};
+
+const PIECE_AUTOSAVE_MUTATION_SCOPE =
+  "piece-autosave";
+
+const PIECE_AUTOSAVE_STATUSES =
+  [
+    "inventory",
+    "commission",
+    "archive"
+  ] as const;
+
+const PIECE_AUTOSAVE_PUBLICATION_STATUSES =
+  [
+    "published",
+    "draft",
+    "archived"
+  ] as const;
+
+const PIECE_AUTOSAVE_PRICE_MODES =
+  [
+    "fixed",
+    "contact-for-price",
+    "not-listed",
+    "determined-after-approval",
+    "determined-at-order-completion"
+  ] as const;
+
+const PIECE_AUTOSAVE_INQUIRY_MODES =
+  [
+    "exact-piece",
+    "related-commission",
+    "disabled"
+  ] as const satisfies
+    readonly PieceAutosaveInquiryMode[];
+
+const PIECE_AUTOSAVE_REVIEWS_MODES =
+  [
+    "display-and-accept",
+    "display-only",
+    "hidden"
+  ] as const;
+
+function pieceAutosaveText(
+  value: unknown,
+  label: string,
+  maximumLength: number,
+  required = false
+): string {
+  if (typeof value !== "string") {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a string.`
+      );
+  }
+
+  const normalized =
+    value.trim();
+
+  if (
+    required &&
+    !normalized
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is required.`
+      );
+  }
+
+  if (
+    Buffer.byteLength(
+      normalized,
+      "utf8"
+    ) > maximumLength
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is too long.`
+      );
+  }
+
+  return normalized;
+}
+
+function pieceAutosaveOptionalInteger(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number
+): number | null {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ""
+  ) {
+    return null;
+  }
+
+  const parsed =
+    Number(value);
+
+  if (
+    !Number.isFinite(parsed)
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a number or null.`
+      );
+  }
+
+  const rounded =
+    Math.round(parsed);
+
+  if (
+    rounded < minimum ||
+    rounded > maximum
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is outside the supported range.`
+      );
+  }
+
+  return rounded;
+}
+
+function pieceAutosaveInteger(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number
+): number {
+  const parsed =
+    pieceAutosaveOptionalInteger(
+      value,
+      label,
+      minimum,
+      maximum
+    );
+
+  if (parsed === null) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is required.`
+      );
+  }
+
+  return parsed;
+}
+
+function pieceAutosaveList(
+  value: unknown,
+  label: string,
+  maximumItems: number,
+  maximumItemLength: number
+): string[] {
+  if (!Array.isArray(value)) {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a list.`
+      );
+  }
+
+  if (
+    value.length >
+    maximumItems
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} contains too many entries.`
+      );
+  }
+
+  return value.map(
+    (entry, index) =>
+      pieceAutosaveText(
+        entry,
+        `${label} entry ${index + 1}`,
+        maximumItemLength,
+        true
+      )
+  );
+}
+
+function validatePieceAutosavePatch(
+  patch: PieceAutosavePatch
+): PieceAutosavePatch {
+  if (
+    !patch ||
+    typeof patch !== "object" ||
+    Array.isArray(patch)
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "A complete piece patch is required."
+      );
+  }
+
+  const slug =
+    pieceAutosaveText(
+      patch.slug,
+      "Piece slug",
+      160,
+      true
+    );
+
+  if (
+    !/^[a-z0-9][a-z0-9-]{0,159}$/.test(
+      slug
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece slug must use lowercase letters, numbers, and hyphens."
+      );
+  }
+
+  if (
+    !PIECE_AUTOSAVE_STATUSES.includes(
+      patch.status
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece status is invalid."
+      );
+  }
+
+  if (
+    !PIECE_AUTOSAVE_PUBLICATION_STATUSES.includes(
+      patch.publicationStatus
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece publication status is invalid."
+      );
+  }
+
+  if (
+    !PIECE_AUTOSAVE_PRICE_MODES.includes(
+      patch.priceMode ??
+      "not-listed"
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece price mode is invalid."
+      );
+  }
+
+  if (
+    !PIECE_AUTOSAVE_INQUIRY_MODES.includes(
+      patch.inquiryMode ??
+      "disabled"
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece inquiry mode is invalid."
+      );
+  }
+
+  if (
+    !(
+      PIECE_AUTOSAVE_REVIEWS_MODES as
+        readonly string[]
+    ).includes(
+      patch.reviewsMode ??
+      "hidden"
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece reviews mode is invalid."
+      );
+  }
+
+  let dimensions:
+    PieceRecord["dimensions"] =
+      null;
+
+  if (
+    patch.dimensions !== null
+  ) {
+    if (
+      !patch.dimensions ||
+      typeof patch.dimensions !==
+        "object" ||
+      Array.isArray(
+        patch.dimensions
+      ) ||
+      patch.dimensions.unit !==
+        "in"
+    ) {
+      throw new
+        StudioMutationValidationError(
+          "Piece dimensions are invalid."
+        );
+    }
+
+    dimensions = {
+      width:
+        pieceAutosaveInteger(
+          patch.dimensions.width,
+          "Piece width",
+          0,
+          100_000
+        ),
+      depth:
+        pieceAutosaveInteger(
+          patch.dimensions.depth,
+          "Piece depth",
+          0,
+          100_000
+        ),
+      height:
+        pieceAutosaveInteger(
+          patch.dimensions.height,
+          "Piece height",
+          0,
+          100_000
+        ),
+      unit: "in"
+    };
+  }
+
+  if (
+    !patch.metadata ||
+    typeof patch.metadata !==
+      "object" ||
+    Array.isArray(
+      patch.metadata
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece metadata must be an object."
+      );
+  }
+
+  let metadataJson = "";
+
+  try {
+    const serialized =
+      JSON.stringify(
+        patch.metadata
+      );
+
+    if (
+      typeof serialized !== "string"
+    ) {
+      throw new Error(
+        "Metadata is not serializable."
+      );
+    }
+
+    metadataJson =
+      serialized;
+  } catch {
+    throw new
+      StudioMutationValidationError(
+        "Piece metadata must be JSON-serializable."
+      );
+  }
+
+  if (
+    Buffer.byteLength(
+      metadataJson,
+      "utf8"
+    ) > 1_000_000
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Piece metadata is too large."
+      );
+  }
+
+  let mediaLinks:
+    NormalizedPieceMediaLink[];
+
+  try {
+    mediaLinks =
+      normalizePieceMediaLinks(
+        patch.mediaLinks
+      );
+  } catch (error) {
+    throw new
+      StudioMutationValidationError(
+        error instanceof Error
+          ? error.message
+          : "Piece media relations are invalid."
+      );
+  }
+
+  return {
+    slug,
+    title:
+      pieceAutosaveText(
+        patch.title,
+        "Piece title",
+        240,
+        true
+      ),
+    subtitle:
+      pieceAutosaveText(
+        patch.subtitle,
+        "Piece subtitle",
+        500
+      ),
+    category:
+      pieceAutosaveText(
+        patch.category,
+        "Piece category",
+        160,
+        true
+      ),
+    status:
+      patch.status,
+    publicationStatus:
+      patch.publicationStatus,
+    availabilityLabel:
+      pieceAutosaveText(
+        patch.availabilityLabel,
+        "Piece availability",
+        240
+      ),
+    summary:
+      pieceAutosaveText(
+        patch.summary,
+        "Piece summary",
+        50_000
+      ),
+    story:
+      pieceAutosaveText(
+        patch.story,
+        "Piece story",
+        1_000_000
+      ),
+    details:
+      pieceAutosaveList(
+        patch.details,
+        "Piece details",
+        200,
+        2_000
+      ),
+    tags:
+      pieceAutosaveList(
+        patch.tags,
+        "Piece tags",
+        200,
+        160
+      ),
+    materials:
+      pieceAutosaveList(
+        patch.materials,
+        "Piece materials",
+        200,
+        240
+      ),
+    dimensions,
+    priceCents:
+      pieceAutosaveOptionalInteger(
+        patch.priceCents,
+        "Piece price",
+        0,
+        1_000_000_000
+      ),
+    priceMode:
+      patch.priceMode ??
+      "not-listed",
+    publicPriceLabel:
+      pieceAutosaveText(
+        patch.publicPriceLabel ??
+        "",
+        "Piece public price label",
+        240
+      ) ||
+      null,
+    internalEstimateCents:
+      pieceAutosaveOptionalInteger(
+        patch.internalEstimateCents,
+        "Piece internal estimate",
+        0,
+        1_000_000_000
+      ),
+    inquiryMode:
+      patch.inquiryMode ??
+      "disabled",
+    reviewsMode:
+      patch.reviewsMode ??
+      "hidden",
+    processSectionTitle:
+      pieceAutosaveText(
+        patch.processSectionTitle ??
+        "Build record",
+        "Piece process-section title",
+        240
+      ) ||
+      "Build record",
+    processSectionIntro:
+      pieceAutosaveText(
+        patch.processSectionIntro ??
+        "",
+        "Piece process-section introduction",
+        50_000
+      ),
+    visualizerTemplate:
+      pieceAutosaveText(
+        patch.visualizerTemplate ??
+        "",
+        "Piece visualizer template",
+        240
+      ) ||
+      null,
+    commissionTypeSlug:
+      pieceAutosaveText(
+        patch.commissionTypeSlug ??
+        "",
+        "Piece commission type",
+        160
+      ) ||
+      null,
+    inventoryCount:
+      pieceAutosaveInteger(
+        patch.inventoryCount,
+        "Piece inventory",
+        0,
+        1_000_000
+      ),
+    leadTimeDays:
+      pieceAutosaveInteger(
+        patch.leadTimeDays,
+        "Piece lead time",
+        0,
+        36_500
+      ),
+    featuredRank:
+      pieceAutosaveInteger(
+        patch.featuredRank,
+        "Piece featured rank",
+        0,
+        1_000_000
+      ),
+    ownerEmail:
+      patch.ownerEmail === null
+        ? null
+        : pieceAutosaveText(
+            patch.ownerEmail,
+            "Piece owner email",
+            320
+          ) ||
+          null,
+    metadata:
+      JSON.parse(
+        metadataJson
+      ) as Record<
+        string,
+        unknown
+      >,
+    mediaLinks
+  };
+}
+
+function pieceAutosaveRequestHash(
+  patch: PieceAutosavePatch
+): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify(patch)
+    )
+    .digest("hex");
+}
+
+function loadPieceAutosaveEntity(
+  slug: string
+): PieceAutosaveEntity | null {
+  const piece =
+    getPiece(slug);
+
+  if (!piece) {
+    return null;
+  }
+
+  return {
+    piece,
+    mediaLinks:
+      listPieceMediaLinks(
+        slug
+      ).filter(
+        (link) =>
+          link.role !==
+          "private-project"
+      )
+  };
+}
+
+export async function
+savePieceAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      PieceAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<
+    PieceAutosaveEntity
+  >
+> {
+  let actorEmail = "";
+  let requestHash = "";
+
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user =
+          await getCurrentUser();
+
+        if (
+          !user ||
+          user.role !== "admin"
+        ) {
+          return null;
+        }
+
+        actorEmail =
+          user.email
+            .trim()
+            .toLowerCase();
+
+        return {
+          email: actorEmail
+        };
+      },
+
+      originAllowed:
+        studioServerActionOriginAllowed,
+
+      validate: (patch) => {
+        const validated =
+          validatePieceAutosavePatch(
+            patch
+          );
+
+        requestHash =
+          pieceAutosaveRequestHash(
+            validated
+          );
+
+        return validated;
+      },
+
+      transaction: (work) =>
+        withDatabaseTransaction(
+          () => work()
+        ),
+
+      findCompletedOperation:
+        (
+          operationId,
+          patch
+        ) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                PieceAutosaveEntity
+              >
+            >(
+              operationId
+            );
+
+          if (!completed) {
+            return null;
+          }
+
+          const expectedHash =
+            pieceAutosaveRequestHash(
+              patch
+            );
+
+          if (
+            completed.mutationScope !==
+              PIECE_AUTOSAVE_MUTATION_SCOPE ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              expectedHash
+          ) {
+            throw new
+              StudioMutationConflictError(
+                "This Studio operation ID has already been used for a different piece save."
+              );
+          }
+
+          return completed.response;
+        },
+
+      loadCurrent: (patch) =>
+        loadPieceAutosaveEntity(
+          patch.slug
+        ),
+
+      save: (
+        current,
+        patch
+      ) => {
+        if (!current) {
+          throw new
+            StudioMutationConflictError(
+              "This piece no longer exists."
+            );
+        }
+
+        const privateLinks =
+          listPieceMediaLinks(
+            patch.slug
+          ).filter(
+            (link) =>
+              link.role ===
+              "private-project"
+          );
+
+        const gatedLinks =
+          patch.mediaLinks.map(
+            (link) => {
+              const media =
+                getMedia(
+                  link.relativePath
+                );
+
+              if (!media) {
+                throw new
+                  StudioMutationValidationError(
+                    `Selected media '${link.relativePath}' is no longer indexed.`
+                  );
+              }
+
+              return {
+                ...link,
+                public:
+                  link.public &&
+                  media.reviewed
+              };
+            }
+          );
+
+        const mediaPaths =
+          gatedLinks
+            .filter(
+              (link) =>
+                [
+                  "hero",
+                  "gallery",
+                  "detail",
+                  "context"
+                ].includes(
+                  link.role
+                )
+            )
+            .map(
+              (link) =>
+                link.relativePath
+            );
+
+        const {
+          mediaLinks:
+            _mediaLinks,
+          ...piecePatch
+        } = patch;
+
+        savePiece({
+          ...piecePatch,
+          mediaPaths
+        });
+
+        replacePieceMediaLinks(
+          patch.slug,
+          [
+            ...gatedLinks,
+            ...privateLinks
+          ],
+          actorEmail
+        );
+
+        const saved =
+          loadPieceAutosaveEntity(
+            patch.slug
+          );
+
+        if (!saved) {
+          throw new
+            StudioMutationTransientError(
+              "The saved piece could not be reloaded."
+            );
+        }
+
+        return saved;
+      },
+
+      loadCanonical:
+        (
+          _saved,
+          patch
+        ) =>
+          loadPieceAutosaveEntity(
+            patch.slug
+          ),
+
+      updatedAt: (entity) =>
+        entity.piece.updatedAt,
+
+      entityType: "piece",
+
+      entityKey: (entity) =>
+        entity.piece.slug,
+
+      operation: () =>
+        "update",
+
+      audit: (auditInput) => {
+        if (!requestHash) {
+          throw new
+            StudioMutationTransientError(
+              "The piece autosave request identity is unavailable."
+            );
+        }
+
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              auditInput.actorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before:
+              auditInput.before,
+            after:
+              auditInput.after,
+            requestId:
+              auditInput.requestId
+          });
+
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            auditInput.actorEmail,
+          mutationScope:
+            PIECE_AUTOSAVE_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity:
+              auditInput.after,
+            updatedAt:
+              auditInput
+                .after
+                .piece
+                .updatedAt,
+            auditId
+          }
+        });
+
+        return auditId;
+      },
+
+      invalidate: (entity) => {
+        revalidatePieceSurfaces(
+          entity.piece.slug
+        );
+      }
+    }
+  );
+}
+
 export async function savePieceAction(formData: FormData) {
   const currentAdmin = await requireAdmin();
   const slug = requiredField(formData.get("slug"), "Piece slug");
@@ -1711,7 +2616,7 @@ export async function savePieceAction(formData: FormData) {
     }
   });
   revalidatePieceSurfaces(slug);
-  redirect(`/studio?panel=pieces&saved=piece&piece=${encodeURIComponent(slug)}`);
+  redirect(`/studio?panel=pieces&saved=piece&piece=${encodeURIComponent(slug)}#piece-${encodeURIComponent(slug)}`);
 }
 
 export async function deletePieceAction(formData: FormData) {
