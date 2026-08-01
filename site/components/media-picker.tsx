@@ -210,7 +210,7 @@ export function MediaPicker({
       {open ? (
         <div className="media-picker-shell" role="presentation">
           <button aria-label="Close media browser" className="media-picker-backdrop" onClick={closeBrowser} type="button" />
-          <div aria-labelledby={`media-picker-${name}`} aria-modal="true" className="media-picker-dialog" ref={dialogRef} role="dialog">
+          <div aria-labelledby={`media-picker-${name}`} aria-modal="true" className="media-picker-dialog" onChange={(event) => event.stopPropagation()} onInput={(event) => event.stopPropagation()} ref={dialogRef} role="dialog">
             <div className="media-picker-toolbar"><div><h3 id={`media-picker-${name}`}>{label}</h3><p className="muted-copy">Browse the writable mounted library. Selection is saved with the content record; no path entry is required.</p></div><button aria-label="Close media browser" className="lightbox-close media-picker-close" onClick={closeBrowser} type="button">×</button></div>
             <div className="media-picker-controls">
               <label><span>Search</span><span className="media-picker-search-row"><input onKeyDown={onSearchKeyDown} onChange={(event) => setQuery(event.target.value)} placeholder="Filename, folder, tag, or assignment" ref={searchRef} type="search" value={query} /><button className="button-secondary" disabled={loading} onClick={() => loadBrowserPage(1, query)} type="button">Search</button></span></label>

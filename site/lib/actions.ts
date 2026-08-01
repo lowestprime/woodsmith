@@ -7,6 +7,10 @@ import { redirect } from "next/navigation";
 import { secureCookieRequired } from "@/lib/cookie-policy";
 import {
   PIECE_MEDIA_ROLES,
+  MEDIA_ASSIGNMENT_SOURCES,
+  MEDIA_FOLDER_RULE_ROLES,
+  MEDIA_SORTS,
+  applyMediaFolderRules,
   applyMediaOperationSnapshots,
   appendProjectUpdate,
   captureMediaOperationSnapshot,
@@ -27,6 +31,7 @@ import {
   deleteUserProfile,
   getOrder,
   getMedia,
+  getMediaAccessAssociations,
   getBandwidthSnapshot,
   getCommissionType,
   getPage,
@@ -40,15 +45,19 @@ import {
   listCartItems,
   listMedia,
   listPieceMediaLinks,
+  listPieceMediaLinksForPath,
   listPieces,
   markEmailVerified,
   markCommissionDraftSubmitted,
   rollbackCommissionSubmission,
   patchMediaMetadata,
+  previewMediaFolderRules,
   refreshMediaLibrary,
+  reconcileMediaPieceAssignment,
   removeCartItem,
   saveCommissionType,
   saveMediaMetadata,
+  saveMediaSourceFolderRule,
   saveOrder,
   savePage,
   savePiece,
@@ -72,8 +81,13 @@ import {
   startMediaRenameHistory,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
+  type MediaAssignmentSource,
+  type MediaAssignmentSourceFilter,
   type MediaAiFilter,
+  type MediaFolderRulePreview,
+  type MediaFolderRuleRole,
   type MediaKindFilter,
+  type MediaSort,
   type MediaOperationBatchRecord,
   type MediaRecord,
   type OrderRecord,
@@ -126,8 +140,13 @@ import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/cat
 import { normalizeFooterConfiguration, normalizeHomeServices } from "@/lib/site-structure";
 import {
   normalizePieceMediaLinks,
+  pieceMediaRoleDefaultsPublic,
   type NormalizedPieceMediaLink
 } from "@/lib/piece-media";
+import {
+  classifyMediaAccess,
+  mediaDirectPublicEligible
+} from "@/lib/media-access";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceAcceptsReviews, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/piece-model";
 import { calculateEstimate, normalizeVisualizerState } from "@/lib/estimator";
 import { commissionOwnerKey, grantProjectBrowserAccess, userCanAccessProject } from "@/lib/commission-security";
@@ -192,34 +211,267 @@ function revalidateMediaSurfaces(affected?: {
   }
 }
 
-function syncPieceMediaMembership(relativePath: string, previousPieceSlug: string | null | undefined, nextPieceSlug: string | null | undefined, publishable: boolean) {
-  const touched = new Set([previousPieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)));
-  for (const slug of touched) {
-    const piece = getPiece(slug);
-    if (!piece) continue;
-    const withoutPath = piece.mediaPaths.filter((path) => path !== relativePath);
-    const shouldInclude = slug === nextPieceSlug && publishable;
-    const nextPaths = shouldInclude ? [...withoutPath, relativePath] : withoutPath;
-    const orderByPath = new Map(nextPaths.map((path, index) => [path, {
-      index,
-      order: Number(getMedia(path)?.metadata.displayOrder ?? 0)
-    }]));
-    const orderedPaths = [...nextPaths].sort((left, right) => {
-      const leftOrder = orderByPath.get(left) ?? { index: 0, order: 0 };
-      const rightOrder = orderByPath.get(right) ?? { index: 0, order: 0 };
-      return leftOrder.order - rightOrder.order || leftOrder.index - rightOrder.index;
-    });
-    const hasPublishableMedia = orderedPaths.length > 0;
-    savePiece({
-      ...piece,
-      mediaPaths: orderedPaths,
-      metadata: {
-        ...piece.metadata,
-        verifiedMedia: hasPublishableMedia,
-        mediaReviewRequired: !hasPublishableMedia
+function pieceEditorMediaAccess(
+  relativePath: string,
+  pieceSlug?: string | null
+) {
+  const associations =
+    getMediaAccessAssociations(
+      relativePath
+    );
+
+  const privateAssociation =
+    listPieceMediaLinksForPath(
+      relativePath
+    ).some(
+      (link) =>
+        link.role ===
+          "private-project" ||
+        (
+          !link.public &&
+          link.pieceSlug !==
+            pieceSlug
+        )
+    );
+
+  return classifyMediaAccess(
+    relativePath,
+    {
+      ...associations,
+      privateAssociation
+    }
+  );
+}
+
+function mediaRecordForPieceEditor(
+  media: MediaRecord,
+  pieceSlug?: string | null
+): MediaRecord {
+  const access =
+    pieceEditorMediaAccess(
+      media.relativePath,
+      pieceSlug
+    );
+
+  return {
+    ...media,
+    metadata: {
+      ...media.metadata,
+      mediaAccessKind:
+        access.kind,
+      mediaDirectPublicEligible:
+        access.kind ===
+        "public-library"
+    }
+  };
+}
+
+function canonicalizeDirectPieceMediaLinks(
+  pieceSlug: string,
+  links:
+    readonly NormalizedPieceMediaLink[]
+) {
+  return links.map(
+    (link) => {
+      const media =
+        getMedia(
+          link.relativePath
+        );
+
+      if (!media) {
+        throw new
+          StudioMutationValidationError(
+            `Selected media '${link.relativePath}' is no longer indexed.`
+          );
       }
-    });
+
+      resolveMediaPath(
+        link.relativePath
+      );
+
+      if (
+        media.kind !==
+          "image" &&
+        media.kind !==
+          "video"
+      ) {
+        throw new
+          StudioMutationValidationError(
+            `Selected media '${link.relativePath}' is not a supported renderable image or video.`
+          );
+      }
+
+      const associations =
+        getMediaAccessAssociations(
+          link.relativePath
+        );
+
+      const privateAssociation =
+        listPieceMediaLinksForPath(
+          link.relativePath
+        ).some(
+          (existing) =>
+            existing.role ===
+              "private-project" ||
+            (
+              !existing.public &&
+              existing.pieceSlug !==
+                pieceSlug
+            )
+        );
+
+      const publicEligible =
+        mediaDirectPublicEligible(
+          link.relativePath,
+          {
+            ...associations,
+            privateAssociation
+          }
+        );
+
+      if (
+        link.public &&
+        !publicEligible
+      ) {
+        throw new
+          StudioMutationValidationError(
+            `Protected media '${link.relativePath}' cannot be made visible on the public site.`
+          );
+      }
+
+      return {
+        ...link,
+        public:
+          link.public &&
+          publicEligible
+      };
+    }
+  );
+}
+
+function syncPieceMediaMembership(
+  relativePath: string,
+  previousPieceSlug: string | null | undefined,
+  nextPieceSlug: string | null | undefined,
+  publishable: boolean,
+  input: {
+    actorEmail: string;
+    assignmentSource: MediaAssignmentSource;
   }
+) {
+  const touched = new Set([previousPieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)));
+
+  withDatabaseTransaction(() => {
+    for (const slug of touched) {
+      if (!getPiece(slug)) continue;
+
+      const currentLinks = listPieceMediaLinks(slug);
+      const editableTargetLinks = currentLinks.filter(
+        (link) =>
+          link.relativePath === relativePath
+          && link.role !== "private-project"
+      );
+
+      if (slug !== nextPieceSlug) {
+        if (editableTargetLinks.length === 0) continue;
+
+        replacePieceMediaLinks(
+          slug,
+          currentLinks.filter(
+            (link) =>
+              link.relativePath !== relativePath
+              || link.role === "private-project"
+          ),
+          {
+            actorEmail: input.actorEmail,
+            assignmentSource: input.assignmentSource,
+            markReviewed: false,
+            reconcileRelativePaths: [relativePath]
+          }
+        );
+        continue;
+      }
+
+      const desiredTargetLinks: NormalizedPieceMediaLink[] =
+        editableTargetLinks.length > 0
+          ? editableTargetLinks.map((link) => {
+              const role = link.role as NormalizedPieceMediaLink["role"];
+              return {
+                relativePath: link.relativePath,
+                role,
+                stage: link.stage,
+                occurredAt: link.occurredAt,
+                title: link.title,
+                caption: link.caption,
+                technicalNote: link.technicalNote,
+                altOverride: link.altOverride,
+                displayOrder: link.displayOrder,
+                public:
+                  publishable
+                  && pieceMediaRoleDefaultsPublic(role)
+              };
+            })
+          : [
+              {
+                relativePath,
+                role: currentLinks.some((link) => link.role === "hero")
+                  ? "gallery"
+                  : "hero",
+                stage: null,
+                occurredAt: null,
+                title: "",
+                caption: "",
+                technicalNote: "",
+                altOverride: null,
+                displayOrder: currentLinks.length,
+                public: publishable
+              }
+            ];
+
+      const canonicalTargetLinks = canonicalizeDirectPieceMediaLinks(
+        slug,
+        desiredTargetLinks
+      );
+      const relationChanged =
+        editableTargetLinks.length !== canonicalTargetLinks.length
+        || editableTargetLinks.some(
+          (link, index) =>
+            link.public !== canonicalTargetLinks[index]?.public
+        );
+
+      if (
+        relationChanged
+        || previousPieceSlug !== nextPieceSlug
+      ) {
+        replacePieceMediaLinks(
+          slug,
+          [
+            ...currentLinks.filter(
+              (link) =>
+                link.relativePath !== relativePath
+                || link.role === "private-project"
+            ),
+            ...canonicalTargetLinks
+          ],
+          {
+            actorEmail: input.actorEmail,
+            assignmentSource: input.assignmentSource,
+            markReviewed: publishable,
+            reconcileRelativePaths: [relativePath]
+          }
+        );
+      }
+    }
+
+    reconcileMediaPieceAssignment(
+      relativePath,
+      {
+        actorEmail: input.actorEmail,
+        assignmentSource: input.assignmentSource,
+        markReviewed: publishable
+      }
+    );
+  });
 }
 
 function clampNumber(value: FormDataEntryValue | null, fallback: number, minimum: number, maximum: number) {
@@ -1644,6 +1896,8 @@ export type PieceAutosaveEntity = {
   piece: PieceRecord;
   mediaLinks:
     PieceMediaLinkRecord[];
+  mediaItems:
+    MediaRecord[];
 };
 
 const PIECE_AUTOSAVE_MUTATION_SCOPE =
@@ -2228,16 +2482,49 @@ function loadPieceAutosaveEntity(
     return null;
   }
 
+  const mediaLinks =
+    listPieceMediaLinks(
+      slug
+    ).filter(
+      (link) =>
+        link.role !==
+        "private-project"
+    );
+
+  const mediaItems =
+    [
+      ...new Set(
+        mediaLinks.map(
+          (link) =>
+            link.relativePath
+        )
+      )
+    ]
+      .map(
+        (relativePath) =>
+          getMedia(
+            relativePath
+          )
+      )
+      .filter(
+        (
+          media
+        ): media is
+          MediaRecord =>
+          Boolean(media)
+      )
+      .map(
+        (media) =>
+          mediaRecordForPieceEditor(
+            media,
+            slug
+          )
+      );
+
   return {
     piece,
-    mediaLinks:
-      listPieceMediaLinks(
-        slug
-      ).filter(
-        (link) =>
-          link.role !==
-          "private-project"
-      )
+    mediaLinks,
+    mediaItems
   };
 }
 
@@ -2366,34 +2653,17 @@ savePieceAutosaveAction(
               "private-project"
           );
 
-        const gatedLinks =
-          patch.mediaLinks.map(
-            (link) => {
-              const media =
-                getMedia(
-                  link.relativePath
-                );
-
-              if (!media) {
-                throw new
-                  StudioMutationValidationError(
-                    `Selected media '${link.relativePath}' is no longer indexed.`
-                  );
-              }
-
-              return {
-                ...link,
-                public:
-                  link.public &&
-                  media.reviewed
-              };
-            }
+        const directLinks =
+          canonicalizeDirectPieceMediaLinks(
+            patch.slug,
+            patch.mediaLinks
           );
 
         const mediaPaths =
-          gatedLinks
+          directLinks
             .filter(
               (link) =>
+                link.public &&
                 [
                   "hero",
                   "gallery",
@@ -2416,16 +2686,27 @@ savePieceAutosaveAction(
 
         savePiece({
           ...piecePatch,
-          mediaPaths
+          mediaPaths,
+          metadata: {
+            ...piecePatch.metadata,
+            verifiedMedia:
+              mediaPaths.length > 0,
+            mediaReviewRequired:
+              false
+          }
         });
 
         replacePieceMediaLinks(
           patch.slug,
           [
-            ...gatedLinks,
+            ...directLinks,
             ...privateLinks
           ],
-          actorEmail
+          {
+            actorEmail,
+            recordAudit: false,
+            markReviewed: true
+          }
         );
 
         const saved =
@@ -2516,6 +2797,14 @@ savePieceAutosaveAction(
         revalidatePieceSurfaces(
           entity.piece.slug
         );
+
+        revalidateMediaSurfaces({
+          pieceSlugs: [
+            entity.piece.slug
+          ],
+          postSlugs: [],
+          pageSlugs: []
+        });
       }
     }
   );
@@ -2529,12 +2818,20 @@ export async function savePieceAction(formData: FormData) {
   const submittedMediaLinks = formData.has("mediaLinksJson")
     ? normalizePieceMediaLinks(JSON.parse(requiredField(formData.get("mediaLinksJson"), "Piece media relations")) as unknown)
     : null;
-  const selectedMediaPaths = submittedMediaLinks
-    ? submittedMediaLinks.filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role)).map((link) => link.relativePath)
+  const canonicalSubmittedMediaLinks =
+    submittedMediaLinks
+      ? canonicalizeDirectPieceMediaLinks(
+          slug,
+          submittedMediaLinks
+        )
+      : null;
+  const selectedMediaPaths = canonicalSubmittedMediaLinks
+    ? canonicalSubmittedMediaLinks.filter((link) => link.public && ["hero", "gallery", "detail", "context"].includes(link.role)).map((link) => link.relativePath)
     : formData.has("mediaPathsText") ? [...new Set(parseListField(formData.get("mediaPathsText")))] : null;
   const priceMode = (formData.has("priceMode") ? optionalField(formData.get("priceMode")) : current ? getPiecePriceMode(current) : "not-listed") as PieceRecord["priceMode"];
   const inquiryMode = (formData.has("inquiryMode") ? optionalField(formData.get("inquiryMode")) : current ? getPieceInquiryMode(current) : "disabled") as PieceRecord["inquiryMode"];
   const reviewsMode = (formData.has("reviewsMode") ? optionalField(formData.get("reviewsMode")) : current ? getPieceReviewsMode(current) : "hidden") as PieceRecord["reviewsMode"];
+  const legacyPublishRequested = parseBooleanField(formData.get("verifiedMedia"));
   withDatabaseTransaction(() => {
   savePiece(pieceJson
     ? parseJsonField<PieceRecord>(formData.get("pieceJson"), current!)
@@ -2576,24 +2873,41 @@ export async function savePieceAction(formData: FormData) {
         ownerEmail: optionalField(formData.get("ownerEmail")) || current?.ownerEmail || "woodsmithbb@proton.me",
         metadata: {
           ...(current?.metadata || {}),
-          verifiedMedia: parseBooleanField(formData.get("verifiedMedia")),
+          verifiedMedia:
+            canonicalSubmittedMediaLinks
+              ? selectedMediaPaths?.length
+                ? true
+                : false
+              : selectedMediaPaths
+                ? legacyPublishRequested
+                  && selectedMediaPaths.some(
+                    (relativePath) => getMedia(relativePath)?.reviewed === true
+                  )
+                : current?.metadata.verifiedMedia === true,
           publicMediaLimit: parseInteger(formData.get("publicMediaLimit"), Number(current?.metadata?.publicMediaLimit ?? 4)),
           fulfillmentOptions: formData.has("fulfillmentText") ? parseListField(formData.get("fulfillmentText")) : current?.metadata?.fulfillmentOptions ?? [],
-          mediaReviewRequired: parseBooleanField(formData.get("mediaReviewRequired"))
+          mediaReviewRequired: false
         }
       });
-    if (submittedMediaLinks) {
+    if (canonicalSubmittedMediaLinks) {
       const privateLinks = listPieceMediaLinks(slug).filter((link) => link.role === "private-project");
-      const gatedLinks = submittedMediaLinks.map((link) => {
-        const media = getMedia(link.relativePath);
-        if (!media) throw new Error(`Selected media '${link.relativePath}' is no longer indexed.`);
-        return { ...link, public: link.public && media.reviewed };
-      });
-      replacePieceMediaLinks(slug, [...gatedLinks, ...privateLinks], currentAdmin.email);
+      replacePieceMediaLinks(
+        slug,
+        [
+          ...canonicalSubmittedMediaLinks,
+          ...privateLinks
+        ],
+        {
+          actorEmail:
+            currentAdmin.email,
+          recordAudit: true,
+          markReviewed: true
+        }
+      );
     } else if (selectedMediaPaths) {
       const preservedLinks = listPieceMediaLinks(slug).filter((link) => !["hero", "gallery", "detail", "context"].includes(link.role));
       const currentDisplayLinks = listPieceMediaLinks(slug).filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role));
-      const publishRequested = parseBooleanField(formData.get("verifiedMedia"));
+      const publishRequested = legacyPublishRequested;
       const displayLinks = selectedMediaPaths.map((relativePath, index) => {
         const media = getMedia(relativePath);
         if (!media) throw new Error(`Selected media '${relativePath}' is no longer indexed.`);
@@ -2819,16 +3133,20 @@ export type MediaActionResult =
   | { ok: true; kind: "cleanup"; relativePath: string }
   | { ok: true; kind: "save"; relativePath: string }
   | { ok: true; kind: "batch" | "rollback"; batchId: string; message: string; paths: Array<{ previousPath: string; relativePath: string }>; operations: MediaOperationBatchRecord[] }
-  | { ok: true; kind: "refresh" }
+  | { ok: true; kind: "refresh" | "folder-rule"; message: string; preview: MediaFolderRulePreview }
   | { ok: false; kind: "error"; message: string };
 
 export type MediaPageRequest = {
   page?: number;
   pageSize?: number;
   query?: string;
+  pieceSlug?: string;
   assignment?: MediaAssignmentFilter;
+  assignmentSource?: MediaAssignmentSourceFilter;
+  sort?: MediaSort;
   kind?: MediaKindFilter;
   aiFilter?: MediaAiFilter;
+  publicAssignmentPieceSlug?: string;
 };
 
 export type MediaPageResult = {
@@ -2838,7 +3156,10 @@ export type MediaPageResult = {
   page: number;
   pageSize: number;
   query: string;
+  pieceSlug: string;
   assignment: MediaAssignmentFilter;
+  assignmentSource: MediaAssignmentSourceFilter;
+  sort: MediaSort;
   kind: MediaKindFilter;
   aiFilter: MediaAiFilter;
 };
@@ -2863,21 +3184,79 @@ export async function loadMediaPageAction(request: MediaPageRequest): Promise<Me
   await requireAdmin();
   const pageSize = Math.round(clampNumber(String(request.pageSize ?? 48), 48, 12, 96));
   const query = request.query?.trim().slice(0, 160) ?? "";
+  const pieceSlug = request.pieceSlug?.trim().slice(0, 160) ?? "";
   const assignment: MediaAssignmentFilter = ["unassigned", "assigned", "review"].includes(request.assignment ?? "")
     ? request.assignment as MediaAssignmentFilter
     : "all";
+  const assignmentSourceValues = ["none", ...MEDIA_ASSIGNMENT_SOURCES] as readonly string[];
+  const assignmentSource: MediaAssignmentSourceFilter = assignmentSourceValues.includes(String(request.assignmentSource ?? ""))
+    ? request.assignmentSource as MediaAssignmentSourceFilter
+    : "all";
+  const sort: MediaSort = MEDIA_SORTS.includes(request.sort as MediaSort)
+    ? request.sort as MediaSort
+    : "updated-desc";
   const kind: MediaKindFilter = ["image", "video"].includes(request.kind ?? "")
     ? request.kind as MediaKindFilter
     : "all";
   const aiFilter: MediaAiFilter = ["high", "ambiguous", "details", "unanalyzed", "missing-alt", "representatives"].includes(request.aiFilter ?? "")
     ? request.aiFilter as MediaAiFilter
     : "all";
-  const options = { includeUnreviewed: true, ...(query ? { query } : {}), assignment, kind, aiFilter } as const;
+  const options = {
+    includeUnreviewed: true,
+    ...(query ? { query } : {}),
+    ...(pieceSlug ? { pieceSlug } : {}),
+    assignment,
+    assignmentSource,
+    sort,
+    kind,
+    aiFilter
+  } as const;
   const total = countMedia(options);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(totalPages, Math.max(1, Math.round(Number(request.page) || 1)));
-  const items = listMedia({ ...options, limit: pageSize, offset: (page - 1) * pageSize });
-  return { ok: true, items, total, page, pageSize, query, assignment, kind, aiFilter };
+  const publicAssignmentPieceSlug =
+    request
+      .publicAssignmentPieceSlug
+      ?.trim()
+      .slice(
+        0,
+        160
+      ) ||
+    null;
+
+  const items =
+    listMedia({
+      ...options,
+      limit:
+        pageSize,
+      offset:
+        (
+          page -
+          1
+        ) *
+        pageSize
+    }).map(
+      (media) =>
+        mediaRecordForPieceEditor(
+          media,
+          publicAssignmentPieceSlug
+        )
+    );
+
+  return {
+    ok: true,
+    items,
+    total,
+    page,
+    pageSize,
+    query,
+    pieceSlug,
+    assignment,
+    assignmentSource,
+    sort,
+    kind,
+    aiFilter
+  };
 }
 
 export async function loadMediaVerificationQueueAction(): Promise<MediaVerificationEntry[]> {
@@ -2925,7 +3304,7 @@ export async function markMediaAiSuggestionWrongAction(_: unknown, formData: For
 
 export async function uploadMediaAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const file = formData.get("file");
     if (!(file instanceof File) || file.size === 0) {
       return { ok: false, kind: "error", message: "Please choose a non-empty file to upload." };
@@ -2944,10 +3323,11 @@ export async function uploadMediaAction(_: unknown, formData: FormData): Promise
     }
     const folder = optionalField(formData.get("folder")) || "Uploads";
     const relativePath = await persistUploadedMedia(file, folder);
-    refreshMediaLibrary();
+    refreshMediaLibrary(admin.email);
     const reviewed = parseBooleanField(formData.get("reviewed"));
     const tags = parseListField(formData.get("tagsText"));
-    saveMediaMetadata({
+    withDatabaseTransaction(() => {
+      saveMediaMetadata({
       relativePath,
       altText: optionalField(formData.get("altText")) || file.name,
       pieceSlug,
@@ -2960,9 +3340,24 @@ export async function uploadMediaAction(_: unknown, formData: FormData): Promise
       zoom: 1,
       reviewed,
       tags: tags.length > 0 ? tags : parseJsonField<string[]>(formData.get("tagsJson"), []),
-      metadata: reviewed && pieceSlug ? { verifiedPieceSlug: pieceSlug, verifiedAt: new Date().toISOString(), verifiedBy: "woodshop-dashboard" } : {}
+      metadata: reviewed && pieceSlug ? { verifiedPieceSlug: pieceSlug, verifiedAt: new Date().toISOString(), verifiedBy: "woodshop-dashboard" } : {},
+      assignmentSource: "manual-media-panel",
+      assignmentRuleId: null,
+      assignedAt: new Date().toISOString(),
+      assignedBy: admin.email,
+      manualOverride: true
+      });
+      syncPieceMediaMembership(
+        relativePath,
+        null,
+        pieceSlug,
+        reviewed,
+        {
+          actorEmail: admin.email,
+          assignmentSource: "manual-media-panel"
+        }
+      );
     });
-    syncPieceMediaMembership(relativePath, null, pieceSlug, reviewed);
     revalidateMediaSurfaces({ pieceSlugs: pieceSlug ? [pieceSlug] : [], postSlugs: postSlug ? [postSlug] : [], pageSlugs: pageSlug ? [pageSlug] : [] });
     return { ok: true, kind: "upload", relativePath };
   } catch (error) {
@@ -3081,7 +3476,24 @@ export async function organizeMediaBatchAction(_: unknown, formData: FormData): 
       actorEmail: admin.email
     };
     const snapshots = selectedPaths.map(captureMediaOperationSnapshot);
-    const mutations = buildMediaOperationPlan(snapshots, options);
+    const plannedMutations = buildMediaOperationPlan(snapshots, options);
+    const assignmentTimestamp = new Date().toISOString();
+    const mutations = pieceAssignment === "keep"
+      ? plannedMutations
+      : plannedMutations.map((mutation) => ({
+          ...mutation,
+          after: {
+            ...mutation.after,
+            media: {
+              ...mutation.after.media,
+              assignmentSource: "manual-media-panel" as const,
+              assignmentRuleId: null,
+              assignedAt: assignmentTimestamp,
+              assignedBy: admin.email.toLowerCase(),
+              manualOverride: true
+            }
+          }
+        }));
     const result = await executeMediaOperationPlan({
       actorEmail: admin.email,
       operation: "organize",
@@ -3171,7 +3583,7 @@ export async function deleteMediaAction(_: unknown, formData: FormData): Promise
 
 export async function assignMediaCandidateAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const relativePath = requiredField(formData.get("relativePath"), "Media path");
     const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
     const piece = getPiece(pieceSlug);
@@ -3184,7 +3596,8 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
       ? media.metadata.aiRejectedPieceSlugs.map(String).filter((slug) => slug !== pieceSlug)
       : [];
 
-    saveMediaMetadata({
+    withDatabaseTransaction(() => {
+      saveMediaMetadata({
       relativePath,
       altText: media.altText || piece.title,
       pieceSlug,
@@ -3207,10 +3620,25 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
         verifiedPieceSlug: pieceSlug,
         verifiedAt: acceptedAt,
         verifiedBy: "woodshop-dashboard"
-      }
-    });
+      },
+      assignmentSource: "AI-suggestion",
+      assignmentRuleId: null,
+      assignedAt: acceptedAt,
+      assignedBy: admin.email,
+      manualOverride: true
+      });
 
-    syncPieceMediaMembership(relativePath, media.pieceSlug, pieceSlug, true);
+      syncPieceMediaMembership(
+        relativePath,
+        media.pieceSlug,
+        pieceSlug,
+        true,
+        {
+          actorEmail: admin.email,
+          assignmentSource: "AI-suggestion"
+        }
+      );
+    });
 
     revalidateMediaSurfaces({ pieceSlugs: [...new Set([media.pieceSlug, pieceSlug].filter((slug): slug is string => Boolean(slug)))], postSlugs: [], pageSlugs: [] });
     return { ok: true, kind: "assign", relativePath, pieceSlug };
@@ -3221,7 +3649,7 @@ export async function assignMediaCandidateAction(_: unknown, formData: FormData)
 
 export async function cleanupMediaBackgroundAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const relativePath = requiredField(formData.get("relativePath"), "Media path");
     const mode = optionalField(formData.get("cleanupMode")) || "soft-matte";
     const prompt = optionalField(formData.get("cleanupPrompt"));
@@ -3252,7 +3680,7 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
 
     const stem = relativePath.replace(/\.[^.]+$/, "").split("/").pop() || "cleaned-media";
     const nextPath = persistGeneratedMedia(b64Json, "Derivatives/background-cleanup", stem, ".png");
-    refreshMediaLibrary();
+    refreshMediaLibrary(admin.email);
     const generatedAt = new Date().toISOString();
     saveMediaMetadata({
       relativePath: nextPath,
@@ -3284,7 +3712,12 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
         derivativeSourceSizeBytes: media.sizeBytes,
         derivativePublicationGate: "manual-review-required",
         manualApprovalRequired: true
-      }
+      },
+      assignmentSource: "manual-media-panel",
+      assignmentRuleId: null,
+      assignedAt: generatedAt,
+      assignedBy: admin.email,
+      manualOverride: true
     });
     const existingDerivatives = Array.isArray(media.metadata.cleanupDerivativePaths)
       ? media.metadata.cleanupDerivativePaths.map(String)
@@ -3303,7 +3736,7 @@ export async function cleanupMediaBackgroundAction(_: unknown, formData: FormDat
 
 export async function saveMediaMetadataAction(_: unknown, formData: FormData): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
+    const admin = await requireAdmin();
     const relativePath = requiredField(formData.get("relativePath"), "Media path");
     const existing = getMedia(relativePath);
     if (!existing) {
@@ -3352,7 +3785,8 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
         ? visualLabels
         : Array.isArray(existing.metadata.visualLabels) ? existing.metadata.visualLabels : []
     };
-    saveMediaMetadata({
+    withDatabaseTransaction(() => {
+      saveMediaMetadata({
       relativePath,
       altText,
       pieceSlug: nextPieceSlug,
@@ -3365,9 +3799,24 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
       zoom: clampNumber(formData.get("zoom"), existing.zoom, 1, 4),
       reviewed,
       tags: [...new Set([...parseListField(formData.get("tagsText")), ...visualLabels])],
-      metadata
+      metadata,
+      assignmentSource: "manual-media-panel",
+      assignmentRuleId: null,
+      assignedAt: acceptedAt,
+      assignedBy: admin.email,
+      manualOverride: true
+      });
+      syncPieceMediaMembership(
+        relativePath,
+        existing.pieceSlug,
+        nextPieceSlug,
+        reviewed,
+        {
+          actorEmail: admin.email,
+          assignmentSource: "manual-media-panel"
+        }
+      );
     });
-    syncPieceMediaMembership(relativePath, existing.pieceSlug, nextPieceSlug, reviewed);
     revalidateMediaSurfaces({
       pieceSlugs: [...new Set([existing.pieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)))],
       postSlugs: [...new Set([existing.postSlug, nextPostSlug].filter((slug): slug is string => Boolean(slug)))],
@@ -3381,12 +3830,67 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
 
 export async function refreshMediaLibraryAction(): Promise<MediaActionResult> {
   try {
-    await requireAdmin();
-    refreshMediaLibrary();
+    const admin = await requireAdmin();
+    refreshMediaLibrary(admin.email);
+    const preview = previewMediaFolderRules();
     revalidateMediaSurfaces();
-    return { ok: true, kind: "refresh" };
+    return {
+      ok: true,
+      kind: "refresh",
+      message: `Media library refreshed. ${preview.eligible} unassigned record${preview.eligible === 1 ? " is" : "s are"} eligible for explicit folder-rule assignment.`,
+      preview
+    };
   } catch (error) {
     return mediaActionFailure(error, "Media library refresh failed.");
+  }
+}
+
+export async function saveMediaSourceFolderRuleAction(
+  _: unknown,
+  formData: FormData
+): Promise<MediaActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const roleValue = optionalField(formData.get("defaultRole"));
+    const defaultRole: MediaFolderRuleRole = MEDIA_FOLDER_RULE_ROLES.includes(roleValue as MediaFolderRuleRole)
+      ? roleValue as MediaFolderRuleRole
+      : "gallery";
+    saveMediaSourceFolderRule({
+      id: optionalField(formData.get("id")) || null,
+      normalizedFolder: requiredField(formData.get("normalizedFolder"), "Source folder"),
+      pieceSlug: requiredField(formData.get("pieceSlug"), "Piece"),
+      enabled: parseBooleanField(formData.get("enabled")),
+      priority: parseInteger(formData.get("priority"), 100),
+      defaultRole,
+      defaultPublic: parseBooleanField(formData.get("defaultPublic")),
+      updatedBy: admin.email
+    });
+    const preview = previewMediaFolderRules();
+    revalidatePath("/studio");
+    return {
+      ok: true,
+      kind: "folder-rule",
+      message: "Folder rule saved. Review the dry-run counts before applying it.",
+      preview
+    };
+  } catch (error) {
+    return mediaActionFailure(error, "Folder rule save failed.");
+  }
+}
+
+export async function applyMediaFolderRulesAction(): Promise<MediaActionResult> {
+  try {
+    const admin = await requireAdmin();
+    const result = applyMediaFolderRules(admin.email);
+    revalidateMediaSurfaces();
+    return {
+      ok: true,
+      kind: "folder-rule",
+      message: `Applied ${result.assigned} exact folder assignment${result.assigned === 1 ? "" : "s"}.`,
+      preview: result.after
+    };
+  } catch (error) {
+    return mediaActionFailure(error, "Folder rules could not be applied.");
   }
 }
 

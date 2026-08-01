@@ -155,7 +155,7 @@ test("media batches update and roll back files, metadata, and all reference mode
     ]);
     assert.equal(db.getMediaOperationBatch(batch.id)?.status, "rolled-back");
     assert.equal(db.getMediaOperationBatch(rollbackBatch.id)?.status, "completed");
-    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 7);
+    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 8);
     assert.equal(db.getRuntimePersistenceStatus().quickCheck, "ok");
   } finally {
     db.closeDatabaseForTests();
@@ -245,5 +245,280 @@ test("generated cleanup media is written to a dedicated derivative tree without 
     assert.equal(existsSync(path.join(mediaRoot, ...derivativePath.split("/"))), true);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("direct piece-media replacement marks selected media reviewed, preserves visibility, and can suppress nested audit", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "woodsmith-direct-piece-media-"));
+  const dataRoot = path.join(root, "data");
+  const mediaRoot = path.join(root, "media");
+  const heroPath = "Furniture/direct-piece/hero.jpg";
+  const sourcePath = "Furniture/direct-piece/source.jpg";
+
+  writeFixture(mediaRoot, heroPath, "hero");
+  writeFixture(mediaRoot, sourcePath, "source");
+
+  process.env.NODE_ENV = "test";
+  process.env.DATA_ROOT = dataRoot;
+  process.env.MEDIA_ROOT = mediaRoot;
+
+  const db = await import("./db.ts");
+
+  try {
+    db.getRuntimePersistenceStatus();
+    db.refreshMediaLibrary();
+
+    db.savePiece({
+      ...fixturePiece([]),
+      slug: "direct-piece",
+      title: "Direct Piece",
+      metadata: {
+        verifiedMedia: false,
+        mediaReviewRequired: false
+      }
+    });
+
+    db.replacePieceMediaLinks(
+      "direct-piece",
+      [
+        {
+          relativePath: heroPath,
+          role: "hero",
+          stage: null,
+          occurredAt: null,
+          title: "",
+          caption: "",
+          technicalNote: "",
+          altOverride: null,
+          displayOrder: 0,
+          public: true
+        },
+        {
+          relativePath: sourcePath,
+          role: "source",
+          stage: null,
+          occurredAt: null,
+          title: "",
+          caption: "",
+          technicalNote: "",
+          altOverride: null,
+          displayOrder: 1,
+          public: false
+        }
+      ],
+      {
+        actorEmail: "admin@example.com",
+        recordAudit: false,
+        markReviewed: true
+      }
+    );
+
+    assert.deepEqual(
+      db.listPieceMediaLinks("direct-piece").map(
+        (link) => ({
+          path: link.relativePath,
+          role: link.role,
+          public: link.public
+        })
+      ),
+      [
+        {
+          path: heroPath,
+          role: "hero",
+          public: true
+        },
+        {
+          path: sourcePath,
+          role: "source",
+          public: false
+        }
+      ]
+    );
+
+    assert.deepEqual(
+      db.getPiece("direct-piece")?.mediaPaths,
+      [heroPath]
+    );
+
+    for (const relativePath of [
+      heroPath,
+      sourcePath
+    ]) {
+      const media = db.getMedia(relativePath);
+      assert.equal(media?.reviewed, true);
+      assert.equal(media?.pieceSlug, "direct-piece");
+      assert.equal(media?.assignmentSource, "manual-piece-editor");
+      assert.equal(media?.manualOverride, true);
+    }
+
+    db.replacePieceMediaLinks(
+      "direct-piece",
+      db.listPieceMediaLinks("direct-piece"),
+      {
+        actorEmail: "admin@example.com",
+        assignmentSource: "AI-suggestion",
+        reconcileRelativePaths: [heroPath],
+        recordAudit: false,
+        markReviewed: true
+      }
+    );
+
+    assert.equal(db.getMedia(heroPath)?.assignmentSource, "AI-suggestion");
+    assert.equal(
+      db.getMedia(sourcePath)?.assignmentSource,
+      "manual-piece-editor",
+      "A single-media reconciliation must not overwrite unrelated provenance."
+    );
+
+    db.savePiece({
+      ...fixturePiece([]),
+      slug: "shared-piece",
+      title: "Shared Piece"
+    });
+
+    db.replacePieceMediaLinks(
+      "shared-piece",
+      [
+        {
+          relativePath: heroPath,
+          role: "gallery",
+          stage: null,
+          occurredAt: null,
+          title: "",
+          caption: "",
+          technicalNote: "",
+          altOverride: null,
+          displayOrder: 0,
+          public: true
+        }
+      ],
+      {
+        actorEmail: "admin@example.com",
+        recordAudit: false,
+        markReviewed: true
+      }
+    );
+
+    assert.equal(
+      db.getMedia(heroPath)?.pieceSlug,
+      null,
+      "A shared normalized path must not claim one arbitrary legacy piece owner."
+    );
+
+    db.replacePieceMediaLinks(
+      "shared-piece",
+      [],
+      {
+        actorEmail: "admin@example.com",
+        recordAudit: false,
+        markReviewed: true
+      }
+    );
+
+    assert.equal(
+      db.getMedia(heroPath)?.pieceSlug,
+      "direct-piece",
+      "A unique remaining normalized relation must restore the compatible legacy owner."
+    );
+
+    assert.equal(
+      db.listAdminEditAudit({
+        entityType: "piece-media",
+        entityKey: "direct-piece",
+        limit: 20
+      }).length,
+      0
+    );
+
+    assert.throws(
+      () =>
+        db.withDatabaseTransaction(
+          () => {
+            db.replacePieceMediaLinks(
+              "direct-piece",
+              [],
+              {
+                actorEmail: "admin@example.com",
+                recordAudit: false,
+                markReviewed: true
+              }
+            );
+
+            throw new Error(
+              "injected direct assignment failure"
+            );
+          }
+        ),
+      /injected direct assignment failure/
+    );
+
+    assert.equal(
+      db.listPieceMediaLinks("direct-piece").length,
+      2
+    );
+
+    assert.deepEqual(
+      db.getPiece("direct-piece")?.mediaPaths,
+      [heroPath]
+    );
+
+    assert.equal(
+      db.getRuntimePersistenceStatus().schemaVersion,
+      8
+    );
+    assert.equal(
+      db.getRuntimePersistenceStatus().quickCheck,
+      "ok"
+    );
+  } finally {
+    db.closeDatabaseForTests();
+    rmSync(root, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
+test("library refresh previews folder rules without assigning until explicit apply", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "woodsmith-folder-rule-refresh-"));
+  const dataRoot = path.join(root, "data");
+  const mediaRoot = path.join(root, "media");
+  const relativePath = "Furniture/refresh-piece/new.jpg";
+
+  writeFixture(mediaRoot, relativePath, "refresh");
+  process.env.NODE_ENV = "test";
+  process.env.DATA_ROOT = dataRoot;
+  process.env.MEDIA_ROOT = mediaRoot;
+
+  const db = await import("./db.ts");
+
+  try {
+    db.getRuntimePersistenceStatus();
+    db.savePiece({
+      ...fixturePiece([]),
+      slug: "refresh-piece",
+      title: "Refresh Piece"
+    });
+
+    db.refreshMediaLibrary("admin@example.com");
+
+    assert.equal(db.getMedia(relativePath)?.pieceSlug, null);
+    assert.equal(db.listPieceMediaLinks("refresh-piece").length, 0);
+    assert.equal(db.previewMediaFolderRules().eligible, 1);
+
+    const applied = db.applyMediaFolderRules("admin@example.com");
+    assert.equal(applied.assigned, 1);
+    assert.equal(db.getMedia(relativePath)?.pieceSlug, "refresh-piece");
+    assert.equal(db.listPieceMediaLinks("refresh-piece").length, 1);
+
+    db.refreshMediaLibrary("admin@example.com");
+    assert.equal(db.previewMediaFolderRules().assignedByRule, 1);
+    assert.equal(db.listPieceMediaLinks("refresh-piece").length, 1);
+  } finally {
+    db.closeDatabaseForTests();
+    rmSync(root, {
+      recursive: true,
+      force: true
+    });
   }
 });

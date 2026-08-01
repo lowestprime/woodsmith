@@ -4,7 +4,9 @@ import { readFile } from "node:fs/promises";
 
 import {
   buildInitialPieceMediaLinks,
-  normalizePieceMediaLinks
+  normalizePieceMediaLinks,
+  pieceMediaDefaultPublic,
+  pieceMediaRoleDefaultsPublic
 } from "./piece-media.ts";
 
 test("piece media relations preserve roles, order, stages, and normalized dates", () => {
@@ -281,4 +283,444 @@ test("WP02 Slice A source contract keeps piece identity, autosave, media reset, 
     true,
     "The legacy explicit piece save does not redirect to the canonical query-plus-hash URL."
   );
+  assert.equal(
+    legacy.includes("current?.metadata.verifiedMedia === true"),
+    true,
+    "Legacy saves must preserve only an explicitly verified prior state."
+  );
+  assert.equal(
+    legacy.includes("verifiedMedia !=="),
+    false,
+    "Legacy saves must not infer verification from an absent flag."
+  );
+});
+
+test("Slice C direct-public defaults cover eligible display and build roles while source remains hidden", () => {
+  for (const role of [
+    "hero",
+    "gallery",
+    "detail",
+    "context",
+    "process",
+    "drawing",
+    "plan",
+    "installation"
+  ] as const) {
+    assert.equal(
+      pieceMediaRoleDefaultsPublic(
+        role
+      ),
+      true
+    );
+
+    assert.equal(
+      pieceMediaDefaultPublic(
+        role,
+        `Furniture/${role}.jpg`
+      ),
+      true
+    );
+  }
+
+  assert.equal(
+    pieceMediaRoleDefaultsPublic(
+      "source"
+    ),
+    false
+  );
+
+  assert.equal(
+    pieceMediaDefaultPublic(
+      "source",
+      "Furniture/source.jpg"
+    ),
+    false
+  );
+
+  assert.equal(
+    pieceMediaDefaultPublic(
+      "hero",
+      "commission-staging/private.jpg"
+    ),
+    false
+  );
+
+  assert.equal(
+    pieceMediaDefaultPublic(
+      "process",
+      "projects/BW-CM-260713-ABCD/process.jpg"
+    ),
+    false
+  );
+});
+
+test("WP03 Slice C source contract removes approval gates and preserves atomic direct assignment", async () => {
+  const [
+    mediaEditor,
+    pieceEditor,
+    studioPage,
+    workspace,
+    actions,
+    database,
+    mediaAccess
+  ] = await Promise.all([
+    readFile(
+      new URL(
+        "../components/piece-media-editor.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../components/studio/studio-piece-editor.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../app/studio/page.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "../components/studio-media-workspace.tsx",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "./actions.ts",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "./db.ts",
+        import.meta.url
+      ),
+      "utf8"
+    ),
+    readFile(
+      new URL(
+        "./media-access.ts",
+        import.meta.url
+      ),
+      "utf8"
+    )
+  ]);
+
+  for (const token of [
+    "pieceMediaDefaultPublic(",
+    "mediaDirectPublicEligible(",
+    "Visible on public site",
+    "publicEligible",
+    "disabled={",
+    '"immediate"'
+  ]) {
+    assert.equal(
+      mediaEditor.includes(token),
+      true,
+      `Piece media editor lacks ${token}.`
+    );
+  }
+
+  for (const forbidden of [
+    "Public after media",
+    "Nothing becomes public until"
+  ]) {
+    assert.equal(
+      mediaEditor.includes(forbidden),
+      false,
+      `Piece media editor retains obsolete copy ${forbidden}.`
+    );
+  }
+
+  for (const token of [
+    "publicDisplayCount",
+    "mediaReviewRequired:",
+    "false",
+    "editorMediaItems",
+    "woodsmith:media-items-reconciled",
+    "publicAssignmentPieceSlug",
+    "Save piece"
+  ]) {
+    assert.equal(
+      pieceEditor.includes(token),
+      true,
+      `Studio piece editor lacks ${token}.`
+    );
+  }
+
+  for (const forbidden of [
+    "Verified media",
+    "Media review required",
+    '"verifiedMedia"',
+    '"mediaReviewRequired"'
+  ]) {
+    assert.equal(
+      pieceEditor.includes(forbidden),
+      false,
+      `Studio piece editor retains obsolete approval control ${forbidden}.`
+    );
+  }
+
+  assert.equal(
+    studioPage.includes(
+      'Check label="Verified media"'
+    ),
+    false
+  );
+
+  assert.equal(
+    studioPage.includes(
+      'Check label="Media review required"'
+    ),
+    false
+  );
+
+  for (const token of [
+    "studioMediaWithAccess(",
+    "getMediaAccessAssociations(",
+    "listPieceMediaLinksForPath(",
+    "mediaAccessKind"
+  ]) {
+    assert.equal(
+      studioPage.includes(token),
+      true,
+      `Studio page lacks ${token}.`
+    );
+  }
+
+  for (const token of [
+    "mergeMediaRecords(",
+    "woodsmith:media-items-reconciled"
+  ]) {
+    assert.equal(
+      workspace.includes(token),
+      true,
+      `Media workspace lacks ${token}.`
+    );
+  }
+
+  const autosaveStart =
+    actions.indexOf(
+      "export async function\nsavePieceAutosaveAction("
+    );
+  const legacyStart =
+    actions.indexOf(
+      "export async function savePieceAction("
+    );
+
+  assert.ok(
+    autosaveStart >= 0 &&
+    legacyStart >
+      autosaveStart
+  );
+
+  const autosave =
+    actions.slice(
+      autosaveStart,
+      legacyStart
+    );
+
+  for (const token of [
+    "canonicalizeDirectPieceMediaLinks(",
+    "recordAudit: false",
+    "markReviewed: true",
+    "verifiedMedia:",
+    "mediaReviewRequired:",
+    "revalidateMediaSurfaces("
+  ]) {
+    assert.equal(
+      autosave.includes(token),
+      true,
+      `Piece autosave direct assignment body lacks ${token}.`
+    );
+  }
+
+  assert.equal(
+    autosave.includes(
+      "link.public &&\n                  media.reviewed"
+    ),
+    false
+  );
+
+  const canonicalizeStart =
+    actions.indexOf(
+      "function canonicalizeDirectPieceMediaLinks("
+    );
+  const canonicalizeEnd =
+    actions.indexOf(
+      "function syncPieceMediaMembership(",
+      canonicalizeStart
+    );
+
+  assert.ok(
+    canonicalizeStart >= 0 &&
+    canonicalizeEnd >
+      canonicalizeStart,
+    "The direct-assignment helper boundary is missing."
+  );
+
+  const canonicalize =
+    actions.slice(
+      canonicalizeStart,
+      canonicalizeEnd
+    );
+
+  for (const token of [
+    "getMedia(",
+    "resolveMediaPath(",
+    "getMediaAccessAssociations(",
+    "listPieceMediaLinksForPath(",
+    "mediaDirectPublicEligible(",
+    "StudioMutationValidationError",
+    "Protected media",
+    "supported renderable image or video"
+  ]) {
+    assert.equal(
+      canonicalize.includes(token),
+      true,
+      `Direct-assignment helper lacks ${token}.`
+    );
+  }
+
+  const membershipEnd = actions.indexOf(
+    "function clampNumber(",
+    canonicalizeEnd
+  );
+  const membership = actions.slice(
+    canonicalizeEnd,
+    membershipEnd
+  );
+
+  for (const token of [
+    "replacePieceMediaLinks(",
+    "reconcileMediaPieceAssignment(",
+    "reconcileRelativePaths: [relativePath]",
+    "pieceMediaRoleDefaultsPublic("
+  ]) {
+    assert.equal(
+      membership.includes(token),
+      true,
+      `Media-panel relation reconciliation lacks ${token}.`
+    );
+  }
+
+  assert.equal(
+    membership.includes("savePiece({"),
+    false,
+    "Media-panel assignment must not rely on legacy piece paths as its source of truth."
+  );
+
+  const loaderStart =
+    actions.indexOf(
+      "function loadPieceAutosaveEntity("
+    );
+
+  assert.ok(
+    loaderStart >= 0 &&
+    autosaveStart >
+      loaderStart,
+    "The canonical piece loader boundary is missing."
+  );
+
+  const loader =
+    actions.slice(
+      loaderStart,
+      autosaveStart
+    );
+
+  for (const token of [
+    "mediaLinks",
+    "mediaItems",
+    "mediaRecordForPieceEditor("
+  ]) {
+    assert.equal(
+      loader.includes(token),
+      true,
+      `Canonical piece loader lacks ${token}.`
+    );
+  }
+
+  for (const token of [
+    "ReplacePieceMediaLinksOptions",
+    "recordAudit?: boolean",
+    "markReviewed?: boolean",
+    "reviewed = CASE WHEN ? = 1 THEN 1 ELSE reviewed END",
+    "if (\n        options.recordAudit"
+  ]) {
+    assert.equal(
+      database.includes(token),
+      true,
+      `Database direct assignment contract lacks ${token}.`
+    );
+  }
+
+  for (const token of [
+    "export function mediaDirectPublicEligible(",
+    "classifyMediaAccess(",
+    '"public-library"'
+  ]) {
+    assert.equal(
+      mediaAccess.includes(token),
+      true,
+      `Canonical privacy module lacks ${token}.`
+    );
+  }
+});
+
+test("media picker dialog stops picker-local input and change events before the parent autosave boundary", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../components/media-picker.tsx", import.meta.url),
+    "utf8"
+  );
+  const marker = 'className="media-picker-dialog"';
+  const markerIndex = source.indexOf(marker);
+
+  if (markerIndex < 0) {
+    throw new Error("The media-picker dialog marker is missing.");
+  }
+
+  const openingStart = source.lastIndexOf("<div", markerIndex);
+  const closingToken = 'ref={dialogRef} role="dialog">';
+  const closingIndex = source.indexOf(closingToken, markerIndex);
+  const openingEnd =
+    closingIndex < 0
+      ? -1
+      : closingIndex + closingToken.length;
+
+  if (openingStart < 0 || openingEnd <= markerIndex) {
+    throw new Error("The media-picker dialog opening tag is malformed.");
+  }
+
+  const openingTag = source.slice(openingStart, openingEnd + 1);
+
+  for (const token of [
+    "onInput={(event) => event.stopPropagation()}",
+    "onChange={(event) => event.stopPropagation()}"
+  ]) {
+    if (!openingTag.includes(token)) {
+      throw new Error(`The media-picker dialog lacks ${token}.`);
+    }
+
+    if (source.split(token).length - 1 !== 1) {
+      throw new Error(`The media-picker source must contain exactly one ${token}.`);
+    }
+  }
+
+  if (!source.includes('onChange={(event) => setQuery(event.target.value)}')) {
+    throw new Error("The picker-local search handler was not preserved.");
+  }
+
+  if (!source.includes("onSelectionChange?.([relativePath])")) {
+    throw new Error("The picker single-selection callback was not preserved.");
+  }
 });

@@ -1,6 +1,7 @@
 import {
   createInvoiceAction,
   createShippingLabelAction,
+  applyMediaFolderRulesAction,
   assignMediaCandidateAction,
   cleanupMediaBackgroundAction,
   deleteMediaAction,
@@ -20,6 +21,7 @@ import {
   saveCommissionTypeAction,
   savePieceCategoryAction,
   saveMediaMetadataAction,
+  saveMediaSourceFolderRuleAction,
   saveOrderAction,
   savePieceAction,
   savePostAction,
@@ -36,6 +38,7 @@ import Link from "next/link";
 import {
   countMedia,
   getMedia,
+  getMediaAccessAssociations,
   getSiteSettings,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
@@ -43,10 +46,12 @@ import {
   listMedia,
   listMediaOperationBatches,
   listMediaForProjectReferences,
+  previewMediaFolderRules,
   listNotifications,
   listOrders,
   listPages,
   listPieceMediaLinks,
+  listPieceMediaLinksForPath,
   listPieces,
   listPosts,
   listProjects,
@@ -54,8 +59,11 @@ import {
   listUsers,
   type CommissionTypeRecord,
   type MediaAssignmentFilter,
+  type MediaAssignmentSourceFilter,
   type MediaAiFilter,
   type MediaKindFilter,
+  type MediaRecord,
+  type MediaSort,
   type PieceRecord,
   type PostRecord,
   type UserRecord
@@ -83,6 +91,7 @@ import { PieceMediaEditor } from "@/components/piece-media-editor";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode } from "@/lib/piece-model";
 import { visualAuditRequestAuthorized } from "@/lib/visual-audit";
+import { classifyMediaAccess } from "@/lib/media-access";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "categories", "custom", "people", "process", "media", "projects", "orders", "reviews", "notifications"] as const;
@@ -103,6 +112,51 @@ function Check({ label, name, defaultChecked = false }: { label: string; name: s
 
 function toDomId(prefix: string, value: string) {
   return `${prefix}-${value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item"}`;
+}
+
+function studioMediaWithAccess(
+  item: MediaRecord,
+  pieceSlug?: string | null
+): MediaRecord {
+  const associations =
+    getMediaAccessAssociations(
+      item.relativePath
+    );
+
+  const privateAssociation =
+    listPieceMediaLinksForPath(
+      item.relativePath
+    ).some(
+      (link) =>
+        link.role ===
+          "private-project" ||
+        (
+          !link.public &&
+          link.pieceSlug !==
+            pieceSlug
+        )
+    );
+
+  const access =
+    classifyMediaAccess(
+      item.relativePath,
+      {
+        ...associations,
+        privateAssociation
+      }
+    );
+
+  return {
+    ...item,
+    metadata: {
+      ...item.metadata,
+      mediaAccessKind:
+        access.kind,
+      mediaDirectPublicEligible:
+        access.kind ===
+        "public-library"
+    }
+  };
 }
 
 function StudioMasterList({ items, newHref, newLabel, selectedKey }: { items: Array<{ key: string; label: string; meta: string; href: string }>; newHref: string; newLabel: string; selectedKey: string }) {
@@ -342,7 +396,6 @@ function NewPieceEditor({ piece, categories, mediaItems, mediaLinks, highlight =
         <div className="field-grid three-up compact-grid"><Field label="Inventory" name="inventoryCount" defaultValue={piece.inventoryCount} type="number" /><Field label="Lead time days" name="leadTimeDays" defaultValue={piece.leadTimeDays} type="number" /><Field label="Commission type" name="commissionTypeSlug" defaultValue={piece.commissionTypeSlug ?? ""} /></div>
         <div className="field-grid two-up compact-grid"><Field label="Featured rank" name="featuredRank" defaultValue={piece.featuredRank} type="number" /><Field label="Media limit" name="publicMediaLimit" defaultValue={Number(piece.metadata.publicMediaLimit ?? 4)} type="number" /></div>
         <Area label="Fulfillment options" name="fulfillmentText" defaultValue={Array.isArray(piece.metadata.fulfillmentOptions) ? piece.metadata.fulfillmentOptions.join("\n") : ""} rows={3} />
-        <div className="field-grid two-up compact-grid"><Check label="Verified media" name="verifiedMedia" defaultChecked={piece.metadata.verifiedMedia !== false} /><Check label="Media review required" name="mediaReviewRequired" defaultChecked={Boolean(piece.metadata.mediaReviewRequired)} /></div>
         <button className="button-primary" type="submit">Save piece</button>
       </form>
     </article>
@@ -389,7 +442,7 @@ StudioPageEditorRecord {
 }
 
 function pieceDraft(ownerEmail: string): Omit<PieceRecord, "createdAt" | "updatedAt"> {
-  return { slug: "new-piece-draft", title: "New Piece Draft", subtitle: "", category: "Tables", status: "commission", publicationStatus: "draft", availabilityLabel: "Draft", summary: "", story: "", details: [], tags: ["draft"], materials: ["Hardwood"], dimensions: { width: 48, depth: 24, height: 30, unit: "in" }, priceCents: null, inventoryCount: 0, leadTimeDays: 56, mediaPaths: [], featuredRank: 99, ownerEmail, metadata: { verifiedMedia: false, publicMediaLimit: 4, fulfillmentOptions: [] } };
+  return { slug: "new-piece-draft", title: "New Piece Draft", subtitle: "", category: "Tables", status: "commission", publicationStatus: "draft", availabilityLabel: "Draft", summary: "", story: "", details: [], tags: ["draft"], materials: ["Hardwood"], dimensions: { width: 48, depth: 24, height: 30, unit: "in" }, priceCents: null, inventoryCount: 0, leadTimeDays: 56, mediaPaths: [], featuredRank: 99, ownerEmail, metadata: { verifiedMedia: false, mediaReviewRequired: false, publicMediaLimit: 4, fulfillmentOptions: [] } };
 }
 
 type StudioPieceEditorRecord =
@@ -521,7 +574,10 @@ export default async function StudioPage({
     panel?: string;
     media?: string;
     mediaPage?: string;
+    mediaPiece?: string;
     mediaAssignment?: string;
+    mediaSource?: string;
+    mediaSort?: string;
     mediaKind?: string;
     mediaAi?: string;
     error?: string;
@@ -550,7 +606,10 @@ export default async function StudioPage({
     panel: requestedPanel = "",
     media: mediaQuery = "",
     mediaPage: mediaPageRaw = "",
+    mediaPiece: mediaPieceRaw = "",
     mediaAssignment: mediaAssignmentRaw = "",
+    mediaSource: mediaSourceRaw = "",
+    mediaSort: mediaSortRaw = "",
     mediaKind: mediaKindRaw = "",
     mediaAi: mediaAiRaw = "",
     error = "",
@@ -591,9 +650,16 @@ export default async function StudioPage({
                       : saved === "review" || deleted === "review" ? "reviews"
                         : "overview";
   const requestedMediaPage = Math.max(1, Number.parseInt(mediaPageRaw, 10) || 1);
+  const mediaPiece = mediaPieceRaw.trim();
   const mediaAssignment: MediaAssignmentFilter = ["unassigned", "assigned", "review"].includes(mediaAssignmentRaw)
     ? mediaAssignmentRaw as MediaAssignmentFilter
     : "all";
+  const mediaSource: MediaAssignmentSourceFilter = ["none", "manual-piece-editor", "manual-media-panel", "folder-rule", "AI-suggestion", "legacy"].includes(mediaSourceRaw)
+    ? mediaSourceRaw as MediaAssignmentSourceFilter
+    : "all";
+  const mediaSort: MediaSort = ["updated-desc", "path-asc", "folder-asc", "piece-asc"].includes(mediaSortRaw)
+    ? mediaSortRaw as MediaSort
+    : "updated-desc";
   const mediaKind: MediaKindFilter = ["image", "video"].includes(mediaKindRaw)
     ? mediaKindRaw as MediaKindFilter
     : "all";
@@ -611,12 +677,35 @@ export default async function StudioPage({
   const posts = currentPanel === "process" || currentPanel === "media" ? listPosts(true) : [];
   const commissionTypes = currentPanel === "custom" ? listCommissionTypes(true) : [];
   const users = currentPanel === "people" ? listUsers() : [];
-  const mediaFilters = { includeUnreviewed: true, query: queryOpt, assignment: mediaAssignment, kind: mediaKind, aiFilter: mediaAi } as const;
+  const mediaFilters = {
+    includeUnreviewed: true,
+    query: queryOpt,
+    ...(mediaPiece ? { pieceSlug: mediaPiece } : {}),
+    assignment: mediaAssignment,
+    assignmentSource: mediaSource,
+    sort: mediaSort,
+    kind: mediaKind,
+    aiFilter: mediaAi
+  } as const;
   const allMediaTotal = currentPanel === "media" ? countMedia({ includeUnreviewed: true }) : 0;
+  const folderRulePreview = currentPanel === "media" ? previewMediaFolderRules() : null;
   const mediaTotal = currentPanel === "media" ? countMedia(mediaFilters) : 0;
   const mediaPage = Math.min(Math.max(1, Math.ceil(mediaTotal / STUDIO_MEDIA_PAGE_SIZE)), requestedMediaPage);
   const mediaOffset = (mediaPage - 1) * STUDIO_MEDIA_PAGE_SIZE;
-  const media = currentPanel === "media" ? listMedia({ ...mediaFilters, limit: STUDIO_MEDIA_PAGE_SIZE, offset: mediaOffset }) : [];
+  const media = currentPanel === "media"
+    ? listMedia({
+        ...mediaFilters,
+        limit:
+          STUDIO_MEDIA_PAGE_SIZE,
+        offset:
+          mediaOffset
+      }).map(
+        (item) =>
+          studioMediaWithAccess(
+            item
+          )
+      )
+    : [];
   const verificationMedia = currentPanel === "media" ? listMedia({ includeUnreviewed: true }) : [];
   const verificationQueue = currentPanel === "media" ? buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image")) : [];
   const projects = currentPanel === "projects"
@@ -686,13 +775,28 @@ export default async function StudioPage({
     : [];
   const editorSelectedMedia = editorMediaPaths.map((relativePath) => getMedia(relativePath)).filter((item): item is NonNullable<ReturnType<typeof getMedia>> => Boolean(item));
   const editorMediaItems = [...new Map(
-    [...editorInitialMedia, ...editorSelectedMedia].map((item) => [item.relativePath, item])
+    [...editorInitialMedia, ...editorSelectedMedia]
+      .map(
+        (item) =>
+          studioMediaWithAccess(
+            item,
+            editingPiece &&
+            editingPiece.slug !==
+              "new-piece-draft"
+              ? editingPiece.slug
+              : null
+          )
+      )
+      .map((item) => [item.relativePath, item])
   ).values()];
   const panelHref = (panel: StudioPanel, extras?: Record<string, string>) => {
     const params = new URLSearchParams({ panel });
     if (panel === "media") {
       if (queryOpt) params.set("media", queryOpt);
+      if (mediaPiece) params.set("mediaPiece", mediaPiece);
       if (mediaAssignment !== "all") params.set("mediaAssignment", mediaAssignment);
+      if (mediaSource !== "all") params.set("mediaSource", mediaSource);
+      if (mediaSort !== "updated-desc") params.set("mediaSort", mediaSort);
       if (mediaKind !== "all") params.set("mediaKind", mediaKind);
       if (mediaAi !== "all") params.set("mediaAi", mediaAi);
     }
@@ -801,12 +905,16 @@ export default async function StudioPage({
           </div>
         </div>
         <StudioMediaWorkspace
+          applyFolderRulesAction={applyMediaFolderRulesAction}
           assignAction={assignMediaCandidateAction}
           cleanupAction={cleanupMediaBackgroundAction}
           deleteAction={deleteMediaAction}
           initialItems={media}
           initialOperations={listMediaOperationBatches(12)}
           initialAssignment={mediaAssignment}
+          initialAssignmentSource={mediaSource}
+          initialPieceSlug={mediaPiece}
+          initialSort={mediaSort}
           initialKind={mediaKind}
           initialAiFilter={mediaAi}
           initialPage={mediaPage}
@@ -815,15 +923,21 @@ export default async function StudioPage({
           initialTotal={mediaTotal}
           loadPageAction={loadMediaPageAction}
           loadVerificationQueueAction={loadMediaVerificationQueueAction}
+          folderRulePreview={folderRulePreview!}
           rejectSuggestionAction={markMediaAiSuggestionWrongAction}
           pages={pages.map((page) => ({ slug: page.slug, title: page.title }))}
-          pieces={pieces.map((piece) => ({ slug: piece.slug, title: piece.title }))}
+          pieces={pieces.map((piece) => ({
+            slug: piece.slug,
+            title: piece.title,
+            mediaCount: countMedia({ includeUnreviewed: true, pieceSlug: piece.slug })
+          }))}
           posts={posts.map((post) => ({ slug: post.slug, title: post.title }))}
           organizeBatchAction={organizeMediaBatchAction}
           refreshAction={refreshMediaLibraryAction}
           renameAction={renameMediaAction}
           rollbackBatchAction={rollbackMediaBatchAction}
           saveAction={saveMediaMetadataAction}
+          saveFolderRuleAction={saveMediaSourceFolderRuleAction}
           uploadAction={uploadMediaAction}
           verificationQueue={verificationQueue.map((entry) => ({ pieceSlug: entry.piece.slug, pieceTitle: entry.piece.title, assignedCount: entry.assigned.length, needsReview: entry.needsReview, suggestions: entry.suggestions }))}
         />

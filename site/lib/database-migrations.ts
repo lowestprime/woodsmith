@@ -8,6 +8,10 @@ import {
   normalizePriceMode,
   normalizeReviewsMode
 } from "./piece-model.ts";
+import {
+  backfillLegacyMediaAssignmentTruthInDatabase,
+  bootstrapMediaSourceFolderRulesInDatabase
+} from "./media-folder-rules.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -382,6 +386,74 @@ const migrations: Migration[] = [
 
       return {
         tables: ["studio_mutation_operations"]
+      };
+    }
+  },
+  {
+    version: 8,
+    name: "media-folder-rules-and-assignment-provenance",
+    checksum: "2026-07-media-folder-rules-provenance-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_source_folder_rules (
+          id TEXT PRIMARY KEY,
+          normalized_folder TEXT NOT NULL UNIQUE,
+          piece_slug TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          priority INTEGER NOT NULL DEFAULT 100,
+          default_role TEXT NOT NULL DEFAULT 'gallery',
+          default_public INTEGER NOT NULL DEFAULT 1 CHECK (default_public IN (0, 1)),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT NOT NULL,
+          FOREIGN KEY (piece_slug) REFERENCES pieces(slug) ON UPDATE CASCADE ON DELETE RESTRICT
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_media_source_folder_rules_piece
+          ON media_source_folder_rules(piece_slug);
+        CREATE INDEX IF NOT EXISTS idx_media_source_folder_rules_enabled
+          ON media_source_folder_rules(enabled, priority, normalized_folder);
+      `);
+
+      const addedColumns: string[] = [];
+      const add = (column: string, definition: string) => {
+        if (addColumn(db, "media_items", column, definition)) addedColumns.push(column);
+      };
+
+      add(
+        "assignment_source",
+        "TEXT CHECK (assignment_source IN ('manual-piece-editor', 'manual-media-panel', 'folder-rule', 'AI-suggestion', 'legacy'))"
+      );
+      add(
+        "assignment_rule_id",
+        "TEXT REFERENCES media_source_folder_rules(id) ON UPDATE CASCADE ON DELETE SET NULL"
+      );
+      add("assigned_at", "TEXT");
+      add("assigned_by", "TEXT");
+      add(
+        "manual_override",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (manual_override IN (0, 1))"
+      );
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_media_assignment_source
+          ON media_items(assignment_source);
+        CREATE INDEX IF NOT EXISTS idx_media_assignment_rule
+          ON media_items(assignment_rule_id);
+        CREATE INDEX IF NOT EXISTS idx_media_manual_override
+          ON media_items(manual_override);
+      `);
+
+      const legacy =
+        backfillLegacyMediaAssignmentTruthInDatabase(db);
+      const rules =
+        bootstrapMediaSourceFolderRulesInDatabase(db);
+
+      return {
+        table: "media_source_folder_rules",
+        addedColumns,
+        legacy,
+        rules
       };
     }
   }

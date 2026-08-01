@@ -5,6 +5,7 @@ import {
   classifyMediaAccess,
   mediaAccessAllowed,
   mediaCacheHeaders,
+  mediaDirectPublicEligible,
   mediaRequiresDirectBrowserRequest,
   normalizeMediaRequestPath
 } from "./media-access.ts";
@@ -90,4 +91,47 @@ test("malformed and traversal media paths are denied", () => {
     assert.equal(normalizeMediaRequestPath(relativePath), null);
     assert.equal(classifyMediaAccess(relativePath).kind, "invalid");
   }
+});
+
+test("only public-library media is eligible for direct public assignment", () => {
+  assert.equal(
+    mediaDirectPublicEligible(
+      "Furniture/public-table.jpg"
+    ),
+    true
+  );
+
+  assert.equal(
+    mediaDirectPublicEligible(
+      "commission-staging/private.jpg"
+    ),
+    false
+  );
+
+  assert.equal(
+    mediaDirectPublicEligible(
+      "projects/BW-CM-260713-ABCD/reference.jpg"
+    ),
+    false
+  );
+
+  assert.equal(
+    mediaDirectPublicEligible(
+      "ai-renderings/unconsumed.png",
+      {
+        renderAsset: true
+      }
+    ),
+    false
+  );
+
+  assert.equal(
+    mediaDirectPublicEligible(
+      "Furniture/private-source.jpg",
+      {
+        privateAssociation: true
+      }
+    ),
+    false
+  );
 });

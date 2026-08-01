@@ -1,5 +1,46 @@
+import {
+  mediaDirectPublicEligible,
+  type MediaAccessAssociations
+} from "./media-access.ts";
+
 export const EDITABLE_PIECE_MEDIA_ROLES = ["hero", "gallery", "detail", "context", "process", "drawing", "plan", "installation", "source"] as const;
 export type EditablePieceMediaRole = (typeof EDITABLE_PIECE_MEDIA_ROLES)[number];
+
+export const PUBLIC_BY_DEFAULT_PIECE_MEDIA_ROLES:
+  readonly EditablePieceMediaRole[] = [
+    "hero",
+    "gallery",
+    "detail",
+    "context",
+    "process",
+    "drawing",
+    "plan",
+    "installation"
+  ];
+
+export function pieceMediaRoleDefaultsPublic(
+  role: EditablePieceMediaRole
+) {
+  return (
+    PUBLIC_BY_DEFAULT_PIECE_MEDIA_ROLES as
+      readonly string[]
+  ).includes(role);
+}
+
+export function pieceMediaDefaultPublic(
+  role: EditablePieceMediaRole,
+  relativePath: string,
+  associations:
+    MediaAccessAssociations = {}
+) {
+  return (
+    pieceMediaRoleDefaultsPublic(role) &&
+    mediaDirectPublicEligible(
+      relativePath,
+      associations
+    )
+  );
+}
 
 export type NormalizedPieceMediaLink = {
   relativePath: string;

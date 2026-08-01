@@ -109,8 +109,6 @@ type PieceEditorDraft = {
   featuredRank: string;
   publicMediaLimit: string;
   fulfillmentText: string;
-  verifiedMedia: boolean;
-  mediaReviewRequired: boolean;
   legacyPaths: string[];
   mediaLinks:
     NormalizedPieceMediaLink[];
@@ -263,15 +261,6 @@ function pieceEditorDraft(
             .map(String)
             .join("\n")
         : "",
-    verifiedMedia:
-      piece.metadata
-        .verifiedMedia !==
-      false,
-    mediaReviewRequired:
-      Boolean(
-        piece.metadata
-          .mediaReviewRequired
-      ),
     legacyPaths:
       [...piece.mediaPaths],
     mediaLinks:
@@ -311,6 +300,34 @@ function parseOptionalInteger(
     : null;
 }
 
+function mergeMediaItems(
+  current:
+    readonly MediaPickerItem[],
+  incoming:
+    readonly MediaPickerItem[]
+) {
+  const byPath =
+    new Map(
+      current.map(
+        (item) => [
+          item.relativePath,
+          item
+        ]
+      )
+    );
+
+  for (const item of incoming) {
+    byPath.set(
+      item.relativePath,
+      item
+    );
+  }
+
+  return [
+    ...byPath.values()
+  ];
+}
+
 function parseInteger(
   value: string,
   fallback = 0
@@ -344,6 +361,20 @@ function piecePatch(
     parseOptionalInteger(
       draft.height
     );
+
+  const publicDisplayCount =
+    draft.mediaLinks.filter(
+      (link) =>
+        link.public &&
+        [
+          "hero",
+          "gallery",
+          "detail",
+          "context"
+        ].includes(
+          link.role
+        )
+    ).length;
 
   return {
     slug:
@@ -458,7 +489,7 @@ function piecePatch(
     metadata: {
       ...original.metadata,
       verifiedMedia:
-        draft.verifiedMedia,
+        publicDisplayCount > 0,
       publicMediaLimit:
         parseInteger(
           draft.publicMediaLimit,
@@ -474,8 +505,7 @@ function piecePatch(
             .fulfillmentText
         ),
       mediaReviewRequired:
-        draft
-          .mediaReviewRequired
+        false
     },
     mediaLinks:
       draft.mediaLinks.map(
@@ -526,6 +556,14 @@ export function StudioPieceEditor({
   const [draft, setDraft] =
     useState<PieceEditorDraft>(
       initialDraft
+    );
+
+  const [
+    editorMediaItems,
+    setEditorMediaItems
+  ] =
+    useState<MediaPickerItem[]>(
+      mediaItems
     );
 
   const draftRef =
@@ -617,6 +655,22 @@ export function StudioPieceEditor({
       []
     );
 
+  const loadPieceMediaPage =
+    useCallback(
+      (
+        request:
+          Parameters<
+            typeof loadMediaPageAction
+          >[0]
+      ) =>
+        loadMediaPageAction({
+          ...request,
+          publicAssignmentPieceSlug:
+            pieceRef.current.slug
+        }),
+      []
+    );
+
   const savePieceMutation =
     useCallback(
       (
@@ -658,19 +712,34 @@ export function StudioPieceEditor({
           return;
         }
 
+        const currentEntity =
+          snapshot.currentEntity;
+
         pieceRef.current =
-          snapshot
-            .currentEntity
-            .piece;
+          currentEntity.piece;
 
         adoptDraft(
           pieceEditorDraft(
-            snapshot
-              .currentEntity
-              .piece,
-            snapshot
-              .currentEntity
-              .mediaLinks
+            currentEntity.piece,
+            currentEntity.mediaLinks
+          )
+        );
+
+        setEditorMediaItems(
+          (current) =>
+            mergeMediaItems(
+              current,
+              currentEntity.mediaItems
+            )
+        );
+
+        window.dispatchEvent(
+          new CustomEvent(
+            "woodsmith:media-items-reconciled",
+            {
+              detail:
+                currentEntity.mediaItems
+            }
           )
         );
       },
@@ -1324,7 +1393,7 @@ export function StudioPieceEditor({
             `piece:${piece.slug}`
           }
           items={
-            mediaItems
+            editorMediaItems
           }
           legacyPaths={
             draft.legacyPaths
@@ -1333,7 +1402,7 @@ export function StudioPieceEditor({
             draft.mediaLinks
           }
           loadPageAction={
-            loadMediaPageAction
+            loadPieceMediaPage
           }
           onLinksChange={
             updateMediaLinks
@@ -1610,58 +1679,6 @@ export function StudioPieceEditor({
             }
           />
         </label>
-
-        <div className="field-grid two-up compact-grid">
-          <label className="checkbox-row">
-            <input
-              checked={
-                draft
-                  .verifiedMedia
-              }
-              name="verifiedMedia"
-              onChange={(
-                event
-              ) =>
-                updateField(
-                  "verifiedMedia",
-                  event.target
-                    .checked
-                )
-              }
-              type="checkbox"
-              value="1"
-            />
-
-            <span>
-              Verified media
-            </span>
-          </label>
-
-          <label className="checkbox-row">
-            <input
-              checked={
-                draft
-                  .mediaReviewRequired
-              }
-              name="mediaReviewRequired"
-              onChange={(
-                event
-              ) =>
-                updateField(
-                  "mediaReviewRequired",
-                  event.target
-                    .checked
-                )
-              }
-              type="checkbox"
-              value="1"
-            />
-
-            <span>
-              Media review required
-            </span>
-          </label>
-        </div>
 
         <button
           className="button-primary"

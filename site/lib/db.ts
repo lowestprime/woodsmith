@@ -17,6 +17,24 @@ import { normalizePieceCategories, type PieceCategoryDefinition } from "./catego
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
 import {
+  MEDIA_ASSIGNMENT_SOURCES,
+  MEDIA_FOLDER_RULE_ROLES,
+  MEDIA_SORTS,
+  applyMediaFolderRulesInDatabase,
+  bootstrapMediaSourceFolderRulesInDatabase,
+  listMediaSourceFolderRulesInDatabase,
+  previewMediaFolderRulesInDatabase,
+  saveMediaSourceFolderRuleInDatabase,
+  type MediaAssignmentSource,
+  type MediaAssignmentSourceFilter,
+  type MediaFolderRuleApplyResult,
+  type MediaFolderRulePreview,
+  type MediaFolderRuleRole,
+  type MediaFolderRuleSaveInput,
+  type MediaSort,
+  type MediaSourceFolderRuleRecord
+} from "./media-folder-rules.ts";
+import {
   getPieceInquiryMode,
   getPiecePriceMode,
   getPieceReviewsMode,
@@ -33,6 +51,18 @@ export type PublicationStatus = "published" | "draft" | "archived";
 export type PieceStatus = "inventory" | "commission" | "archive";
 export type ProjectKind = "commission" | "purchase";
 export type ProjectVisibility = "public" | "private";
+
+export { MEDIA_ASSIGNMENT_SOURCES, MEDIA_FOLDER_RULE_ROLES, MEDIA_SORTS };
+export type {
+  MediaAssignmentSource,
+  MediaAssignmentSourceFilter,
+  MediaFolderRuleApplyResult,
+  MediaFolderRulePreview,
+  MediaFolderRuleRole,
+  MediaFolderRuleSaveInput,
+  MediaSort,
+  MediaSourceFolderRuleRecord
+};
 
 type PersistedSettingValue<T> = T extends string
   ? string
@@ -258,6 +288,11 @@ export type MediaRecord = {
   reviewed: boolean;
   tags: string[];
   metadata: Record<string, unknown>;
+  assignmentSource: MediaAssignmentSource | null;
+  assignmentRuleId: string | null;
+  assignedAt: string | null;
+  assignedBy: string | null;
+  manualOverride: boolean;
   createdAt: string;
   updatedAt: string;
 };
@@ -1329,8 +1364,11 @@ function seedDefaultContent(db: DatabaseSync) {
   }
 }
 
-function syncMediaLibraryIntoDatabase(db: DatabaseSync, options: { applySeedAssignments?: boolean } = {}) {
-  const scanned = scanMediaLibrary();
+function syncMediaLibraryIntoDatabase(
+  db: DatabaseSync,
+  options: { applySeedAssignments?: boolean } = {},
+  scanned = scanMediaLibrary()
+) {
 
   for (const media of scanned) {
     const existing = db.prepare(`
@@ -1575,6 +1613,11 @@ function mapMedia(row: Record<string, unknown>): MediaRecord {
     reviewed: toBoolean(row.reviewed),
     tags: readJson(row.tagsJson, []),
     metadata: readJson(row.metadataJson, {}),
+    assignmentSource: row.assignmentSource ? row.assignmentSource as MediaAssignmentSource : null,
+    assignmentRuleId: row.assignmentRuleId ? String(row.assignmentRuleId) : null,
+    assignedAt: row.assignedAt ? String(row.assignedAt) : null,
+    assignedBy: row.assignedBy ? String(row.assignedBy) : null,
+    manualOverride: toBoolean(row.manualOverride),
     createdAt: String(row.createdAt),
     updatedAt: String(row.updatedAt)
   };
@@ -2234,50 +2277,388 @@ export type PieceMediaLinkInput = Omit<PieceMediaLinkRecord, "id" | "pieceSlug" 
   id?: string;
 };
 
-export function replacePieceMediaLinks(pieceSlug: string, links: PieceMediaLinkInput[], actorEmail: string | null = null) {
-  return withDatabaseTransaction((db) => {
-    if (!getPiece(pieceSlug)) throw new Error(`Piece '${pieceSlug}' does not exist.`);
-    const before = listPieceMediaLinks(pieceSlug);
-    const mediaExists = db.prepare("SELECT 1 AS present FROM media_items WHERE relative_path = ? LIMIT 1");
-    const seen = new Set<string>();
-    for (const link of links) {
-      if (!PIECE_MEDIA_ROLES.includes(link.role)) throw new Error(`Unsupported piece media role '${link.role}'.`);
-      if (!mediaExists.get(link.relativePath)) throw new Error(`Media '${link.relativePath}' does not exist.`);
-      const identity = `${link.relativePath}\u0000${link.role}\u0000${link.stage ?? ""}`;
-      if (seen.has(identity)) throw new Error(`Duplicate media role '${link.role}' for '${link.relativePath}'.`);
-      seen.add(identity);
-    }
+export type ReplacePieceMediaLinksOptions = {
+  actorEmail?: string | null;
+  assignmentSource?: MediaAssignmentSource;
+  recordAudit?: boolean;
+  markReviewed?: boolean;
+  reconcileRelativePaths?: readonly string[];
+};
 
-    db.prepare("DELETE FROM piece_media_links WHERE piece_slug = ?").run(pieceSlug);
-    const insert = db.prepare(`
-      INSERT INTO piece_media_links (
-        id, piece_slug, relative_path, role, stage, occurred_at, title, caption,
-        technical_note, alt_override, display_order, is_public, legacy_synced, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
-    `);
-    const timestamp = nowIso();
-    links.forEach((link, index) => {
-      insert.run(
-        link.id || randomUUID(), pieceSlug, link.relativePath, link.role, link.stage ?? null,
-        link.occurredAt ?? null, link.title ?? "", link.caption ?? "", link.technicalNote ?? "",
-        link.altOverride ?? null, Number.isFinite(link.displayOrder) ? Math.round(link.displayOrder) : index,
-        link.public ? 1 : 0, timestamp, timestamp
+function normalizeReplacePieceMediaLinksOptions(
+  value:
+    | string
+    | null
+    | ReplacePieceMediaLinksOptions
+): Required<
+  Pick<
+    ReplacePieceMediaLinksOptions,
+    "recordAudit" |
+    "markReviewed"
+  >
+> & {
+  actorEmail: string | null;
+  assignmentSource: MediaAssignmentSource;
+  reconcileRelativePaths: Set<string> | null;
+} {
+  if (
+    typeof value ===
+    "string" ||
+    value === null
+  ) {
+    return {
+      actorEmail: value,
+      assignmentSource: "manual-piece-editor",
+      recordAudit: true,
+      markReviewed: false,
+      reconcileRelativePaths: null
+    };
+  }
+
+  return {
+    actorEmail:
+      value.actorEmail ??
+      null,
+    assignmentSource:
+      value.assignmentSource ??
+      "manual-piece-editor",
+    recordAudit:
+      value.recordAudit ??
+      true,
+    markReviewed:
+      value.markReviewed ??
+      false,
+    reconcileRelativePaths:
+      value.reconcileRelativePaths
+        ? new Set(
+            value.reconcileRelativePaths
+              .map((relativePath) => relativePath.trim())
+              .filter(Boolean)
+          )
+        : null
+  };
+}
+
+type ReconcileLegacyMediaPieceAssignmentInput = {
+  actorEmail: string;
+  assignmentSource: MediaAssignmentSource;
+  markReviewed: boolean;
+  timestamp: string;
+};
+
+function reconcileLegacyMediaPieceAssignmentInDatabase(
+  db: DatabaseSync,
+  relativePath: string,
+  input: ReconcileLegacyMediaPieceAssignmentInput
+) {
+  const remaining = db.prepare(`
+    SELECT
+      COUNT(DISTINCT piece_slug) AS pieceCount,
+      MIN(piece_slug) AS pieceSlug
+    FROM piece_media_links
+    WHERE relative_path = ?
+  `).get(relativePath) as {
+    pieceCount?: unknown;
+    pieceSlug?: unknown;
+  } | undefined;
+
+  const nextPieceSlug =
+    Number(remaining?.pieceCount ?? 0) === 1
+    && remaining?.pieceSlug
+      ? String(remaining.pieceSlug)
+      : null;
+
+  db.prepare(`
+    UPDATE media_items
+    SET piece_slug = ?,
+        reviewed = CASE WHEN ? = 1 THEN 1 ELSE reviewed END,
+        assignment_source = ?,
+        assignment_rule_id = NULL,
+        assigned_at = ?,
+        assigned_by = ?,
+        manual_override = 1,
+        updated_at = ?
+    WHERE relative_path = ?
+  `).run(
+    nextPieceSlug,
+    input.markReviewed ? 1 : 0,
+    input.assignmentSource,
+    input.timestamp,
+    input.actorEmail,
+    input.timestamp,
+    relativePath
+  );
+
+  return nextPieceSlug;
+}
+
+export function reconcileMediaPieceAssignment(
+  relativePath: string,
+  input: {
+    actorEmail?: string | null;
+    assignmentSource: MediaAssignmentSource;
+    markReviewed?: boolean;
+  }
+) {
+  const actorEmail = input.actorEmail?.trim().toLowerCase() || "studio";
+  return withDatabaseTransaction((db) =>
+    reconcileLegacyMediaPieceAssignmentInDatabase(
+      db,
+      relativePath,
+      {
+        actorEmail,
+        assignmentSource: input.assignmentSource,
+        markReviewed: input.markReviewed ?? false,
+        timestamp: nowIso()
+      }
+    )
+  );
+}
+
+export function replacePieceMediaLinks(
+  pieceSlug: string,
+  links: PieceMediaLinkInput[],
+  actorOrOptions:
+    | string
+    | null
+    | ReplacePieceMediaLinksOptions =
+      null
+) {
+  const options =
+    normalizeReplacePieceMediaLinksOptions(
+      actorOrOptions
+    );
+
+  const actorEmail =
+    options.actorEmail
+      ?.trim()
+      .toLowerCase() ||
+    "studio";
+
+  return withDatabaseTransaction(
+    (db) => {
+      if (!getPiece(pieceSlug)) {
+        throw new Error(
+          `Piece '${pieceSlug}' does not exist.`
+        );
+      }
+
+      const before =
+        listPieceMediaLinks(
+          pieceSlug
+        );
+
+      const mediaExists =
+        db.prepare(
+          "SELECT 1 AS present FROM media_items WHERE relative_path = ? LIMIT 1"
+        );
+
+      const seen =
+        new Set<string>();
+
+      for (const link of links) {
+        if (
+          !PIECE_MEDIA_ROLES.includes(
+            link.role
+          )
+        ) {
+          throw new Error(
+            `Unsupported piece media role '${link.role}'.`
+          );
+        }
+
+        if (
+          !mediaExists.get(
+            link.relativePath
+          )
+        ) {
+          throw new Error(
+            `Media '${link.relativePath}' does not exist.`
+          );
+        }
+
+        const identity =
+          `${link.relativePath}\u0000` +
+          `${link.role}\u0000` +
+          `${link.stage ?? ""}`;
+
+        if (seen.has(identity)) {
+          throw new Error(
+            `Duplicate media role '${link.role}' for '${link.relativePath}'.`
+          );
+        }
+
+        seen.add(identity);
+      }
+
+      const beforePaths =
+        new Set(
+          before.map(
+            (link) =>
+              link.relativePath
+          )
+        );
+
+      db.prepare(
+        "DELETE FROM piece_media_links WHERE piece_slug = ?"
+      ).run(pieceSlug);
+
+      const insert =
+        db.prepare(`
+          INSERT INTO piece_media_links (
+            id, piece_slug, relative_path, role, stage, occurred_at, title, caption,
+            technical_note, alt_override, display_order, is_public, legacy_synced, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+        `);
+
+      const timestamp =
+        nowIso();
+
+      links.forEach(
+        (
+          link,
+          index
+        ) => {
+          insert.run(
+            link.id ||
+              randomUUID(),
+            pieceSlug,
+            link.relativePath,
+            link.role,
+            link.stage ??
+              null,
+            link.occurredAt ??
+              null,
+            link.title ??
+              "",
+            link.caption ??
+              "",
+            link.technicalNote ??
+              "",
+            link.altOverride ??
+              null,
+            Number.isFinite(
+              link.displayOrder
+            )
+              ? Math.round(
+                  link.displayOrder
+                )
+              : index,
+            link.public
+              ? 1
+              : 0,
+            timestamp,
+            timestamp
+          );
+
+        }
       );
-      db.prepare("UPDATE media_items SET piece_slug = COALESCE(piece_slug, ?), updated_at = ? WHERE relative_path = ?")
-        .run(pieceSlug, timestamp, link.relativePath);
-    });
 
-    const legacyPaths = links
-      .filter((link) => link.public && ["hero", "gallery", "detail", "context"].includes(link.role))
-      .sort((left, right) => (left.role === "hero" ? -1 : right.role === "hero" ? 1 : left.displayOrder - right.displayOrder))
-      .map((link) => link.relativePath);
-    db.prepare("UPDATE pieces SET media_paths_json = ?, updated_at = ? WHERE slug = ?")
-      .run(writeJson([...new Set(legacyPaths)]), timestamp, pieceSlug);
+      const afterPaths =
+        new Set(
+          links.map(
+            (link) =>
+              link.relativePath
+          )
+        );
 
-    const after = listPieceMediaLinks(pieceSlug);
-    recordAdminEditAudit({ actorEmail, entityType: "piece-media", entityKey: pieceSlug, operation: "replace", before, after });
-    return after;
-  });
+      const reconciliationPaths =
+        options.reconcileRelativePaths ??
+        new Set([
+          ...beforePaths,
+          ...afterPaths
+        ]);
+
+      for (const relativePath of reconciliationPaths) {
+        reconcileLegacyMediaPieceAssignmentInDatabase(
+          db,
+          relativePath,
+          {
+            actorEmail,
+            assignmentSource:
+              options.assignmentSource,
+            markReviewed:
+              options.markReviewed
+              && afterPaths.has(relativePath),
+            timestamp
+          }
+        );
+      }
+
+      const legacyPaths =
+        links
+          .filter(
+            (link) =>
+              link.public &&
+              [
+                "hero",
+                "gallery",
+                "detail",
+                "context"
+              ].includes(
+                link.role
+              )
+          )
+          .sort(
+            (
+              left,
+              right
+            ) =>
+              left.role ===
+                "hero"
+                ? -1
+                : right.role ===
+                    "hero"
+                  ? 1
+                  : left
+                      .displayOrder -
+                    right
+                      .displayOrder
+          )
+          .map(
+            (link) =>
+              link.relativePath
+          );
+
+      db.prepare(
+        "UPDATE pieces SET media_paths_json = ?, updated_at = ? WHERE slug = ?"
+      ).run(
+        writeJson(
+          [
+            ...new Set(
+              legacyPaths
+            )
+          ]
+        ),
+        timestamp,
+        pieceSlug
+      );
+
+      const after =
+        listPieceMediaLinks(
+          pieceSlug
+        );
+
+      if (
+        options.recordAudit
+      ) {
+        recordAdminEditAudit({
+          actorEmail:
+            options.actorEmail,
+          entityType:
+            "piece-media",
+          entityKey:
+            pieceSlug,
+          operation:
+            "replace",
+          before,
+          after
+        });
+      }
+
+      return after;
+    }
+  );
 }
 
 export function recordAdminEditAudit(input: {
@@ -2658,6 +3039,8 @@ export type MediaListOptions = {
   postSlug?: string | null;
   includeUnreviewed?: boolean;
   assignment?: MediaAssignmentFilter;
+  assignmentSource?: MediaAssignmentSourceFilter;
+  sort?: MediaSort;
   kind?: MediaKindFilter;
   aiFilter?: MediaAiFilter;
   limit?: number;
@@ -2677,11 +3060,17 @@ function addMediaListFilters(clauses: string[], params: (string | number | null)
     params.push(options.postSlug);
   }
   if (options?.assignment === "unassigned") {
-    clauses.push("piece_slug IS NULL AND post_slug IS NULL AND page_slug IS NULL AND project_reference IS NULL");
+    clauses.push("piece_slug IS NULL AND post_slug IS NULL AND page_slug IS NULL AND project_reference IS NULL AND NOT EXISTS (SELECT 1 FROM piece_media_links WHERE piece_media_links.relative_path = media_items.relative_path)");
   } else if (options?.assignment === "assigned") {
-    clauses.push("(piece_slug IS NOT NULL OR post_slug IS NOT NULL OR page_slug IS NOT NULL OR project_reference IS NOT NULL)");
+    clauses.push("(piece_slug IS NOT NULL OR post_slug IS NOT NULL OR page_slug IS NOT NULL OR project_reference IS NOT NULL OR EXISTS (SELECT 1 FROM piece_media_links WHERE piece_media_links.relative_path = media_items.relative_path))");
   } else if (options?.assignment === "review") {
     clauses.push("reviewed = 0");
+  }
+  if (options?.assignmentSource === "none") {
+    clauses.push("assignment_source IS NULL");
+  } else if (options?.assignmentSource && options.assignmentSource !== "all") {
+    clauses.push("assignment_source = ?");
+    params.push(options.assignmentSource);
   }
   if (options?.kind && options.kind !== "all") {
     clauses.push("kind = ?");
@@ -2714,15 +3103,24 @@ export function listMedia(options?: MediaListOptions) {
   addMediaListFilters(clauses, params, options);
 
   const where = `WHERE ${clauses.join(" AND ")}`;
+  const orderBy = options?.sort === "path-asc"
+    ? "relative_path ASC"
+    : options?.sort === "folder-asc"
+      ? "folder COLLATE NOCASE ASC, relative_path ASC"
+      : options?.sort === "piece-asc"
+        ? "COALESCE(piece_slug, '') COLLATE NOCASE ASC, relative_path ASC"
+        : "datetime(updated_at) DESC, relative_path ASC";
   let sql = `
     SELECT relative_path AS relativePath, folder, file_name AS fileName, kind, size_bytes AS sizeBytes, cluster_key AS clusterKey,
            alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
            project_reference AS projectReference, user_email AS userEmail, focal_x AS focalX, focal_y AS focalY,
            zoom, reviewed, tags_json AS tagsJson, metadata_json AS metadataJson,
+           assignment_source AS assignmentSource, assignment_rule_id AS assignmentRuleId,
+           assigned_at AS assignedAt, assigned_by AS assignedBy, manual_override AS manualOverride,
            created_at AS createdAt, updated_at AS updatedAt
     FROM media_items
     ${where}
-    ORDER BY datetime(updated_at) DESC, relative_path ASC
+    ORDER BY ${orderBy}
   `;
 
   if (options?.limit) {
@@ -2761,6 +3159,8 @@ export function listMediaForProjectReferences(references: string[]): MediaRecord
            alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
            project_reference AS projectReference, user_email AS userEmail, focal_x AS focalX, focal_y AS focalY,
            zoom, reviewed, tags_json AS tagsJson, metadata_json AS metadataJson,
+           assignment_source AS assignmentSource, assignment_rule_id AS assignmentRuleId,
+           assigned_at AS assignedAt, assigned_by AS assignedBy, manual_override AS manualOverride,
            created_at AS createdAt, updated_at AS updatedAt
     FROM media_items
     WHERE project_reference IN (${placeholders}) AND ${junk}
@@ -2776,6 +3176,8 @@ export function getMedia(relativePath: string) {
            alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug,
            project_reference AS projectReference, user_email AS userEmail, focal_x AS focalX, focal_y AS focalY,
            zoom, reviewed, tags_json AS tagsJson, metadata_json AS metadataJson,
+           assignment_source AS assignmentSource, assignment_rule_id AS assignmentRuleId,
+           assigned_at AS assignedAt, assigned_by AS assignedBy, manual_override AS manualOverride,
            created_at AS createdAt, updated_at AS updatedAt
     FROM media_items WHERE relative_path = ? LIMIT 1
   `).get(relativePath) as Record<string, unknown> | undefined;
@@ -2822,8 +3224,14 @@ export function saveMediaMetadata(input: {
   reviewed: boolean;
   tags: string[];
   metadata?: Record<string, unknown>;
+  assignmentSource?: MediaAssignmentSource | null;
+  assignmentRuleId?: string | null;
+  assignedAt?: string | null;
+  assignedBy?: string | null;
+  manualOverride?: boolean;
 }) {
   const db = getDatabase();
+  const previous = getMedia(input.relativePath);
   if (!getMedia(input.relativePath)) {
     const media = scanMediaAsset(input.relativePath);
     if (!media) throw new Error(`Media file '${input.relativePath}' was not found in the configured library.`);
@@ -2831,8 +3239,10 @@ export function saveMediaMetadata(input: {
       INSERT INTO media_items (
         relative_path, folder, file_name, kind, size_bytes, cluster_key, alt_text,
         piece_slug, post_slug, page_slug, project_reference, user_email,
-        focal_x, focal_y, zoom, reviewed, tags_json, metadata_json, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', '{}', ?, ?)
+        focal_x, focal_y, zoom, reviewed, tags_json, metadata_json,
+        assignment_source, assignment_rule_id, assigned_at, assigned_by, manual_override,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', '{}', NULL, NULL, NULL, NULL, 0, ?, ?)
     `).run(
       media.relativePath,
       media.folder,
@@ -2856,10 +3266,15 @@ export function saveMediaMetadata(input: {
         focal_x = :focalX,
         focal_y = :focalY,
         zoom = :zoom,
-        reviewed = :reviewed,
-        tags_json = :tagsJson,
-        metadata_json = :metadataJson,
-        updated_at = :updatedAt
+         reviewed = :reviewed,
+         tags_json = :tagsJson,
+         metadata_json = :metadataJson,
+         assignment_source = :assignmentSource,
+         assignment_rule_id = :assignmentRuleId,
+         assigned_at = :assignedAt,
+         assigned_by = :assignedBy,
+         manual_override = :manualOverride,
+         updated_at = :updatedAt
     WHERE relative_path = :relativePath
   `).run({
     relativePath: input.relativePath,
@@ -2875,6 +3290,11 @@ export function saveMediaMetadata(input: {
     reviewed: input.reviewed ? 1 : 0,
     tagsJson: writeJson(input.tags),
     metadataJson: writeJson(input.metadata ?? {}),
+    assignmentSource: input.assignmentSource === undefined ? previous?.assignmentSource ?? null : input.assignmentSource,
+    assignmentRuleId: input.assignmentRuleId === undefined ? previous?.assignmentRuleId ?? null : input.assignmentRuleId,
+    assignedAt: input.assignedAt === undefined ? previous?.assignedAt ?? null : input.assignedAt,
+    assignedBy: input.assignedBy === undefined ? previous?.assignedBy ?? null : input.assignedBy,
+    manualOverride: input.manualOverride === undefined ? previous?.manualOverride ? 1 : 0 : input.manualOverride ? 1 : 0,
     updatedAt: nowIso()
   });
 }
@@ -3259,7 +3679,12 @@ export function applyMediaOperationSnapshots(input: {
         zoom: mutation.after.media.zoom,
         reviewed: mutation.after.media.reviewed,
         tags: mutation.after.media.tags,
-        metadata: mutation.after.media.metadata
+        metadata: mutation.after.media.metadata,
+        assignmentSource: mutation.after.media.assignmentSource,
+        assignmentRuleId: mutation.after.media.assignmentRuleId,
+        assignedAt: mutation.after.media.assignedAt,
+        assignedBy: mutation.after.media.assignedBy,
+        manualOverride: mutation.after.media.manualOverride
       });
       replaceMediaLinksForSnapshot(db, mutation.after);
     }
@@ -3301,19 +3726,24 @@ export function renameMediaRecordAndReferences(previousPath: string, nextPath: s
       if (!getMedia(nextPath)) throw new Error(`Renamed media '${nextPath}' was not found during reference synchronization.`);
 
       if (previous) saveMediaMetadata({
-      relativePath: nextPath,
-      altText: previous.altText,
-      pieceSlug: previous.pieceSlug,
-      postSlug: previous.postSlug,
-      pageSlug: previous.pageSlug,
-      projectReference: previous.projectReference,
-      userEmail: previous.userEmail,
-      focalX: previous.focalX,
-      focalY: previous.focalY,
-      zoom: previous.zoom,
-      reviewed: previous.reviewed,
-      tags: previous.tags,
-      metadata: previous.metadata
+        relativePath: nextPath,
+        altText: previous.altText,
+        pieceSlug: previous.pieceSlug,
+        postSlug: previous.postSlug,
+        pageSlug: previous.pageSlug,
+        projectReference: previous.projectReference,
+        userEmail: previous.userEmail,
+        focalX: previous.focalX,
+        focalY: previous.focalY,
+        zoom: previous.zoom,
+        reviewed: previous.reviewed,
+        tags: previous.tags,
+        metadata: previous.metadata,
+        assignmentSource: previous.assignmentSource,
+        assignmentRuleId: previous.assignmentRuleId,
+        assignedAt: previous.assignedAt,
+        assignedBy: previous.assignedBy,
+        manualOverride: previous.manualOverride
       });
 
       const result = rewriteMediaReferences(db, previousPath, nextPath);
@@ -3342,25 +3772,47 @@ export function deleteMediaRecordAndReferences(relativePath: string, actorEmail:
   }
 }
 
-export function refreshMediaLibrary() {
-  const db = getDatabase();
+export function listMediaSourceFolderRules(): MediaSourceFolderRuleRecord[] {
+  return listMediaSourceFolderRulesInDatabase(getDatabase());
+}
+
+export function previewMediaFolderRules(): MediaFolderRulePreview {
+  return previewMediaFolderRulesInDatabase(getDatabase());
+}
+
+export function saveMediaSourceFolderRule(input: MediaFolderRuleSaveInput) {
+  return withDatabaseTransaction((db) =>
+    saveMediaSourceFolderRuleInDatabase(db, input)
+  );
+}
+
+export function applyMediaFolderRules(actorEmail: string | null = null): MediaFolderRuleApplyResult {
+  return withDatabaseTransaction((db) =>
+    applyMediaFolderRulesInDatabase(db, actorEmail)
+  );
+}
+
+export function refreshMediaLibrary(actorEmail: string | null = null) {
   const scanned = scanMediaLibrary();
   const scannedPaths = new Set(scanned.map((media) => media.relativePath));
 
-  syncMediaLibraryIntoDatabase(db);
+  return withDatabaseTransaction((db) => {
+    syncMediaLibraryIntoDatabase(db, {}, scanned);
 
-  const staleRows = db.prepare(`
-    SELECT relative_path AS relativePath
-    FROM media_items
-  `).all() as Array<{ relativePath: string }>;
+    const staleRows = db.prepare(`
+      SELECT relative_path AS relativePath
+      FROM media_items
+    `).all() as Array<{ relativePath: string }>;
 
-  for (const row of staleRows) {
-    if (!scannedPaths.has(row.relativePath)) {
-      deleteMediaRecordAndReferences(row.relativePath);
+    for (const row of staleRows) {
+      if (!scannedPaths.has(row.relativePath)) {
+        deleteMediaRecordAndReferences(row.relativePath);
+      }
     }
-  }
 
-  return listMedia({ includeUnreviewed: true });
+    bootstrapMediaSourceFolderRulesInDatabase(db, actorEmail?.trim().toLowerCase() || "refresh");
+    return listMedia({ includeUnreviewed: true });
+  });
 }
 
 export type EmbeddingCacheEntry = {
@@ -3451,7 +3903,10 @@ export function listMediaWithoutAiTags(): MediaRecord[] {
            cluster_key AS clusterKey, alt_text AS altText, piece_slug AS pieceSlug, post_slug AS postSlug,
            page_slug AS pageSlug, project_reference AS projectReference, user_email AS userEmail,
            focal_x AS focalX, focal_y AS focalY, zoom, reviewed, tags_json AS tagsJson,
-           metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt
+           metadata_json AS metadataJson, assignment_source AS assignmentSource,
+           assignment_rule_id AS assignmentRuleId, assigned_at AS assignedAt,
+           assigned_by AS assignedBy, manual_override AS manualOverride,
+           created_at AS createdAt, updated_at AS updatedAt
     FROM media_items
     WHERE kind = 'image'
       AND json_extract(metadata_json, '$.aiAnalyzed') IS NULL

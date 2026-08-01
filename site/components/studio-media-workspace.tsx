@@ -7,7 +7,16 @@ import { MediaCollection } from "@/components/media-collection";
 import { MediaCropEditor } from "@/components/media-crop-editor";
 import { toMediaUrl } from "@/lib/format";
 import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
-import type { MediaAiFilter, MediaAssignmentFilter, MediaKindFilter, MediaOperationBatchRecord, MediaRecord } from "@/lib/db";
+import type {
+  MediaAiFilter,
+  MediaAssignmentFilter,
+  MediaAssignmentSourceFilter,
+  MediaFolderRulePreview,
+  MediaKindFilter,
+  MediaOperationBatchRecord,
+  MediaRecord,
+  MediaSort
+} from "@/lib/db";
 import type { MediaMatchCandidate } from "@/lib/media-audit";
 import { mediaRequiresDirectBrowserRequest } from "@/lib/media-access";
 
@@ -16,6 +25,7 @@ type MediaAction = (state: MediaActionResult | null, formData: FormData) => Prom
 type StudioOption = {
   slug: string;
   title: string;
+  mediaCount?: number;
 };
 
 type VerificationEntry = {
@@ -61,6 +71,9 @@ type StudioMediaWorkspaceProps = {
   initialQuery: string;
   initialTotal: number;
   initialAssignment: MediaAssignmentFilter;
+  initialAssignmentSource: MediaAssignmentSourceFilter;
+  initialPieceSlug: string;
+  initialSort: MediaSort;
   initialKind: MediaKindFilter;
   initialAiFilter: MediaAiFilter;
   initialOperations: MediaOperationBatchRecord[];
@@ -68,6 +81,7 @@ type StudioMediaWorkspaceProps = {
   posts: StudioOption[];
   pages: StudioOption[];
   verificationQueue: VerificationEntry[];
+  folderRulePreview: MediaFolderRulePreview;
   uploadAction: MediaAction;
   renameAction: MediaAction;
   deleteAction: MediaAction;
@@ -77,6 +91,8 @@ type StudioMediaWorkspaceProps = {
   rollbackBatchAction: MediaAction;
   assignAction: MediaAction;
   rejectSuggestionAction: MediaAction;
+  saveFolderRuleAction: MediaAction;
+  applyFolderRulesAction: () => Promise<MediaActionResult>;
   refreshAction: () => Promise<MediaActionResult>;
   loadPageAction: (request: MediaPageRequest) => Promise<MediaPageResult>;
   loadVerificationQueueAction: () => Promise<VerificationEntry[]>;
@@ -172,6 +188,34 @@ function parseNumber(value: FormDataEntryValue | null, fallback: number) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function mergeMediaRecords(
+  current:
+    readonly MediaRecord[],
+  incoming:
+    readonly MediaRecord[]
+) {
+  const byPath =
+    new Map(
+      current.map(
+        (item) => [
+          item.relativePath,
+          item
+        ]
+      )
+    );
+
+  for (const item of incoming) {
+    byPath.set(
+      item.relativePath,
+      item
+    );
+  }
+
+  return [
+    ...byPath.values()
+  ];
+}
+
 function inferKind(relativePath: string): MediaRecord["kind"] {
   const lower = relativePath.toLowerCase();
   if (/\.(jpe?g|png|gif|webp|avif|heic|heif|tiff?|svg)$/i.test(lower)) return "image";
@@ -225,7 +269,7 @@ function UploadMediaPanel({
         <label><span>Folder</span><input defaultValue="Uploads" name="folder" type="text" /></label>
         <label><span>Alt text</span><input name="altText" type="text" /></label>
         <div className="field-grid two-up compact-grid">
-          <label><span>Piece</span><select defaultValue="" name="pieceSlug"><option value="">Unassigned</option>{pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}</option>)}</select></label>
+          <label><span>Piece</span><select defaultValue="" name="pieceSlug"><option value="">Unassigned</option>{pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}{typeof piece.mediaCount === "number" ? ` (${piece.mediaCount})` : ""}</option>)}</select></label>
           <label><span>Process note</span><select defaultValue="" name="postSlug"><option value="">Unassigned</option>{posts.map((post) => <option key={post.slug} value={post.slug}>{post.title}</option>)}</select></label>
         </div>
         <label><span>Page</span><select defaultValue="" name="pageSlug"><option value="">Unassigned</option>{pages.map((page) => <option key={page.slug} value={page.slug}>{page.title}</option>)}</select></label>
@@ -309,6 +353,89 @@ function MediaBatchPanel({
           </article>
         ))}
       </div> : null}
+    </details>
+  );
+}
+
+function FolderRulesPanel({
+  preview,
+  pieces,
+  saveAction,
+  applyAction,
+  onPreview
+}: {
+  preview: MediaFolderRulePreview;
+  pieces: StudioOption[];
+  saveAction: MediaAction;
+  applyAction: () => Promise<MediaActionResult>;
+  onPreview: (preview: MediaFolderRulePreview, message: string) => void;
+}) {
+  const [isApplying, setIsApplying] = useState(false);
+  const ruleCounts = new Map(preview.byRule.map((entry) => [entry.ruleId, entry]));
+
+  async function applyRules() {
+    if (isApplying) return;
+    setIsApplying(true);
+    try {
+      const result = await applyAction();
+      if (result.ok && result.kind === "folder-rule") {
+        onPreview(result.preview, result.message);
+      } else if (!result.ok) {
+        onPreview(preview, result.message);
+      }
+    } finally {
+      setIsApplying(false);
+    }
+  }
+
+  return (
+    <details className="studio-panel studio-media-utility-panel media-folder-rules-panel" open>
+      <summary>Folder rules</summary>
+      <p className="muted-copy">Exact direct Furniture folder names can assign only records with no existing piece, post, page, project, normalized-link, or manual-override truth.</p>
+      <dl className="media-training-metrics" aria-label="Folder-rule dry-run summary">
+        <div><dt>Eligible</dt><dd>{preview.eligible}</dd></div>
+        <div><dt>Rule assigned</dt><dd>{preview.assignedByRule}</dd></div>
+        <div><dt>Manual preserved</dt><dd>{preview.preservedManual}</dd></div>
+        <div><dt>Associations</dt><dd>{preview.preservedAssociations}</dd></div>
+        <div><dt>Conflicts</dt><dd>{preview.conflicts + preview.missingRules}</dd></div>
+        <div><dt>Excluded</dt><dd>{preview.excluded}</dd></div>
+      </dl>
+      <div className="button-row">
+        <button className="button-primary" disabled={isApplying || preview.eligible === 0} onClick={() => void applyRules()} type="button">
+          {isApplying ? "Applying…" : `Apply to ${preview.eligible} unassigned`}
+        </button>
+      </div>
+      <div className="studio-verification-list">
+        {preview.rules.map((rule) => {
+          const count = ruleCounts.get(rule.id);
+          return (
+            <ActionForm action={saveAction} className="request-form compact-form" key={`${rule.id}:${rule.updatedAt}`} onSuccess={(result) => {
+              if (result.kind === "folder-rule") onPreview(result.preview, result.message);
+            }}>
+              <input name="id" type="hidden" value={rule.id} />
+              <input name="normalizedFolder" type="hidden" value={rule.normalizedFolder} />
+              <strong>{rule.normalizedFolder}</strong>
+              <small>{count?.assignedByRule ?? 0} assigned · {count?.eligible ?? 0} eligible · {count?.preserved ?? 0} preserved · {count?.conflicts ?? 0} conflicts</small>
+              <label><span>Piece</span><select defaultValue={rule.pieceSlug} name="pieceSlug">{pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}{typeof piece.mediaCount === "number" ? ` (${piece.mediaCount})` : ""}</option>)}</select></label>
+              <div className="field-grid two-up compact-grid">
+                <label><span>Priority</span><input defaultValue={rule.priority} name="priority" type="number" /></label>
+                <label><span>Role</span><select defaultValue={rule.defaultRole} name="defaultRole">{MEDIA_ROLES.map((role) => <option key={role} value={role}>{role.replaceAll("-", " ")}</option>)}</select></label>
+              </div>
+              <label className="checkbox-row"><input defaultChecked={rule.enabled} name="enabled" type="checkbox" value="1" /><span>Enabled</span></label>
+              <label className="checkbox-row"><input defaultChecked={rule.defaultPublic} name="defaultPublic" type="checkbox" value="1" /><span>Public relation by default</span></label>
+              <button className="button-secondary" type="submit">Save rule</button>
+            </ActionForm>
+          );
+        })}
+      </div>
+      {preview.conflictRows.length > 0 ? (
+        <details className="media-advanced-actions">
+          <summary>Rule conflicts ({preview.conflictRows.length})</summary>
+          <div className="studio-verification-list">
+            {preview.conflictRows.slice(0, 24).map((conflict) => <p className="muted-copy" key={`${conflict.relativePath}:${conflict.reason}`}><strong>{conflict.reason}</strong> · {conflict.relativePath}</p>)}
+          </div>
+        </details>
+      ) : null}
     </details>
   );
 }
@@ -579,6 +706,9 @@ export function StudioMediaWorkspace({
   initialQuery,
   initialTotal,
   initialAssignment,
+  initialAssignmentSource,
+  initialPieceSlug,
+  initialSort,
   initialKind,
   initialAiFilter,
   initialOperations,
@@ -586,6 +716,7 @@ export function StudioMediaWorkspace({
   posts,
   pages,
   verificationQueue,
+  folderRulePreview,
   uploadAction,
   renameAction,
   deleteAction,
@@ -595,6 +726,8 @@ export function StudioMediaWorkspace({
   rollbackBatchAction,
   assignAction,
   rejectSuggestionAction,
+  saveFolderRuleAction,
+  applyFolderRulesAction,
   refreshAction,
   loadPageAction,
   loadVerificationQueueAction
@@ -606,13 +739,17 @@ export function StudioMediaWorkspace({
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [total, setTotal] = useState(initialTotal);
   const [query, setQuery] = useState(initialQuery);
+  const [pieceFilter, setPieceFilter] = useState(initialPieceSlug);
   const [assignmentFilter, setAssignmentFilter] = useState<MediaAssignmentFilter>(initialAssignment);
+  const [assignmentSourceFilter, setAssignmentSourceFilter] = useState<MediaAssignmentSourceFilter>(initialAssignmentSource);
+  const [sort, setSort] = useState<MediaSort>(initialSort);
   const [kindFilter, setKindFilter] = useState<MediaKindFilter>(initialKind);
   const [aiFilter, setAiFilter] = useState<MediaAiFilter>(initialAiFilter);
   const [queue, setQueue] = useState(verificationQueue);
   const [candidateAssignments, setCandidateAssignments] = useState<Record<string, string>>({});
   const [selectedPaths, setSelectedPaths] = useState<Set<string>>(() => new Set());
   const [operations, setOperations] = useState(initialOperations);
+  const [folderPreview, setFolderPreview] = useState(folderRulePreview);
   const [automationResult, setAutomationResult] = useState<AutomationResponse | null>(null);
   const [providerStatus, setProviderStatus] = useState<AutomationResponse["providers"]>(undefined);
   const [cacheStatus, setCacheStatus] = useState<AutomationResponse["cache"]>(undefined);
@@ -631,18 +768,74 @@ export function StudioMediaWorkspace({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
+    const reconcileMediaItems =
+      (event: Event) => {
+        const incoming =
+          (
+            event as
+              CustomEvent<
+                MediaRecord[]
+              >
+          ).detail;
+
+        if (
+          !Array.isArray(
+            incoming
+          )
+        ) {
+          return;
+        }
+
+        setItems(
+          (current) =>
+            mergeMediaRecords(
+              current,
+              incoming
+            )
+        );
+
+        setDetachedItem(
+          (current) =>
+            current
+              ? mergeMediaRecords(
+                  [current],
+                  incoming
+                )[0] ??
+                current
+              : current
+        );
+      };
+
+    window.addEventListener(
+      "woodsmith:media-items-reconciled",
+      reconcileMediaItems
+    );
+
+    return () => {
+      window.removeEventListener(
+        "woodsmith:media-items-reconciled",
+        reconcileMediaItems
+      );
+    };
+  }, []);
+
+  useEffect(() => {
     setItems(initialItems);
     setPage(initialPage);
     setPageSize(initialPageSize);
     setQuery(initialQuery);
     setTotal(initialTotal);
+    setPieceFilter(initialPieceSlug);
     setAssignmentFilter(initialAssignment);
+    setAssignmentSourceFilter(initialAssignmentSource);
+    setSort(initialSort);
     setKindFilter(initialKind);
     setAiFilter(initialAiFilter);
     setQueue(verificationQueue);
     setOperations(initialOperations);
+    setFolderPreview(folderRulePreview);
     setSelectedPath((current) => initialItems.some((item) => item.relativePath === current) ? current : initialItems[0]?.relativePath ?? "");
-  }, [initialAiFilter, initialAssignment, initialItems, initialKind, initialOperations, initialPage, initialPageSize, initialQuery, initialTotal, verificationQueue]);
+  }, [folderRulePreview, initialAiFilter, initialAssignment, initialAssignmentSource, initialItems, initialKind, initialOperations, initialPage, initialPageSize, initialPieceSlug, initialQuery, initialSort, initialTotal, verificationQueue]);
 
   useEffect(() => {
     let active = true;
@@ -674,6 +867,10 @@ export function StudioMediaWorkspace({
         setPage(result.page);
         setPageSize(result.pageSize);
         setTotal(result.total);
+        setPieceFilter(result.pieceSlug);
+        setAssignmentFilter(result.assignment);
+        setAssignmentSourceFilter(result.assignmentSource);
+        setSort(result.sort);
         setSelectedPath((current) => result.items.some((item) => item.relativePath === current)
           ? current
           : result.items[0]?.relativePath ?? "");
@@ -686,7 +883,10 @@ export function StudioMediaWorkspace({
       params.set("panel", "media");
       result.query ? params.set("media", result.query) : params.delete("media");
       result.page > 1 ? params.set("mediaPage", String(result.page)) : params.delete("mediaPage");
+      result.pieceSlug ? params.set("mediaPiece", result.pieceSlug) : params.delete("mediaPiece");
       result.assignment !== "all" ? params.set("mediaAssignment", result.assignment) : params.delete("mediaAssignment");
+      result.assignmentSource !== "all" ? params.set("mediaSource", result.assignmentSource) : params.delete("mediaSource");
+      result.sort !== "updated-desc" ? params.set("mediaSort", result.sort) : params.delete("mediaSort");
       result.kind !== "all" ? params.set("mediaKind", result.kind) : params.delete("mediaKind");
       result.aiFilter !== "all" ? params.set("mediaAi", result.aiFilter) : params.delete("mediaAi");
       window.history.replaceState(null, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
@@ -707,10 +907,10 @@ export function StudioMediaWorkspace({
       return;
     }
     const timeout = window.setTimeout(() => {
-      void fetchPage({ page, pageSize, query: deferredQuery, assignment: assignmentFilter, kind: kindFilter, aiFilter });
+      void fetchPage({ page, pageSize, query: deferredQuery, pieceSlug: pieceFilter, assignment: assignmentFilter, assignmentSource: assignmentSourceFilter, sort, kind: kindFilter, aiFilter });
     }, 220);
     return () => window.clearTimeout(timeout);
-  }, [aiFilter, assignmentFilter, deferredQuery, fetchPage, isDirty, kindFilter, page, pageSize]);
+  }, [aiFilter, assignmentFilter, assignmentSourceFilter, deferredQuery, fetchPage, isDirty, kindFilter, page, pageSize, pieceFilter, sort]);
 
   function updateItem(relativePath: string, updater: (current: MediaRecord) => MediaRecord) {
     setItems((current) => current.map((item) => (item.relativePath === relativePath ? updater(item) : item)));
@@ -759,9 +959,13 @@ export function StudioMediaWorkspace({
           setPageMessage(result.message);
           return;
         }
+        if (result.kind === "refresh") {
+          setFolderPreview(result.preview);
+          setPageMessage(result.message);
+        }
       }
       const [, nextQueue] = await Promise.all([
-        fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter, aiFilter }),
+        fetchPage({ page, pageSize, query, pieceSlug: pieceFilter, assignment: assignmentFilter, assignmentSource: assignmentSourceFilter, sort, kind: kindFilter, aiFilter }),
         loadVerificationQueueAction()
       ]);
       setQueue(nextQueue);
@@ -842,6 +1046,11 @@ export function StudioMediaWorkspace({
                 photoQuality: "unrated",
                 cleanupMode: "original"
               },
+              assignmentSource: "manual-media-panel",
+              assignmentRuleId: null,
+              assignedAt: new Date().toISOString(),
+              assignedBy: "studio",
+              manualOverride: true,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
@@ -866,6 +1075,18 @@ export function StudioMediaWorkspace({
           pieces={pieces}
           rollbackAction={rollbackBatchAction}
           selectedPaths={selectedPaths}
+        />
+
+        <FolderRulesPanel
+          applyAction={applyFolderRulesAction}
+          onPreview={(preview, message) => {
+            setFolderPreview(preview);
+            setPageMessage(message);
+            void refreshWorkspaceData(false);
+          }}
+          pieces={pieces}
+          preview={folderPreview}
+          saveAction={saveFolderRuleAction}
         />
 
         <details className="studio-panel studio-media-utility-panel media-automation-panel" open>
@@ -949,7 +1170,7 @@ export function StudioMediaWorkspace({
                         </button>
                         <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster training {compactMetric(evidence.clusterPropagation)}</span><span>Folder training {compactMetric(evidence.folderDateContext)}</span><span>Manual label {compactMetric(evidence.manualPrior)}</span><span>Rejected signal {compactMetric(evidence.negativeReviewSignal)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
                         <ActionForm action={assignAction} className="candidate-assignment-form" onSuccess={() => {
-                          const assignedItem = { ...item, pieceSlug: entry.pieceSlug, reviewed: true, updatedAt: new Date().toISOString() };
+                          const assignedItem = { ...item, pieceSlug: entry.pieceSlug, reviewed: true, assignmentSource: "AI-suggestion" as const, assignmentRuleId: null, assignedAt: new Date().toISOString(), assignedBy: "studio", manualOverride: true, updatedAt: new Date().toISOString() };
                           setCandidateAssignments((current) => ({ ...current, [item.relativePath]: entry.pieceSlug }));
                           setItems((current) => current.map((candidate) => candidate.relativePath === item.relativePath ? assignedItem : candidate));
                           setDetachedItem((current) => current?.relativePath === item.relativePath ? assignedItem : current);
@@ -981,6 +1202,9 @@ export function StudioMediaWorkspace({
               </button>
             ))}
           </div>
+          <label className="studio-media-ai-filter"><span className="sr-only">Piece filter</span><select aria-label="Piece filter" onChange={(event) => { setPage(1); setPieceFilter(event.target.value); }} value={pieceFilter}><option value="">All pieces</option>{pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}{typeof piece.mediaCount === "number" ? ` (${piece.mediaCount})` : ""}</option>)}</select></label>
+          <label className="studio-media-ai-filter"><span className="sr-only">Assignment source filter</span><select aria-label="Assignment source filter" onChange={(event) => { setPage(1); setAssignmentSourceFilter(event.target.value as MediaAssignmentSourceFilter); }} value={assignmentSourceFilter}><option value="all">All sources</option><option value="none">No provenance</option><option value="manual-piece-editor">Piece editor</option><option value="manual-media-panel">Media panel</option><option value="folder-rule">Folder rule</option><option value="AI-suggestion">AI suggestion</option><option value="legacy">Legacy</option></select></label>
+          <label className="studio-media-ai-filter"><span className="sr-only">Media sort</span><select aria-label="Media sort" onChange={(event) => { setPage(1); setSort(event.target.value as MediaSort); }} value={sort}><option value="updated-desc">Recently updated</option><option value="path-asc">Path</option><option value="folder-asc">Folder</option><option value="piece-asc">Piece</option></select></label>
           <div aria-label="Media type filter" className="studio-media-filter-pills studio-media-kind-filters" role="group">
             {(["all", "image", "video"] as const).map((filter) => (
               <button aria-pressed={kindFilter === filter} className={kindFilter === filter ? "is-active" : ""} key={filter} onClick={() => { setPage(1); setKindFilter(filter); }} type="button">
@@ -1026,7 +1250,7 @@ export function StudioMediaWorkspace({
                 <div className="studio-media-browser-body">
                   <strong>{item.fileName}</strong>
                   <p>{assignmentBadge(item, pieces, posts, pages)}</p>
-                  <small>{item.reviewed ? "Reviewed" : "Needs review"}{clusterId ? ` · ${clusterId.slice(-6)}` : ""}</small>
+                  <small>{item.reviewed ? "Reviewed" : "Needs review"} · {item.assignmentSource ?? "no provenance"}{item.manualOverride ? " · manual" : ""}{clusterId ? ` · ${clusterId.slice(-6)}` : ""}</small>
                 </div>
               </button>
               <button aria-label={`${selectedForAutomation ? "Remove" : "Add"} ${item.fileName} ${selectedForAutomation ? "from" : "to"} batch selection`} aria-pressed={selectedForAutomation} className="media-card-select" onClick={() => setSelectedPaths((current) => { const next = new Set(current); if (next.has(item.relativePath)) next.delete(item.relativePath); else next.add(item.relativePath); return next; })} title="Select for organize or training actions" type="button">{selectedForAutomation ? "Selected" : "Select"}</button>
@@ -1060,6 +1284,11 @@ export function StudioMediaWorkspace({
                   cleanupMode: formData?.get("cleanupMode")?.toString() || selectedItem.metadata.cleanupMode || "soft-matte",
                   cleanupGeneratedFrom: selectedItem.relativePath
                 },
+                assignmentSource: "manual-media-panel",
+                assignmentRuleId: null,
+                assignedAt: new Date().toISOString(),
+                assignedBy: "studio",
+                manualOverride: true,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
               };
@@ -1110,6 +1339,11 @@ export function StudioMediaWorkspace({
                   zoom: parseNumber(formData?.get("zoom") ?? null, current.zoom),
                   reviewed,
                   tags: parseList(formData?.get("tagsText") ?? null),
+                  assignmentSource: "manual-media-panel",
+                  assignmentRuleId: null,
+                  assignedAt: new Date().toISOString(),
+                  assignedBy: "studio",
+                  manualOverride: true,
                   metadata: {
                     ...current.metadata,
                     cleanupMode: formData?.get("cleanupMode")?.toString() || current.metadata.cleanupMode || "original",
@@ -1128,8 +1362,8 @@ export function StudioMediaWorkspace({
               if (intent === "save-next" || intent === "approve-next") {
                 setSelectedPath(nextPath);
               }
-              if (assignmentFilter !== "all" || kindFilter !== "all" || query) {
-                void fetchPage({ page, pageSize, query, assignment: assignmentFilter, kind: kindFilter, aiFilter });
+              if (assignmentFilter !== "all" || assignmentSourceFilter !== "all" || pieceFilter || kindFilter !== "all" || query) {
+                void fetchPage({ page, pageSize, query, pieceSlug: pieceFilter, assignment: assignmentFilter, assignmentSource: assignmentSourceFilter, sort, kind: kindFilter, aiFilter });
               }
             }}
             pages={pages}

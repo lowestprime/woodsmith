@@ -17,7 +17,11 @@ import type {
 } from "@/lib/actions";
 import { toMediaUrl } from "@/lib/format";
 import {
+  mediaDirectPublicEligible
+} from "@/lib/media-access";
+import {
   buildInitialPieceMediaLinks,
+  pieceMediaDefaultPublic,
   type EditablePieceMediaRole,
   type NormalizedPieceMediaLink,
   type PieceMediaEditorLinkInput
@@ -158,6 +162,75 @@ export function PieceMediaEditor({
         ),
       [items]
     );
+
+  function mediaAssociations(
+    relativePath: string
+  ) {
+    const item =
+      itemMap.get(relativePath);
+
+    const accessKind =
+      String(
+        item?.metadata
+          .mediaAccessKind ??
+        ""
+      );
+
+    return {
+      projectReference:
+        item?.projectReference ??
+        null,
+      renderAsset:
+        accessKind ===
+        "private-preview",
+      privateAssociation:
+        accessKind ===
+        "private-admin"
+    };
+  }
+
+  function canPublish(
+    relativePath: string
+  ) {
+    const item =
+      itemMap.get(relativePath);
+
+    const accessKind =
+      String(
+        item?.metadata
+          .mediaAccessKind ??
+        ""
+      );
+
+    if (
+      accessKind &&
+      accessKind !==
+        "public-library"
+    ) {
+      return false;
+    }
+
+    return mediaDirectPublicEligible(
+      relativePath,
+      mediaAssociations(
+        relativePath
+      )
+    );
+  }
+
+  function defaultPublic(
+    relativePath: string,
+    role:
+      EditablePieceMediaRole
+  ) {
+    return pieceMediaDefaultPublic(
+      role,
+      relativePath,
+      mediaAssociations(
+        relativePath
+      )
+    );
+  }
 
   const displayPaths =
     links
@@ -308,7 +381,11 @@ export function PieceMediaEditor({
                     altOverride: null,
                     displayOrder:
                       index,
-                    public: false
+                    public:
+                      defaultPublic(
+                        relativePath,
+                        role
+                      )
                   };
             }
           );
@@ -367,7 +444,7 @@ export function PieceMediaEditor({
 
       <MediaPicker
         defaultValue={displayPaths}
-        helperText="The first selected file is the hero. Detail and context roles can be refined below."
+        helperText="The first selected file is the hero. Eligible library media becomes visible immediately; protected media remains hidden."
         items={items}
         key={`${entityKey}:display:${displayPaths.join("\u0000")}`}
         label="Public gallery"
@@ -390,7 +467,7 @@ export function PieceMediaEditor({
 
       <MediaPicker
         defaultValue={buildPaths}
-        helperText="Add build progress, drawings, plans, and installation records. Nothing becomes public until its Public switch is enabled and the file is reviewed."
+        helperText="Process, drawing, plan, and installation media is visible immediately when eligible. Source media remains hidden by default."
         items={items}
         key={`${entityKey}:build:${buildPaths.join("\u0000")}`}
         label="Build record media"
@@ -418,7 +495,7 @@ export function PieceMediaEditor({
         >
           <summary>
             Roles, captions, stages,
-            and publication
+            and visibility
           </summary>
 
           <div
@@ -438,6 +515,11 @@ export function PieceMediaEditor({
                 const buildRole =
                   BUILD_ROLES.includes(
                     link.role
+                  );
+
+                const publicEligible =
+                  canPublish(
+                    link.relativePath
                   );
 
                 return (
@@ -669,7 +751,11 @@ export function PieceMediaEditor({
                       <label className="checkbox-row">
                         <input
                           checked={
-                            link.public
+                            link.public &&
+                            publicEligible
+                          }
+                          disabled={
+                            !publicEligible
                           }
                           onChange={(
                             event
@@ -688,8 +774,7 @@ export function PieceMediaEditor({
                         />
 
                         <span>
-                          Public after media
-                          review
+                          Visible on public site
                         </span>
                       </label>
                     </div>
