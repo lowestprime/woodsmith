@@ -97,6 +97,7 @@ export type StudioAutosaveFormProps<
   showStatus?: boolean;
   statusActions?: ReactNode;
   statusClassName?: string;
+  statusIdleLabel?: string;
 };
 
 type AutosaveInputMode =
@@ -107,6 +108,15 @@ type AutosaveInputMode =
 function inputMode(
   target: EventTarget | null
 ): AutosaveInputMode {
+  if (
+    target instanceof HTMLElement &&
+    target.closest(
+      '[data-studio-autosave="ignore"]'
+    )
+  ) {
+    return "ignored";
+  }
+
   if (
     target instanceof
       HTMLTextAreaElement
@@ -186,6 +196,7 @@ export function StudioAutosaveForm<
   showStatus = true,
   statusActions,
   statusClassName,
+  statusIdleLabel,
   className,
   ...formProps
 }: StudioAutosaveFormProps<
@@ -477,6 +488,7 @@ export function StudioAutosaveForm<
         <StudioSaveStatus
           actions={statusActions}
           className={statusClassName}
+          idleLabel={statusIdleLabel}
           snapshot={snapshot}
         />
       ) : null}

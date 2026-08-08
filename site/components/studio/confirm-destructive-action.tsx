@@ -4,7 +4,8 @@ import {
   useEffect,
   useId,
   useRef,
-  useState
+  useState,
+  type ReactNode
 } from "react";
 
 const FOCUSABLE_SELECTOR = [
@@ -27,6 +28,7 @@ type ConfirmDestructiveActionProps = {
   confirmClassName?: string;
   submitName?: string;
   submitValue?: string;
+  dialogContent?: ReactNode;
   onConfirm?: () =>
     | void
     | Promise<void>;
@@ -45,6 +47,7 @@ export function ConfirmDestructiveAction({
     "button-primary",
   submitName,
   submitValue,
+  dialogContent,
   onConfirm
 }: ConfirmDestructiveActionProps) {
   const titleId = useId();
@@ -273,6 +276,8 @@ export function ConfirmDestructiveAction({
             >
               {description}
             </p>
+
+            {dialogContent}
 
             {error ? (
               <p

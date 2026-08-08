@@ -51,6 +51,7 @@ import {
   getAdminEditAuditDetail,
   getAdminAuditFilterOptions,
   getSiteSettings,
+  getSiteSettingsRecord,
   getSearchIndexStatus,
   getStudioMutationOperation,
   getUserByEmail,
@@ -129,6 +130,7 @@ import {
   type VisitorAnalyticsPolicyRecord,
   type AdminAuditFilters,
   type SiteSettings,
+  type SiteSettingsRecord,
   type UserRecord
 } from "@/lib/db";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
@@ -178,7 +180,7 @@ import {
 } from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
-import { categoryKey, normalizePieceCategories } from "@/lib/categories";
+import { categoryKey, normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
 import { normalizeBuiltinCategoryIcon, sanitizeCategoryIconSvg } from "@/lib/category-icons";
 import { normalizeFooterConfiguration, normalizeHomeServices } from "@/lib/site-structure";
 import {
@@ -4521,6 +4523,736 @@ function optionalStudioUrl(
         }`
       );
   }
+}
+
+function requiredStudioEmail(
+  value: unknown,
+  label: string
+) {
+  const email = boundedStudioString(
+    value,
+    label,
+    320,
+    true
+  ).toLowerCase();
+
+  if (
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} is invalid.`
+      );
+  }
+
+  return email;
+}
+
+export type SiteSettingsAutosavePatch = {
+  brandName: string;
+  brandTagline: string;
+  siteAnnouncement: string;
+  builderEmail: string;
+  developerEmail: string;
+  repoUrl: string;
+  homepageFeaturedPieceSlugs: string[];
+  heroTitle: string;
+  heroCopy: string;
+  footer: SiteSettings["footer"];
+  homeServices:
+    SiteSettings["homeServices"];
+};
+
+const SITE_SETTINGS_AUTOSAVE_MUTATION_SCOPE =
+  "site-settings-autosave";
+
+function normalizeSiteStructure(
+  footer: unknown,
+  homeServices: unknown
+) {
+  try {
+    return {
+      footer:
+        normalizeFooterConfiguration(
+          footer
+        ),
+      homeServices:
+        normalizeHomeServices(
+          homeServices
+        )
+    };
+  } catch (error) {
+    throw new
+      StudioMutationValidationError(
+        error instanceof Error
+          ? error.message
+          : "Site structure is invalid."
+      );
+  }
+}
+
+function validateSiteSettingsAutosavePatch(
+  patch: SiteSettingsAutosavePatch
+): SiteSettingsAutosavePatch {
+  const structure =
+    normalizeSiteStructure(
+      patch.footer,
+      patch.homeServices
+    );
+
+  return {
+    brandName: boundedStudioString(
+      patch.brandName,
+      "Brand name",
+      500,
+      true
+    ),
+    brandTagline: boundedStudioString(
+      patch.brandTagline,
+      "Brand tagline",
+      2_000
+    ),
+    siteAnnouncement:
+      boundedStudioString(
+        patch.siteAnnouncement,
+        "Site announcement",
+        10_000
+      ),
+    builderEmail: requiredStudioEmail(
+      patch.builderEmail,
+      "Builder email"
+    ),
+    developerEmail:
+      requiredStudioEmail(
+        patch.developerEmail,
+        "Developer email"
+      ),
+    repoUrl: optionalStudioUrl(
+      patch.repoUrl,
+      "Repository URL",
+      4_096
+    ),
+    homepageFeaturedPieceSlugs:
+      boundedStudioStringList(
+        patch.homepageFeaturedPieceSlugs,
+        "Featured piece slugs",
+        100,
+        200
+      ),
+    heroTitle: boundedStudioString(
+      patch.heroTitle,
+      "Hero title",
+      2_000
+    ),
+    heroCopy: boundedStudioString(
+      patch.heroCopy,
+      "Hero copy",
+      20_000
+    ),
+    ...structure
+  };
+}
+
+export async function
+saveSiteSettingsAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      SiteSettingsAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<
+    SiteSettingsRecord
+  >
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        SITE_SETTINGS_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "site-settings",
+      conflictMessage:
+        "This operation ID has already been used for a different site-settings save.",
+      validate:
+        validateSiteSettingsAutosavePatch,
+      loadCurrent: () =>
+        getSiteSettingsRecord(),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "The site settings record is unavailable."
+            );
+        }
+
+        const settings = {
+          ...current.settings,
+          brandName: patch.brandName,
+          brandTagline:
+            patch.brandTagline,
+          siteAnnouncement:
+            patch.siteAnnouncement,
+          builderEmail:
+            patch.builderEmail,
+          developerEmail:
+            patch.developerEmail,
+          repoUrl: patch.repoUrl,
+          homepageFeaturedPieceSlugs:
+            patch.homepageFeaturedPieceSlugs,
+          footer: patch.footer,
+          homeServices:
+            patch.homeServices,
+          homeSections:
+            current.settings.homeSections.map(
+              (section) =>
+                section.key === "hero"
+                  ? {
+                      ...section,
+                      title:
+                        patch.heroTitle,
+                      copy:
+                        patch.heroCopy
+                    }
+                  : section
+            )
+        } satisfies SiteSettings;
+
+        saveSiteSettings(settings);
+        return getSiteSettingsRecord();
+      },
+      loadCanonical: () =>
+        getSiteSettingsRecord(),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: () => "site",
+      operation: () => "update",
+      invalidate: () => {
+        revalidatePath("/", "layout");
+        revalidatePath("/");
+        revalidatePath("/about");
+        revalidatePath("/shop");
+        revalidatePath("/portfolio");
+        revalidatePath("/process");
+      }
+    }
+  );
+}
+
+export type PieceCategoryAutosaveDraft = {
+  originalKey: string;
+  key: string;
+  label: string;
+  iconType: "builtin" | "custom";
+  iconName:
+    PieceCategoryDefinition["iconName"];
+  customIconSvg: string;
+  aliasesText: string;
+  sortOrder: number;
+  visible: boolean;
+};
+
+export type PieceCategoriesAutosavePatch = {
+  categories:
+    PieceCategoryAutosaveDraft[];
+};
+
+export type PieceCategoryDeletePatch = {
+  key: string;
+  replacementKey: string | null;
+};
+
+const PIECE_CATEGORIES_AUTOSAVE_MUTATION_SCOPE =
+  "piece-categories-autosave";
+
+const PIECE_CATEGORY_DELETE_MUTATION_SCOPE =
+  "piece-category-delete";
+
+function validateCategoryDraft(
+  draft: PieceCategoryAutosaveDraft
+): PieceCategoryAutosaveDraft {
+  const originalKey = categoryKey(
+    boundedStudioString(
+      draft.originalKey,
+      "Original category key",
+      80,
+      true
+    )
+  );
+  const key = categoryKey(
+    boundedStudioString(
+      draft.key,
+      "Category key",
+      80,
+      true
+    )
+  );
+
+  if (
+    !originalKey ||
+    !key ||
+    key === "all"
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Use a category key other than 'all'."
+      );
+  }
+
+  const iconName =
+    normalizeBuiltinCategoryIcon(
+      draft.iconName
+    );
+  let customIconSvg = "";
+
+  if (draft.iconType === "custom") {
+    try {
+      customIconSvg =
+        sanitizeCategoryIconSvg(
+          boundedStudioString(
+            draft.customIconSvg,
+            "Custom category SVG",
+            12_000,
+            true
+          )
+        ) ?? "";
+    } catch (error) {
+      throw new
+        StudioMutationValidationError(
+          error instanceof Error
+            ? error.message
+            : "The custom category icon is invalid."
+        );
+    }
+  }
+
+  const aliases =
+    boundedStudioStringList(
+      String(
+        draft.aliasesText ?? ""
+      )
+        .split(/\r?\n|,/g)
+        .map((entry) => entry.trim())
+        .filter(Boolean),
+      "Category matching terms",
+      100,
+      500
+    );
+
+  return {
+    originalKey,
+    key,
+    label: boundedStudioString(
+      draft.label,
+      "Category label",
+      500,
+      true
+    ),
+    iconType:
+      customIconSvg
+        ? "custom"
+        : "builtin",
+    iconName,
+    customIconSvg,
+    aliasesText: aliases.join("\n"),
+    sortOrder: boundedStudioNumber(
+      draft.sortOrder,
+      "Category display order",
+      0,
+      9_999,
+      true
+    ),
+    visible: studioBoolean(
+      draft.visible,
+      "Category visibility"
+    )
+  };
+}
+
+function validatePieceCategoriesAutosavePatch(
+  patch: PieceCategoriesAutosavePatch
+): PieceCategoriesAutosavePatch {
+  if (
+    !Array.isArray(patch.categories) ||
+    patch.categories.length === 0 ||
+    patch.categories.length > 100
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Keep between 1 and 100 portfolio categories."
+      );
+  }
+
+  const categories =
+    patch.categories.map(
+      validateCategoryDraft
+    );
+  const originalKeys = new Set(
+    categories.map(
+      (category) =>
+        category.originalKey
+    )
+  );
+  const nextKeys = new Set(
+    categories.map(
+      (category) => category.key
+    )
+  );
+
+  if (
+    originalKeys.size !==
+      categories.length ||
+    nextKeys.size !== categories.length
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Every category must use a unique key."
+      );
+  }
+
+  return { categories };
+}
+
+function categoryDefinitionFromDraft(
+  draft: PieceCategoryAutosaveDraft
+): PieceCategoryDefinition {
+  const customIconSvg =
+    draft.iconType === "custom"
+      ? draft.customIconSvg || null
+      : null;
+
+  return {
+    key: draft.key,
+    label: draft.label,
+    icon: draft.iconName,
+    iconName: draft.iconName,
+    iconType: customIconSvg
+      ? "custom"
+      : "builtin",
+    customIconSvg,
+    aliases: draft.aliasesText
+      .split("\n")
+      .map((entry) => entry.trim())
+      .filter(Boolean),
+    sortOrder: draft.sortOrder,
+    visible: draft.visible
+  };
+}
+
+export async function
+savePieceCategoriesAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      PieceCategoriesAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<
+    SiteSettingsRecord
+  >
+> {
+  const affectedPieceSlugs:
+    string[] = [];
+
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        PIECE_CATEGORIES_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "piece-categories",
+      conflictMessage:
+        "This operation ID has already been used for a different category save.",
+      validate:
+        validatePieceCategoriesAutosavePatch,
+      loadCurrent: () =>
+        getSiteSettingsRecord(),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "The site settings record is unavailable."
+            );
+        }
+
+        const existing =
+          normalizePieceCategories(
+            current.settings
+              .pieceCategories
+          );
+        const draftByOriginal =
+          new Map(
+            patch.categories.map(
+              (category) => [
+                category.originalKey,
+                category
+              ]
+            )
+          );
+
+        if (
+          existing.length !==
+            patch.categories.length ||
+          existing.some(
+            (category) =>
+              !draftByOriginal.has(
+                category.key
+              )
+          )
+        ) {
+          throw new
+            StudioMutationConflictError(
+              "The category collection changed in another session.",
+              current
+            );
+        }
+
+        const changes = existing.map(
+          (previous) => ({
+            previous,
+            next:
+              categoryDefinitionFromDraft(
+                draftByOriginal.get(
+                  previous.key
+                )!
+              )
+          })
+        );
+        const renamedCategories =
+          changes.filter(
+            ({ previous, next }) =>
+              previous.key !== next.key ||
+              previous.label !== next.label
+          );
+
+        for (const piece of listPieces(true)) {
+          const normalizedCategory =
+            piece.category
+              .trim()
+              .toLowerCase();
+          const change =
+            renamedCategories.find(
+            ({ previous }) =>
+              normalizedCategory ===
+                previous.key.toLowerCase() ||
+              normalizedCategory ===
+                previous.label.toLowerCase()
+          );
+
+          if (
+            change &&
+            piece.category !==
+              change.next.label
+          ) {
+            savePiece({
+              ...piece,
+              category:
+                change.next.label
+            });
+            affectedPieceSlugs.push(
+              piece.slug
+            );
+          }
+        }
+
+        saveSiteSettings({
+          ...current.settings,
+          pieceCategories:
+            normalizePieceCategories(
+              changes.map(
+                ({ next }) => next
+              )
+            )
+        });
+
+        return getSiteSettingsRecord();
+      },
+      loadCanonical: () =>
+        getSiteSettingsRecord(),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: () => "site",
+      operation: () => "update",
+      invalidate: () => {
+        affectedPieceSlugs.forEach(
+          revalidatePieceSurfaces
+        );
+        revalidatePath("/");
+        revalidatePath("/portfolio");
+      }
+    }
+  );
+}
+
+function validatePieceCategoryDeletePatch(
+  patch: PieceCategoryDeletePatch
+): PieceCategoryDeletePatch {
+  const key = categoryKey(
+    boundedStudioString(
+      patch.key,
+      "Category key",
+      80,
+      true
+    )
+  );
+  const replacementKey = patch.replacementKey
+    ? categoryKey(
+        boundedStudioString(
+          patch.replacementKey,
+          "Replacement category",
+          80,
+          true
+        )
+      )
+    : null;
+
+  if (!key || key === "all") {
+    throw new
+      StudioMutationValidationError(
+        "The category key is invalid."
+      );
+  }
+
+  if (replacementKey === key) {
+    throw new
+      StudioMutationValidationError(
+        "Choose a different replacement category."
+      );
+  }
+
+  return { key, replacementKey };
+}
+
+export async function
+deletePieceCategoryAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      PieceCategoryDeletePatch
+    >
+): Promise<
+  StudioMutationResult<
+    SiteSettingsRecord
+  >
+> {
+  const affectedPieceSlugs:
+    string[] = [];
+
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        PIECE_CATEGORY_DELETE_MUTATION_SCOPE,
+      entityType: "piece-category",
+      conflictMessage:
+        "This operation ID has already been used for a different category deletion.",
+      validate:
+        validatePieceCategoryDeletePatch,
+      loadCurrent: () =>
+        getSiteSettingsRecord(),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "The site settings record is unavailable."
+            );
+        }
+
+        const categories =
+          normalizePieceCategories(
+            current.settings
+              .pieceCategories
+          );
+
+        if (categories.length <= 1) {
+          throw new
+            StudioMutationValidationError(
+              "At least one portfolio category must remain available."
+            );
+        }
+
+        const category = categories.find(
+          (entry) =>
+            entry.key === patch.key
+        );
+
+        if (!category) {
+          throw new
+            StudioMutationValidationError(
+              "The requested portfolio category could not be found."
+            );
+        }
+
+        const replacement =
+          categories.find(
+            (entry) =>
+              entry.key ===
+                patch.replacementKey &&
+              entry.key !== patch.key
+          ) ?? null;
+        const affectedPieces =
+          listPieces(true).filter(
+            (piece) => {
+              const value =
+                piece.category
+                  .trim()
+                  .toLowerCase();
+              return (
+                value ===
+                  category.key.toLowerCase() ||
+                value ===
+                  category.label.toLowerCase()
+              );
+            }
+          );
+
+        if (
+          affectedPieces.length > 0 &&
+          !replacement
+        ) {
+          throw new
+            StudioMutationValidationError(
+              "This category still has pieces. Choose a replacement before deleting it."
+            );
+        }
+
+        if (replacement) {
+          for (const piece of affectedPieces) {
+            savePiece({
+              ...piece,
+              category:
+                replacement.label
+            });
+            affectedPieceSlugs.push(
+              piece.slug
+            );
+          }
+        }
+
+        saveSiteSettings({
+          ...current.settings,
+          pieceCategories:
+            categories.filter(
+              (entry) =>
+                entry.key !== patch.key
+            )
+        });
+
+        return getSiteSettingsRecord();
+      },
+      loadCanonical: () =>
+        getSiteSettingsRecord(),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (_entity, patch) =>
+        patch.key,
+      operation: () => "delete",
+      invalidate: () => {
+        affectedPieceSlugs.forEach(
+          revalidatePieceSurfaces
+        );
+        revalidatePath("/");
+        revalidatePath("/portfolio");
+      }
+    }
+  );
 }
 
 export type PostAutosavePatch = {

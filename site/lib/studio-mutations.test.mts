@@ -119,6 +119,55 @@ test(
 );
 
 test(
+  "an explicit destructive commit can advance one idle shared queue canonically",
+  () => {
+    const queue =
+      new StudioMutationQueue<
+        Payload,
+        Entity
+      >({
+        expectedUpdatedAt: "v1",
+        mutate: async (request) =>
+          success(
+            request.payload,
+            "v2",
+            request.operationId
+          )
+      });
+
+    queue.adoptCommittedEntity(
+      { title: "Canonical" },
+      "v3",
+      "delete-operation"
+    );
+
+    assert.equal(
+      queue.getExpectedUpdatedAt(),
+      "v3"
+    );
+    assert.deepEqual(
+      queue.getSnapshot().currentEntity,
+      { title: "Canonical" }
+    );
+    assert.equal(
+      queue.getSnapshot().operationId,
+      "delete-operation"
+    );
+
+    queue.enqueue({ title: "Pending" });
+
+    assert.throws(
+      () =>
+        queue.adoptCommittedEntity(
+          { title: "Rejected" },
+          "v4"
+        ),
+      /local changes are pending/
+    );
+  }
+);
+
+test(
   "one entity never writes concurrently and newer queued state coalesces",
   async () => {
     const first = deferred<

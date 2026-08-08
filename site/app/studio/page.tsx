@@ -20,8 +20,6 @@ import {
   saveMediaSourceFolderRuleAction,
   savePieceAction,
   savePostAction,
-  saveSiteSettingsAction,
-  saveSiteStructureAction,
   saveUserProfileAdminAction,
   uploadMediaAction,
   savePageAction,
@@ -33,7 +31,7 @@ import {
   getMedia,
   getMediaAccessAssociations,
   getSearchIndexStatus,
-  getSiteSettings,
+  getSiteSettingsRecord,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
   getLatestSmtpVerification,
@@ -99,7 +97,12 @@ import {
   StudioOrderEditor,
   StudioReviewEditor
 } from "@/components/studio/studio-commerce-editors";
-import { SiteStructureEditor } from "@/components/site-structure-editor";
+import {
+  StudioSettingsEditor
+} from "@/components/studio/studio-settings-editor";
+import {
+  StudioCategoriesWorkspace
+} from "@/components/studio/studio-categories-workspace";
 import { MediaPicker, type MediaPickerItem } from "@/components/media-picker";
 import { PieceMediaEditor } from "@/components/piece-media-editor";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
@@ -785,7 +788,8 @@ export default async function StudioPage({
     ? getSearchIndexStatus()
     : null;
   const queryOpt = mediaQuery.trim() || undefined;
-  const settings = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettings() : null;
+  const settingsRecord = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettingsRecord() : null;
+  const settings = settingsRecord?.settings ?? null;
   const categories = normalizePieceCategories(settings?.pieceCategories);
   const aiStatus = currentPanel === "overview" || currentPanel === "media" ? getAiServiceStatus() : null;
   const pages = currentPanel === "pages" || currentPanel === "media" ? listPages(true) : [];
@@ -1038,27 +1042,16 @@ export default async function StudioPage({
         </PageSection>
       ) : null}
 
-      {currentPanel === "settings" && settings ? (
+      {currentPanel === "settings" && settingsRecord ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Settings</p><h2>Brand and homepage</h2><p>Core contact information and homepage wording.</p></div>
-        <article className="studio-panel">
-          <form action={saveSiteSettingsAction} className="request-form">
-            <div className="field-grid two-up compact-grid"><Field label="Brand name" name="brandName" defaultValue={settings.brandName} /><Field label="Tagline" name="brandTagline" defaultValue={settings.brandTagline} /></div>
-            <Area label="Site announcement" name="siteAnnouncement" defaultValue={settings.siteAnnouncement} rows={3} />
-            <div className="field-grid three-up compact-grid"><Field label="Builder email" name="builderEmail" defaultValue={settings.builderEmail} /><Field label="Developer email" name="developerEmail" defaultValue={settings.developerEmail} /><Field label="Repository URL" name="repoUrl" defaultValue={settings.repoUrl} /></div>
-            <Area label="Homepage featured piece slugs (one per line, in display order)" name="homepageFeaturedPieceSlugs" defaultValue={settings.homepageFeaturedPieceSlugs.join("\n")} rows={4} />
-            <Area label="Hero title" name="heroTitle" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.title ?? "")} rows={3} />
-            <Area label="Hero copy" name="heroCopy" defaultValue={String(settings.homeSections.find((section) => section.key === "hero")?.copy ?? "")} rows={4} />
-            <button className="button-primary" type="submit">Save settings</button>
-          </form>
-        </article>
-        <SiteStructureEditor footer={settings.footer} homeServices={settings.homeServices} saveAction={saveSiteStructureAction} />
+        <StudioSettingsEditor record={settingsRecord} />
       </PageSection>
       ) : null}
 
       {currentPanel === "pages" && editingPage ? <PageSection><div className="section-heading"><p className="eyebrow">Pages</p><h2>Public pages</h2><p>Select one record, edit it in place, and choose hero media visually from the mounted library.</p></div><div className="studio-master-detail"><StudioMasterList items={pages.map((page) => ({ key: page.slug, label: page.title, meta: page.status, href: panelHref("pages", { page: page.slug }) }))} newHref={panelHref("pages", { page: "new-page-draft" })} newLabel="New page" selectedKey={editingPage.slug} /><PageEditor highlight mediaItems={editorMediaItems} page={editingPage} /></div></PageSection> : null}
       {currentPanel === "pieces" && editingPiece ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Pricing, inquiry and review policies, inventory, fulfillment, and normalized visual media assignment.</p></div><div className="studio-master-detail"><StudioMasterList items={pieces.map((piece) => ({ key: piece.slug, label: piece.title, meta: `${piece.publicationStatus} · ${piece.status}`, href: panelHref("pieces", { piece: piece.slug }) }))} newHref={panelHref("pieces", { piece: "new-piece-draft" })} newLabel="New piece" selectedKey={editingPiece.slug} /><PieceEditor categories={categories} highlight key={editingPiece.slug} mediaItems={editorMediaItems} mediaLinks={editingPieceLinks} piece={editingPiece} /></div></PageSection> : null}
-      {currentPanel === "categories" ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Choose a furniture icon, import a safe custom SVG, and control order and visibility without editing code.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} />{categories.map((category) => <StudioCategoryEditor categories={categories} category={category} deleteAction={deletePieceCategoryAction} key={category.key} saveAction={savePieceCategoryAction} />)}</div></PageSection> : null}
+      {currentPanel === "categories" && settingsRecord ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Add a portfolio group explicitly, then edit, reorder, or consolidate existing groups through one coordinated save queue.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} /></div><StudioCategoriesWorkspace record={settingsRecord} /></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} mediaItems={editorMediaItems} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} mediaItems={editorMediaItems} user={user} />)}</div></PageSection> : null}
       {currentPanel === "process" && editingPost ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Select one note, edit Markdown and source details, and choose its cover media visually.</p></div><div className="studio-master-detail"><StudioMasterList items={posts.map((post) => ({ key: post.slug, label: post.title, meta: post.publicationStatus, href: panelHref("process", { post: post.slug }) }))} newHref={panelHref("process", { post: "new-process-entry" })} newLabel="New process note" selectedKey={editingPost.slug} /><PostEditor highlight mediaItems={editorMediaItems} post={editingPost} /></div></PageSection> : null}

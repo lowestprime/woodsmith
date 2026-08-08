@@ -115,6 +115,11 @@ export type SiteSettings = WidenedSiteSettings & {
   pieceCategories: PieceCategoryDefinition[];
 };
 
+export type SiteSettingsRecord = {
+  settings: SiteSettings;
+  updatedAt: string;
+};
+
 function seededSiteSettings() {
   return structuredClone(siteSettingsSeed) as unknown as SiteSettings;
 }
@@ -1110,13 +1115,20 @@ function ensureUserVerificationColumns(db: DatabaseSync) {
 }
 
 function upsertSetting(db: DatabaseSync, key: string, value: unknown) {
+  const current = db.prepare(
+    `SELECT updated_at AS updatedAt FROM settings WHERE key = ? LIMIT 1`
+  ).get(key) as { updatedAt?: unknown } | undefined;
+  const updatedAt = current?.updatedAt
+    ? isoAfter(String(current.updatedAt))
+    : nowIso();
+
   db.prepare(`
     INSERT INTO settings (key, value, updated_at)
     VALUES (:key, :value, :updatedAt)
     ON CONFLICT(key) DO UPDATE SET
       value = excluded.value,
       updated_at = excluded.updated_at
-  `).run({ key, value: writeJson(value), updatedAt: nowIso() });
+  `).run({ key, value: writeJson(value), updatedAt });
 }
 
 function recordSeedTombstone(db: DatabaseSync, entityType: string, slug: string) {
@@ -2201,6 +2213,26 @@ export function getSiteSettings(): SiteSettings {
     footer: safeFooterConfiguration((stored as SiteSettings & { footer?: unknown }).footer, fallback.footer),
     homeServices: safeHomeServices((stored as SiteSettings & { homeServices?: unknown }).homeServices, [...fallback.homeServices]),
     pieceCategories: normalizePieceCategories((stored as SiteSettings & { pieceCategories?: unknown }).pieceCategories)
+  };
+}
+
+export function getSiteSettingsRecord(): SiteSettingsRecord {
+  const row = getDatabase().prepare(`
+    SELECT updated_at AS updatedAt
+    FROM settings
+    WHERE key = 'site'
+    LIMIT 1
+  `).get() as { updatedAt?: unknown } | undefined;
+
+  if (!row?.updatedAt) {
+    throw new Error(
+      "The persisted site settings record is unavailable."
+    );
+  }
+
+  return {
+    settings: getSiteSettings(),
+    updatedAt: String(row.updatedAt)
   };
 }
 

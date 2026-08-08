@@ -21,7 +21,7 @@ Public search returns published pages, pieces, and Process notes. Signed-in admi
 
 ### Settings
 
-The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
+The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Brand, homepage, footer, and service-card edits share one serialized autosave queue, save to SQLite without navigation or viewport jumps, and revalidate the affected public routes. Structural service/footer add, remove, and reorder controls save immediately; **Save settings now** remains an explicit flush fallback.
 
 ### Pages
 
@@ -33,7 +33,7 @@ Changes save into the mounted SQLite data store, revalidate the matching public 
 
 The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, select and order media visually by role, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified. Raw path entry is not the normal workflow.
 
-The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Categories can be renamed safely; deletion requires that assigned pieces are either absent or reassigned to another category.
+The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Existing categories share one serialized autosave queue so sequential edits cannot overwrite one another. Key or label changes update affected pieces in the same transaction. Deletion opens a Cancel-first confirmation; assigned pieces must either be absent or be consolidated into the selected replacement category before the delete commits.
 
 Do not guess piece-to-photo identity. If a piece is not verified, leave media unassigned or keep it marked for review. Scientist Desk media must stay withheld until the correct black phenolic resin top, birds-eye maple rails, and white maple legs photos are verified.
 

@@ -325,6 +325,29 @@ export class StudioMutationQueue<
     });
   }
 
+  adoptCommittedEntity(
+    entity: TEntity,
+    updatedAt: string,
+    operationId: string | null = null
+  ): void {
+    if (this.hasUnsavedChanges()) {
+      throw new Error(
+        "Cannot adopt an external Studio commit while local changes are pending."
+      );
+    }
+
+    this.expectedUpdatedAt = updatedAt;
+    this.emit({
+      phase: "saved",
+      detail: null,
+      attempt: 0,
+      operationId,
+      expectedUpdatedAt: updatedAt,
+      hasUnsavedChanges: false,
+      currentEntity: entity
+    });
+  }
+
   enqueue(payload: TPayload): void {
     if (this.blockedPayload !== undefined) {
       this.blockedPayload = this.coalesce(
