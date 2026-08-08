@@ -42,6 +42,7 @@ import {
   getPost,
   getProject,
   getProjectDeletionPreview,
+  getReview,
   getNotificationDeliveryDetail,
   getNotificationPolicy,
   getNotificationTemplate,
@@ -121,6 +122,7 @@ import {
   type ProjectDeletionPreview,
   type ProjectLifecycleState,
   type ProjectRecord,
+  type ReviewRecord,
   type NotificationPolicyRecord,
   type NotificationRecipientMode,
   type NotificationTemplateRecord,
@@ -142,6 +144,9 @@ import {
 import {
   mutationOriginAllowed
 } from "@/lib/request-security";
+import {
+  normalizeInlineEditUrl
+} from "@/lib/inline-edit-registry";
 import {
   finalizeStagedMediaDeletion,
   deleteMediaAsset,
@@ -4176,6 +4181,1214 @@ function mutationRequestHash(value: unknown) {
   return createHash("sha256")
     .update(JSON.stringify(value))
     .digest("hex");
+}
+
+type AdminRecordAutosaveOptions<
+  TPatch,
+  TEntity
+> = {
+  scope: string;
+  entityType: string;
+  conflictMessage: string;
+  validate: (patch: TPatch) => TPatch;
+  loadCurrent: (patch: TPatch) => TEntity | null;
+  save: (
+    current: TEntity | null,
+    patch: TPatch,
+    actorEmail: string
+  ) => TEntity;
+  loadCanonical: (
+    saved: TEntity,
+    patch: TPatch
+  ) => TEntity | null;
+  updatedAt: (entity: TEntity) => string;
+  entityKey: (
+    entity: TEntity,
+    patch: TPatch
+  ) => string;
+  operation?: (
+    current: TEntity | null,
+    entity: TEntity,
+    patch: TPatch
+  ) => string;
+  persistedActorEmail?: (
+    authorizedActorEmail: string,
+    current: TEntity | null,
+    entity: TEntity,
+    patch: TPatch
+  ) => string;
+  invalidate: (
+    entity: TEntity,
+    patch: TPatch
+  ) => void | Promise<void>;
+};
+
+async function executeAdminRecordAutosave<
+  TPatch,
+  TEntity
+>(
+  input: StudioServerMutationInput<TPatch>,
+  options: AdminRecordAutosaveOptions<
+    TPatch,
+    TEntity
+  >
+): Promise<StudioMutationResult<TEntity>> {
+  let actorEmail = "";
+  let requestHash = "";
+  let validatedPatch:
+    TPatch | null = null;
+
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user = await getCurrentUser();
+
+        if (!user || user.role !== "admin") {
+          return null;
+        }
+
+        actorEmail =
+          user.email.trim().toLowerCase();
+
+        return { email: actorEmail };
+      },
+      originAllowed:
+        studioServerActionOriginAllowed,
+      validate: (patch) => {
+        const validated =
+          options.validate(patch);
+
+        validatedPatch = validated;
+        requestHash =
+          mutationRequestHash(validated);
+
+        return validated;
+      },
+      transaction: (work) =>
+        withDatabaseTransaction(() =>
+          work()
+        ),
+      findCompletedOperation:
+        (operationId, patch) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                TEntity
+              >
+            >(operationId);
+
+          if (!completed) {
+            return null;
+          }
+
+          if (
+            completed.mutationScope !==
+              options.scope ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              mutationRequestHash(patch)
+          ) {
+            throw new
+              StudioMutationConflictError(
+                options.conflictMessage
+              );
+          }
+
+          return completed.response;
+        },
+      loadCurrent:
+        options.loadCurrent,
+      save: (current, patch) =>
+        options.save(
+          current,
+          patch,
+          actorEmail
+        ),
+      loadCanonical:
+        options.loadCanonical,
+      updatedAt:
+        options.updatedAt,
+      entityType:
+        options.entityType,
+      entityKey:
+        options.entityKey,
+      operation:
+        options.operation,
+      audit: (auditInput) => {
+        if (
+          !requestHash ||
+          !validatedPatch
+        ) {
+          throw new
+            StudioMutationTransientError(
+              "The Studio autosave request identity is unavailable."
+            );
+        }
+
+        const persistedActorEmail =
+          options.persistedActorEmail?.(
+            auditInput.actorEmail,
+            auditInput.before,
+            auditInput.after,
+            validatedPatch
+          ) ??
+          auditInput.actorEmail;
+
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              persistedActorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before:
+              auditInput.before,
+            after:
+              auditInput.after,
+            requestId:
+              auditInput.requestId
+          });
+
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            persistedActorEmail,
+          mutationScope:
+            options.scope,
+          requestHash,
+          response: {
+            entity:
+              auditInput.after,
+            updatedAt:
+              options.updatedAt(
+                auditInput.after
+              ),
+            auditId
+          }
+        });
+
+        return auditId;
+      },
+      invalidate:
+        options.invalidate
+    }
+  );
+}
+
+function studioBoolean(
+  value: unknown,
+  label: string
+) {
+  if (typeof value !== "boolean") {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be true or false.`
+      );
+  }
+
+  return value;
+}
+
+function boundedStudioNumber(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number,
+  integer = false
+) {
+  if (
+    typeof value !== "number" ||
+    !Number.isFinite(value) ||
+    value < minimum ||
+    value > maximum
+  ) {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be between ${minimum} and ${maximum}.`
+      );
+  }
+
+  if (integer && !Number.isInteger(value)) {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a whole number.`
+      );
+  }
+
+  return value;
+}
+
+function boundedStudioStringList(
+  value: unknown,
+  label: string,
+  maximumItems: number,
+  maximumItemBytes: number
+) {
+  if (!Array.isArray(value)) {
+    throw new
+      StudioMutationValidationError(
+        `${label} must be a list.`
+      );
+  }
+
+  if (value.length > maximumItems) {
+    throw new
+      StudioMutationValidationError(
+        `${label} has too many entries.`
+      );
+  }
+
+  return [
+    ...new Set(
+      value
+        .map((entry) =>
+          boundedStudioString(
+            entry,
+            label,
+            maximumItemBytes,
+            true
+          )
+        )
+        .filter(Boolean)
+    )
+  ];
+}
+
+function studioPublicationStatus(
+  value: unknown
+): PostRecord["publicationStatus"] {
+  if (
+    value !== "draft" &&
+    value !== "published" &&
+    value !== "archived"
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Publication status is invalid."
+      );
+  }
+
+  return value;
+}
+
+function nullableStudioString(
+  value: unknown,
+  label: string,
+  maximumBytes: number
+) {
+  const text = boundedStudioString(
+    value ?? "",
+    label,
+    maximumBytes
+  ).trim();
+
+  return text || null;
+}
+
+function optionalStudioUrl(
+  value: unknown,
+  label: string,
+  maximumBytes: number
+) {
+  const text = nullableStudioString(
+    value,
+    label,
+    maximumBytes
+  );
+
+  if (!text) {
+    return "";
+  }
+
+  try {
+    return normalizeInlineEditUrl(
+      text,
+      true
+    );
+  } catch (error) {
+    throw new
+      StudioMutationValidationError(
+        `${label}: ${
+          error instanceof Error
+            ? error.message
+            : "URL is invalid."
+        }`
+      );
+  }
+}
+
+export type PostAutosavePatch = {
+  slug: string;
+  title: string;
+  excerpt: string;
+  body: string;
+  publicationStatus:
+    PostRecord["publicationStatus"];
+  publishedAt: string | null;
+  coverMediaPath: string | null;
+  tags: string[];
+  sourceUrl: string | null;
+  sourceLabel: string | null;
+};
+
+const POST_AUTOSAVE_MUTATION_SCOPE =
+  "post-autosave";
+
+function validatePostAutosavePatch(
+  patch: PostAutosavePatch
+): PostAutosavePatch {
+  const publishedAt =
+    nullableStudioString(
+      patch.publishedAt,
+      "Published at",
+      120
+    );
+
+  if (
+    publishedAt &&
+    Number.isNaN(
+      Date.parse(publishedAt)
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Published at must be a valid date and time."
+      );
+  }
+
+  const coverMediaPath =
+    nullableStudioString(
+      patch.coverMediaPath,
+      "Cover media",
+      1_024
+    );
+
+  return {
+    slug: boundedStudioString(
+      patch.slug,
+      "Process note slug",
+      200,
+      true
+    ),
+    title: boundedStudioString(
+      patch.title,
+      "Process note title",
+      500,
+      true
+    ),
+    excerpt: boundedStudioString(
+      patch.excerpt,
+      "Process note excerpt",
+      20_000
+    ),
+    body: boundedStudioString(
+      patch.body,
+      "Process note body",
+      300_000
+    ),
+    publicationStatus:
+      studioPublicationStatus(
+        patch.publicationStatus
+      ),
+    publishedAt,
+    coverMediaPath,
+    tags: boundedStudioStringList(
+      patch.tags,
+      "Process note tags",
+      80,
+      200
+    ),
+    sourceUrl:
+      optionalStudioUrl(
+        patch.sourceUrl,
+        "Source URL",
+        4_096
+      ) || null,
+    sourceLabel: nullableStudioString(
+      patch.sourceLabel,
+      "Source label",
+      500
+    )
+  };
+}
+
+export async function
+savePostAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      PostAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<PostRecord>
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        POST_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "post",
+      conflictMessage:
+        "This operation ID has already been used for a different process-note save.",
+      validate:
+        validatePostAutosavePatch,
+      loadCurrent: (patch) =>
+        getPost(patch.slug),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "This process note no longer exists."
+            );
+        }
+
+        if (
+          patch.coverMediaPath !==
+            current.coverMediaPath &&
+          patch.coverMediaPath &&
+          !getMedia(
+            patch.coverMediaPath
+          )
+        ) {
+          throw new
+            StudioMutationValidationError(
+              "The selected cover media is no longer indexed."
+            );
+        }
+
+        savePost({
+          ...current,
+          ...patch,
+          slug: current.slug,
+          authorEmail:
+            current.authorEmail
+        });
+
+        return getPost(current.slug) ??
+          current;
+      },
+      loadCanonical:
+        (_saved, patch) =>
+          getPost(patch.slug),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.slug,
+      operation: () => "update",
+      invalidate: (entity) => {
+        revalidatePath("/");
+        revalidatePath("/process");
+        revalidatePath("/shop");
+        revalidatePath(
+          `/process/${entity.slug}`
+        );
+      }
+    }
+  );
+}
+
+export type UserProfileAutosavePatch = {
+  originalEmail: string;
+  email: string;
+  role: UserRecord["role"];
+  displayName: string;
+  headline: string;
+  bio: string;
+  avatarPath: string | null;
+  publicProfile: boolean;
+  websiteUrl: string;
+  instagramUrl: string;
+  githubUrl: string;
+  showOnAboutPage: boolean;
+  woodworkerProfile: boolean;
+  developerProfile: boolean;
+};
+
+const USER_PROFILE_AUTOSAVE_MUTATION_SCOPE =
+  "user-profile-autosave";
+
+function userRecordWithoutPassword(
+  user: ReturnType<typeof getUserByEmail>
+): UserRecord | null {
+  if (!user) {
+    return null;
+  }
+
+  const profile = { ...user };
+  Reflect.deleteProperty(
+    profile,
+    "passwordHash"
+  );
+
+  return profile as UserRecord;
+}
+
+function validateUserProfileAutosavePatch(
+  patch: UserProfileAutosavePatch
+): UserProfileAutosavePatch {
+  const originalEmail =
+    boundedStudioString(
+      patch.originalEmail,
+      "Original email",
+      320,
+      true
+    ).toLowerCase();
+
+  const email =
+    boundedStudioString(
+      patch.email,
+      "Email",
+      320,
+      true
+    ).toLowerCase();
+
+  if (
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      email
+    )
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Email is invalid."
+      );
+  }
+
+  if (
+    patch.role !== "admin" &&
+    patch.role !== "woodworker" &&
+    patch.role !== "customer"
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Account role is invalid."
+      );
+  }
+
+  const avatarPath =
+    nullableStudioString(
+      patch.avatarPath,
+      "Profile image",
+      1_024
+    );
+
+  return {
+    originalEmail,
+    email,
+    role: patch.role,
+    displayName: boundedStudioString(
+      patch.displayName,
+      "Display name",
+      500,
+      true
+    ),
+    headline: boundedStudioString(
+      patch.headline,
+      "Profile headline",
+      2_000
+    ),
+    bio: boundedStudioString(
+      patch.bio,
+      "Profile biography",
+      100_000
+    ),
+    avatarPath,
+    publicProfile: studioBoolean(
+      patch.publicProfile,
+      "Public profile"
+    ),
+    websiteUrl:
+      optionalStudioUrl(
+        patch.websiteUrl,
+        "Website URL",
+        4_096
+      ),
+    instagramUrl:
+      optionalStudioUrl(
+        patch.instagramUrl,
+        "Instagram URL",
+        4_096
+      ),
+    githubUrl:
+      optionalStudioUrl(
+        patch.githubUrl,
+        "GitHub URL",
+        4_096
+      ),
+    showOnAboutPage: studioBoolean(
+      patch.showOnAboutPage,
+      "About-page visibility"
+    ),
+    woodworkerProfile: studioBoolean(
+      patch.woodworkerProfile,
+      "Woodworker profile"
+    ),
+    developerProfile: studioBoolean(
+      patch.developerProfile,
+      "Developer profile"
+    )
+  };
+}
+
+export async function
+saveUserProfileAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      UserProfileAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<UserRecord>
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        USER_PROFILE_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "user",
+      conflictMessage:
+        "This operation ID has already been used for a different profile save.",
+      validate:
+        validateUserProfileAutosavePatch,
+      loadCurrent: (patch) =>
+        userRecordWithoutPassword(
+          getUserByEmail(
+            patch.originalEmail
+          )
+        ),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "This profile no longer exists."
+            );
+        }
+
+        const target =
+          getUserByEmail(
+            patch.email
+          );
+
+        if (
+          target &&
+          target.id !== current.id
+        ) {
+          throw new
+            StudioMutationValidationError(
+              "A profile with that email already exists."
+            );
+        }
+
+        if (
+          current.role === "admin" &&
+          patch.role !== "admin" &&
+          countUsersByRole("admin") <= 1
+        ) {
+          throw new
+            StudioMutationValidationError(
+              "The last administrator cannot be demoted."
+            );
+        }
+
+
+        if (
+          patch.avatarPath !==
+            current.avatarPath &&
+          patch.avatarPath &&
+          !getMedia(
+            patch.avatarPath
+          )
+        ) {
+          throw new
+            StudioMutationValidationError(
+              "The selected profile image is no longer indexed."
+            );
+        }
+
+        const managedLabels =
+          new Set([
+            "website",
+            "instagram",
+            "github"
+          ]);
+
+        const links = [
+          ...current.links.filter(
+            (link) =>
+              !managedLabels.has(
+                link.label.toLowerCase()
+              )
+          ),
+          ...[
+            {
+              label: "Website",
+              url: patch.websiteUrl
+            },
+            {
+              label: "Instagram",
+              url: patch.instagramUrl
+            },
+            {
+              label: "GitHub",
+              url: patch.githubUrl
+            }
+          ].filter((link) =>
+            Boolean(link.url)
+          )
+        ];
+
+        saveUserProfile({
+          originalEmail:
+            current.email,
+          email: patch.email,
+          role: patch.role,
+          displayName:
+            patch.displayName,
+          headline: patch.headline,
+          bio: patch.bio,
+          avatarPath:
+            patch.avatarPath,
+          publicProfile:
+            patch.publicProfile,
+          links,
+          metadata: {
+            ...current.metadata,
+            showOnAboutPage:
+              patch.showOnAboutPage,
+            woodworker:
+              patch.woodworkerProfile,
+            developer:
+              patch.developerProfile
+          }
+        });
+
+        const saved =
+          userRecordWithoutPassword(
+            getUserByEmail(
+              patch.email
+            )
+          );
+
+        if (!saved) {
+          throw new
+            StudioMutationTransientError(
+              "The saved profile could not be reloaded."
+            );
+        }
+
+        return saved;
+      },
+      loadCanonical:
+        (_saved, patch) =>
+          userRecordWithoutPassword(
+            getUserByEmail(
+              patch.email
+            )
+          ),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.email,
+      operation: () => "update",
+      persistedActorEmail: (
+        authorizedActorEmail,
+        current,
+        entity
+      ) =>
+        current &&
+        authorizedActorEmail.toLowerCase() ===
+          current.email.toLowerCase()
+          ? entity.email.toLowerCase()
+          : authorizedActorEmail,
+      invalidate: () => {
+        revalidatePath("/");
+        revalidatePath("/about");
+        revalidatePath(
+          "/account/profile"
+        );
+      }
+    }
+  );
+}
+
+export type CommissionTypeAutosavePatch = {
+  slug: string;
+  label: string;
+  description: string;
+  baseLaborHours: number;
+  baseMarkupPercent: number;
+  materialOptions: string[];
+  defaultDimensions: {
+    width: number;
+    depth: number;
+    height: number;
+    unit: "in";
+  };
+  active: boolean;
+};
+
+const COMMISSION_TYPE_AUTOSAVE_MUTATION_SCOPE =
+  "commission-type-autosave";
+
+function validateCommissionTypeAutosavePatch(
+  patch: CommissionTypeAutosavePatch
+): CommissionTypeAutosavePatch {
+  if (
+    !patch.defaultDimensions ||
+    typeof patch.defaultDimensions !==
+      "object"
+  ) {
+    throw new
+      StudioMutationValidationError(
+        "Default dimensions are required."
+      );
+  }
+
+  return {
+    slug: boundedStudioString(
+      patch.slug,
+      "Custom type slug",
+      200,
+      true
+    ),
+    label: boundedStudioString(
+      patch.label,
+      "Custom type label",
+      500,
+      true
+    ),
+    description: boundedStudioString(
+      patch.description,
+      "Custom type description",
+      50_000
+    ),
+    baseLaborHours:
+      boundedStudioNumber(
+        patch.baseLaborHours,
+        "Base labor hours",
+        0,
+        20_000
+      ),
+    baseMarkupPercent:
+      boundedStudioNumber(
+        patch.baseMarkupPercent,
+        "Markup percent",
+        0,
+        1_000
+      ),
+    materialOptions:
+      boundedStudioStringList(
+        patch.materialOptions,
+        "Material choices",
+        100,
+        500
+      ),
+    defaultDimensions: {
+      width: boundedStudioNumber(
+        patch.defaultDimensions.width,
+        "Default width",
+        1,
+        2_000
+      ),
+      depth: boundedStudioNumber(
+        patch.defaultDimensions.depth,
+        "Default depth",
+        1,
+        2_000
+      ),
+      height: boundedStudioNumber(
+        patch.defaultDimensions.height,
+        "Default height",
+        1,
+        2_000
+      ),
+      unit: "in"
+    },
+    active: studioBoolean(
+      patch.active,
+      "Custom type availability"
+    )
+  };
+}
+
+export async function
+saveCommissionTypeAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      CommissionTypeAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<
+    CommissionTypeRecord
+  >
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        COMMISSION_TYPE_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "commission-type",
+      conflictMessage:
+        "This operation ID has already been used for a different custom-type save.",
+      validate:
+        validateCommissionTypeAutosavePatch,
+      loadCurrent: (patch) =>
+        getCommissionType(
+          patch.slug
+        ),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "This custom type no longer exists."
+            );
+        }
+
+        saveCommissionType({
+          ...patch,
+          slug: current.slug
+        });
+
+        return getCommissionType(
+          current.slug
+        ) ?? current;
+      },
+      loadCanonical:
+        (_saved, patch) =>
+          getCommissionType(
+            patch.slug
+          ),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.slug,
+      operation: () => "update",
+      invalidate: () => {
+        revalidatePath(
+          "/commissions"
+        );
+        revalidatePath("/contact");
+      }
+    }
+  );
+}
+
+export type OrderAutosavePatch = {
+  orderNumber: string;
+  status: string;
+  paymentStatus: string | null;
+  trackingNumber: string | null;
+};
+
+const ORDER_AUTOSAVE_MUTATION_SCOPE =
+  "order-autosave";
+
+function validateOrderAutosavePatch(
+  patch: OrderAutosavePatch
+): OrderAutosavePatch {
+  return {
+    orderNumber: boundedStudioString(
+      patch.orderNumber,
+      "Order number",
+      200,
+      true
+    ),
+    status: boundedStudioString(
+      patch.status,
+      "Order status",
+      500,
+      true
+    ),
+    paymentStatus:
+      nullableStudioString(
+        patch.paymentStatus,
+        "Payment status",
+        500
+      ),
+    trackingNumber:
+      nullableStudioString(
+        patch.trackingNumber,
+        "Tracking number",
+        500
+      )
+  };
+}
+
+export async function
+saveOrderAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      OrderAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<OrderRecord>
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        ORDER_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "order",
+      conflictMessage:
+        "This operation ID has already been used for a different order save.",
+      validate:
+        validateOrderAutosavePatch,
+      loadCurrent: (patch) =>
+        getOrder(
+          patch.orderNumber
+        ),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "This order no longer exists."
+            );
+        }
+
+        saveOrder({
+          ...current,
+          status: patch.status,
+          paymentStatus:
+            patch.paymentStatus,
+          trackingNumber:
+            patch.trackingNumber
+        });
+
+        return getOrder(
+          current.orderNumber
+        ) ?? current;
+      },
+      loadCanonical:
+        (_saved, patch) =>
+          getOrder(
+            patch.orderNumber
+          ),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.orderNumber,
+      operation: () => "update",
+      invalidate: () => {
+        revalidatePath(
+          "/account/projects"
+        );
+      }
+    }
+  );
+}
+
+export type ReviewAutosavePatch = {
+  id: string;
+  reviewerName: string;
+  rating: number;
+  title: string;
+  body: string;
+  status: ReviewRecord["status"];
+};
+
+const REVIEW_AUTOSAVE_MUTATION_SCOPE =
+  "review-autosave";
+
+function validateReviewAutosavePatch(
+  patch: ReviewAutosavePatch
+): ReviewAutosavePatch {
+  return {
+    id: boundedStudioString(
+      patch.id,
+      "Review ID",
+      200,
+      true
+    ),
+    reviewerName:
+      boundedStudioString(
+        patch.reviewerName,
+        "Reviewer name",
+        500
+      ),
+    rating: boundedStudioNumber(
+      patch.rating,
+      "Review rating",
+      1,
+      5,
+      true
+    ),
+    title: boundedStudioString(
+      patch.title,
+      "Review title",
+      2_000
+    ),
+    body: boundedStudioString(
+      patch.body,
+      "Review body",
+      100_000
+    ),
+    status:
+      studioPublicationStatus(
+        patch.status
+      )
+  };
+}
+
+export async function
+saveReviewAutosaveAction(
+  input:
+    StudioServerMutationInput<
+      ReviewAutosavePatch
+    >
+): Promise<
+  StudioMutationResult<ReviewRecord>
+> {
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        REVIEW_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "review",
+      conflictMessage:
+        "This operation ID has already been used for a different review save.",
+      validate:
+        validateReviewAutosavePatch,
+      loadCurrent: (patch) =>
+        getReview(patch.id),
+      save: (current, patch) => {
+        if (!current) {
+          throw new
+            StudioMutationValidationError(
+              "This review no longer exists."
+            );
+        }
+
+        saveReview({
+          ...current,
+          ...patch,
+          pieceSlug:
+            current.pieceSlug,
+          userEmail:
+            current.userEmail
+        });
+
+        return getReview(
+          current.id
+        ) ?? current;
+      },
+      loadCanonical:
+        (_saved, patch) =>
+          getReview(patch.id),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.id,
+      operation: () => "update",
+      invalidate: (entity) => {
+        revalidatePath(
+          `/portfolio/${entity.pieceSlug}`
+        );
+      }
+    }
+  );
 }
 
 export async function saveNotificationPolicyAutosaveAction(

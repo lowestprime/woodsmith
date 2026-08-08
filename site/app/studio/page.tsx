@@ -6,10 +6,6 @@ import {
   cleanupMediaBackgroundAction,
   deleteMediaAction,
   deletePieceAction,
-  deletePostAction,
-  deleteReviewAdminAction,
-  deleteUserProfileAdminAction,
-  deleteCommissionTypeAction,
   deletePieceCategoryAction,
   loadMediaPageAction,
   loadMediaVerificationQueueAction,
@@ -22,10 +18,8 @@ import {
   savePieceCategoryAction,
   saveMediaMetadataAction,
   saveMediaSourceFolderRuleAction,
-  saveOrderAction,
   savePieceAction,
   savePostAction,
-  saveReviewAdminAction,
   saveSiteSettingsAction,
   saveSiteStructureAction,
   saveUserProfileAdminAction,
@@ -94,6 +88,17 @@ import {
 import {
   StudioPieceEditor
 } from "@/components/studio/studio-piece-editor";
+import {
+  StudioPostEditor
+} from "@/components/studio/studio-post-editor";
+import {
+  StudioProfileEditor
+} from "@/components/studio/studio-profile-editor";
+import {
+  StudioCommissionTypeEditor,
+  StudioOrderEditor,
+  StudioReviewEditor
+} from "@/components/studio/studio-commerce-editors";
 import { SiteStructureEditor } from "@/components/site-structure-editor";
 import { MediaPicker, type MediaPickerItem } from "@/components/media-picker";
 import { PieceMediaEditor } from "@/components/piece-media-editor";
@@ -416,12 +421,46 @@ function NewPieceEditor({ piece, categories, mediaItems, mediaLinks, highlight =
   );
 }
 
-function PostEditor({ post, mediaItems, highlight = false }: { post: Omit<PostRecord, "createdAt" | "updatedAt">; mediaItems: MediaPickerItem[]; highlight?: boolean }) {
+type StudioPostEditorRecord =
+  | PostRecord
+  | Omit<
+      PostRecord,
+      "createdAt" | "updatedAt"
+    >;
+
+function PostEditor({
+  post,
+  mediaItems,
+  highlight = false
+}: {
+  post: StudioPostEditorRecord;
+  mediaItems: MediaPickerItem[];
+  highlight?: boolean;
+}) {
+  if ("updatedAt" in post) {
+    return (
+      <StudioPostEditor
+        highlight={highlight}
+        mediaItems={mediaItems}
+        post={post}
+      />
+    );
+  }
+
+  return (
+    <NewPostEditor
+      highlight={highlight}
+      mediaItems={mediaItems}
+      post={post}
+    />
+  );
+}
+
+function NewPostEditor({ post, mediaItems, highlight = false }: { post: Omit<PostRecord, "createdAt" | "updatedAt">; mediaItems: MediaPickerItem[]; highlight?: boolean }) {
   return (
     <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("post", post.slug)}>
       <div className="studio-editor-head">
         <h3>{post.title}</h3>
-        {post.slug !== "new-process-entry" ? <form action={deletePostAction}><input name="slug" type="hidden" value={post.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
       </div>
       <form action={savePostAction} className="request-form compact-form">
         <div className="field-grid two-up compact-grid"><Field label="Slug" name="slug" defaultValue={post.slug} required /><Field label="Title" name="title" defaultValue={post.title} required /></div>
@@ -517,7 +556,44 @@ function UserEditor({
   mediaItems,
   highlight = false
 }: {
-  user: Omit<UserRecord, "id" | "resetToken" | "resetExpiresAt" | "emailVerified" | "verificationToken" | "verificationExpiresAt" | "createdAt" | "updatedAt">;
+  user:
+    | UserRecord
+    | ReturnType<typeof userDraft>;
+  currentAdminEmail: string;
+  mediaItems: MediaPickerItem[];
+  highlight?: boolean;
+}) {
+  if ("updatedAt" in user) {
+    return (
+      <StudioProfileEditor
+        highlight={highlight}
+        isCurrentAdmin={
+          currentAdminEmail.toLowerCase() ===
+          user.email.toLowerCase()
+        }
+        mediaItems={mediaItems}
+        user={user}
+      />
+    );
+  }
+
+  return (
+    <NewUserEditor
+      currentAdminEmail={currentAdminEmail}
+      highlight={highlight}
+      mediaItems={mediaItems}
+      user={user}
+    />
+  );
+}
+
+function NewUserEditor({
+  user,
+  currentAdminEmail,
+  mediaItems,
+  highlight = false
+}: {
+  user: ReturnType<typeof userDraft>;
   currentAdminEmail: string;
   mediaItems: MediaPickerItem[];
   highlight?: boolean;
@@ -530,12 +606,6 @@ function UserEditor({
         <h3>{user.displayName}</h3>
         <div className="studio-head-actions">
           <span>{user.role}</span>
-          {user.email !== "new@beamanwoodworks.local" ? (
-            <form action={deleteUserProfileAdminAction}>
-              <input name="email" type="hidden" value={user.email} />
-              <button className="button-secondary" disabled={isCurrentAdmin} title={isCurrentAdmin ? "Sign out of this account before deleting it." : "Delete profile"} type="submit">Delete</button>
-            </form>
-          ) : null}
         </div>
       </div>
       <form action={saveUserProfileAdminAction} className="request-form compact-form">
@@ -561,12 +631,39 @@ function UserEditor({
   );
 }
 
-function CommissionTypeEditor({ item, highlight = false }: { item: Omit<CommissionTypeRecord, "createdAt" | "updatedAt">; highlight?: boolean }) {
+function CommissionTypeEditor({
+  item,
+  highlight = false
+}: {
+  item:
+    | CommissionTypeRecord
+    | ReturnType<
+        typeof commissionTypeDraft
+      >;
+  highlight?: boolean;
+}) {
+  if ("updatedAt" in item) {
+    return (
+      <StudioCommissionTypeEditor
+        highlight={highlight}
+        item={item}
+      />
+    );
+  }
+
+  return (
+    <NewCommissionTypeEditor
+      highlight={highlight}
+      item={item}
+    />
+  );
+}
+
+function NewCommissionTypeEditor({ item, highlight = false }: { item: ReturnType<typeof commissionTypeDraft>; highlight?: boolean }) {
   return (
     <article className={`studio-panel studio-editor-card${highlight ? " highlight-card" : ""}`.trim()} id={toDomId("commission-type", item.slug)}>
       <div className="studio-editor-head">
         <h3>{item.label}</h3>
-        {item.slug !== "new-custom-type" ? <form action={deleteCommissionTypeAction}><input name="slug" type="hidden" value={item.slug} /><button className="button-secondary" type="submit">Delete</button></form> : null}
       </div>
       <form action={saveCommissionTypeAction} className="request-form compact-form">
         <div className="field-grid two-up compact-grid"><Field label="Slug" name="slug" defaultValue={item.slug} required /><Field label="Label" name="label" defaultValue={item.label} required /></div>
@@ -1045,7 +1142,7 @@ export default async function StudioPage({
           {orders.map((orderRecord) => (
             <article className={`studio-panel studio-editor-card${orderRecord.orderNumber === orderHighlight || orderRecord.orderNumber === invoice || orderRecord.orderNumber === shipped ? " highlight-card" : ""}`} key={orderRecord.orderNumber}>
               <div className="studio-editor-head"><h3>{orderRecord.orderNumber}</h3><span>{formatMoney(orderRecord.totalCents)}</span></div>
-              <form action={saveOrderAction} className="request-form compact-form"><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><Field label="Status" name="status" defaultValue={orderRecord.status} /><Field label="Payment status" name="paymentStatus" defaultValue={orderRecord.paymentStatus ?? ""} /><Field label="Tracking number" name="trackingNumber" defaultValue={orderRecord.trackingNumber ?? ""} /><button className="button-primary" type="submit">Save order</button></form>
+              <StudioOrderEditor order={orderRecord} />
               <div className="button-row"><form action={createInvoiceAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><button className="button-secondary" type="submit">Issue invoice</button></form><form action={createShippingLabelAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><input name="weightOunces" type="hidden" value="96" /><button className="button-secondary" type="submit">Create label</button></form></div>
               <p className="muted-copy">Updated {formatDateTime(orderRecord.updatedAt)}</p>
             </article>
@@ -1054,7 +1151,7 @@ export default async function StudioPage({
       </PageSection>
       ) : null}
 
-      {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className={`studio-panel studio-editor-card${pieceHighlight && review.pieceSlug === pieceHighlight ? " highlight-card" : ""}`} key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection> : null}
+      {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy, rating, and publication state without leaving the current workspace.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <StudioReviewEditor highlight={Boolean(pieceHighlight && review.pieceSlug === pieceHighlight)} key={review.id} review={review} />)}</div></PageSection> : null}
       {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
       </div>
     </Shell>

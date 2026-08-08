@@ -5989,6 +5989,12 @@ export function listReviews(pieceSlug?: string) {
   return rows.map(mapReview);
 }
 
+export function getReview(id: string) {
+  const db = getDatabase();
+  const row = db.prepare(`SELECT id, piece_slug AS pieceSlug, user_email AS userEmail, reviewer_name AS reviewerName, rating, title, body, status, created_at AS createdAt, updated_at AS updatedAt FROM reviews WHERE id = ? LIMIT 1`).get(id) as Record<string, unknown> | undefined;
+  return row ? mapReview(row) : null;
+}
+
 export function saveReview(input: Omit<ReviewRecord, "id" | "createdAt" | "updatedAt"> & { id?: string }) {
   const db = getDatabase();
   const timestamp = nowIso();
