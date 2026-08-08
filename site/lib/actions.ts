@@ -16,6 +16,7 @@ import {
   captureMediaOperationSnapshot,
   countMedia,
   countUsersByRole,
+  checkSearchIndexIntegrity,
   consumeCommissionRenderAsset,
   consumeCommissionSubmissionQuota,
   createDraftOrder,
@@ -49,6 +50,7 @@ import {
   getAdminEditAuditDetail,
   getAdminAuditFilterOptions,
   getSiteSettings,
+  getSearchIndexStatus,
   getStudioMutationOperation,
   getUserByEmail,
   getUserByVerificationToken,
@@ -70,6 +72,7 @@ import {
   previewMediaFolderRules,
   refreshMediaLibrary,
   reconcileMediaPieceAssignment,
+  rebuildSearchIndex,
   removeCartItem,
   saveCommissionType,
   saveMediaMetadata,
@@ -5249,6 +5252,65 @@ export async function loadAdminAuditFilterOptionsAction() {
     return adminActionFailure(
       error,
       "Audit filters could not be loaded."
+    );
+  }
+}
+
+export async function checkSearchIndexIntegrityAction() {
+  try {
+    const admin = await requireTrustedAdminAction();
+    const before = getSearchIndexStatus();
+    const status = checkSearchIndexIntegrity(
+      admin.email
+    );
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType: "search-index",
+      entityKey: "site_search_fts",
+      operation: "integrity-check",
+      before,
+      after: status
+    });
+    return {
+      ok: true as const,
+      message: status.synchronized &&
+        status.integrityStatus === "ok"
+        ? `Search index is synchronized across ${status.indexedDocuments} documents.`
+        : "Search index needs a rebuild.",
+      data: status
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Search index integrity could not be checked."
+    );
+  }
+}
+
+export async function rebuildSearchIndexAction() {
+  try {
+    const admin = await requireTrustedAdminAction();
+    const before = getSearchIndexStatus();
+    const status = rebuildSearchIndex(
+      admin.email
+    );
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType: "search-index",
+      entityKey: "site_search_fts",
+      operation: "rebuild",
+      before,
+      after: status
+    });
+    return {
+      ok: true as const,
+      message: `Rebuilt ${status.indexedDocuments} indexed documents and verified FTS5 integrity.`,
+      data: status
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Search index could not be rebuilt."
     );
   }
 }

@@ -107,7 +107,7 @@ The SQLite schema includes these primary tables:
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v6 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
-The independent additive migration ledger applies through schema version 12. Versions 9-11 normalize typed notification policy/template/delivery/attempt data, preserve SMTP verification results without storing the SMTP password, add project lifecycle and deletion-decision records, and seed a disabled-by-default visitor-session notification policy. Version 12 adds minimized pageviews and collection/retention policy, indexes audit queries, scrubs legacy visitor identifiers, and redacts sensitive legacy audit payloads. Legacy notification rows are compatibility-linked into normalized delivery history rather than discarded.
+The independent additive migration ledger applies through schema version 13. Versions 9-11 normalize typed notification policy/template/delivery/attempt data, preserve SMTP verification results without storing the SMTP password, add project lifecycle and deletion-decision records, and seed a disabled-by-default visitor-session notification policy. Version 12 adds minimized pageviews and collection/retention policy, indexes audit queries, scrubs legacy visitor identifiers, and redacts sensitive legacy audit payloads. Version 13 installs the managed `site_search_fts` FTS5 table, synchronization triggers, and index-state ledger, then performs an idempotent integrity-checked rebuild. Legacy notification rows are compatibility-linked into normalized delivery history rather than discarded.
 
 Projects retain active/archived/cancelled lifecycle state, assignment and target dates, completion/archive/cancellation timestamps, and cancellation reason. Lifecycle transitions and dependency-aware deletion previews/refusals/deletions are separately audited; media quarantine prevents a hard-delete request from silently destroying referenced files.
 
@@ -159,11 +159,11 @@ The runner captures the complete desktop/tablet/mobile/theme matrix plus a 5120 
 
 ## Search
 
-`searchSite()` searches across pieces, process notes, pages, media, and projects. Admin users receive private results including unpublished content, media paths, tags, cluster keys, and project records. Public users see public content only.
+`site/lib/search-index.ts` owns a managed FTS5 index over pages, pieces, Process notes, eligible indexed media metadata, and projects. Source-table insert/update/delete triggers rewrite the matching index document in the same SQLite transaction, including slug/path renames and publication visibility changes. The integrity workspace compares source and indexed keys, detects missing/stale/duplicate rows, runs FTS5's integrity command, and can rebuild only the derived index. Public queries filter to published records; authenticated administrator queries can include private content, media metadata, and projects.
 
-The search layer includes synonym expansion for common woodworking terms, material/color cues, cleanup labels, delivery, pickup, custom work, and Mackintosh or Stickley references. The browser-assisted visual search reads a reference image locally, derives color/material cues, and converts them into searchable tags.
+Lexical search is always first and uses Unicode61 tokenization with diacritic handling, two-to-four-character prefix indexes, punctuation-safe query construction, weighted BM25 ranking, and bounded snippets. Empty or punctuation-only input returns no rows rather than an invalid MATCH expression. The browser-assisted visual search reads a reference image locally, derives color/material cues, and converts them into lexical search terms.
 
-The `site/lib/search.ts` wrapper preserves the SQLite keyword/metadata search path and can optionally use the configured local CLIP, Gemini, or OpenAI text embedding provider for semantic re-ranking. Without a reachable provider, search falls back to local keyword, metadata, and browser-derived visual tags.
+`site/lib/search-rerank.ts` may semantically reorder only the first 24 lexical candidates. Candidate vectors must already exist in the embedding cache; request handling never embeds the corpus or writes candidate/query cache rows. At most one query vector is requested, bounded by `SEARCH_SEMANTIC_TIMEOUT_MS` (clamped to 100-2500 ms). Disabled providers, missing candidate vectors, sidecar errors, and timeouts leave the lexical result set unchanged. The search page streams the lexical result boundary while optional enrichment resolves, so semantic work never blocks the first useful result.
 
 ## Theme and UI
 
@@ -205,7 +205,8 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/ai-services.ts` + `site/lib/ai/providers/`: provider registry and local/Ollama/Gemini/OpenAI capability adapters
 - `site/lib/media-audit.ts` + `site/lib/media-scoring.ts`: deterministic embedding persistence, clustering, weighted candidate evidence, thresholds, and human-review gating
 - `tools/media-ai-sidecar/`: local HTTP service, file/hash cache, CLIP image/text embeddings, structured analysis, clustering, and provider arbitration
-- `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
+- `site/lib/search-index.ts`: FTS5 schema, source synchronization triggers, integrity/rebuild operations, and lexical ranking
+- `site/lib/search-rerank.ts` + `site/lib/search.ts`: bounded precomputed-vector reranking and provider fallback around the immediate lexical path
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notification-policy.ts`: typed notification definitions, recipient policy, template validation, retry/retention defaults, and variable allowlists
 - `site/lib/notifications.ts`: pooled SMTP transport, normalized delivery queue, idempotency, bounded retry processing, redacted diagnostics, and legacy compatibility

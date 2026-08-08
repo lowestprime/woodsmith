@@ -13,6 +13,12 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; use `Ctrl+S` to save, `Esc` to exit, **Reset unsaved** to restore the value shown when editing opened, or **Undo last save** to reverse the most recent inline batch. **Full editor** opens the matching visual dashboard workspace for structural changes. Inline batches are validated from a typed field registry, saved in one SQLite transaction, checked for concurrent changes, and recorded in the admin edit audit. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again. When focus returns to page content, the header reveals without covering the focused control. The inline URL editor and media browser keep keyboard focus inside their modal surfaces and restore it when closed.
 
+### Site search
+
+The Overview workspace reports the FTS5 site-search index version, indexed/expected document counts, mismatch counts, and latest integrity check. Page, piece, Process, media-metadata, and project changes update the index in the same SQLite transaction as the source record. **Check index** runs SQLite's FTS integrity check and compares every indexed key with its source. **Rebuild index** recreates only the derived search rows, verifies them, and records the operation in the redacted admin audit. Both actions update in place without a document reload or jump to the top.
+
+Public search returns published pages, pieces, and Process notes. Signed-in administrators can additionally find draft/archived content, indexed media metadata, and private project records. Normal results are Unicode-aware BM25 lexical matches with prefixes and snippets. Optional semantic enrichment is limited to the first 24 lexical candidates, reads only precomputed candidate vectors, and never replaces or delays the lexical fallback beyond the configured timeout.
+
 ### Settings
 
 The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.

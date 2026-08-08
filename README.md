@@ -27,7 +27,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - A paginated administrative audit workspace with server-side filters, on-demand redacted detail, and bounded redacted JSON export
 - Compact project lifecycle management with autosaved operational fields, buyer-visible timeline updates, explicit status-email dispatch, archive/cancel/reopen controls, and dependency-aware deletion with quarantine and audit records
 - Responsive piece carousels with announced position and full-size lightboxes that trap focus, restore the opener, support bounded keyboard/touch pan and zoom, and close through `Esc`, backdrop click, or the visible X control
-- Keyword/metadata search plus visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. The optional local sidecar supplies shared image/text CLIP vectors; Gemini or OpenAI embeddings remain opt-in alternatives.
+- FTS5 lexical-first search with BM25 ranking, Unicode-safe prefix matching, and snippets across public content and, for admins, private media metadata, unpublished content, and project records. SQLite triggers synchronize the derived index in the same transaction as content writes. Optional semantic ranking uses only precomputed vectors for the first 24 lexical candidates and falls back to the already-rendered lexical results within 100-2500 ms when its provider is disabled, offline, or slow. Browser-side reference-image analysis remains available for visual search cues.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets; the cookie-backed initial theme and client store are synchronized without hydration overwriting the saved choice
 - WCAG-oriented skip navigation, current-page navigation state, visible high-contrast focus, reduced-motion handling, compact 24px-or-larger targets, and focus clearance for the auto-hiding header
 - Responsive optimized thumbnail requests on portfolio, shop, cart, and carousel surfaces; the raw source remains available in the full-screen viewer and direct media responses use ETag/Last-Modified revalidation
@@ -40,7 +40,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 ## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
-- The application currently uses Next.js 16.3.0. The additive SQLite migration ledger applies through schema version 12: versions 9-11 add notification policy/delivery records and project lifecycle/deletion ledgers, while version 12 adds minimized visitor pageviews/policy data and scrubs legacy raw visitor and audit fields. Migrations update the mounted database in place and are idempotent.
+- The application currently uses Next.js 16.3.0. The additive SQLite migration ledger applies through schema version 13: versions 9-11 add notification policy/delivery records and project lifecycle/deletion ledgers, version 12 adds minimized visitor pageviews/policy data and scrubs legacy raw visitor and audit fields, and version 13 creates and rebuilds the synchronized FTS5 site-search index. Migrations update the mounted database in place and are idempotent.
 - Studio overview reports the active `DATA_ROOT`, SQLite `quick_check`, journal mode, and seed version so rebuild-safe persistence can be verified from the browser. Seed upgrades are non-destructive for existing Studio-edited records.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free, dynamically loaded React Three Fiber conceptual proportional preview. A deterministic SVG drawing remains available for fallback, printing, and submitted snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
@@ -109,7 +109,7 @@ Local-first media AI configuration:
 - `AI_PROVIDER`, `AI_ANALYSIS_PROVIDER`, `AI_EMBEDDING_PROVIDER`, `AI_FALLBACK_PROVIDER`
 - `LOCAL_AI_SIDECAR_URL`, optional `LOCAL_AI_SIDECAR_TOKEN`, and `LOCAL_EMBEDDING_MODEL`
 - `OLLAMA_BASE_URL` and `OLLAMA_VISION_MODEL`
-- `ENABLE_AI_MEDIA_ANALYSIS`, `ENABLE_EMBEDDING_SEARCH`, and `ENABLE_LOCAL_IMAGE_EMBEDDINGS`
+- `ENABLE_AI_MEDIA_ANALYSIS`, `ENABLE_EMBEDDING_SEARCH`, `ENABLE_LOCAL_IMAGE_EMBEDDINGS`, and bounded `SEARCH_SEMANTIC_TIMEOUT_MS` (100-2500 ms; default 2000)
 - `MEDIA_AI_MAX_BATCH`, `MEDIA_AI_CONFIDENCE_HIGH`, `MEDIA_AI_CONFIDENCE_MIN`, and `MEDIA_AI_AMBIGUITY_DELTA`
 - sidecar-only `MEDIA_AI_MEDIA_ROOT`, `MEDIA_AI_CACHE`, `MEDIA_AI_SIDECAR_TOKEN`, `MEDIA_AI_ACCELERATOR`, `MEDIA_AI_CUDA_DEVICE`, `MEDIA_AI_GPU_MEMORY_LIMIT_MB`, `MEDIA_AI_GPU_LEASE_FILE`, `MEDIA_AI_EMBED_BATCH_SIZE`, `MEDIA_AI_MODEL_LOCAL_ONLY`, `MEDIA_AI_USE_OLLAMA`, `MEDIA_AI_CLUSTER_SIMILARITY`, and `MEDIA_AI_DUPLICATE_HASH_DISTANCE`
 - optional `GEMINI_API_KEY`, `GEMINI_VISION_MODEL`, `GEMINI_EMBEDDING_MODEL`, and `ENABLE_GEMINI_FALLBACK`

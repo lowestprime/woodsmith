@@ -44,7 +44,7 @@ test("visitor analytics deduplicates pageviews, aggregates pseudonyms, applies r
   try {
     const persistence =
       db.getRuntimePersistenceStatus();
-    assert.equal(persistence.schemaVersion, 12);
+    assert.equal(persistence.schemaVersion, 13);
     const identityKey = resolveVisitorIdentityKey();
     assert.ok(identityKey);
     const firstIdentity = createVisitorPseudonyms({

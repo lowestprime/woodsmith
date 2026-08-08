@@ -18,6 +18,9 @@ import {
 import {
   redactAuditPayload
 } from "./audit-redaction.ts";
+import {
+  installSearchIndexInDatabase
+} from "./search-index.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -975,6 +978,24 @@ const migrations: Migration[] = [
         scrubbedUserAgents: Number(legacySensitive.userAgents ?? 0),
         scrubbedReferrers: Number(legacySensitive.referrers ?? 0),
         redactedAudits
+      };
+    }
+  },
+  {
+    version: 13,
+    name: "site-search-fts5-v1",
+    checksum: "2026-08-site-search-fts5-v1",
+    apply(db) {
+      const status = installSearchIndexInDatabase(db);
+      return {
+        table: "site_search_fts",
+        stateTable: "site_search_index_state",
+        schemaVersion: status.schemaVersion,
+        triggerVersion: status.triggerVersion,
+        indexedDocuments: status.indexedDocuments,
+        expectedDocuments: status.expectedDocuments,
+        synchronized: status.synchronized,
+        integrityStatus: status.integrityStatus
       };
     }
   }

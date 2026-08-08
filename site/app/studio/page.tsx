@@ -38,6 +38,7 @@ import {
   countMedia,
   getMedia,
   getMediaAccessAssociations,
+  getSearchIndexStatus,
   getSiteSettings,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
@@ -103,6 +104,7 @@ import { classifyMediaAccess } from "@/lib/media-access";
 import { getSmtpPublicConfiguration } from "@/lib/notifications";
 import { StudioNotificationsAdmin } from "@/components/studio/studio-notifications-admin";
 import { StudioProjectsAdmin } from "@/components/studio/studio-projects-admin";
+import { StudioSearchIndexAdmin } from "@/components/studio/studio-search-index-admin";
 import { visitorIdentityPublicStatus } from "@/lib/visitor-privacy";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
@@ -680,6 +682,9 @@ export default async function StudioPage({
     : "all";
   const summary = getStudioDashboardSummary();
   const persistence = getRuntimePersistenceStatus();
+  const searchIndexStatus = currentPanel === "overview"
+    ? getSearchIndexStatus()
+    : null;
   const queryOpt = mediaQuery.trim() || undefined;
   const settings = currentPanel === "settings" || currentPanel === "categories" || currentPanel === "pieces" ? getSiteSettings() : null;
   const categories = normalizePieceCategories(settings?.pieceCategories);
@@ -928,6 +933,7 @@ export default async function StudioPage({
               </dl>
               <p className="muted-copy">Studio edits are written to this database path and reused by future container rebuilds when the Compose mount remains active.</p>
             </article>
+            {searchIndexStatus ? <StudioSearchIndexAdmin initialStatus={searchIndexStatus} /> : null}
             {aiStatus ? <article className="studio-panel"><p className="eyebrow">AI services</p><h3>{aiStatus.backgroundCleanup || aiStatus.embeddingSearch || aiStatus.mediaAnalysis || aiStatus.publicRendering ? "Mixed availability" : "Credential-free mode"}</h3><p className="muted-copy">Optional AI services remain honest and off by default unless their environment configuration is present.</p></article> : null}
           </div>
         </PageSection>

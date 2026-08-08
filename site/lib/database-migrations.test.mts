@@ -11,23 +11,69 @@ function fixtureDatabase(options: { omitPriceColumn?: boolean } = {}) {
   const db = new DatabaseSync(path.join(directory, "fixture.sqlite"));
   db.exec(`
     PRAGMA foreign_keys = ON;
+    CREATE TABLE pages (
+      slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      nav_label TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'draft',
+      intro TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL DEFAULT '',
+      layout TEXT NOT NULL DEFAULT 'document',
+      hero_media_path TEXT,
+      sections_json TEXT NOT NULL DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    ) STRICT;
     CREATE TABLE pieces (
       slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      subtitle TEXT NOT NULL DEFAULT '',
+      category TEXT NOT NULL DEFAULT 'other',
       status TEXT NOT NULL,
       publication_status TEXT NOT NULL,
       availability_label TEXT NOT NULL DEFAULT '',
       ${options.omitPriceColumn ? "" : "price_cents INTEGER,"}
+      summary TEXT NOT NULL DEFAULT '',
+      story TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL DEFAULT '[]',
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      materials_json TEXT NOT NULL DEFAULT '[]',
+      dimensions_json TEXT NOT NULL DEFAULT 'null',
       media_paths_json TEXT NOT NULL DEFAULT '[]',
       metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT '',
+      updated_at TEXT NOT NULL
+    ) STRICT;
+    CREATE TABLE posts (
+      slug TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT '',
+      excerpt TEXT NOT NULL DEFAULT '',
+      body TEXT NOT NULL DEFAULT '',
+      publication_status TEXT NOT NULL DEFAULT 'draft',
+      published_at TEXT,
+      author_email TEXT,
+      cover_media_path TEXT,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      source_url TEXT,
+      source_label TEXT,
+      created_at TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
     ) STRICT;
     CREATE TABLE media_items (
       relative_path TEXT PRIMARY KEY,
+      folder TEXT NOT NULL DEFAULT '',
+      file_name TEXT NOT NULL DEFAULT '',
+      kind TEXT NOT NULL DEFAULT 'image',
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      cluster_key TEXT NOT NULL DEFAULT '',
+      alt_text TEXT NOT NULL DEFAULT '',
       piece_slug TEXT,
       post_slug TEXT,
       page_slug TEXT,
       project_reference TEXT,
       reviewed INTEGER NOT NULL DEFAULT 0,
+      tags_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     ) STRICT;
@@ -44,7 +90,21 @@ function fixtureDatabase(options: { omitPriceColumn?: boolean } = {}) {
     ) STRICT;
     CREATE TABLE projects (
       reference TEXT PRIMARY KEY,
+      user_email TEXT,
+      guest_name TEXT NOT NULL DEFAULT '',
+      guest_email TEXT NOT NULL DEFAULT '',
+      piece_slug TEXT,
+      commission_type_slug TEXT,
+      kind TEXT NOT NULL DEFAULT 'commission',
       status TEXT NOT NULL,
+      stage TEXT NOT NULL DEFAULT 'Submitted',
+      brief TEXT NOT NULL DEFAULT '',
+      materials_json TEXT NOT NULL DEFAULT '[]',
+      dimensions_json TEXT NOT NULL DEFAULT 'null',
+      options_json TEXT NOT NULL DEFAULT '{}',
+      public_notes TEXT NOT NULL DEFAULT '',
+      internal_notes TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT '',
       updated_at TEXT NOT NULL
     ) STRICT;
   `);
@@ -110,7 +170,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     const second = applySchemaMigrations(db);
     assert.equal(first.quickCheckBefore, "ok");
     assert.equal(first.quickCheckAfter, "ok");
-    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
     assert.equal(second.applied.length, 0);
 
     const policies = (db.prepare(`SELECT slug, price_mode AS priceMode, price_cents AS priceCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode FROM pieces ORDER BY slug`).all() as Array<Record<string, unknown>>).map((row) => ({ ...row }));
@@ -200,7 +260,19 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     ]);
 
     const migrationCount = db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number };
-    assert.equal(migrationCount.n, 12);
+    assert.equal(migrationCount.n, 13);
+    const searchStatus = db.prepare(`
+      SELECT expected_documents AS expectedDocuments,
+             indexed_documents AS indexedDocuments,
+             integrity_status AS integrityStatus
+      FROM site_search_index_state
+      WHERE id = 'default'
+    `).get() as Record<string, unknown>;
+    assert.deepEqual({ ...searchStatus }, {
+      expectedDocuments: 7,
+      indexedDocuments: 7,
+      integrityStatus: "ok"
+    });
   } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
@@ -234,7 +306,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [7, 8, 9, 10, 11, 12]
+      [7, 8, 9, 10, 11, 12, 13]
     );
     const policyCount = db.prepare(`
         SELECT COUNT(*) AS count
@@ -251,7 +323,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
     `).all() as Array<{ version: number }>;
     assert.deepEqual(
       versions.map((row) => row.version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
     );
   } finally {
     db.close();
@@ -283,7 +355,7 @@ test("a schema-version-10 fixture adds the disabled visitor-session policy", () 
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [11, 12]
+      [11, 12, 13]
     );
     assert.deepEqual(
       {
@@ -381,7 +453,9 @@ test("schema version 12 scrubs legacy visitor identifiers and audit private data
       stamp
     );
 
-    const upgrade = applySchemaMigrations(db);
+    const upgrade = applySchemaMigrations(db, {
+      throughVersion: 12
+    });
     assert.deepEqual(
       upgrade.applied.map((entry) => entry.version),
       [12]
@@ -433,6 +507,12 @@ test("schema version 12 scrubs legacy visitor identifiers and audit private data
       `).get().retentionDays,
       90
     );
+    assert.deepEqual(
+      applySchemaMigrations(db).applied.map(
+        (entry) => entry.version
+      ),
+      [13]
+    );
     assert.equal(
       applySchemaMigrations(db).applied.length,
       0
@@ -461,5 +541,54 @@ test("a failing migration rolls back its schema changes and ledger row", () => {
   } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("a failing FTS5 migration leaves version 13 unapplied and rolls back derived schema", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, {
+      throughVersion: 12
+    });
+    db.exec("CREATE TABLE site_search_fts (invalid TEXT) STRICT");
+    assert.throws(
+      () => applySchemaMigrations(db),
+      /document_key|site_search_fts|column/i
+    );
+    assert.equal(
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM schema_migrations
+        WHERE version = 13
+      `).get().count,
+      0
+    );
+    assert.equal(
+      db.prepare(`
+        SELECT name FROM sqlite_master
+        WHERE type = 'table'
+          AND name = 'site_search_index_state'
+      `).get(),
+      undefined
+    );
+    assert.equal(
+      db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM sqlite_master
+        WHERE type = 'trigger'
+          AND name LIKE 'site_search_%'
+      `).get().count,
+      0
+    );
+    const quick = db.prepare(
+      "PRAGMA quick_check"
+    ).get() as Record<string, unknown>;
+    assert.equal(String(Object.values(quick)[0]), "ok");
+  } finally {
+    db.close();
+    rmSync(directory, {
+      recursive: true,
+      force: true
+    });
   }
 });

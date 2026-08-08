@@ -83,6 +83,7 @@ AI_EMBEDDING_PROVIDER=local-clip
 AI_FALLBACK_PROVIDER=disabled
 ENABLE_AI_MEDIA_ANALYSIS=true
 ENABLE_EMBEDDING_SEARCH=true
+SEARCH_SEMANTIC_TIMEOUT_MS=2000
 ENABLE_LOCAL_IMAGE_EMBEDDINGS=true
 LOCAL_AI_SIDECAR_URL=http://192.168.1.50:8765
 LOCAL_AI_SIDECAR_TOKEN=
@@ -451,7 +452,7 @@ The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
 - The application dependency is Next.js 16.3.0; the current local WP06 dependency audit reports zero known vulnerabilities at the configured high threshold, but release deployment still requires a fresh candidate audit and image build.
-- After a candidate starts, confirm Studio reports schema version 12 and `quick_check=ok`; inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
+- After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
 - In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
