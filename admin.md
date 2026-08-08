@@ -105,14 +105,17 @@ Public piece and shop cards request responsive optimized thumbnails rather than 
 
 The overview workspace now shows recent visitor sessions on a world map and in a recent-session list. The map is sourced from session records stored in SQLite.
 
-- a new visitor session queues an email when SMTP is configured
+- visitor-session email is represented by a dedicated notification policy and is disabled by default; session recording alone does not send mail
+- enabling that policy is an explicit administrative action and still requires a working SMTP configuration and recipient policy
 - country detail uses Cloudflare's `CF-IPCountry` header when available
 - city, region, latitude, and longitude require Cloudflare visitor-location headers to be enabled
 - if Cloudflare location headers are not present, the dashboard still records the session and host/path but shows unknown location data
 
 ### Projects
 
-Projects can be updated with status, stage, public notes, internal notes, lead time, and timeline entries. Buyer access to `/requests/[reference]` requires either an admin session, a matching signed-in account, or the buyer email used for the project.
+Projects use a compact master-detail workspace. Status, stage, public notes, internal notes, lead time, assignee, and target dates autosave in place; the retained **Save** control is a manual flush for operators who prefer an explicit checkpoint. Timeline entries are separate buyer-visible records, and sending a project-status email is an explicit action rather than a side effect of an ordinary edit.
+
+Archive, cancel, and reopen preserve the project and record actor/time/reason in the lifecycle ledger. Hard deletion is a separate guarded workflow: first inspect the dependency preview, then supply the displayed confirmation and reason. Referenced private media is quarantined rather than silently destroyed, unsafe dependencies cause refusal, and every preview/refusal/deletion decision is recorded. Buyer access to `/requests/[reference]` still requires an administrator session, a matching signed-in account, or the buyer email used for the project.
 
 ### Orders
 
@@ -124,7 +127,11 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-Password resets, verification links, project updates, contact requests, and commerce emails queue notification records. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures are shown accurately instead of being reported as sent.
+The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, and **SMTP** views. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
+
+Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
+
+Delivery rows are summary-only until opened; message bodies and attempt details are loaded on demand. SMTP verification reports host/port/sender and categorized failures but never returns or renders `SMTP_PASSWORD`. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures remain explicit instead of being reported as sent.
 
 ## Buyer-facing workflow
 
@@ -179,7 +186,7 @@ These features require server configuration before they work live:
 
 ### The site sent no email
 
-Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, and `SMTP_FROM_ADDRESS`, then review the Notifications section for queued or failed records. Buyer email verification and visitor-session alerts use the same outbound email transport.
+Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, and `SMTP_FROM_ADDRESS`, then open Notifications → SMTP for the redacted configuration check and Notifications → Delivery for queued, failed, pending-configuration, or suppressed records. Buyer verification and any deliberately enabled visitor notice use the same outbound transport; visitor notices remain disabled by default.
 
 ### Checkout did not open Stripe
 

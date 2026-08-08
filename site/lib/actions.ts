@@ -22,6 +22,8 @@ import {
   createMediaOperationBatch,
   createProject,
   createProjectIdempotent,
+  deleteNotificationDelivery,
+  deleteProjectPermanently,
   deleteCommissionType,
   deleteMediaRecordAndReferences,
   deletePage,
@@ -38,6 +40,10 @@ import {
   getPiece,
   getPost,
   getProject,
+  getProjectDeletionPreview,
+  getNotificationDeliveryDetail,
+  getNotificationPolicy,
+  getNotificationTemplate,
   getSiteSettings,
   getStudioMutationOperation,
   getUserByEmail,
@@ -49,6 +55,9 @@ import {
   listPieces,
   markEmailVerified,
   markCommissionDraftSubmitted,
+  purgeExpiredNotificationDeliveries,
+  recordProjectDeletionRefusal,
+  recordProjectDeletionPreview,
   rollbackCommissionSubmission,
   patchMediaMetadata,
   previewMediaFolderRules,
@@ -58,6 +67,8 @@ import {
   saveCommissionType,
   saveMediaMetadata,
   saveMediaSourceFolderRule,
+  saveNotificationPolicy,
+  saveNotificationTemplate,
   saveOrder,
   savePage,
   savePiece,
@@ -68,6 +79,7 @@ import {
   setEmailVerificationToken,
   setPasswordHash,
   setPasswordResetToken,
+  transitionProjectLifecycle,
   updateProject,
   withDatabaseTransaction,
   finishMediaRenameHistory,
@@ -95,6 +107,12 @@ import {
   type PieceMediaLinkRecord,
   type PieceRecord,
   type PostRecord,
+  type ProjectDeletionPreview,
+  type ProjectLifecycleState,
+  type ProjectRecord,
+  type NotificationPolicyRecord,
+  type NotificationRecipientMode,
+  type NotificationTemplateRecord,
   type SiteSettings,
   type UserRecord
 } from "@/lib/db";
@@ -132,7 +150,14 @@ import {
   type MovedMediaAsset
 } from "@/lib/media-operations";
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
-import { sendNotificationEmail, summarizeEmailFailure } from "@/lib/notifications";
+import {
+  processDueNotificationRetries,
+  retryNotificationDelivery,
+  sendNotificationEmail,
+  sendSmtpTest,
+  summarizeEmailFailure,
+  verifySmtpConfiguration
+} from "@/lib/notifications";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories } from "@/lib/categories";
@@ -147,6 +172,10 @@ import {
   classifyMediaAccess,
   mediaDirectPublicEligible
 } from "@/lib/media-access";
+import {
+  NOTIFICATION_RECIPIENT_MODES,
+  validateNotificationTemplate
+} from "@/lib/notification-policy";
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode, pieceAcceptsReviews, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/piece-model";
 import { calculateEstimate, normalizeVisualizerState } from "@/lib/estimator";
 import { commissionOwnerKey, grantProjectBrowserAccess, userCanAccessProject } from "@/lib/commission-security";
@@ -601,6 +630,7 @@ export async function signupAction(formData: FormData) {
     redirect(`/account/login?error=${encodeURIComponent("An account with that email already exists. Please log in.")}&email=${encodeURIComponent(email)}`);
   }
 
+  const signupAt = new Date().toISOString();
   saveUserProfile({
     email,
     role: "customer",
@@ -610,7 +640,7 @@ export async function signupAction(formData: FormData) {
     avatarPath: null,
     publicProfile: false,
     links: [],
-    metadata: { signupAt: new Date().toISOString() },
+    metadata: { signupAt },
     passwordHash: createPasswordHash(password)
   });
 
@@ -624,11 +654,18 @@ export async function signupAction(formData: FormData) {
   let verificationError = "";
   try {
     const delivery = await sendNotificationEmail({
-      category: "signup",
+      category: "account_verification",
       to: email,
       subject: "Confirm your Beaman Woodworks email",
       text: `Welcome to Beaman Woodworks.\n\nConfirm your email address to finish activating your buyer account:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
-      html: `<p>Welcome to Beaman Woodworks.</p><p>Confirm your email address to finish activating your buyer account:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
+      html: `<p>Welcome to Beaman Woodworks.</p><p>Confirm your email address to finish activating your buyer account:</p><p>${verifyUrl}</p><p>This link expires in 48 hours.</p>`,
+      variables: {
+        recipientName: displayName,
+        actionUrl: verifyUrl,
+        expiresIn: "48 hours"
+      },
+      idempotencyKey:
+        `account-verification:${email}:${verificationToken}`
     });
     verificationSent = delivery.sent;
     if (!delivery.sent) verificationError = summarizeEmailFailure(delivery.reason);
@@ -646,10 +683,17 @@ export async function signupAction(formData: FormData) {
     const notifyTo = site.notificationForwardEmail || site.builderEmail;
     if (notifyTo && notifyTo.toLowerCase() !== email.toLowerCase()) {
       await sendNotificationEmail({
-        category: "signup",
+        category: "account_created_admin",
         to: notifyTo,
         subject: `New account: ${displayName}`,
-        text: `A new customer account was created.\n\nName: ${displayName}\nEmail: ${email}\nAt: ${new Date().toISOString()}`
+        text: `A new customer account was created.\n\nName: ${displayName}\nEmail: ${email}\nAt: ${signupAt}`,
+        variables: {
+          displayName,
+          email,
+          createdAt: signupAt
+        },
+        idempotencyKey:
+          `account-created:${email}:${signupAt}`
       });
     }
   } catch {
@@ -690,7 +734,13 @@ export async function forgotPasswordAction(formData: FormData) {
     to: email,
     subject: "Reset your Beaman Woodworks password",
     text: `Use this link to reset your password: ${resetUrl}`,
-    html: `<p>Use this link to reset your password:</p><p><a href="${resetUrl}">${resetUrl}</a></p>`
+    html: `<p>Use this link to reset your password:</p><p>${resetUrl}</p>`,
+    variables: {
+      actionUrl: resetUrl,
+      expiresIn: "1 hour"
+    },
+    idempotencyKey:
+      `password-reset:${email}:${token}`
   });
 
   redirect("/account/forgot?sent=1");
@@ -1047,7 +1097,14 @@ export async function submitContactRequestAction(formData: FormData) {
       to: [guestEmail, getSiteSettings().builderEmail],
       subject: `Custom work request received: ${reference}`,
       text: `Your Beaman Woodworks project reference is ${reference}. Open ${statusUrl} and enter the reference with your email to view updates.`,
-      html: `<p>Your Beaman Woodworks project reference is <strong>${reference}</strong>.</p><p>Open <a href="${statusUrl}">${statusUrl}</a> and enter the reference with your email to view updates.</p>`
+      html: `<p>Your Beaman Woodworks project reference is <strong>${reference}</strong>.</p><p>Open ${statusUrl} and enter the reference with your email to view updates.</p>`,
+      variables: {
+        projectReference: reference,
+        statusUrl
+      },
+      idempotencyKey:
+        `commission-submitted:${reference}`,
+      projectReference: reference
     });
     const draftId = optionalField(formData.get("draftId"));
     if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
@@ -3894,6 +3951,1357 @@ export async function applyMediaFolderRulesAction(): Promise<MediaActionResult> 
   }
 }
 
+export type NotificationPolicyAutosavePatch = {
+  category: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  recipientMode:
+    NotificationRecipientMode;
+  recipients: string[];
+  forwardRecipients: string[];
+  retentionDays: number;
+  maxAttempts: number;
+  retryBaseSeconds: number;
+};
+
+export type NotificationTemplateAutosavePatch = {
+  category: string;
+  subjectTemplate: string;
+  textTemplate: string;
+  htmlTemplate: string;
+};
+
+export type ProjectAdminAutosavePatch = {
+  reference: string;
+  status: string;
+  stage: string;
+  pieceSlug: string | null;
+  commissionTypeSlug: string | null;
+  leadTimeDays: number | null;
+  publicNotes: string;
+  internalNotes: string;
+  assigneeEmail: string | null;
+  targetStartAt: string | null;
+  targetCompletionAt: string | null;
+  completedAt: string | null;
+};
+
+const NOTIFICATION_POLICY_MUTATION_SCOPE =
+  "notification-policy-autosave";
+
+const NOTIFICATION_TEMPLATE_MUTATION_SCOPE =
+  "notification-template-autosave";
+
+const PROJECT_ADMIN_MUTATION_SCOPE =
+  "project-admin-autosave";
+
+function boundedStudioString(
+  value: unknown,
+  label: string,
+  maximumBytes: number,
+  required = false
+) {
+  if (typeof value !== "string") {
+    throw new StudioMutationValidationError(
+      `${label} must be text.`
+    );
+  }
+  const normalized = value.trim();
+  if (required && !normalized) {
+    throw new StudioMutationValidationError(
+      `${label} is required.`
+    );
+  }
+  if (
+    Buffer.byteLength(value, "utf8") >
+    maximumBytes
+  ) {
+    throw new StudioMutationValidationError(
+      `${label} is too long.`
+    );
+  }
+  return required ? normalized : value;
+}
+
+function normalizeEmailList(
+  value: unknown,
+  label: string
+) {
+  if (!Array.isArray(value)) {
+    throw new StudioMutationValidationError(
+      `${label} must be a list.`
+    );
+  }
+  const result = [
+    ...new Set(
+      value
+        .map((entry) =>
+          String(entry).trim().toLowerCase()
+        )
+        .filter(Boolean)
+    )
+  ];
+  if (result.length > 30) {
+    throw new StudioMutationValidationError(
+      `${label} may contain at most 30 addresses.`
+    );
+  }
+  if (
+    result.some(
+      (email) =>
+        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      `${label} contains an invalid email address.`
+    );
+  }
+  return result;
+}
+
+function boundedInteger(
+  value: unknown,
+  label: string,
+  minimum: number,
+  maximum: number
+) {
+  const number = Number(value);
+  if (
+    !Number.isInteger(number) ||
+    number < minimum ||
+    number > maximum
+  ) {
+    throw new StudioMutationValidationError(
+      `${label} must be between ${minimum} and ${maximum}.`
+    );
+  }
+  return number;
+}
+
+function validateNotificationPolicyPatch(
+  patch: NotificationPolicyAutosavePatch
+) {
+  const current = getNotificationPolicy(
+    boundedStudioString(
+      patch.category,
+      "Notification category",
+      120,
+      true
+    )
+  );
+  if (!current) {
+    throw new StudioMutationValidationError(
+      "Notification type no longer exists."
+    );
+  }
+  if (
+    !NOTIFICATION_RECIPIENT_MODES.includes(
+      patch.recipientMode
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Notification recipient mode is invalid."
+    );
+  }
+  return {
+    category: current.category,
+    label: boundedStudioString(
+      patch.label,
+      "Notification label",
+      240,
+      true
+    ),
+    description: boundedStudioString(
+      patch.description,
+      "Notification description",
+      2_000
+    ),
+    enabled: patch.enabled === true,
+    recipientMode: patch.recipientMode,
+    recipients: normalizeEmailList(
+      patch.recipients,
+      "Recipients"
+    ),
+    forwardRecipients:
+      normalizeEmailList(
+        patch.forwardRecipients,
+        "Forwarding recipients"
+      ),
+    retentionDays: boundedInteger(
+      patch.retentionDays,
+      "Retention days",
+      1,
+      3_650
+    ),
+    maxAttempts: boundedInteger(
+      patch.maxAttempts,
+      "Maximum attempts",
+      1,
+      10
+    ),
+    retryBaseSeconds: boundedInteger(
+      patch.retryBaseSeconds,
+      "Retry delay",
+      30,
+      86_400
+    )
+  };
+}
+
+function mutationRequestHash(value: unknown) {
+  return createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
+}
+
+export async function saveNotificationPolicyAutosaveAction(
+  input: StudioServerMutationInput<
+    NotificationPolicyAutosavePatch
+  >
+): Promise<
+  StudioMutationResult<
+    NotificationPolicyRecord
+  >
+> {
+  let actorEmail = "";
+  let requestHash = "";
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user = await getCurrentUser();
+        if (!user || user.role !== "admin") {
+          return null;
+        }
+        actorEmail =
+          user.email.trim().toLowerCase();
+        return { email: actorEmail };
+      },
+      originAllowed:
+        studioServerActionOriginAllowed,
+      validate: (patch) => {
+        const validated =
+          validateNotificationPolicyPatch(
+            patch
+          );
+        requestHash =
+          mutationRequestHash(validated);
+        return validated;
+      },
+      transaction: (work) =>
+        withDatabaseTransaction(() =>
+          work()
+        ),
+      findCompletedOperation:
+        (operationId, patch) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                NotificationPolicyRecord
+              >
+            >(operationId);
+          if (!completed) return null;
+          if (
+            completed.mutationScope !==
+              NOTIFICATION_POLICY_MUTATION_SCOPE ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              mutationRequestHash(patch)
+          ) {
+            throw new StudioMutationConflictError(
+              "This operation ID has already been used for a different notification policy save."
+            );
+          }
+          return completed.response;
+        },
+      loadCurrent: (patch) =>
+        getNotificationPolicy(
+          patch.category
+        ),
+      save: (_current, patch) =>
+        saveNotificationPolicy({
+          ...patch,
+          updatedBy: actorEmail
+        }),
+      loadCanonical: (_saved, patch) =>
+        getNotificationPolicy(
+          patch.category
+        ),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityType: "notification-policy",
+      entityKey: (entity) =>
+        entity.category,
+      operation: () => "update",
+      audit: (auditInput) => {
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              auditInput.actorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before:
+              auditInput.before,
+            after:
+              auditInput.after,
+            requestId:
+              auditInput.requestId
+          });
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            auditInput.actorEmail,
+          mutationScope:
+            NOTIFICATION_POLICY_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity: auditInput.after,
+            updatedAt:
+              auditInput.after.updatedAt,
+            auditId
+          }
+        });
+        return auditId;
+      },
+      invalidate: () => {
+        revalidatePath(
+          "/studio?panel=notifications"
+        );
+      }
+    }
+  );
+}
+
+function validateNotificationTemplatePatch(
+  patch: NotificationTemplateAutosavePatch
+) {
+  const category =
+    boundedStudioString(
+      patch.category,
+      "Notification category",
+      120,
+      true
+    );
+  if (
+    !getNotificationPolicy(category) ||
+    !getNotificationTemplate(category)
+  ) {
+    throw new StudioMutationValidationError(
+      "Notification template no longer exists."
+    );
+  }
+  const validated = {
+    category,
+    subjectTemplate:
+      boundedStudioString(
+        patch.subjectTemplate,
+        "Subject template",
+        1_000,
+        true
+      ),
+    textTemplate:
+      boundedStudioString(
+        patch.textTemplate,
+        "Text template",
+        100_000,
+        true
+      ),
+    htmlTemplate:
+      boundedStudioString(
+        patch.htmlTemplate,
+        "HTML template",
+        200_000
+      )
+  };
+  const templateValidation =
+    validateNotificationTemplate(
+      validated
+    );
+  if (!templateValidation.ok) {
+    throw new StudioMutationValidationError(
+      templateValidation.errors.join(" ")
+    );
+  }
+  return validated;
+}
+
+export async function saveNotificationTemplateAutosaveAction(
+  input: StudioServerMutationInput<
+    NotificationTemplateAutosavePatch
+  >
+): Promise<
+  StudioMutationResult<
+    NotificationTemplateRecord
+  >
+> {
+  let actorEmail = "";
+  let requestHash = "";
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user = await getCurrentUser();
+        if (!user || user.role !== "admin") {
+          return null;
+        }
+        actorEmail =
+          user.email.trim().toLowerCase();
+        return { email: actorEmail };
+      },
+      originAllowed:
+        studioServerActionOriginAllowed,
+      validate: (patch) => {
+        const validated =
+          validateNotificationTemplatePatch(
+            patch
+          );
+        requestHash =
+          mutationRequestHash(validated);
+        return validated;
+      },
+      transaction: (work) =>
+        withDatabaseTransaction(() =>
+          work()
+        ),
+      findCompletedOperation:
+        (operationId, patch) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                NotificationTemplateRecord
+              >
+            >(operationId);
+          if (!completed) return null;
+          if (
+            completed.mutationScope !==
+              NOTIFICATION_TEMPLATE_MUTATION_SCOPE ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              mutationRequestHash(patch)
+          ) {
+            throw new StudioMutationConflictError(
+              "This operation ID has already been used for a different notification template save."
+            );
+          }
+          return completed.response;
+        },
+      loadCurrent: (patch) =>
+        getNotificationTemplate(
+          patch.category
+        ),
+      save: (_current, patch) =>
+        saveNotificationTemplate({
+          ...patch,
+          updatedBy: actorEmail
+        }),
+      loadCanonical: (_saved, patch) =>
+        getNotificationTemplate(
+          patch.category
+        ),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityType:
+        "notification-template",
+      entityKey: (entity) =>
+        entity.category,
+      operation: () => "update",
+      audit: (auditInput) => {
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              auditInput.actorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before: {
+              category:
+                auditInput.before?.category,
+              subjectTemplate:
+                auditInput.before?.subjectTemplate
+            },
+            after: {
+              category:
+                auditInput.after.category,
+              subjectTemplate:
+                auditInput.after.subjectTemplate
+            },
+            requestId:
+              auditInput.requestId
+          });
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            auditInput.actorEmail,
+          mutationScope:
+            NOTIFICATION_TEMPLATE_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity: auditInput.after,
+            updatedAt:
+              auditInput.after.updatedAt,
+            auditId
+          }
+        });
+        return auditId;
+      },
+      invalidate: () => {
+        revalidatePath(
+          "/studio?panel=notifications"
+        );
+      }
+    }
+  );
+}
+
+function normalizeProjectDate(
+  value: unknown,
+  label: string
+) {
+  if (
+    value === null ||
+    value === "" ||
+    value === undefined
+  ) {
+    return null;
+  }
+  if (
+    typeof value !== "string" ||
+    !/^\d{4}-\d{2}-\d{2}$/.test(value) ||
+    !Number.isFinite(
+      Date.parse(`${value}T00:00:00Z`)
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      `${label} must be a valid date.`
+    );
+  }
+  return value;
+}
+
+function validateProjectAdminPatch(
+  patch: ProjectAdminAutosavePatch
+) {
+  const reference =
+    boundedStudioString(
+      patch.reference,
+      "Project reference",
+      160,
+      true
+    );
+  const current = getProject(reference);
+  if (!current) {
+    throw new StudioMutationValidationError(
+      "Project no longer exists."
+    );
+  }
+  const pieceSlug =
+    patch.pieceSlug?.trim() || null;
+  if (pieceSlug && !getPiece(pieceSlug)) {
+    throw new StudioMutationValidationError(
+      "Selected piece no longer exists."
+    );
+  }
+  const commissionTypeSlug =
+    patch.commissionTypeSlug?.trim() ||
+    null;
+  if (
+    commissionTypeSlug &&
+    !getCommissionType(
+      commissionTypeSlug
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Selected custom-work type no longer exists."
+    );
+  }
+  const assigneeEmail =
+    patch.assigneeEmail
+      ?.trim()
+      .toLowerCase() || null;
+  if (
+    assigneeEmail &&
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+      assigneeEmail
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Assignee email is invalid."
+    );
+  }
+  const leadTimeDays =
+    patch.leadTimeDays === null
+      ? null
+      : boundedInteger(
+          patch.leadTimeDays,
+          "Lead time days",
+          0,
+          3_650
+        );
+  return {
+    reference,
+    status: boundedStudioString(
+      patch.status,
+      "Project status",
+      240,
+      true
+    ),
+    stage: boundedStudioString(
+      patch.stage,
+      "Project stage",
+      240,
+      true
+    ),
+    pieceSlug,
+    commissionTypeSlug,
+    leadTimeDays,
+    publicNotes: boundedStudioString(
+      patch.publicNotes,
+      "Public notes",
+      200_000
+    ),
+    internalNotes: boundedStudioString(
+      patch.internalNotes,
+      "Internal notes",
+      500_000
+    ),
+    assigneeEmail,
+    targetStartAt:
+      normalizeProjectDate(
+        patch.targetStartAt,
+        "Target start date"
+      ),
+    targetCompletionAt:
+      normalizeProjectDate(
+        patch.targetCompletionAt,
+        "Target completion date"
+      ),
+    completedAt:
+      normalizeProjectDate(
+        patch.completedAt,
+        "Completion date"
+      )
+  };
+}
+
+export async function saveProjectAdminAutosaveAction(
+  input: StudioServerMutationInput<
+    ProjectAdminAutosavePatch
+  >
+): Promise<
+  StudioMutationResult<ProjectRecord>
+> {
+  let actorEmail = "";
+  let requestHash = "";
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user = await getCurrentUser();
+        if (!user || user.role !== "admin") {
+          return null;
+        }
+        actorEmail =
+          user.email.trim().toLowerCase();
+        return { email: actorEmail };
+      },
+      originAllowed:
+        studioServerActionOriginAllowed,
+      validate: (patch) => {
+        const validated =
+          validateProjectAdminPatch(patch);
+        requestHash =
+          mutationRequestHash(validated);
+        return validated;
+      },
+      transaction: (work) =>
+        withDatabaseTransaction(() =>
+          work()
+        ),
+      findCompletedOperation:
+        (operationId, patch) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                ProjectRecord
+              >
+            >(operationId);
+          if (!completed) return null;
+          if (
+            completed.mutationScope !==
+              PROJECT_ADMIN_MUTATION_SCOPE ||
+            completed.actorEmail !==
+              actorEmail ||
+            completed.requestHash !==
+              mutationRequestHash(patch)
+          ) {
+            throw new StudioMutationConflictError(
+              "This operation ID has already been used for a different project save."
+            );
+          }
+          return completed.response;
+        },
+      loadCurrent: (patch) =>
+        getProject(patch.reference),
+      save: (_current, patch) => {
+        updateProject(
+          patch.reference,
+          patch
+        );
+        const saved = getProject(
+          patch.reference
+        );
+        if (!saved) {
+          throw new StudioMutationTransientError(
+            "Saved project could not be reloaded."
+          );
+        }
+        return saved;
+      },
+      loadCanonical: (saved) =>
+        getProject(saved.reference),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityType: "project",
+      entityKey: (entity) =>
+        entity.reference,
+      operation: () => "update",
+      audit: (auditInput) => {
+        const auditId =
+          recordAdminEditAudit({
+            actorEmail:
+              auditInput.actorEmail,
+            entityType:
+              auditInput.entityType,
+            entityKey:
+              auditInput.entityKey,
+            operation:
+              auditInput.operation,
+            before:
+              auditInput.before,
+            after:
+              auditInput.after,
+            requestId:
+              auditInput.requestId
+          });
+        recordStudioMutationOperation({
+          operationId:
+            auditInput.requestId,
+          actorEmail:
+            auditInput.actorEmail,
+          mutationScope:
+            PROJECT_ADMIN_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity: auditInput.after,
+            updatedAt:
+              auditInput.after.updatedAt,
+            auditId
+          }
+        });
+        return auditId;
+      },
+      invalidate: (entity) => {
+        revalidatePath("/studio");
+        revalidatePath(
+          `/requests/${entity.reference}`
+        );
+      }
+    }
+  );
+}
+
+type StudioAdminActionResult<T> =
+  | {
+      ok: true;
+      message: string;
+      data: T;
+    }
+  | {
+      ok: false;
+      message: string;
+    };
+
+async function requireTrustedAdminAction() {
+  const admin = await requireAdmin();
+  if (
+    !(await studioServerActionOriginAllowed())
+  ) {
+    throw new Error(
+      "Studio action rejected because its origin is not trusted."
+    );
+  }
+  return admin;
+}
+
+function adminActionFailure(
+  error: unknown,
+  fallback: string
+) {
+  return {
+    ok: false as const,
+    message:
+      error instanceof Error
+        ? error.message
+        : fallback
+  };
+}
+
+export async function loadNotificationDeliveryDetailAction(
+  id: string
+): Promise<
+  StudioAdminActionResult<
+    NonNullable<
+      ReturnType<
+        typeof getNotificationDeliveryDetail
+      >
+    >
+  >
+> {
+  try {
+    await requireTrustedAdminAction();
+    const detail =
+      getNotificationDeliveryDetail(
+        id.trim()
+      );
+    if (!detail) {
+      return {
+        ok: false,
+        message:
+          "Notification delivery no longer exists."
+      };
+    }
+    return {
+      ok: true,
+      message: "Delivery loaded.",
+      data: detail
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Delivery could not be loaded."
+    );
+  }
+}
+
+export async function retryNotificationDeliveryAction(
+  id: string
+) {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const result =
+      await retryNotificationDelivery(
+        id.trim()
+      );
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType:
+        "notification-delivery",
+      entityKey: id.trim(),
+      operation: "retry",
+      after: {
+        sent: result.sent,
+        status:
+          result.delivery?.status ?? null
+      }
+    });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message: result.sent
+        ? "Notification sent."
+        : result.reason ||
+          "Notification remains queued.",
+      data: result.delivery
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Delivery retry failed."
+    );
+  }
+}
+
+export async function processNotificationRetryQueueAction() {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const result =
+      await processDueNotificationRetries(
+        10
+      );
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType:
+        "notification-delivery",
+      entityKey: "due-retries",
+      operation: "process",
+      after: {
+        processed: result.processed,
+        sent: result.sent
+      }
+    });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message:
+        `Processed ${result.processed} due retr${result.processed === 1 ? "y" : "ies"}; ${result.sent} sent.`,
+      data: {
+        processed: result.processed,
+        sent: result.sent
+      }
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Due retries could not be processed."
+    );
+  }
+}
+
+export async function deleteNotificationDeliveryAction(
+  id: string
+) {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const before =
+      getNotificationDeliveryDetail(
+        id.trim()
+      );
+    if (!before) {
+      return {
+        ok: false as const,
+        message:
+          "Notification delivery no longer exists."
+      };
+    }
+    deleteNotificationDelivery(id.trim());
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType:
+        "notification-delivery",
+      entityKey: id.trim(),
+      operation: "delete",
+      before: {
+        category: before.category,
+        status: before.status,
+        createdAt: before.createdAt
+      },
+      after: null
+    });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message:
+        "Notification delivery deleted.",
+      data: { id: id.trim() }
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Notification delivery could not be deleted."
+    );
+  }
+}
+
+export async function purgeExpiredNotificationDeliveriesAction() {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const deleted =
+      purgeExpiredNotificationDeliveries();
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType:
+        "notification-delivery",
+      entityKey: "retention-purge",
+      operation: "purge",
+      before: null,
+      after: { deleted }
+    });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message:
+        `Deleted ${deleted} deliver${deleted === 1 ? "y" : "ies"} beyond their retention policy.`,
+      data: { deleted }
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Expired deliveries could not be purged."
+    );
+  }
+}
+
+export async function verifySmtpConfigurationAction() {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const verification =
+      await verifySmtpConfiguration(
+        admin.email
+      );
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message:
+        verification.status === "verified"
+          ? "SMTP connection verified."
+          : verification.errorSummary ||
+            "SMTP verification did not pass.",
+      data: verification
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "SMTP verification failed."
+    );
+  }
+}
+
+export async function sendSmtpTestAction(
+  to: string
+) {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const result = await sendSmtpTest({
+      to: boundedStudioString(
+        to,
+        "Test recipient",
+        320,
+        true
+      ),
+      requestedBy: admin.email
+    });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message: result.sent
+        ? "SMTP test accepted by the server."
+        : result.reason ||
+          "SMTP test was queued.",
+      data: result.delivery
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "SMTP test failed."
+    );
+  }
+}
+
+export async function transitionProjectLifecycleAction(
+  input: {
+    reference: string;
+    lifecycleState:
+      ProjectLifecycleState;
+    reason?: string;
+  }
+) {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const project =
+      transitionProjectLifecycle({
+        reference: input.reference.trim(),
+        lifecycleState:
+          input.lifecycleState,
+        actorEmail: admin.email,
+        reason: input.reason
+      });
+    revalidatePath("/studio");
+    revalidatePath(
+      `/requests/${project.reference}`
+    );
+    return {
+      ok: true as const,
+      message:
+        input.lifecycleState === "cancelled"
+          ? "Project cancelled and access grants revoked."
+          : input.lifecycleState === "archived"
+            ? "Project archived."
+            : "Project reopened.",
+      data: project
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Project lifecycle could not be changed."
+    );
+  }
+}
+
+export async function previewProjectDeletionAction(
+  reference: string
+): Promise<
+  StudioAdminActionResult<
+    ProjectDeletionPreview
+  >
+> {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const preview =
+      getProjectDeletionPreview(
+        reference.trim()
+      );
+    if (!preview) {
+      return {
+        ok: false,
+        message:
+          "Project no longer exists."
+      };
+    }
+    recordProjectDeletionPreview(
+      preview,
+      admin.email
+    );
+    return {
+      ok: true,
+      message: preview.allowed
+        ? "Dependency check passed. Confirm the exact project reference to continue."
+        : preview.blockers.join(" "),
+      data: preview
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Project dependencies could not be checked."
+    );
+  }
+}
+
+export async function deleteProjectPermanentlyAction(
+  input: {
+    reference: string;
+    expectedSnapshotHash: string;
+    confirmReference: string;
+  }
+) {
+  const staged: Array<{
+    originalPath: string;
+    stagedPath: string;
+  }> = [];
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const reference =
+      input.reference.trim();
+    if (
+      input.confirmReference.trim() !==
+      reference
+    ) {
+      return {
+        ok: false as const,
+        message:
+          "Type the exact project reference to confirm permanent deletion."
+      };
+    }
+    const preview =
+      getProjectDeletionPreview(reference);
+    if (
+      !preview ||
+      !preview.allowed ||
+      preview.snapshotHash !==
+        input.expectedSnapshotHash
+    ) {
+      if (preview) {
+        recordProjectDeletionRefusal(
+          preview,
+          admin.email,
+          preview.blockers.join(" ") ||
+            "Project dependencies changed. Run the dependency check again."
+        );
+      }
+      return {
+        ok: false as const,
+        message:
+          preview?.blockers.join(" ") ||
+          "Project dependencies changed. Run the dependency check again."
+      };
+    }
+    for (
+      const relativePath of
+      preview.exclusiveMediaPaths
+    ) {
+      staged.push(
+        stageMediaAssetDeletion(
+          relativePath
+        )
+      );
+    }
+    const deleted =
+      deleteProjectPermanently({
+        reference,
+        expectedSnapshotHash:
+          input.expectedSnapshotHash,
+        actorEmail: admin.email,
+        mediaPaths: staged.map(
+          (item) => item.originalPath
+        ),
+        quarantinedPaths: staged.map(
+          (item) => item.stagedPath
+        )
+      });
+    if (!deleted.deleted) {
+      throw new Error(deleted.reason);
+    }
+    revalidatePath("/studio");
+    revalidatePath(
+      `/requests/${reference}`
+    );
+    return {
+      ok: true as const,
+      message:
+        "Project deleted. Exclusive private media remains in the recovery quarantine.",
+      data: deleted
+    };
+  } catch (error) {
+    for (
+      const item of staged.reverse()
+    ) {
+      try {
+        restoreStagedMediaAsset(item);
+      } catch {
+        // Preserve the first failure; the quarantine path remains recoverable.
+      }
+    }
+    return adminActionFailure(
+      error,
+      "Project deletion failed."
+    );
+  }
+}
+
+export async function appendProjectTimelineAction(
+  input: {
+    reference: string;
+    body: string;
+    visibility: "public" | "private";
+  }
+) {
+  try {
+    const admin =
+      await requireTrustedAdminAction();
+    const reference =
+      boundedStudioString(
+        input.reference,
+        "Project reference",
+        160,
+        true
+      );
+    const body = boundedStudioString(
+      input.body,
+      "Timeline update",
+      200_000,
+      true
+    );
+    appendProjectUpdate({
+      projectReference: reference,
+      authorEmail: admin.email,
+      authorRole: "studio",
+      visibility:
+        input.visibility === "private"
+          ? "private"
+          : "public",
+      body
+    });
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType: "project-update",
+      entityKey: reference,
+      operation: "create",
+      after: {
+        visibility: input.visibility,
+        bodyLength: body.length
+      }
+    });
+    revalidatePath("/studio");
+    revalidatePath(
+      `/requests/${reference}`
+    );
+    return {
+      ok: true as const,
+      message: "Timeline update added.",
+      data: { reference }
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Timeline update could not be added."
+    );
+  }
+}
+
+export async function sendProjectStatusNotificationAction(
+  reference: string
+) {
+  try {
+    await requireTrustedAdminAction();
+    const project = getProject(
+      reference.trim()
+    );
+    if (!project) {
+      return {
+        ok: false as const,
+        message:
+          "Project no longer exists."
+      };
+    }
+    const statusUrl =
+      `${resolveBaseUrl()}/commissions/status`;
+    const result =
+      await sendNotificationEmail({
+        category: "project_status",
+        to: project.guestEmail,
+        subject:
+          `Project update: ${project.reference}`,
+        text:
+          `Your project ${project.reference} is currently marked ${project.status} / ${project.stage}.`,
+        variables: {
+          projectReference:
+            project.reference,
+          status: project.status,
+          stage: project.stage,
+          statusUrl
+        },
+        idempotencyKey:
+          `project-status:${project.reference}:${project.updatedAt}`,
+        projectReference:
+          project.reference
+      });
+    revalidatePath("/studio");
+    return {
+      ok: true as const,
+      message: result.sent
+        ? "Project update sent."
+        : result.reason ||
+          "Project update queued.",
+      data: result.delivery
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Project update could not be sent."
+    );
+  }
+}
+
 export async function saveProjectAction(formData: FormData) {
   const currentAdmin = await requireAdmin();
   const reference = requiredField(formData.get("reference"), "Project reference");
@@ -3917,16 +5325,6 @@ export async function saveProjectAction(formData: FormData) {
       authorRole: "studio",
       visibility: optionalField(formData.get("visibility")) === "private" ? "private" : "public",
       body: optionalField(formData.get("timelineBody"))
-    });
-  }
-  const project = getProject(reference);
-  if (project) {
-    await sendNotificationEmail({
-      category: "project_status",
-      to: project.guestEmail,
-      subject: `Project update: ${project.reference}`,
-      text: `Your project ${project.reference} is currently marked ${project.status} / ${project.stage}.`,
-      html: `<p>Your project <strong>${project.reference}</strong> is currently marked <strong>${project.status}</strong> / <strong>${project.stage}</strong>.</p>`
     });
   }
   revalidatePath("/studio");

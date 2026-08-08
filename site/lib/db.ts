@@ -45,14 +45,29 @@ import {
   type PriceMode,
   type ReviewsMode
 } from "./piece-model.ts";
+import {
+  NOTIFICATION_RECIPIENT_MODES,
+  NOTIFICATION_TYPE_KEYS,
+  type NotificationRecipientMode
+} from "./notification-policy.ts";
 
 export type UserRole = "admin" | "woodworker" | "customer";
 export type PublicationStatus = "published" | "draft" | "archived";
 export type PieceStatus = "inventory" | "commission" | "archive";
 export type ProjectKind = "commission" | "purchase";
 export type ProjectVisibility = "public" | "private";
+export type ProjectLifecycleState =
+  | "active"
+  | "archived"
+  | "cancelled";
 
-export { MEDIA_ASSIGNMENT_SOURCES, MEDIA_FOLDER_RULE_ROLES, MEDIA_SORTS };
+export {
+  MEDIA_ASSIGNMENT_SOURCES,
+  MEDIA_FOLDER_RULE_ROLES,
+  MEDIA_SORTS,
+  NOTIFICATION_RECIPIENT_MODES,
+  NOTIFICATION_TYPE_KEYS
+};
 export type {
   MediaAssignmentSource,
   MediaAssignmentSourceFilter,
@@ -61,7 +76,8 @@ export type {
   MediaFolderRuleRole,
   MediaFolderRuleSaveInput,
   MediaSort,
-  MediaSourceFolderRuleRecord
+  MediaSourceFolderRuleRecord,
+  NotificationRecipientMode
 };
 
 type PersistedSettingValue<T> = T extends string
@@ -328,6 +344,14 @@ export type ProjectRecord = {
   billingAddress: Record<string, unknown>;
   publicNotes: string;
   internalNotes: string;
+  lifecycleState: ProjectLifecycleState;
+  assigneeEmail: string | null;
+  targetStartAt: string | null;
+  targetCompletionAt: string | null;
+  completedAt: string | null;
+  archivedAt: string | null;
+  cancelledAt: string | null;
+  cancelReason: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -438,6 +462,155 @@ export type NotificationRecord = {
   error: string | null;
   createdAt: string;
   sentAt: string | null;
+};
+
+export type NotificationPolicyRecord = {
+  category: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  recipientMode: NotificationRecipientMode;
+  recipients: string[];
+  forwardRecipients: string[];
+  retentionDays: number;
+  maxAttempts: number;
+  retryBaseSeconds: number;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type NotificationTemplateRecord = {
+  category: string;
+  subjectTemplate: string;
+  textTemplate: string;
+  htmlTemplate: string;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type NotificationDeliveryStatus =
+  | "queued"
+  | "sending"
+  | "retry_scheduled"
+  | "sent"
+  | "failed"
+  | "pending_configuration"
+  | "suppressed";
+
+export type NotificationDeliverySummary = {
+  id: string;
+  category: string;
+  projectReference: string | null;
+  recipients: string[];
+  subject: string;
+  status: NotificationDeliveryStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  nextAttemptAt: string | null;
+  lastAttemptAt: string | null;
+  sentAt: string | null;
+  errorCode: string | null;
+  errorSummary: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationDeliveryAttemptRecord = {
+  id: string;
+  deliveryId: string;
+  attemptNumber: number;
+  status:
+    | "sending"
+    | "sent"
+    | "failed"
+    | "pending_configuration";
+  providerMessageId: string | null;
+  errorCode: string | null;
+  errorSummary: string | null;
+  startedAt: string;
+  completedAt: string | null;
+};
+
+export type NotificationDeliveryDetail =
+  NotificationDeliverySummary & {
+    ccRecipients: string[];
+    bccRecipients: string[];
+    textBody: string;
+    htmlBody: string;
+    providerMessageId: string | null;
+    attempts: NotificationDeliveryAttemptRecord[];
+  };
+
+export type SmtpVerificationRecord = {
+  id: string;
+  status:
+    | "configured"
+    | "verified"
+    | "failed"
+    | "not-configured";
+  host: string | null;
+  port: number | null;
+  secure: boolean;
+  fromAddress: string | null;
+  errorCode: string | null;
+  errorSummary: string | null;
+  checkedBy: string | null;
+  checkedAt: string;
+};
+
+export type ProjectLifecycleEventRecord = {
+  id: string;
+  projectReference: string;
+  event:
+    | "update"
+    | "archive"
+    | "cancel"
+    | "reopen"
+    | "delete-refused"
+    | "delete";
+  actorEmail: string | null;
+  before: unknown;
+  after: unknown;
+  reason: string;
+  requestId: string | null;
+  createdAt: string;
+};
+
+export type ProjectDeletionDependencies = {
+  orders: number;
+  updates: number;
+  accessGrants: number;
+  commissionDrafts: number;
+  commissionSubmissions: number;
+  renderAssets: number;
+  projectMedia: number;
+  sharedMedia: number;
+  notificationDeliveries: number;
+};
+
+export type ProjectDeletionPreview = {
+  reference: string;
+  lifecycleState: ProjectLifecycleState;
+  dependencies: ProjectDeletionDependencies;
+  blockers: string[];
+  allowed: boolean;
+  snapshotHash: string;
+  generatedAt: string;
+  exclusiveMediaPaths: string[];
+};
+
+export type ProjectDeletionDecisionRecord = {
+  id: string;
+  projectReference: string;
+  actorEmail: string | null;
+  decision: "preview" | "refused" | "deleted";
+  snapshotHash: string;
+  dependencies: ProjectDeletionDependencies;
+  quarantinedPaths: string[];
+  reason: string;
+  createdAt: string;
 };
 
 export type SearchResult = {
@@ -1648,6 +1821,33 @@ function mapProject(row: Record<string, unknown>): ProjectRecord {
     billingAddress: readJson(row.billingAddressJson, {}),
     publicNotes: String(row.publicNotes ?? ""),
     internalNotes: String(row.internalNotes ?? ""),
+    lifecycleState:
+      row.lifecycleState === "archived" ||
+      row.lifecycleState === "cancelled"
+        ? row.lifecycleState
+        : "active",
+    assigneeEmail: row.assigneeEmail
+      ? String(row.assigneeEmail)
+      : null,
+    targetStartAt: row.targetStartAt
+      ? String(row.targetStartAt)
+      : null,
+    targetCompletionAt:
+      row.targetCompletionAt
+        ? String(row.targetCompletionAt)
+        : null,
+    completedAt: row.completedAt
+      ? String(row.completedAt)
+      : null,
+    archivedAt: row.archivedAt
+      ? String(row.archivedAt)
+      : null,
+    cancelledAt: row.cancelledAt
+      ? String(row.cancelledAt)
+      : null,
+    cancelReason: String(
+      row.cancelReason ?? ""
+    ),
     createdAt: String(row.createdAt),
     updatedAt: String(row.updatedAt)
   };
@@ -1733,6 +1933,168 @@ function mapNotification(row: Record<string, unknown>): NotificationRecord {
     error: row.error ? String(row.error) : null,
     createdAt: String(row.createdAt),
     sentAt: row.sentAt ? String(row.sentAt) : null
+  };
+}
+
+function mapNotificationPolicy(
+  row: Record<string, unknown>
+): NotificationPolicyRecord {
+  const recipientMode =
+    NOTIFICATION_RECIPIENT_MODES.includes(
+      row.recipientMode as NotificationRecipientMode
+    )
+      ? row.recipientMode as NotificationRecipientMode
+      : "request";
+
+  return {
+    category: String(row.category),
+    label: String(row.label),
+    description: String(
+      row.description ?? ""
+    ),
+    enabled: toBoolean(row.enabled),
+    recipientMode,
+    recipients: readJson(
+      row.recipientsJson,
+      []
+    ),
+    forwardRecipients: readJson(
+      row.forwardRecipientsJson,
+      []
+    ),
+    retentionDays: Number(
+      row.retentionDays ?? 90
+    ),
+    maxAttempts: Number(
+      row.maxAttempts ?? 3
+    ),
+    retryBaseSeconds: Number(
+      row.retryBaseSeconds ?? 300
+    ),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
+    updatedBy: row.updatedBy
+      ? String(row.updatedBy)
+      : null
+  };
+}
+
+function mapNotificationTemplate(
+  row: Record<string, unknown>
+): NotificationTemplateRecord {
+  return {
+    category: String(row.category),
+    subjectTemplate: String(
+      row.subjectTemplate ?? ""
+    ),
+    textTemplate: String(
+      row.textTemplate ?? ""
+    ),
+    htmlTemplate: String(
+      row.htmlTemplate ?? ""
+    ),
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt),
+    updatedBy: row.updatedBy
+      ? String(row.updatedBy)
+      : null
+  };
+}
+
+function mapNotificationDeliverySummary(
+  row: Record<string, unknown>
+): NotificationDeliverySummary {
+  return {
+    id: String(row.id),
+    category: String(row.category),
+    projectReference: row.projectReference
+      ? String(row.projectReference)
+      : null,
+    recipients: readJson(
+      row.primaryRecipientsJson,
+      []
+    ),
+    subject: String(row.subject ?? ""),
+    status: row.status as NotificationDeliveryStatus,
+    attemptCount: Number(
+      row.attemptCount ?? 0
+    ),
+    maxAttempts: Number(
+      row.maxAttempts ?? 1
+    ),
+    nextAttemptAt: row.nextAttemptAt
+      ? String(row.nextAttemptAt)
+      : null,
+    lastAttemptAt: row.lastAttemptAt
+      ? String(row.lastAttemptAt)
+      : null,
+    sentAt: row.sentAt
+      ? String(row.sentAt)
+      : null,
+    errorCode: row.errorCode
+      ? String(row.errorCode)
+      : null,
+    errorSummary: row.errorSummary
+      ? String(row.errorSummary)
+      : null,
+    createdAt: String(row.createdAt),
+    updatedAt: String(row.updatedAt)
+  };
+}
+
+function mapNotificationDeliveryAttempt(
+  row: Record<string, unknown>
+): NotificationDeliveryAttemptRecord {
+  return {
+    id: String(row.id),
+    deliveryId: String(row.deliveryId),
+    attemptNumber: Number(
+      row.attemptNumber
+    ),
+    status:
+      row.status as NotificationDeliveryAttemptRecord["status"],
+    providerMessageId:
+      row.providerMessageId
+        ? String(row.providerMessageId)
+        : null,
+    errorCode: row.errorCode
+      ? String(row.errorCode)
+      : null,
+    errorSummary: row.errorSummary
+      ? String(row.errorSummary)
+      : null,
+    startedAt: String(row.startedAt),
+    completedAt: row.completedAt
+      ? String(row.completedAt)
+      : null
+  };
+}
+
+function mapSmtpVerification(
+  row: Record<string, unknown>
+): SmtpVerificationRecord {
+  return {
+    id: String(row.id),
+    status:
+      row.status as SmtpVerificationRecord["status"],
+    host: row.host ? String(row.host) : null,
+    port: row.port == null
+      ? null
+      : Number(row.port),
+    secure: toBoolean(row.secure),
+    fromAddress: row.fromAddress
+      ? String(row.fromAddress)
+      : null,
+    errorCode: row.errorCode
+      ? String(row.errorCode)
+      : null,
+    errorSummary: row.errorSummary
+      ? String(row.errorSummary)
+      : null,
+    checkedBy: row.checkedBy
+      ? String(row.checkedBy)
+      : null,
+    checkedAt: String(row.checkedAt)
   };
 }
 export function getSiteSettings(): SiteSettings {
@@ -4200,7 +4562,11 @@ export function listProjects(includePrivate = false) {
            options_json AS optionsJson, visualization_svg AS visualizationSvg, include_visualization AS includeVisualization,
            lead_time_days AS leadTimeDays, shipping_address_json AS shippingAddressJson,
            billing_address_json AS billingAddressJson, public_notes AS publicNotes,
-           internal_notes AS internalNotes, created_at AS createdAt, updated_at AS updatedAt
+           internal_notes AS internalNotes, lifecycle_state AS lifecycleState,
+           assignee_email AS assigneeEmail, target_start_at AS targetStartAt,
+           target_completion_at AS targetCompletionAt, completed_at AS completedAt,
+           archived_at AS archivedAt, cancelled_at AS cancelledAt,
+           cancel_reason AS cancelReason, created_at AS createdAt, updated_at AS updatedAt
     FROM projects
     ORDER BY datetime(updated_at) DESC
   `).all() as Record<string, unknown>[];
@@ -4222,7 +4588,11 @@ export function getProject(reference: string) {
            options_json AS optionsJson, visualization_svg AS visualizationSvg, include_visualization AS includeVisualization,
            lead_time_days AS leadTimeDays, shipping_address_json AS shippingAddressJson,
            billing_address_json AS billingAddressJson, public_notes AS publicNotes,
-           internal_notes AS internalNotes, created_at AS createdAt, updated_at AS updatedAt
+           internal_notes AS internalNotes, lifecycle_state AS lifecycleState,
+           assignee_email AS assigneeEmail, target_start_at AS targetStartAt,
+           target_completion_at AS targetCompletionAt, completed_at AS completedAt,
+           archived_at AS archivedAt, cancelled_at AS cancelledAt,
+           cancel_reason AS cancelReason, created_at AS createdAt, updated_at AS updatedAt
     FROM projects WHERE reference = ? LIMIT 1
   `).get(reference) as Record<string, unknown> | undefined;
   return row ? mapProject(row) : null;
@@ -4237,12 +4607,14 @@ export function createProject(input: ProjectInput) {
       reference, user_email, guest_name, guest_email, piece_slug, commission_type_slug, kind, status, stage,
       budget_cents, estimated_total_cents, estimator_json, brief, materials_json, dimensions_json, options_json,
       visualization_svg, include_visualization, lead_time_days, shipping_address_json, billing_address_json,
-      public_notes, internal_notes, created_at, updated_at
+      public_notes, internal_notes, lifecycle_state, assignee_email, target_start_at,
+      target_completion_at, completed_at, archived_at, cancelled_at, cancel_reason,
+      created_at, updated_at
     ) VALUES (
       :reference, :userEmail, :guestName, :guestEmail, :pieceSlug, :commissionTypeSlug, :kind, :status, :stage,
       :budgetCents, :estimatedTotalCents, :estimatorJson, :brief, :materialsJson, :dimensionsJson, :optionsJson,
       :visualizationSvg, :includeVisualization, :leadTimeDays, :shippingAddressJson, :billingAddressJson,
-      '', '', :createdAt, :updatedAt
+      '', '', 'active', NULL, NULL, NULL, NULL, NULL, NULL, '', :createdAt, :updatedAt
     )
   `).run({
     reference,
@@ -4345,6 +4717,14 @@ export function updateProject(reference: string, input: Partial<Omit<ProjectReco
       billing_address_json = :billingAddressJson,
       public_notes = :publicNotes,
       internal_notes = :internalNotes,
+      lifecycle_state = :lifecycleState,
+      assignee_email = :assigneeEmail,
+      target_start_at = :targetStartAt,
+      target_completion_at = :targetCompletionAt,
+      completed_at = :completedAt,
+      archived_at = :archivedAt,
+      cancelled_at = :cancelledAt,
+      cancel_reason = :cancelReason,
       updated_at = :updatedAt
     WHERE reference = :reference
   `).run({
@@ -4371,6 +4751,15 @@ export function updateProject(reference: string, input: Partial<Omit<ProjectReco
     billingAddressJson: writeJson(nextProject.billingAddress),
     publicNotes: nextProject.publicNotes,
     internalNotes: nextProject.internalNotes,
+    lifecycleState: nextProject.lifecycleState,
+    assigneeEmail: nextProject.assigneeEmail ?? null,
+    targetStartAt: nextProject.targetStartAt ?? null,
+    targetCompletionAt:
+      nextProject.targetCompletionAt ?? null,
+    completedAt: nextProject.completedAt ?? null,
+    archivedAt: nextProject.archivedAt ?? null,
+    cancelledAt: nextProject.cancelledAt ?? null,
+    cancelReason: nextProject.cancelReason,
     updatedAt: nextProject.updatedAt
   });
 }
@@ -4409,6 +4798,725 @@ export function listProjectUpdates(projectReference: string, includePrivate = fa
     ? `SELECT id, project_reference AS projectReference, author_email AS authorEmail, author_role AS authorRole, visibility, body, attachments_json AS attachmentsJson, created_at AS createdAt FROM project_updates WHERE project_reference = ? ORDER BY datetime(created_at) ASC`
     : `SELECT id, project_reference AS projectReference, author_email AS authorEmail, author_role AS authorRole, visibility, body, attachments_json AS attachmentsJson, created_at AS createdAt FROM project_updates WHERE project_reference = ? AND visibility = 'public' ORDER BY datetime(created_at) ASC`;
   return (db.prepare(query).all(projectReference) as Record<string, unknown>[]).map(mapProjectUpdate);
+}
+
+function mapProjectLifecycleEvent(
+  row: Record<string, unknown>
+): ProjectLifecycleEventRecord {
+  return {
+    id: String(row.id),
+    projectReference: String(
+      row.projectReference
+    ),
+    event:
+      row.event as ProjectLifecycleEventRecord["event"],
+    actorEmail: row.actorEmail
+      ? String(row.actorEmail)
+      : null,
+    before: readJson(row.beforeJson, null),
+    after: readJson(row.afterJson, null),
+    reason: String(row.reason ?? ""),
+    requestId: row.requestId
+      ? String(row.requestId)
+      : null,
+    createdAt: String(row.createdAt)
+  };
+}
+
+export function listProjectLifecycleEvents(
+  projectReference: string
+) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, project_reference AS projectReference,
+           event, actor_email AS actorEmail,
+           before_json AS beforeJson, after_json AS afterJson,
+           reason, request_id AS requestId,
+           created_at AS createdAt
+    FROM project_lifecycle_events
+    WHERE project_reference = ?
+    ORDER BY datetime(created_at) DESC
+  `).all(projectReference) as Record<string, unknown>[];
+  return rows.map(
+    mapProjectLifecycleEvent
+  );
+}
+
+function recordProjectLifecycleEventInDatabase(
+  db: DatabaseSync,
+  input: {
+    projectReference: string;
+    event: ProjectLifecycleEventRecord["event"];
+    actorEmail?: string | null;
+    before?: unknown;
+    after?: unknown;
+    reason?: string;
+    requestId?: string | null;
+  }
+) {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO project_lifecycle_events (
+      id, project_reference, event, actor_email,
+      before_json, after_json, reason, request_id, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.projectReference,
+    input.event,
+    input.actorEmail?.trim().toLowerCase() || null,
+    writeJson(input.before ?? null),
+    writeJson(input.after ?? null),
+    input.reason?.trim() ?? "",
+    input.requestId ?? null,
+    nowIso()
+  );
+  return id;
+}
+
+export function transitionProjectLifecycle(
+  input: {
+    reference: string;
+    lifecycleState: ProjectLifecycleState;
+    actorEmail: string;
+    reason?: string;
+    requestId?: string | null;
+  }
+) {
+  return withDatabaseTransaction((db) => {
+    const before = getProject(input.reference);
+    if (!before) {
+      throw new Error("Project not found.");
+    }
+    const reason = input.reason?.trim() ?? "";
+    if (
+      input.lifecycleState === "cancelled" &&
+      !reason
+    ) {
+      throw new Error(
+        "A cancellation reason is required."
+      );
+    }
+    const timestamp = nowIso();
+    const event:
+      ProjectLifecycleEventRecord["event"] =
+      input.lifecycleState === "archived"
+        ? "archive"
+        : input.lifecycleState === "cancelled"
+          ? "cancel"
+          : "reopen";
+    updateProject(input.reference, {
+      lifecycleState: input.lifecycleState,
+      status:
+        input.lifecycleState === "archived"
+          ? "Archived"
+          : input.lifecycleState === "cancelled"
+            ? "Cancelled"
+            : [
+                  "Archived",
+                  "Cancelled"
+                ].includes(before.status)
+              ? "Request received"
+              : before.status,
+      archivedAt:
+        input.lifecycleState === "archived"
+          ? timestamp
+          : null,
+      cancelledAt:
+        input.lifecycleState === "cancelled"
+          ? timestamp
+          : null,
+      cancelReason:
+        input.lifecycleState === "cancelled"
+          ? reason
+          : ""
+    });
+    if (input.lifecycleState === "cancelled") {
+      db.prepare(`
+        UPDATE project_access_grants
+        SET revoked_at = COALESCE(revoked_at, ?)
+        WHERE project_reference = ?
+      `).run(timestamp, input.reference);
+    }
+    const after = getProject(input.reference)!;
+    recordProjectLifecycleEventInDatabase(
+      db,
+      {
+        projectReference: input.reference,
+        event,
+        actorEmail: input.actorEmail,
+        before: {
+          lifecycleState: before.lifecycleState,
+          status: before.status,
+          updatedAt: before.updatedAt
+        },
+        after: {
+          lifecycleState: after.lifecycleState,
+          status: after.status,
+          updatedAt: after.updatedAt
+        },
+        reason,
+        requestId: input.requestId
+      }
+    );
+    recordAdminEditAudit({
+      actorEmail: input.actorEmail,
+      entityType: "project-lifecycle",
+      entityKey: input.reference,
+      operation: event,
+      before: {
+        lifecycleState: before.lifecycleState,
+        status: before.status
+      },
+      after: {
+        lifecycleState: after.lifecycleState,
+        status: after.status
+      },
+      requestId: input.requestId
+    });
+    return after;
+  });
+}
+
+function projectDeletionSnapshotPayload(
+  project: ProjectRecord,
+  dependencies: ProjectDeletionDependencies,
+  exclusiveMediaPaths: string[]
+) {
+  return {
+    reference: project.reference,
+    lifecycleState: project.lifecycleState,
+    updatedAt: project.updatedAt,
+    dependencies,
+    exclusiveMediaPaths:
+      [...exclusiveMediaPaths].sort()
+  };
+}
+
+function projectDeletionSnapshotHash(
+  payload: ReturnType<
+    typeof projectDeletionSnapshotPayload
+  >
+) {
+  return createHash("sha256")
+    .update(writeJson(payload))
+    .digest("hex");
+}
+
+export function getProjectDeletionPreview(
+  reference: string
+): ProjectDeletionPreview | null {
+  const project = getProject(reference);
+  if (!project) return null;
+  const db = getDatabase();
+  const count = (
+    sql: string,
+    ...params: string[]
+  ) => {
+    const row = db.prepare(sql)
+      .get(...params) as {
+        count?: unknown;
+      } | undefined;
+    return Number(row?.count ?? 0);
+  };
+  const mediaRows = db.prepare(`
+    SELECT m.relative_path AS relativePath,
+           m.piece_slug AS pieceSlug,
+           m.post_slug AS postSlug,
+           m.page_slug AS pageSlug,
+           COUNT(l.id) AS linkCount
+    FROM media_items m
+    LEFT JOIN piece_media_links l
+      ON l.relative_path = m.relative_path
+    WHERE m.project_reference = ?
+    GROUP BY m.relative_path
+    ORDER BY m.relative_path
+  `).all(reference) as Array<{
+    relativePath: string;
+    pieceSlug?: string | null;
+    postSlug?: string | null;
+    pageSlug?: string | null;
+    linkCount?: number;
+  }>;
+  const sharedRows = mediaRows.filter(
+    (row) =>
+      Boolean(
+        row.pieceSlug ||
+        row.postSlug ||
+        row.pageSlug ||
+        Number(row.linkCount ?? 0) > 0
+      )
+  );
+  const exclusiveMediaPaths =
+    mediaRows
+      .filter((row) =>
+        !sharedRows.includes(row)
+      )
+      .map((row) =>
+        String(row.relativePath)
+      );
+  const dependencies:
+    ProjectDeletionDependencies = {
+    orders: count(
+      "SELECT COUNT(*) AS count FROM orders WHERE project_reference = ?",
+      reference
+    ),
+    updates: count(
+      "SELECT COUNT(*) AS count FROM project_updates WHERE project_reference = ?",
+      reference
+    ),
+    accessGrants: count(
+      "SELECT COUNT(*) AS count FROM project_access_grants WHERE project_reference = ? AND revoked_at IS NULL",
+      reference
+    ),
+    commissionDrafts: count(
+      "SELECT COUNT(*) AS count FROM commission_drafts WHERE project_reference = ?",
+      reference
+    ),
+    commissionSubmissions: count(
+      "SELECT COUNT(*) AS count FROM commission_submissions WHERE project_reference = ?",
+      reference
+    ),
+    renderAssets: count(
+      "SELECT COUNT(*) AS count FROM commission_render_assets WHERE consumed_project_reference = ?",
+      reference
+    ),
+    projectMedia: mediaRows.length,
+    sharedMedia: sharedRows.length,
+    notificationDeliveries: count(
+      "SELECT COUNT(*) AS count FROM notification_deliveries WHERE project_reference = ?",
+      reference
+    )
+  };
+  const blockers: string[] = [];
+  if (project.lifecycleState === "active") {
+    blockers.push(
+      "Archive or cancel the project before permanent deletion."
+    );
+  }
+  if (dependencies.orders > 0) {
+    blockers.push(
+      "Orders retain this project for financial and fulfillment records."
+    );
+  }
+  if (dependencies.sharedMedia > 0) {
+    blockers.push(
+      "One or more project media files are also assigned to published or editorial content."
+    );
+  }
+  const payload =
+    projectDeletionSnapshotPayload(
+      project,
+      dependencies,
+      exclusiveMediaPaths
+    );
+  return {
+    reference,
+    lifecycleState:
+      project.lifecycleState,
+    dependencies,
+    blockers,
+    allowed: blockers.length === 0,
+    snapshotHash:
+      projectDeletionSnapshotHash(
+        payload
+      ),
+    generatedAt: nowIso(),
+    exclusiveMediaPaths
+  };
+}
+
+function recordProjectDeletionDecisionInDatabase(
+  db: DatabaseSync,
+  input: {
+    reference: string;
+    actorEmail: string;
+    decision: "preview" | "refused" | "deleted";
+    snapshotHash: string;
+    dependencies: ProjectDeletionDependencies;
+    quarantinedPaths?: string[];
+    reason?: string;
+  }
+) {
+  const id = randomUUID();
+  db.prepare(`
+    INSERT INTO project_deletion_ledger (
+      id, project_reference, actor_email, decision,
+      snapshot_hash, dependencies_json, quarantined_paths_json,
+      reason, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.reference,
+    input.actorEmail.trim().toLowerCase(),
+    input.decision,
+    input.snapshotHash,
+    writeJson(input.dependencies),
+    writeJson(input.quarantinedPaths ?? []),
+    input.reason?.trim() ?? "",
+    nowIso()
+  );
+  return id;
+}
+
+export function recordProjectDeletionPreview(
+  preview: ProjectDeletionPreview,
+  actorEmail: string
+) {
+  return withDatabaseTransaction((db) =>
+    recordProjectDeletionDecisionInDatabase(
+      db,
+      {
+        reference: preview.reference,
+        actorEmail,
+        decision: "preview",
+        snapshotHash: preview.snapshotHash,
+        dependencies:
+          preview.dependencies,
+        reason: preview.allowed
+          ? "eligible"
+          : preview.blockers.join(" ")
+      }
+    )
+  );
+}
+
+export function listProjectDeletionDecisions(
+  reference: string
+) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT id, project_reference AS projectReference,
+           actor_email AS actorEmail, decision,
+           snapshot_hash AS snapshotHash,
+           dependencies_json AS dependenciesJson,
+           quarantined_paths_json AS quarantinedPathsJson,
+           reason, created_at AS createdAt
+    FROM project_deletion_ledger
+    WHERE project_reference = ?
+    ORDER BY datetime(created_at), rowid
+  `).all(reference) as Record<string, unknown>[];
+  return rows.map(
+    (row): ProjectDeletionDecisionRecord => ({
+      id: String(row.id),
+      projectReference: String(
+        row.projectReference
+      ),
+      actorEmail: row.actorEmail
+        ? String(row.actorEmail)
+        : null,
+      decision:
+        row.decision as ProjectDeletionDecisionRecord["decision"],
+      snapshotHash: String(
+        row.snapshotHash
+      ),
+      dependencies: readJson(
+        row.dependenciesJson,
+        {
+          orders: 0,
+          updates: 0,
+          accessGrants: 0,
+          commissionDrafts: 0,
+          commissionSubmissions: 0,
+          renderAssets: 0,
+          projectMedia: 0,
+          sharedMedia: 0,
+          notificationDeliveries: 0
+        }
+      ),
+      quarantinedPaths: readJson(
+        row.quarantinedPathsJson,
+        []
+      ),
+      reason: String(row.reason ?? ""),
+      createdAt: String(row.createdAt)
+    })
+  );
+}
+
+export function recordProjectDeletionRefusal(
+  preview: ProjectDeletionPreview,
+  actorEmail: string,
+  reason: string
+) {
+  return withDatabaseTransaction((db) => {
+    const ledgerId =
+      recordProjectDeletionDecisionInDatabase(
+        db,
+        {
+          reference: preview.reference,
+          actorEmail,
+          decision: "refused",
+          snapshotHash:
+            preview.snapshotHash,
+          dependencies:
+            preview.dependencies,
+          reason
+        }
+      );
+    recordProjectLifecycleEventInDatabase(
+      db,
+      {
+        projectReference:
+          preview.reference,
+        event: "delete-refused",
+        actorEmail,
+        before: {
+          lifecycleState:
+            preview.lifecycleState,
+          dependencies:
+            preview.dependencies
+        },
+        reason,
+        requestId: ledgerId
+      }
+    );
+    recordAdminEditAudit({
+      actorEmail,
+      entityType: "project",
+      entityKey: preview.reference,
+      operation: "delete-refused",
+      before: {
+        lifecycleState:
+          preview.lifecycleState,
+        dependencies:
+          preview.dependencies
+      },
+      after: null,
+      requestId: ledgerId
+    });
+    return ledgerId;
+  });
+}
+
+export function deleteProjectPermanently(
+  input: {
+    reference: string;
+    expectedSnapshotHash: string;
+    actorEmail: string;
+    mediaPaths: string[];
+    quarantinedPaths: string[];
+  }
+) {
+  return withDatabaseTransaction((db) => {
+    const project = getProject(input.reference);
+    const preview =
+      getProjectDeletionPreview(
+        input.reference
+      );
+    if (!project || !preview) {
+      throw new Error("Project not found.");
+    }
+    if (
+      !preview.allowed ||
+      preview.snapshotHash !==
+        input.expectedSnapshotHash
+    ) {
+      const reason = !preview.allowed
+        ? preview.blockers.join(" ")
+        : "Project dependencies changed after the preview was opened.";
+      const ledgerId =
+        recordProjectDeletionDecisionInDatabase(
+          db,
+          {
+            reference: input.reference,
+            actorEmail: input.actorEmail,
+            decision: "refused",
+            snapshotHash:
+              preview.snapshotHash,
+            dependencies:
+              preview.dependencies,
+            reason
+          }
+        );
+      recordProjectLifecycleEventInDatabase(
+        db,
+        {
+          projectReference:
+            input.reference,
+          event: "delete-refused",
+          actorEmail: input.actorEmail,
+          before: {
+            lifecycleState:
+              project.lifecycleState
+          },
+          reason,
+          requestId: ledgerId
+        }
+      );
+      recordAdminEditAudit({
+        actorEmail: input.actorEmail,
+        entityType: "project",
+        entityKey: input.reference,
+        operation: "delete-refused",
+        before: {
+          lifecycleState:
+            project.lifecycleState,
+          dependencies:
+            preview.dependencies
+        },
+        after: null,
+        requestId: ledgerId
+      });
+      return {
+        deleted: false as const,
+        reference: input.reference,
+        ledgerId,
+        reason
+      };
+    }
+    const expectedPaths = [
+      ...preview.exclusiveMediaPaths
+    ].sort();
+    const suppliedPaths = [
+      ...new Set(
+        input.mediaPaths
+      )
+    ].sort();
+    if (
+      writeJson(expectedPaths) !==
+      writeJson(suppliedPaths)
+    ) {
+      const reason =
+        "The quarantined media set does not match the confirmed project dependency preview.";
+      const ledgerId =
+        recordProjectDeletionDecisionInDatabase(
+          db,
+          {
+            reference: input.reference,
+            actorEmail: input.actorEmail,
+            decision: "refused",
+            snapshotHash:
+              preview.snapshotHash,
+            dependencies:
+              preview.dependencies,
+            reason
+          }
+        );
+      recordProjectLifecycleEventInDatabase(
+        db,
+        {
+          projectReference:
+            input.reference,
+          event: "delete-refused",
+          actorEmail: input.actorEmail,
+          before: {
+            lifecycleState:
+              project.lifecycleState
+          },
+          reason,
+          requestId: ledgerId
+        }
+      );
+      recordAdminEditAudit({
+        actorEmail: input.actorEmail,
+        entityType: "project",
+        entityKey: input.reference,
+        operation: "delete-refused",
+        before: {
+          lifecycleState:
+            project.lifecycleState,
+          dependencies:
+            preview.dependencies
+        },
+        after: null,
+        requestId: ledgerId
+      });
+      return {
+        deleted: false as const,
+        reference: input.reference,
+        ledgerId,
+        reason
+      };
+    }
+    const timestamp = nowIso();
+    db.prepare(`
+      UPDATE project_access_grants
+      SET revoked_at = COALESCE(revoked_at, ?)
+      WHERE project_reference = ?
+    `).run(timestamp, input.reference);
+    for (const relativePath of expectedPaths) {
+      deleteMediaRecordAndReferences(
+        relativePath,
+        input.actorEmail
+      );
+    }
+    db.prepare(
+      "DELETE FROM project_updates WHERE project_reference = ?"
+    ).run(input.reference);
+    db.prepare(
+      "DELETE FROM commission_drafts WHERE project_reference = ?"
+    ).run(input.reference);
+    db.prepare(
+      "DELETE FROM commission_submissions WHERE project_reference = ?"
+    ).run(input.reference);
+    db.prepare(
+      "DELETE FROM commission_render_assets WHERE consumed_project_reference = ?"
+    ).run(input.reference);
+    db.prepare(`
+      UPDATE notification_deliveries
+      SET project_reference = NULL, updated_at = ?
+      WHERE project_reference = ?
+    `).run(timestamp, input.reference);
+    db.prepare(
+      "DELETE FROM projects WHERE reference = ?"
+    ).run(input.reference);
+    recordProjectLifecycleEventInDatabase(
+      db,
+      {
+        projectReference: input.reference,
+        event: "delete",
+        actorEmail: input.actorEmail,
+        before: {
+          lifecycleState:
+            project.lifecycleState,
+          dependencies:
+            preview.dependencies
+        },
+        after: null,
+        reason:
+          "Permanent deletion confirmed after a second dependency check."
+      }
+    );
+    const ledgerId =
+      recordProjectDeletionDecisionInDatabase(
+        db,
+        {
+          reference: input.reference,
+          actorEmail: input.actorEmail,
+          decision: "deleted",
+          snapshotHash:
+            preview.snapshotHash,
+          dependencies:
+            preview.dependencies,
+          quarantinedPaths:
+            input.quarantinedPaths,
+          reason:
+            "Project data removed; exclusive media retained in the private quarantine tree."
+        }
+      );
+    recordAdminEditAudit({
+      actorEmail: input.actorEmail,
+      entityType: "project",
+      entityKey: input.reference,
+      operation: "delete",
+      before: {
+        lifecycleState:
+          project.lifecycleState,
+        dependencies:
+          preview.dependencies
+      },
+      after: null,
+      requestId: ledgerId
+    });
+    return {
+      deleted: true as const,
+      reference: input.reference,
+      ledgerId,
+      quarantinedPaths:
+        input.quarantinedPaths
+    };
+  });
 }
 
 export function listCartItems(cartToken: string, userEmail?: string | null) {
@@ -4612,6 +5720,644 @@ export function listNotifications() {
   const db = getDatabase();
   const rows = db.prepare(`SELECT id, category, recipient, subject, body, status, error, created_at AS createdAt, sent_at AS sentAt FROM notifications ORDER BY datetime(created_at) DESC`).all() as Record<string, unknown>[];
   return rows.map(mapNotification);
+}
+
+const NOTIFICATION_DELIVERY_SUMMARY_SELECT = `
+  SELECT id, category, project_reference AS projectReference,
+         primary_recipients_json AS primaryRecipientsJson,
+         subject, status, attempt_count AS attemptCount,
+         max_attempts AS maxAttempts, next_attempt_at AS nextAttemptAt,
+         last_attempt_at AS lastAttemptAt, sent_at AS sentAt,
+         error_code AS errorCode, error_summary AS errorSummary,
+         created_at AS createdAt, updated_at AS updatedAt
+  FROM notification_deliveries
+`;
+
+export function listNotificationPolicies() {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT category, label, description, enabled,
+           recipient_mode AS recipientMode,
+           recipients_json AS recipientsJson,
+           forward_recipients_json AS forwardRecipientsJson,
+           retention_days AS retentionDays,
+           max_attempts AS maxAttempts,
+           retry_base_seconds AS retryBaseSeconds,
+           created_at AS createdAt, updated_at AS updatedAt,
+           updated_by AS updatedBy
+    FROM notification_policies
+    ORDER BY label, category
+  `).all() as Record<string, unknown>[];
+  return rows.map(mapNotificationPolicy);
+}
+
+export function getNotificationPolicy(
+  category: string
+) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT category, label, description, enabled,
+           recipient_mode AS recipientMode,
+           recipients_json AS recipientsJson,
+           forward_recipients_json AS forwardRecipientsJson,
+           retention_days AS retentionDays,
+           max_attempts AS maxAttempts,
+           retry_base_seconds AS retryBaseSeconds,
+           created_at AS createdAt, updated_at AS updatedAt,
+           updated_by AS updatedBy
+    FROM notification_policies
+    WHERE category = ?
+    LIMIT 1
+  `).get(category) as Record<string, unknown> | undefined;
+  return row ? mapNotificationPolicy(row) : null;
+}
+
+export function saveNotificationPolicy(
+  input: Omit<
+    NotificationPolicyRecord,
+    "createdAt" | "updatedAt"
+  >
+) {
+  const category = input.category.trim();
+  const timestamp = nowIso();
+  const existing = getNotificationPolicy(category);
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO notification_policies (
+      category, label, description, enabled, recipient_mode,
+      recipients_json, forward_recipients_json, retention_days,
+      max_attempts, retry_base_seconds, created_at, updated_at, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(category) DO UPDATE SET
+      label = excluded.label,
+      description = excluded.description,
+      enabled = excluded.enabled,
+      recipient_mode = excluded.recipient_mode,
+      recipients_json = excluded.recipients_json,
+      forward_recipients_json = excluded.forward_recipients_json,
+      retention_days = excluded.retention_days,
+      max_attempts = excluded.max_attempts,
+      retry_base_seconds = excluded.retry_base_seconds,
+      updated_at = excluded.updated_at,
+      updated_by = excluded.updated_by
+  `).run(
+    category,
+    input.label,
+    input.description,
+    input.enabled ? 1 : 0,
+    input.recipientMode,
+    writeJson(input.recipients),
+    writeJson(input.forwardRecipients),
+    input.retentionDays,
+    input.maxAttempts,
+    input.retryBaseSeconds,
+    existing?.createdAt ?? timestamp,
+    timestamp,
+    input.updatedBy ?? null
+  );
+  return getNotificationPolicy(category)!;
+}
+
+export function listNotificationTemplates() {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    SELECT category, subject_template AS subjectTemplate,
+           text_template AS textTemplate, html_template AS htmlTemplate,
+           created_at AS createdAt, updated_at AS updatedAt,
+           updated_by AS updatedBy
+    FROM notification_templates
+    ORDER BY category
+  `).all() as Record<string, unknown>[];
+  return rows.map(mapNotificationTemplate);
+}
+
+export function getNotificationTemplate(
+  category: string
+) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT category, subject_template AS subjectTemplate,
+           text_template AS textTemplate, html_template AS htmlTemplate,
+           created_at AS createdAt, updated_at AS updatedAt,
+           updated_by AS updatedBy
+    FROM notification_templates
+    WHERE category = ?
+    LIMIT 1
+  `).get(category) as Record<string, unknown> | undefined;
+  return row ? mapNotificationTemplate(row) : null;
+}
+
+export function saveNotificationTemplate(
+  input: Omit<
+    NotificationTemplateRecord,
+    "createdAt" | "updatedAt"
+  >
+) {
+  const category = input.category.trim();
+  const timestamp = nowIso();
+  const existing = getNotificationTemplate(category);
+  const db = getDatabase();
+  db.prepare(`
+    INSERT INTO notification_templates (
+      category, subject_template, text_template, html_template,
+      created_at, updated_at, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(category) DO UPDATE SET
+      subject_template = excluded.subject_template,
+      text_template = excluded.text_template,
+      html_template = excluded.html_template,
+      updated_at = excluded.updated_at,
+      updated_by = excluded.updated_by
+  `).run(
+    category,
+    input.subjectTemplate,
+    input.textTemplate,
+    input.htmlTemplate,
+    existing?.createdAt ?? timestamp,
+    timestamp,
+    input.updatedBy ?? null
+  );
+  return getNotificationTemplate(category)!;
+}
+
+export function getNotificationDeliveryByIdempotencyHash(
+  idempotencyHash: string
+) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    ${NOTIFICATION_DELIVERY_SUMMARY_SELECT}
+    WHERE idempotency_hash = ?
+    LIMIT 1
+  `).get(idempotencyHash) as Record<string, unknown> | undefined;
+  return row
+    ? mapNotificationDeliverySummary(row)
+    : null;
+}
+
+export function createNotificationDelivery(input: {
+  category: string;
+  projectReference?: string | null;
+  recipients: string[];
+  ccRecipients?: string[];
+  bccRecipients?: string[];
+  subject: string;
+  textBody: string;
+  htmlBody?: string;
+  status: NotificationDeliveryStatus;
+  maxAttempts: number;
+  idempotencyHash?: string | null;
+}) {
+  return withDatabaseTransaction((db) => {
+    if (input.idempotencyHash) {
+      const existing =
+        getNotificationDeliveryByIdempotencyHash(
+          input.idempotencyHash
+        );
+      if (existing) {
+        return {
+          created: false as const,
+          delivery: existing
+        };
+      }
+    }
+
+    const legacy = queueNotification({
+      category: input.category,
+      recipient: input.recipients.join(", "),
+      subject: input.subject,
+      body: input.textBody,
+      status: input.status
+    });
+    const id = randomUUID();
+    const timestamp = nowIso();
+    db.prepare(`
+      INSERT INTO notification_deliveries (
+        id, legacy_notification_id, category, project_reference,
+        primary_recipients_json, cc_recipients_json, bcc_recipients_json,
+        subject, text_body, html_body, status, attempt_count, max_attempts,
+        next_attempt_at, last_attempt_at, sent_at, provider_message_id,
+        error_code, error_summary, idempotency_hash, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, NULL, NULL, NULL,
+                NULL, NULL, NULL, ?, ?, ?)
+    `).run(
+      id,
+      legacy.id,
+      input.category,
+      input.projectReference ?? null,
+      writeJson(input.recipients),
+      writeJson(input.ccRecipients ?? []),
+      writeJson(input.bccRecipients ?? []),
+      input.subject,
+      input.textBody,
+      input.htmlBody ?? "",
+      input.status,
+      input.maxAttempts,
+      input.idempotencyHash ?? null,
+      timestamp,
+      timestamp
+    );
+    return {
+      created: true as const,
+      delivery:
+        getNotificationDeliverySummary(id)!
+    };
+  });
+}
+
+export function getNotificationDeliverySummary(
+  id: string
+) {
+  const db = getDatabase();
+  const row = db.prepare(`
+    ${NOTIFICATION_DELIVERY_SUMMARY_SELECT}
+    WHERE id = ?
+    LIMIT 1
+  `).get(id) as Record<string, unknown> | undefined;
+  return row
+    ? mapNotificationDeliverySummary(row)
+    : null;
+}
+
+export function listNotificationDeliveries(
+  options: {
+    category?: string;
+    status?: NotificationDeliveryStatus;
+    limit?: number;
+    offset?: number;
+  } = {}
+) {
+  const db = getDatabase();
+  const clauses: string[] = [];
+  const params: Array<string | number> = [];
+  if (options.category) {
+    clauses.push("category = ?");
+    params.push(options.category);
+  }
+  if (options.status) {
+    clauses.push("status = ?");
+    params.push(options.status);
+  }
+  const limit = Math.max(
+    1,
+    Math.min(200, options.limit ?? 50)
+  );
+  const offset = Math.max(
+    0,
+    options.offset ?? 0
+  );
+  const rows = db.prepare(`
+    ${NOTIFICATION_DELIVERY_SUMMARY_SELECT}
+    ${clauses.length ? `WHERE ${clauses.join(" AND ")}` : ""}
+    ORDER BY datetime(created_at) DESC
+    LIMIT ? OFFSET ?
+  `).all(...params, limit, offset) as Record<string, unknown>[];
+  return rows.map(
+    mapNotificationDeliverySummary
+  );
+}
+
+export function getNotificationDeliveryDetail(
+  id: string
+): NotificationDeliveryDetail | null {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT id, category, project_reference AS projectReference,
+           primary_recipients_json AS primaryRecipientsJson,
+           cc_recipients_json AS ccRecipientsJson,
+           bcc_recipients_json AS bccRecipientsJson,
+           subject, text_body AS textBody, html_body AS htmlBody,
+           status, attempt_count AS attemptCount,
+           max_attempts AS maxAttempts, next_attempt_at AS nextAttemptAt,
+           last_attempt_at AS lastAttemptAt, sent_at AS sentAt,
+           provider_message_id AS providerMessageId,
+           error_code AS errorCode, error_summary AS errorSummary,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM notification_deliveries
+    WHERE id = ?
+    LIMIT 1
+  `).get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const attempts = db.prepare(`
+    SELECT id, delivery_id AS deliveryId,
+           attempt_number AS attemptNumber, status,
+           provider_message_id AS providerMessageId,
+           error_code AS errorCode, error_summary AS errorSummary,
+           started_at AS startedAt, completed_at AS completedAt
+    FROM notification_delivery_attempts
+    WHERE delivery_id = ?
+    ORDER BY attempt_number DESC
+  `).all(id) as Record<string, unknown>[];
+  return {
+    ...mapNotificationDeliverySummary(row),
+    ccRecipients: readJson(
+      row.ccRecipientsJson,
+      []
+    ),
+    bccRecipients: readJson(
+      row.bccRecipientsJson,
+      []
+    ),
+    textBody: String(row.textBody ?? ""),
+    htmlBody: String(row.htmlBody ?? ""),
+    providerMessageId:
+      row.providerMessageId
+        ? String(row.providerMessageId)
+        : null,
+    attempts: attempts.map(
+      mapNotificationDeliveryAttempt
+    )
+  };
+}
+
+export function startNotificationDeliveryAttempt(
+  id: string
+) {
+  return withDatabaseTransaction((db) => {
+    const delivery =
+      getNotificationDeliveryDetail(id);
+    if (!delivery) {
+      throw new Error(
+        "Notification delivery not found."
+      );
+    }
+    if (
+      delivery.status === "sent" ||
+      delivery.status === "suppressed"
+    ) {
+      throw new Error(
+        "This notification is not eligible for delivery."
+      );
+    }
+    if (
+      delivery.attemptCount >=
+      delivery.maxAttempts
+    ) {
+      throw new Error(
+        "This notification has reached its retry limit."
+      );
+    }
+    const attemptNumber =
+      delivery.attemptCount + 1;
+    const attemptId = randomUUID();
+    const timestamp = nowIso();
+    db.prepare(`
+      UPDATE notification_deliveries
+      SET status = 'sending', attempt_count = ?, last_attempt_at = ?,
+          next_attempt_at = NULL, updated_at = ?
+      WHERE id = ?
+    `).run(
+      attemptNumber,
+      timestamp,
+      timestamp,
+      id
+    );
+    db.prepare(`
+      INSERT INTO notification_delivery_attempts (
+        id, delivery_id, attempt_number, status,
+        provider_message_id, error_code, error_summary,
+        started_at, completed_at
+      ) VALUES (?, ?, ?, 'sending', NULL, NULL, NULL, ?, NULL)
+    `).run(
+      attemptId,
+      id,
+      attemptNumber,
+      timestamp
+    );
+    return {
+      delivery:
+        getNotificationDeliveryDetail(id)!,
+      attemptId,
+      attemptNumber
+    };
+  });
+}
+
+export function finishNotificationDeliveryAttempt(
+  input: {
+    deliveryId: string;
+    attemptId: string;
+    status:
+      | "sent"
+      | "failed"
+      | "retry_scheduled"
+      | "pending_configuration";
+    nextAttemptAt?: string | null;
+    providerMessageId?: string | null;
+    errorCode?: string | null;
+    errorSummary?: string | null;
+  }
+) {
+  return withDatabaseTransaction((db) => {
+    const timestamp = nowIso();
+    const attemptStatus =
+      input.status === "retry_scheduled"
+        ? "failed"
+        : input.status;
+    db.prepare(`
+      UPDATE notification_delivery_attempts
+      SET status = ?, provider_message_id = ?, error_code = ?,
+          error_summary = ?, completed_at = ?
+      WHERE id = ? AND delivery_id = ?
+    `).run(
+      attemptStatus,
+      input.providerMessageId ?? null,
+      input.errorCode ?? null,
+      input.errorSummary ?? null,
+      timestamp,
+      input.attemptId,
+      input.deliveryId
+    );
+    db.prepare(`
+      UPDATE notification_deliveries
+      SET status = ?, next_attempt_at = ?,
+          sent_at = CASE WHEN ? = 'sent' THEN ? ELSE sent_at END,
+          provider_message_id = ?, error_code = ?, error_summary = ?,
+          updated_at = ?
+      WHERE id = ?
+    `).run(
+      input.status,
+      input.nextAttemptAt ?? null,
+      input.status,
+      timestamp,
+      input.providerMessageId ?? null,
+      input.errorCode ?? null,
+      input.errorSummary ?? null,
+      timestamp,
+      input.deliveryId
+    );
+    const detail =
+      getNotificationDeliveryDetail(
+        input.deliveryId
+      );
+    if (!detail) {
+      throw new Error(
+        "Notification delivery disappeared while recording its attempt."
+      );
+    }
+    const legacy = db.prepare(`
+      SELECT legacy_notification_id AS legacyId
+      FROM notification_deliveries
+      WHERE id = ?
+      LIMIT 1
+    `).get(input.deliveryId) as {
+      legacyId?: unknown;
+    } | undefined;
+    if (legacy?.legacyId) {
+      updateNotificationStatus(
+        String(legacy.legacyId),
+        input.status === "retry_scheduled"
+          ? "queued"
+          : input.status,
+        input.errorSummary ?? null
+      );
+    }
+    return detail;
+  });
+}
+
+export function listDueNotificationDeliveries(
+  limit = 10,
+  at = nowIso()
+) {
+  const db = getDatabase();
+  const rows = db.prepare(`
+    ${NOTIFICATION_DELIVERY_SUMMARY_SELECT}
+    WHERE status = 'retry_scheduled'
+      AND next_attempt_at IS NOT NULL
+      AND datetime(next_attempt_at) <= datetime(?)
+      AND attempt_count < max_attempts
+    ORDER BY datetime(next_attempt_at), datetime(created_at)
+    LIMIT ?
+  `).all(
+    at,
+    Math.max(1, Math.min(50, limit))
+  ) as Record<string, unknown>[];
+  return rows.map(
+    mapNotificationDeliverySummary
+  );
+}
+
+export function deleteNotificationDelivery(
+  id: string
+) {
+  return withDatabaseTransaction((db) => {
+    const row = db.prepare(`
+      SELECT legacy_notification_id AS legacyId
+      FROM notification_deliveries
+      WHERE id = ?
+      LIMIT 1
+    `).get(id) as { legacyId?: unknown } | undefined;
+    const result = db.prepare(
+      "DELETE FROM notification_deliveries WHERE id = ?"
+    ).run(id);
+    if (row?.legacyId) {
+      db.prepare(
+        "DELETE FROM notifications WHERE id = ?"
+      ).run(String(row.legacyId));
+    }
+    return Number(result.changes ?? 0) === 1;
+  });
+}
+
+export function purgeExpiredNotificationDeliveries(
+  at = nowIso()
+) {
+  return withDatabaseTransaction((db) => {
+    const rows = db.prepare(`
+      SELECT d.id, d.legacy_notification_id AS legacyId
+      FROM notification_deliveries d
+      LEFT JOIN notification_policies p ON p.category = d.category
+      WHERE datetime(d.created_at) < datetime(
+        ?,
+        '-' || COALESCE(p.retention_days, 90) || ' days'
+      )
+    `).all(at) as Array<{
+      id: string;
+      legacyId?: string | null;
+    }>;
+    const removeDelivery = db.prepare(
+      "DELETE FROM notification_deliveries WHERE id = ?"
+    );
+    const removeLegacy = db.prepare(
+      "DELETE FROM notifications WHERE id = ?"
+    );
+    for (const row of rows) {
+      removeDelivery.run(row.id);
+      if (row.legacyId) {
+        removeLegacy.run(row.legacyId);
+      }
+    }
+    return rows.length;
+  });
+}
+
+export function recordSmtpVerification(
+  input: Omit<SmtpVerificationRecord, "id" | "checkedAt">
+) {
+  const db = getDatabase();
+  const record: SmtpVerificationRecord = {
+    ...input,
+    id: randomUUID(),
+    checkedAt: nowIso()
+  };
+  db.prepare(`
+    INSERT INTO smtp_verification_checks (
+      id, status, host, port, secure, from_address,
+      error_code, error_summary, checked_by, checked_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    record.id,
+    record.status,
+    record.host,
+    record.port,
+    record.secure ? 1 : 0,
+    record.fromAddress,
+    record.errorCode,
+    record.errorSummary,
+    record.checkedBy,
+    record.checkedAt
+  );
+  return record;
+}
+
+export function getLatestSmtpVerification() {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT id, status, host, port, secure,
+           from_address AS fromAddress,
+           error_code AS errorCode,
+           error_summary AS errorSummary,
+           checked_by AS checkedBy,
+           checked_at AS checkedAt
+    FROM smtp_verification_checks
+    ORDER BY datetime(checked_at) DESC
+    LIMIT 1
+  `).get() as Record<string, unknown> | undefined;
+  return row ? mapSmtpVerification(row) : null;
+}
+
+export function getNotificationAdminSummary() {
+  const db = getDatabase();
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS total,
+      SUM(CASE WHEN status = 'sent' THEN 1 ELSE 0 END) AS sent,
+      SUM(CASE WHEN status IN ('failed', 'retry_scheduled') THEN 1 ELSE 0 END) AS attention,
+      SUM(CASE WHEN status = 'pending_configuration' THEN 1 ELSE 0 END) AS pendingConfiguration,
+      SUM(CASE WHEN status = 'suppressed' THEN 1 ELSE 0 END) AS suppressed
+    FROM notification_deliveries
+  `).get() as Record<string, unknown>;
+  return {
+    total: Number(row.total ?? 0),
+    sent: Number(row.sent ?? 0),
+    attention: Number(row.attention ?? 0),
+    pendingConfiguration: Number(
+      row.pendingConfiguration ?? 0
+    ),
+    suppressed: Number(
+      row.suppressed ?? 0
+    )
+  };
 }
 
 export function getBandwidthSnapshot(): BandwidthSnapshot {

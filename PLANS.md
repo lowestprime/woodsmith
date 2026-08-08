@@ -1,5 +1,21 @@
 # PLANS.md
 
+## 2026-08-08 Woodsmith v19 Admin Completion
+
+- Status: IN PROGRESS ON FEATURE BRANCH; NOT DEPLOYED
+- Branch: `codex/woodsmith-v19-admin-completion-20260721`
+- Draft child PR: `#7`
+
+| Work package | Status | Evidence |
+|------|--------|----------|
+| WP01 foundation | DONE / COMMITTED | `767b84c` establishes the v19 continuation foundation and validation baseline. |
+| WP02 admin foundations | DONE / COMMITTED | `efad277` completes the preceding admin foundation slice. |
+| WP03/WP04 media folder truth and direct assignment | DONE / COMMITTED | `d332ae7` adds reviewed source-folder rules, direct public assignment, compatibility synchronization, and focused media safety tests. |
+| WP05 notifications and project lifecycle | DONE / LOCAL VALIDATION COMPLETE | Additive schema versions 9-11 provide typed notification policies/templates/deliveries/attempts, SMTP verification history, project lifecycle events, and dependency-aware deletion records. Full application tests pass 132/132; typecheck, lint, safe production build, `linux/amd64` image inspection, disposable container/browser acceptance, all three Compose configurations, 80/80 visual-audit tests, and a 386-capture isolated snapshot-lab smoke pass. Visitor-session email is disabled by default. No production data or media was mounted or mutated. |
+| WP06 privacy-preserving visitor insights and audit log | PENDING | Replace the legacy raw-IP digest with rotatable keyed pseudonyms, add minimized visitor aggregates/map/list and retention controls, and expose redacted paginated audit views. |
+| WP07 remaining administration and media operations | PENDING | Complete the remaining transactional media, editor, accessibility, responsive, theme, and operational requirements in the active objective. |
+| WP08 release evidence and deployment | PENDING | Produce exact candidate images and complete backup/restore, Tier 2 production-clone, candidate deployment, Tier 3 live archive, persistence, and rollback gates before declaring the release complete. |
+
 ## 2026-07-11 Sitewide UX, Data, Commission, And Visual Archive Overhaul
 
 - Status: IN PROGRESS ON FEATURE BRANCH; NOT DEPLOYED

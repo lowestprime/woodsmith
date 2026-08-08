@@ -22,7 +22,8 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Private Woodshop dashboard with focused workspace tabs for editing settings, pages, pieces, custom work types, users, media, process notes, projects, orders, reviews, and notifications through structured browser forms
 - Admin-only pencil controls backed by a typed field registry, atomic audited saves, conflict detection, URL/origin validation, reset/undo controls, and an explicit visual full-editor link for structural work
 - A compact browser media desk with whole-library and AI-state filters, in-place paging and edits, explicit candidate review, guided local training actions, transactional selected-item folder/name/assignment/role/stage changes with rollback, upload/rename/delete safety, crop/focal controls, and source credit against the writable NAS photo library
-- Email notification queueing, Stripe invoice creation, and EasyPost shipping-label requests when the related environment variables are configured
+- Typed notification policies, editable templates, redacted delivery history, bounded retries, retention controls, and authenticated SMTP checks; delivery remains fail-closed until the related environment variables are configured
+- Compact project lifecycle management with autosaved operational fields, buyer-visible timeline updates, explicit status-email dispatch, archive/cancel/reopen controls, and dependency-aware deletion with quarantine and audit records
 - Responsive piece carousels with announced position and full-size lightboxes that trap focus, restore the opener, support bounded keyboard/touch pan and zoom, and close through `Esc`, backdrop click, or the visible X control
 - Keyword/metadata search plus visual search across public content and, for admins, private media, visual labels, clusters, unpublished content, and project records. The optional local sidecar supplies shared image/text CLIP vectors; Gemini or OpenAI embeddings remain opt-in alternatives.
 - Persistent light/day and black OLED night themes using the local ITC New Rennie Mackintosh font assets; the cookie-backed initial theme and client store are synchronized without hydration overwriting the saved choice
@@ -37,6 +38,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 ## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
+- The additive SQLite migration ledger currently applies through schema version 11. Versions 9-11 add notification policy/delivery records and project lifecycle/deletion ledgers without replacing the mounted database or destructively rewriting existing projects.
 - Studio overview reports the active `DATA_ROOT`, SQLite `quick_check`, journal mode, and seed version so rebuild-safe persistence can be verified from the browser. Seed upgrades are non-destructive for existing Studio-edited records.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free, dynamically loaded React Three Fiber conceptual proportional preview. A deterministic SVG drawing remains available for fallback, printing, and submitted snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
@@ -44,6 +46,8 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Scientist Desk remains published without photos until the correct black phenolic resin top, birds-eye maple rails, and white maple legs media are verified.
 - New piece records can be created without guessed photos. Media should be assigned only after review in the Woodshop dashboard.
 - Payment capture, invoice delivery, shipping-label creation, outbound email, image cleanup, photorealistic preview generation, and AI media analysis require their documented runtime configuration before they work live.
+- Visitor-session email is an explicit notification type and is disabled by default. Session recording does not imply email delivery; an administrator must deliberately enable the policy and configure its recipients.
+- SMTP passwords remain environment-only. The dashboard reports configuration and verification state without returning or rendering the password, and notification bodies are fetched only when an administrator opens a delivery detail.
 - ChatGPT Plus is not an API backend and does not include OpenAI API usage. The classification workflow is local-first; OpenAI remains an explicitly enabled compatibility option.
 
 ## 🖇️ Repository Architecture

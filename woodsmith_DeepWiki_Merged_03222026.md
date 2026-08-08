@@ -81,6 +81,13 @@ The SQLite schema includes these primary tables:
 - `reviews`
 - `notifications`
 - `schema_migrations`
+- `notification_policies`
+- `notification_templates`
+- `notification_deliveries`
+- `notification_delivery_attempts`
+- `smtp_verification_checks`
+- `project_lifecycle_events`
+- `project_deletion_ledger`
 - `piece_media_links`
 - `admin_edit_audit`
 - `media_rename_history`
@@ -95,7 +102,11 @@ The SQLite schema includes these primary tables:
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v6 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
-User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency.
+The independent additive migration ledger applies through schema version 11. Versions 9-11 normalize typed notification policy/template/delivery/attempt data, preserve SMTP verification results without storing the SMTP password, add project lifecycle and deletion-decision records, and seed a disabled-by-default visitor-session notification policy. Legacy notification rows are compatibility-linked into the normalized delivery history rather than discarded.
+
+Projects retain active/archived/cancelled lifecycle state, assignment and target dates, completion/archive/cancellation timestamps, and cancellation reason. Lifecycle transitions and dependency-aware deletion previews/refusals/deletions are separately audited; media quarantine prevents a hard-delete request from silently destroying referenced files.
+
+User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency. Visitor-session email is policy-controlled and disabled by default.
 
 ## Media system
 
@@ -191,7 +202,10 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `tools/media-ai-sidecar/`: local HTTP service, file/hash cache, CLIP image/text embeddings, structured analysis, clustering, and provider arbitration
 - `site/lib/search.ts`: keyword search wrapper with optional embedding re-ranking
 - `site/lib/payments.ts`: Stripe and EasyPost integration
-- `site/lib/notifications.ts`: SMTP and notification queue handling
+- `site/lib/notification-policy.ts`: typed notification definitions, recipient policy, template validation, retry/retention defaults, and variable allowlists
+- `site/lib/notifications.ts`: pooled SMTP transport, normalized delivery queue, idempotency, bounded retry processing, redacted diagnostics, and legacy compatibility
+- `site/components/studio/studio-notifications-admin.tsx`: compact policy/template/delivery/SMTP administration with on-demand detail
+- `site/components/studio/studio-projects-admin.tsx`: compact project master-detail editing, lifecycle transitions, timelines, and guarded dependency-aware deletion
 - `site/components/forms.tsx`: public, account, profile, and custom work forms
 - `site/components/inline-edit-assistant.tsx`: capture-phase in-place editing and structural-editor handoff
 - `site/components/verification-resend-panel.tsx`: email-based verification resend with accurate delivery status

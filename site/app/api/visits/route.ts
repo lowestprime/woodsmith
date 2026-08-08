@@ -61,7 +61,19 @@ export async function POST(request: Request) {
           to: notifyTo,
           subject: `New visitor${countryCode ? ` · ${countryCode}` : ""}`,
           text: `A new visitor session was recorded.\n\nPath: ${path}\nCountry: ${countryCode ?? "Unknown"}\nCity: ${city ?? "Unknown"}\nRegion: ${region ?? "Unknown"}\nHost: ${request.headers.get("host") ?? "Unknown"}\nAt: ${result.record.firstSeenAt}`,
-          html: `<p>A new visitor session was recorded.</p><ul><li><strong>Path:</strong> ${path}</li><li><strong>Country:</strong> ${countryCode ?? "Unknown"}</li><li><strong>City:</strong> ${city ?? "Unknown"}</li><li><strong>Region:</strong> ${region ?? "Unknown"}</li><li><strong>Host:</strong> ${request.headers.get("host") ?? "Unknown"}</li><li><strong>At:</strong> ${result.record.firstSeenAt}</li></ul>`
+          variables: {
+            path,
+            country: countryCode ?? "Unknown",
+            city: city ?? "Unknown",
+            region: region ?? "Unknown",
+            host:
+              request.headers.get("host") ??
+              "Unknown",
+            firstSeenAt:
+              result.record.firstSeenAt
+          },
+          idempotencyKey:
+            `visitor-session:${result.record.id}`
         }).catch(() => undefined);
       }
     }

@@ -25,7 +25,6 @@ import {
   saveOrderAction,
   savePieceAction,
   savePostAction,
-  saveProjectAction,
   saveReviewAdminAction,
   saveSiteSettingsAction,
   saveSiteStructureAction,
@@ -42,18 +41,23 @@ import {
   getSiteSettings,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
+  getLatestSmtpVerification,
+  getNotificationAdminSummary,
   listCommissionTypes,
   listMedia,
   listMediaOperationBatches,
   listMediaForProjectReferences,
   previewMediaFolderRules,
-  listNotifications,
+  listNotificationDeliveries,
+  listNotificationPolicies,
+  listNotificationTemplates,
   listOrders,
   listPages,
   listPieceMediaLinks,
   listPieceMediaLinksForPath,
   listPieces,
   listPosts,
+  listProjectLifecycleEvents,
   listProjects,
   listReviews,
   listUsers,
@@ -68,7 +72,7 @@ import {
   type PostRecord,
   type UserRecord
 } from "@/lib/db";
-import { formatDateTime, formatMoney, toMediaUrl } from "@/lib/format";
+import { formatDateTime, formatMoney } from "@/lib/format";
 import { buildMediaVerificationQueue } from "@/lib/media-audit";
 import { getAiServiceStatus } from "@/lib/ai-services";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
@@ -92,6 +96,9 @@ import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/ca
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode } from "@/lib/piece-model";
 import { visualAuditRequestAuthorized } from "@/lib/visual-audit";
 import { classifyMediaAccess } from "@/lib/media-access";
+import { getSmtpPublicConfiguration } from "@/lib/notifications";
+import { StudioNotificationsAdmin } from "@/components/studio/studio-notifications-admin";
+import { StudioProjectsAdmin } from "@/components/studio/studio-projects-admin";
 
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "categories", "custom", "people", "process", "media", "projects", "orders", "reviews", "notifications"] as const;
@@ -673,9 +680,9 @@ export default async function StudioPage({
   const categories = normalizePieceCategories(settings?.pieceCategories);
   const aiStatus = currentPanel === "overview" || currentPanel === "media" ? getAiServiceStatus() : null;
   const pages = currentPanel === "pages" || currentPanel === "media" ? listPages(true) : [];
-  const pieces = currentPanel === "pieces" || currentPanel === "media" ? listPieces(true) : [];
+  const pieces = currentPanel === "pieces" || currentPanel === "media" || currentPanel === "projects" ? listPieces(true) : [];
   const posts = currentPanel === "process" || currentPanel === "media" ? listPosts(true) : [];
-  const commissionTypes = currentPanel === "custom" ? listCommissionTypes(true) : [];
+  const commissionTypes = currentPanel === "custom" || currentPanel === "projects" ? listCommissionTypes(true) : [];
   const users = currentPanel === "people" ? listUsers() : [];
   const mediaFilters = {
     includeUnreviewed: true,
@@ -722,6 +729,15 @@ export default async function StudioPage({
       )
     : [];
 
+  const projectLifecycleEvents = currentPanel === "projects"
+    ? Object.fromEntries(
+        projects.map((project) => [
+          project.reference,
+          listProjectLifecycleEvents(project.reference)
+        ])
+      )
+    : {};
+
   const orders = currentPanel === "orders"
     ? (
         includeAllAuditRecords
@@ -738,13 +754,32 @@ export default async function StudioPage({
       )
     : [];
 
-  const notifications = currentPanel === "notifications"
-    ? (
-        includeAllAuditRecords
-          ? listNotifications()
-          : listNotifications().slice(0, 20)
-      )
+  const notificationPolicies = currentPanel === "notifications"
+    ? listNotificationPolicies()
     : [];
+  const notificationTemplates = currentPanel === "notifications"
+    ? listNotificationTemplates()
+    : [];
+  const notificationDeliveries = currentPanel === "notifications"
+    ? listNotificationDeliveries({
+        limit: includeAllAuditRecords ? 200 : 50
+      })
+    : [];
+  const notificationSummary = currentPanel === "notifications"
+    ? getNotificationAdminSummary()
+    : {
+        total: 0,
+        sent: 0,
+        attention: 0,
+        pendingConfiguration: 0,
+        suppressed: 0
+      };
+  const smtpConfiguration = currentPanel === "notifications"
+    ? getSmtpPublicConfiguration()
+    : null;
+  const latestSmtpVerification = currentPanel === "notifications"
+    ? getLatestSmtpVerification()
+    : null;
   const editingPage = currentPanel === "pages"
     ? pageHighlight === "new-page-draft" ? pageDraft() : pages.find((page) => page.slug === pageHighlight) ?? pages[0] ?? pageDraft()
     : null;
@@ -947,27 +982,24 @@ export default async function StudioPage({
 
       {currentPanel === "projects" ? (
       <PageSection>
-        <div className="section-heading"><p className="eyebrow">Projects</p><h2>Queue and status</h2><p>Project status, stage, notes, and timeline updates.</p></div>
-        <div className="studio-grid two-column-grid">
-          {projects.map((project) => (
-            <article className={`studio-panel studio-editor-card${projectHighlight === project.reference ? " highlight-card" : ""}`} id={`project-${project.reference}`} key={project.reference}>
-              <div className="studio-editor-head"><h3>{project.reference}</h3><span>{project.status} · {project.stage}</span></div>
-              <div aria-label={`${project.reference} project media`} className="project-media-strip" data-media-collection={`project:${project.reference}`} data-media-collection-variant="editorial-grid" role="region">
-                {projectMedia.filter((item) => item.projectReference === project.reference).sort((left, right) => Number(left.metadata.displayOrder ?? 0) - Number(right.metadata.displayOrder ?? 0)).map((item) => (
-                   <a data-media-id={item.relativePath} data-media-item="true" data-media-order={Number(item.metadata.displayOrder ?? 0)} href={toMediaUrl(item.relativePath)} key={item.relativePath}><img alt={item.altText || item.fileName} decoding="async" loading="lazy" src={toMediaUrl(item.relativePath)} /></a>
-                ))}
-              </div>
-              <form action={saveProjectAction} className="request-form compact-form">
-                <input name="reference" type="hidden" value={project.reference} />
-                <div className="field-grid two-up compact-grid"><Field label="Status" name="status" defaultValue={project.status} /><Field label="Stage" name="stage" defaultValue={project.stage} /></div>
-                <div className="field-grid three-up compact-grid"><Field label="Piece slug" name="pieceSlug" defaultValue={project.pieceSlug ?? ""} /><Field label="Type slug" name="commissionTypeSlug" defaultValue={project.commissionTypeSlug ?? ""} /><Field label="Lead time days" name="leadTimeDays" defaultValue={project.leadTimeDays ?? ""} type="number" /></div>
-                <Area label="Public notes" name="publicNotes" defaultValue={project.publicNotes} rows={3} /><Area label="Internal notes" name="internalNotes" defaultValue={project.internalNotes} rows={3} /><Area label="Timeline update" name="timelineBody" rows={3} />
-                <label><span>Visibility</span><select defaultValue="public" name="visibility"><option value="public">Public</option><option value="private">Private</option></select></label>
-                <button className="button-primary" type="submit">Save project</button>
-              </form>
-            </article>
-          ))}
-        </div>
+        <div className="section-heading"><p className="eyebrow">Projects</p><h2>Queue and status</h2><p>Select one project to update its schedule, buyer timeline, lifecycle, and delivery notices without reloading the dashboard.</p></div>
+        <StudioProjectsAdmin
+          commissionTypes={commissionTypes.map((item) => ({ slug: item.slug, title: item.label }))}
+          initialProjects={projects}
+          initialReference={projectHighlight}
+          lifecycleEvents={projectLifecycleEvents}
+          media={projectMedia.filter((item) => item.kind === "image" || item.kind === "video").map((item) => ({
+            relativePath: item.relativePath,
+            altText: item.altText,
+            fileName: item.fileName,
+            kind: item.kind === "video" ? "video" : "image",
+            width: null,
+            height: null,
+            projectReference: item.projectReference ?? "",
+            displayOrder: Number(item.metadata.displayOrder ?? 0)
+          }))}
+          pieces={pieces.map((item) => ({ slug: item.slug, title: item.title }))}
+        />
       </PageSection>
       ) : null}
 
@@ -988,7 +1020,7 @@ export default async function StudioPage({
       ) : null}
 
       {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className={`studio-panel studio-editor-card${pieceHighlight && review.pieceSlug === pieceHighlight ? " highlight-card" : ""}`} key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection> : null}
-      {currentPanel === "notifications" ? <PageSection><div className="section-heading"><p className="eyebrow">Notifications</p><h2>Email queue</h2><p>Queued and sent notification records.</p></div><div className="studio-grid two-column-grid">{notifications.length > 0 ? notifications.map((notification) => <article className="studio-panel" key={notification.id}><p className="eyebrow">{notification.status}</p><h3>{notification.subject}</h3><p>{notification.recipient}</p><p className="muted-copy">Queued {formatDateTime(notification.createdAt)}</p>{notification.sentAt ? <p className="muted-copy">Sent {formatDateTime(notification.sentAt)}</p> : null}{notification.error ? <p className="notice-panel danger">{notification.error}</p> : null}<p className="muted-copy">{notification.body}</p></article>) : <article className="studio-panel"><p className="muted-copy">No notifications have been queued yet.</p></article>}</div></PageSection> : null}
+      {currentPanel === "notifications" && smtpConfiguration ? <PageSection><div className="section-heading"><p className="eyebrow">Notifications</p><h2>Email policy and delivery</h2><p>Control recipients, safe templates, retries, retention, SMTP verification, and message-level delivery history.</p></div><StudioNotificationsAdmin initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} smtpConfiguration={smtpConfiguration} /></PageSection> : null}
       </div>
     </Shell>
   );

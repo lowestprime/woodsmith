@@ -155,7 +155,7 @@ test("media batches update and roll back files, metadata, and all reference mode
     ]);
     assert.equal(db.getMediaOperationBatch(batch.id)?.status, "rolled-back");
     assert.equal(db.getMediaOperationBatch(rollbackBatch.id)?.status, "completed");
-    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 8);
+    assert.equal(db.getRuntimePersistenceStatus().schemaVersion, 11);
     assert.equal(db.getRuntimePersistenceStatus().quickCheck, "ok");
   } finally {
     db.closeDatabaseForTests();
@@ -464,7 +464,7 @@ test("direct piece-media replacement marks selected media reviewed, preserves vi
 
     assert.equal(
       db.getRuntimePersistenceStatus().schemaVersion,
-      8
+      11
     );
     assert.equal(
       db.getRuntimePersistenceStatus().quickCheck,
