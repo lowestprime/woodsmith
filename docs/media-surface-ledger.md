@@ -1,8 +1,10 @@
 # Media surface ledger
 
-Updated: 2026-07-17
+Updated: 2026-08-08
 
 This ledger records every visible grouped-media surface in Beaman Woodworks and the non-overlapping replacement selected for it. It is the acceptance source for the shared media collection work and the visual archive's rendered no-overlap gate.
+
+The 2026-08-08 v19 archive regression passed 155 application tests and 84 visual-audit tests. Its disposable snapshot lab produced 445 captures across 48 routes and the complementary live-readonly run produced 366 captures across 36 routes, both with zero unexpected diagnostics and complete Docker cleanup. The protected route ledger now gives the Projects editor and each Notifications subview stable deep-capture identities. This is content-equivalent local evidence from intentionally unstamped images; final exact Tier 1, production-clone Tier 2, and live-production Tier 3 media evidence remain required.
 
 ## Current implementation evidence
 
