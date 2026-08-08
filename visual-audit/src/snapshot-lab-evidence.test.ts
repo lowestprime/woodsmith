@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  expectedSnapshotLabUnsafeSuccesses,
+  requiredSnapshotLabMutationStates,
   SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
+  snapshotLabProjectMutationRequired,
   snapshotLabEvidenceFailures
 } from "./snapshot-lab-evidence.js";
 
@@ -11,39 +14,74 @@ test("live-readonly archives do not require mutation evidence", () => {
     snapshotLabEvidenceFailures({
       targetMode: "live-readonly",
       captureStates: [],
-      successfulUnsafeRequests: 0
+      successfulUnsafeRequests: 0,
+      projectCount: 0
     }),
     []
   );
 });
 
-test("snapshot-lab archives require a saved state and cleanup mutation", () => {
+test("snapshot-lab archives require every v19 mutation state and exact request count", () => {
   const failures = snapshotLabEvidenceFailures({
     targetMode: "snapshot-lab",
     captureStates: [],
-    successfulUnsafeRequests: 1
+    successfulUnsafeRequests: 1,
+    projectCount: 0
   });
 
-  assert.equal(failures.length, 2);
+  assert.equal(
+    failures.length,
+    requiredSnapshotLabMutationStates(0).length + 1
+  );
 });
 
-test("snapshot-lab save and cleanup evidence satisfies the gate", () => {
+test("complete snapshot-lab round trips satisfy the gate", () => {
+  const projectCount = 1;
   assert.deepEqual(
     snapshotLabEvidenceFailures({
       targetMode: "snapshot-lab",
-      captureStates: [SNAPSHOT_LAB_COMMISSION_DRAFT_STATE],
-      successfulUnsafeRequests: 2
+      captureStates: requiredSnapshotLabMutationStates(projectCount),
+      successfulUnsafeRequests: expectedSnapshotLabUnsafeSuccesses(projectCount),
+      projectCount
     }),
     []
   );
 });
 
 test("snapshot-lab archives reject unrelated successful mutations", () => {
+  const projectCount = 1;
   const failures = snapshotLabEvidenceFailures({
     targetMode: "snapshot-lab",
-    captureStates: [SNAPSHOT_LAB_COMMISSION_DRAFT_STATE],
-    successfulUnsafeRequests: 3
+    captureStates: requiredSnapshotLabMutationStates(projectCount),
+    successfulUnsafeRequests:
+      expectedSnapshotLabUnsafeSuccesses(projectCount) + 1,
+    projectCount
   });
 
   assert.equal(failures.length, 1);
+});
+
+test("a single missing v19 mutation state fails independently", () => {
+  const projectCount = 1;
+  const captureStates = requiredSnapshotLabMutationStates(projectCount).filter(
+    (state) => state !== SNAPSHOT_LAB_COMMISSION_DRAFT_STATE
+  );
+  const failures = snapshotLabEvidenceFailures({
+    targetMode: "snapshot-lab",
+    captureStates,
+    successfulUnsafeRequests: expectedSnapshotLabUnsafeSuccesses(projectCount),
+    projectCount
+  });
+
+  assert.equal(failures.length, 1);
+  assert.match(failures[0] ?? "", /commission-draft/);
+});
+
+test("project mutation evidence is conditional on a project record", () => {
+  assert.equal(snapshotLabProjectMutationRequired(0), false);
+  assert.equal(snapshotLabProjectMutationRequired(1), true);
+  assert.equal(requiredSnapshotLabMutationStates(0).includes("snapshot-lab-project-autosave-roundtrip"), false);
+  assert.equal(requiredSnapshotLabMutationStates(1).includes("snapshot-lab-project-autosave-roundtrip"), true);
+  assert.equal(expectedSnapshotLabUnsafeSuccesses(0), 10);
+  assert.equal(expectedSnapshotLabUnsafeSuccesses(1), 12);
 });

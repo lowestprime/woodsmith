@@ -169,7 +169,7 @@ async function main() {
   if (manifest.mode !== config.targetMode) failures.push("Manifest mode does not match TARGET_MODE.");
   if (manifest.evidenceTier !== config.evidenceTier) failures.push("Manifest evidence tier does not match AUDIT_EVIDENCE_TIER.");
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
-  if (manifest.inventory.schemaVersion !== 2 || !manifest.inventory.mediaEvidence) failures.push("Manifest inventory is not the required schema-v2 media-aware inventory.");
+  if (manifest.inventory.schemaVersion !== 3 || !manifest.inventory.mediaEvidence || !manifest.inventory.studioViews) failures.push("Manifest inventory is not the required schema-v3 media and Studio-state inventory.");
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
   validateAcceleration(manifest, failures);
@@ -178,7 +178,8 @@ async function main() {
   failures.push(...snapshotLabEvidenceFailures({
     targetMode: config.targetMode,
     captureStates: manifest.captures.map((capture) => capture.state),
-    successfulUnsafeRequests: manifest.security.successfulUnsafeRequests
+    successfulUnsafeRequests: manifest.security.successfulUnsafeRequests,
+    projectCount: manifest.inventory.counts.projects
   }));
 
   const captureKeys = new Set<string>();

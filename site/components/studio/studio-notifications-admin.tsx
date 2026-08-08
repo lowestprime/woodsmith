@@ -124,6 +124,12 @@ const WORKSPACE_TABS: Array<{
   { key: "smtp", label: "SMTP" }
 ];
 
+function workspaceTab(value: string | undefined): WorkspaceTab {
+  return WORKSPACE_TABS.some((item) => item.key === value)
+    ? value as WorkspaceTab
+    : "overview";
+}
+
 function moveWorkspaceTab(
   event: KeyboardEvent<HTMLButtonElement>
 ) {
@@ -1180,10 +1186,13 @@ export function StudioNotificationsAdmin({
   initialVisitorPolicy,
   visitorIdentityStatus,
   initialAuditPage,
-  auditFilterOptions
-}: NotificationsAdminProps) {
+  auditFilterOptions,
+  initialView
+}: NotificationsAdminProps & {
+  initialView?: string;
+}) {
   const [tab, setTab] =
-    useState<WorkspaceTab>("overview");
+    useState<WorkspaceTab>(() => workspaceTab(initialView));
   const [policies, setPolicies] =
     useState(initialPolicies);
   const [templates, setTemplates] =
@@ -1231,7 +1240,10 @@ export function StudioNotificationsAdmin({
   }
 
   return (
-    <div className="studio-admin-workspace">
+    <div
+      className="studio-admin-workspace"
+      data-audit-id="studio-notifications-workspace"
+    >
       <div
         aria-label="Notification administration"
         className="studio-subtabs"
@@ -1260,6 +1272,7 @@ export function StudioNotificationsAdmin({
       <div
         aria-labelledby={`notification-workspace-tab-${tab}`}
         className="studio-workspace-panel"
+        data-audit-id={`studio-notifications-${tab}`}
         id="notification-workspace-panel"
         role="tabpanel"
         tabIndex={0}

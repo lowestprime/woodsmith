@@ -563,6 +563,11 @@ const result = {
   snapshotLabSaved: manifest.captures.filter(
     (item) => item.state === "snapshot-lab-commission-draft-saved"
   ).length,
+  snapshotLabMutationStates: new Set(
+    manifest.captures
+      .filter((item) => item.state.startsWith("snapshot-lab-"))
+      .map((item) => item.state)
+  ).size,
   unsafeSuccessful: manifest.security.successfulUnsafeRequests,
   unsafeBlocked: manifest.security.sameOriginUnsafeRequestsBlocked,
   tokenEligible: manifest.security.tokenEligibleRequests,
@@ -580,9 +585,11 @@ const result = {
 };
 console.log(JSON.stringify(result, null, 2));
 
-const expectedUnsafeSuccessful = Number(
-  process.env.EXPECTED_UNSAFE_SUCCESSFUL
-);
+const hasProjects = manifest.inventory.counts.projects > 0;
+const expectedUnsafeSuccessful = result.targetMode === "snapshot-lab"
+  ? hasProjects ? 12 : 10
+  : 0;
+const expectedMutationStates = hasProjects ? 7 : 6;
 
 if (
   !result.passed ||
@@ -595,6 +602,7 @@ if (
   result.unsafeSuccessful !== expectedUnsafeSuccessful ||
   (result.targetMode === "live-readonly" && result.unsafeBlocked < 1) ||
   (result.targetMode === "snapshot-lab" && result.snapshotLabSaved !== 1) ||
+  (result.targetMode === "snapshot-lab" && result.snapshotLabMutationStates !== expectedMutationStates) ||
   result.tokenEligible < 1 ||
   result.crossOrigin !== 0 ||
   result.reportSourceCaptures !== result.captures ||
@@ -617,7 +625,6 @@ if (
     "-v", ($outputVolume + ":/output:ro"),
     "-e", ("AUDIT_RUN_ID=" + $runId),
     "-e", ("TARGET_MODE=" + $TargetMode),
-    "-e", ("EXPECTED_UNSAFE_SUCCESSFUL=" + $(if ($TargetMode -eq "snapshot-lab") { "2" } else { "0" })),
     "--entrypoint", "node", $AuditImage, "-e", $summaryScript
   )
   Invoke-Docker @summaryArguments

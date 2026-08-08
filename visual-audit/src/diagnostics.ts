@@ -51,6 +51,18 @@ export function isExpectedCaptureTeardownAbort(
     isSameOrigin(evidence.url, evidence.baseUrl);
 }
 
+export function isExpectedCompletedSnapshotMutationAbort(input: {
+  targetMode: string;
+  method: string;
+  failure: string;
+  successfulResponseObserved: boolean;
+}) {
+  return input.targetMode === "snapshot-lab" &&
+    input.successfulResponseObserved &&
+    isUnsafeMethod(input.method) &&
+    input.failure.includes("ERR_ABORTED");
+}
+
 export function isExpectedAuditMutationBlock(input: {
   targetMode: string;
   method: string;

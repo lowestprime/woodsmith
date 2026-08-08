@@ -1096,7 +1096,10 @@ export function StudioProjectsAdmin({
   );
 
   return (
-    <div className="studio-master-detail project-admin-workspace">
+    <div
+      className="studio-master-detail project-admin-workspace"
+      data-audit-id="studio-projects-workspace"
+    >
       <nav
         aria-label="Project records"
         className="studio-master-list project-master-list"

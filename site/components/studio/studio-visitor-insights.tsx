@@ -321,7 +321,10 @@ export function StudioVisitorInsights({
   );
 
   return (
-    <div className="visitor-admin-workspace">
+    <div
+      className="visitor-admin-workspace"
+      data-audit-id="studio-visitor-insights"
+    >
       <div className="visitor-range-toolbar">
         <div
           aria-label="Visitor insight range"

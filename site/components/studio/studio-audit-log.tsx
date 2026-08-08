@@ -123,7 +123,10 @@ export function StudioAuditLog({
   );
 
   return (
-    <div className="audit-admin-workspace">
+    <div
+      className="audit-admin-workspace"
+      data-audit-id="studio-audit-log"
+    >
       <form
         className="studio-panel audit-filter-bar"
         onSubmit={apply}

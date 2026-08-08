@@ -219,6 +219,7 @@ export function ConfirmDestructiveAction({
     <>
       <button
         className={triggerClassName}
+        data-audit-confirm-trigger={title}
         disabled={disabled}
         onClick={() => {
           setError(null);

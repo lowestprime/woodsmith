@@ -224,6 +224,10 @@ export function buildRoutes(
     }
   );
 
+  const studioViewRoutes = (inventory.studioViews ?? [])
+    .filter((view) => view.modes.includes(config.targetMode))
+    .map((view) => view.route);
+
   const privateProjectRoutes =
     inventory.projects.flatMap(project => [
       `/requests/${encodeURIComponent(
@@ -281,6 +285,7 @@ export function buildRoutes(
       ...publicRoutes,
       ...source.staticRoutes.filter((route) => !isSnapshotLabFixtureRoute(route)),
       ...studioRoutes,
+      ...studioViewRoutes,
       ...privateProjectRoutes,
       ...snapshotLabRoutes,
       ...inventory.pages.map(page => `/${encodeURIComponent(page.slug)}`),

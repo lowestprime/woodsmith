@@ -133,3 +133,21 @@ test(
     }
   },
 );
+
+test(
+  "local snapshot-lab smoke requires all v19 round trips and exact unsafe-request accounting",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /snapshotLabMutationStates !== expectedMutationStates/,
+    );
+    assert.match(
+      source,
+      /expectedUnsafeSuccessful = result\.targetMode === "snapshot-lab"[\s\S]*hasProjects \? 12 : 10/,
+    );
+  },
+);

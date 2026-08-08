@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   isExpectedCaptureTeardownAbort,
+  isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
@@ -44,6 +45,20 @@ test("only safe same-origin visual requests canceled during deliberate teardown 
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, method: "POST" }, true), false);
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, resourceType: "fetch" }, true), false);
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, failure: "net::ERR_CONNECTION_RESET" }, true), false);
+});
+
+test("only a clone mutation with an observed successful response may end in an expected abort", () => {
+  const input = {
+    targetMode: "snapshot-lab",
+    method: "POST",
+    failure: "net::ERR_ABORTED",
+    successfulResponseObserved: true
+  };
+  assert.equal(isExpectedCompletedSnapshotMutationAbort(input), true);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, targetMode: "live-readonly" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, method: "GET" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, successfulResponseObserved: false }), false);
 });
 
 test("read-only blocked failures require an unsafe request and an exact policy record", () => {

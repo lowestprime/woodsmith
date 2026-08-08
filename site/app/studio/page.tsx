@@ -613,6 +613,7 @@ export default async function StudioPage({
     email?: string;
     category?: string;
     audit?: string;
+    view?: string;
   }>;
 }) {
   const currentAdmin = await requireAdmin();
@@ -643,6 +644,7 @@ export default async function StudioPage({
     post: postHighlight = "",
     user: userHighlight = "",
     audit = "",
+    view: studioView = "",
     email = "",
     category: categoryHighlight = ""
   } = await searchParams;
@@ -1053,7 +1055,7 @@ export default async function StudioPage({
       ) : null}
 
       {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy and publication state.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <article className={`studio-panel studio-editor-card${pieceHighlight && review.pieceSlug === pieceHighlight ? " highlight-card" : ""}`} key={review.id}><div className="studio-editor-head"><h3>{review.title}</h3><form action={deleteReviewAdminAction}><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><button className="button-secondary" type="submit">Delete</button></form></div><form action={saveReviewAdminAction} className="request-form compact-form"><input name="id" type="hidden" value={review.id} /><input name="pieceSlug" type="hidden" value={review.pieceSlug} /><Field label="Reviewer" name="reviewerName" defaultValue={review.reviewerName} /><Field label="Title" name="title" defaultValue={review.title} /><Area label="Body" name="body" defaultValue={review.body} rows={4} /><label><span>Status</span><select defaultValue={review.status} name="status"><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option></select></label><button className="button-primary" type="submit">Save review</button></form></article>)}</div></PageSection> : null}
-      {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
+      {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
       </div>
     </Shell>
   );

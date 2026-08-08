@@ -64,6 +64,8 @@ export function StudioSaveStatus<TEntity>({
       aria-atomic="true"
       aria-live={isError ? "assertive" : "polite"}
       className={classes}
+      data-studio-operation-id={snapshot.operationId ?? ""}
+      data-studio-save-phase={snapshot.phase}
       role={isError ? "alert" : "status"}
     >
       {label ? <strong>{label}</strong> : null}

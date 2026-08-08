@@ -25,6 +25,12 @@ export type Inventory = {
   staticRoutes: string[];
   legacyRoutes: string[];
   studioPanels: string[];
+  studioViews?: Array<{
+    id: string;
+    route: string;
+    modes: TargetMode[];
+    snapshotMutationStates: string[];
+  }>;
   dynamicPatterns: string[];
   pages: Array<{ slug: string; title: string; status: string }>;
   pieces: Array<{ slug: string; title: string; publicationStatus: string; status: string }>;

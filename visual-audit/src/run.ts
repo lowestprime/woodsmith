@@ -41,6 +41,7 @@ import {
 } from "./config.js";
 import {
   isExpectedCaptureTeardownAbort,
+  isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
@@ -62,7 +63,16 @@ import { waitForVisualIdle, waitForVisualReady } from "./readiness.js";
 import { waitForRequestDrain } from "./request-drain.js";
 import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
-import { SNAPSHOT_LAB_COMMISSION_DRAFT_STATE } from "./snapshot-lab-evidence.js";
+import {
+  SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
+  SNAPSHOT_LAB_NOTIFICATION_POLICY_STATE,
+  SNAPSHOT_LAB_NOTIFICATION_TEMPLATE_STATE,
+  SNAPSHOT_LAB_PROJECT_STATE,
+  SNAPSHOT_LAB_SEARCH_CHECK_STATE,
+  SNAPSHOT_LAB_SEARCH_REBUILD_STATE,
+  SNAPSHOT_LAB_VISITOR_POLICY_STATE,
+  snapshotLabProjectMutationRequired
+} from "./snapshot-lab-evidence.js";
 import type {
   AuthState,
   CoverageTier,
@@ -102,6 +112,7 @@ const pageCapturePhases = new WeakMap<Page, string>();
 let preAuthenticationUnsafeBlocks = 0;
 const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
 const pendingVisualRequests = new WeakMap<Page, Set<Request>>();
+const successfulSnapshotLabRequests = new WeakSet<Request>();
 
 const coverageExclusions = [
   { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
@@ -356,6 +367,12 @@ function attachDiagnostics(
       route,
       message: `${method} ${request.url()} — ${failure} [phase=${pageCapturePhases.get(page) ?? "unknown"}]`,
       expected: isExpectedNextPrefetchAbort(evidence) ||
+        isExpectedCompletedSnapshotMutationAbort({
+          targetMode: config.targetMode,
+          method,
+          failure,
+          successfulResponseObserved: successfulSnapshotLabRequests.has(request)
+        }) ||
         isExpectedCaptureTeardownAbort(evidence, pagesInDeliberateTeardown.has(page))
     });
   });
@@ -368,6 +385,9 @@ function attachDiagnostics(
       isUnsafeMethod(method) &&
       response.status() < 400
     ) {
+      if (config.targetMode === "snapshot-lab") {
+        successfulSnapshotLabRequests.add(request);
+      }
       manifest.security.successfulUnsafeRequests += 1;
       manifest.diagnostics.push({
         timestamp: now(),
@@ -837,6 +857,234 @@ async function captureFormValidationStates(input: {
   }
 }
 
+function snapshotMutationCompleted(
+  input: {
+    auth: AuthState;
+    route: string;
+    theme: ThemeMode;
+    profile: ViewportProfile;
+  },
+  state: string
+) {
+  return config.resume && manifest.completedKeys.includes(
+    captureKey({
+      auth: input.auth,
+      route: input.route,
+      theme: input.theme,
+      viewport: input.profile.name,
+      state
+    })
+  );
+}
+
+async function successfulUnsafeAction(
+  page: Page,
+  action: () => Promise<void>
+) {
+  const responsePromise = page.waitForResponse((response) => {
+    if (!isUnsafeMethod(response.request().method())) return false;
+    try {
+      return new URL(response.url()).origin === new URL(config.baseUrl).origin;
+    } catch {
+      return false;
+    }
+  }, { timeout: 20_000 });
+
+  await action();
+  const response = await responsePromise;
+  if (response.status() >= 400) {
+    throw new Error(
+      `Snapshot-lab action returned HTTP ${response.status()}.`
+    );
+  }
+  await waitForVisualIdle(page);
+}
+
+async function roundTripAutosaveField(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+  entityKeyPrefix: string;
+  fieldName: string;
+  state: string;
+  changedValue: (original: string) => string;
+}) {
+  if (snapshotMutationCompleted(input, input.state)) return;
+
+  const form = input.page.locator(
+    `form[data-studio-entity-key^="${input.entityKeyPrefix}"]`
+  ).first();
+  await form.waitFor({ state: "visible", timeout: 15_000 });
+  const field = form.locator(`[name="${input.fieldName}"]`).first();
+  await field.waitFor({ state: "visible", timeout: 10_000 });
+
+  const original = await field.inputValue();
+  const changed = input.changedValue(original);
+  if (changed === original) {
+    throw new Error(`Snapshot-lab field ${input.fieldName} did not produce a distinct value.`);
+  }
+
+  const apply = async (value: string) => {
+    const previousOperationId = await form
+      .locator("[data-studio-operation-id]")
+      .getAttribute("data-studio-operation-id")
+      .catch(() => null);
+    await successfulUnsafeAction(input.page, async () => {
+      await field.fill(value);
+      await field.blur();
+    });
+    await input.page.waitForFunction(
+      ({ entityKeyPrefix, previousOperationId }) => {
+        const form = Array.from(
+          document.querySelectorAll<HTMLFormElement>(
+            "form[data-studio-entity-key]"
+          )
+        ).find((candidate) =>
+          candidate.dataset.studioEntityKey?.startsWith(entityKeyPrefix)
+        );
+        const status = form?.querySelector<HTMLElement>(
+          '[data-studio-save-phase="saved"]'
+        );
+        const operationId = status?.dataset.studioOperationId;
+        return Boolean(
+          operationId &&
+          operationId !== previousOperationId
+        );
+      },
+      {
+        entityKeyPrefix: input.entityKeyPrefix,
+        previousOperationId
+      },
+      { timeout: 15_000 }
+    );
+  };
+
+  await apply(changed);
+  try {
+    await saveCapture({
+      ...input,
+      state: input.state,
+      locator: form
+    });
+  } finally {
+    await apply(original);
+    if (await field.inputValue() !== original) {
+      throw new Error(`Snapshot-lab field ${input.fieldName} did not restore its original value.`);
+    }
+  }
+}
+
+async function captureCommissionDraftMutation(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  if (snapshotMutationCompleted(input, SNAPSHOT_LAB_COMMISSION_DRAFT_STATE)) return;
+
+  const form = input.page.locator("form.commission-workflow");
+  await form.waitFor({ state: "visible", timeout: 10_000 });
+
+  const saveAndContinue = form.getByRole("button", {
+    name: "Save and continue",
+    exact: true
+  });
+  await saveAndContinue.click();
+
+  await input.page.getByText("Account draft saved.", { exact: true }).waitFor({
+    state: "visible",
+    timeout: 15_000
+  });
+
+  const draftId = await form.locator('input[name="draftId"]').inputValue();
+  if (!draftId) {
+    throw new Error("Snapshot-lab commission draft did not return an ID.");
+  }
+
+  try {
+    const verified = await input.page.evaluate(async (id) => {
+      const response = await fetch(
+        "/api/commissions/draft?id=" + encodeURIComponent(id),
+        { cache: "no-store" }
+      );
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean;
+        draft?: { id?: string };
+      } | null;
+      return response.ok && payload?.ok === true && payload.draft?.id === id;
+    }, draftId);
+    if (!verified) {
+      throw new Error("Snapshot-lab commission draft could not be read back.");
+    }
+
+    await saveCapture({
+      ...input,
+      state: SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
+      locator: form
+    });
+  } finally {
+    const deleted = await input.page.evaluate(async (id) => {
+      const response = await fetch(
+        "/api/commissions/draft?id=" + encodeURIComponent(id),
+        { method: "DELETE" }
+      );
+      const payload = await response.json().catch(() => null) as {
+        ok?: boolean;
+      } | null;
+      return response.ok && payload?.ok === true;
+    }, draftId);
+    if (!deleted) {
+      throw new Error("Snapshot-lab commission draft cleanup failed.");
+    }
+  }
+}
+
+async function captureSearchIndexMutations(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const card = input.page.locator('[data-audit-id="studio-search-index"]');
+  await card.waitFor({ state: "visible", timeout: 15_000 });
+
+  const actions = [
+    {
+      state: SNAPSHOT_LAB_SEARCH_CHECK_STATE,
+      name: "Check index"
+    },
+    {
+      state: SNAPSHOT_LAB_SEARCH_REBUILD_STATE,
+      name: "Rebuild index"
+    }
+  ] as const;
+
+  for (const action of actions) {
+    if (snapshotMutationCompleted(input, action.state)) continue;
+    await successfulUnsafeAction(input.page, async () => {
+      await card.getByRole("button", { name: action.name, exact: true }).click();
+    });
+    await input.page.waitForFunction(() => {
+      const status = document.querySelector(
+        '[data-audit-id="studio-search-index"] .studio-save-state'
+      );
+      return Boolean(status?.textContent?.trim());
+    }, undefined, { timeout: 15_000 });
+    await saveCapture({
+      ...input,
+      state: action.state,
+      locator: card
+    });
+  }
+}
+
 async function captureSnapshotLabMutationState(input: {
   page: Page;
   auth: AuthState;
@@ -854,127 +1102,62 @@ async function captureSnapshotLabMutationState(input: {
   if (
     config.targetMode !== "snapshot-lab" ||
     input.auth !== "admin" ||
-    route.pathname !== "/commissions" ||
     input.theme !== "dark" ||
     input.profile.name !== targetProfile
   ) {
     return;
   }
 
-  const key = captureKey({
-    auth: input.auth,
-    route: input.route,
-    theme: input.theme,
-    viewport: input.profile.name,
-    state: SNAPSHOT_LAB_COMMISSION_DRAFT_STATE
-  });
-  if (
-    config.resume &&
-    manifest.completedKeys.includes(key)
-  ) {
+  if (route.pathname === "/commissions") {
+    await captureCommissionDraftMutation(input);
     return;
   }
 
-  const form =
-    input.page.locator("form.commission-workflow");
-  await form.waitFor({
-    state: "visible",
-    timeout: 10_000
-  });
+  if (route.pathname !== "/studio") return;
 
-  const saveAndContinue =
-    form.getByRole("button", {
-      name: "Save and continue",
-      exact: true
-    });
-  await saveAndContinue.click();
-
-  await input.page.getByText(
-    "Account draft saved.",
-    { exact: true }
-  ).waitFor({
-    state: "visible",
-    timeout: 15_000
-  });
-
-  const draftId =
-    await form.locator(
-      'input[name="draftId"]'
-    ).inputValue();
-  if (!draftId) {
-    throw new Error(
-      "Snapshot-lab commission draft did not return an ID."
-    );
-  }
-
-  try {
-    const verified =
-      await input.page.evaluate(
-        async (id) => {
-          const response = await fetch(
-            "/api/commissions/draft?id=" +
-              encodeURIComponent(id),
-            {
-              cache: "no-store"
-            }
-          );
-          const payload =
-            await response.json()
-              .catch(() => null) as {
-                ok?: boolean;
-                draft?: {
-                  id?: string;
-                };
-              } | null;
-
-          return (
-            response.ok &&
-            payload?.ok === true &&
-            payload.draft?.id === id
-          );
-        },
-        draftId
-      );
-    if (!verified) {
-      throw new Error(
-        "Snapshot-lab commission draft could not be read back."
-      );
-    }
-
-    await saveCapture({
+  const panel = route.searchParams.get("panel");
+  const view = route.searchParams.get("view");
+  if (panel === "overview" && view === "search-index") {
+    await captureSearchIndexMutations(input);
+  } else if (
+    panel === "projects" &&
+    view === "editor" &&
+    snapshotLabProjectMutationRequired(manifest.inventory.counts.projects)
+  ) {
+    await roundTripAutosaveField({
       ...input,
-      state: SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
-      locator: form
+      entityKeyPrefix: "project:",
+      fieldName: "publicNotes",
+      state: SNAPSHOT_LAB_PROJECT_STATE,
+      changedValue: (original) => `${original}\n[visual audit]`.trim()
     });
-  } finally {
-    const deleted =
-      await input.page.evaluate(
-        async (id) => {
-          const response = await fetch(
-            "/api/commissions/draft?id=" +
-              encodeURIComponent(id),
-            {
-              method: "DELETE"
-            }
-          );
-          const payload =
-            await response.json()
-              .catch(() => null) as {
-                ok?: boolean;
-              } | null;
-
-          return (
-            response.ok &&
-            payload?.ok === true
-          );
-        },
-        draftId
-      );
-    if (!deleted) {
-      throw new Error(
-        "Snapshot-lab commission draft cleanup failed."
-      );
-    }
+  } else if (panel === "notifications" && view === "types") {
+    await roundTripAutosaveField({
+      ...input,
+      entityKeyPrefix: "notification-policy:",
+      fieldName: "label",
+      state: SNAPSHOT_LAB_NOTIFICATION_POLICY_STATE,
+      changedValue: (original) => `${original.slice(0, 100)} [audit]`
+    });
+  } else if (panel === "notifications" && view === "templates") {
+    await roundTripAutosaveField({
+      ...input,
+      entityKeyPrefix: "notification-template:",
+      fieldName: "subjectTemplate",
+      state: SNAPSHOT_LAB_NOTIFICATION_TEMPLATE_STATE,
+      changedValue: (original) => `${original.slice(0, 180)} [audit]`
+    });
+  } else if (panel === "notifications" && view === "visitors") {
+    await roundTripAutosaveField({
+      ...input,
+      entityKeyPrefix: "visitor-analytics-policy:",
+      fieldName: "retentionDays",
+      state: SNAPSHOT_LAB_VISITOR_POLICY_STATE,
+      changedValue: (original) => {
+        const days = Number.parseInt(original, 10);
+        return String(Number.isFinite(days) && days < 730 ? days + 1 : 729);
+      }
+    });
   }
 }
 
@@ -1830,6 +2013,64 @@ async function captureStudioCards(input: {
   }
 }
 
+async function captureAuditIdentifiedSurfaces(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const surfaces = input.page.locator('[data-audit-id^="studio-"]');
+  const count = deepCount(await surfaces.count(), 20);
+
+  for (let index = 0; index < count; index += 1) {
+    const surface = surfaces.nth(index);
+    if (!await surface.isVisible().catch(() => false)) continue;
+    const auditId = await surface.getAttribute("data-audit-id");
+    if (!auditId) continue;
+    await saveCapture({
+      ...input,
+      state: `audit-surface-${safeName(auditId)}-${String(index + 1).padStart(3, "0")}`,
+      locator: surface
+    });
+  }
+}
+
+async function captureConfirmationDialogs(input: {
+  page: Page;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+  status: number | null;
+}) {
+  const triggers = input.page.locator("[data-audit-confirm-trigger]");
+  const count = deepCount(await triggers.count(), 8);
+
+  for (let index = 0; index < count; index += 1) {
+    const trigger = triggers.nth(index);
+    if (
+      !await trigger.isVisible().catch(() => false) ||
+      await trigger.isDisabled().catch(() => true)
+    ) {
+      continue;
+    }
+
+    const title = await trigger.getAttribute("data-audit-confirm-trigger") ?? `dialog-${index + 1}`;
+    await trigger.click();
+    const dialog = input.page.getByRole("dialog").last();
+    await dialog.waitFor({ state: "visible", timeout: 10_000 });
+    await saveCapture({
+      ...input,
+      state: `confirm-dialog-${safeName(title)}-${String(index + 1).padStart(3, "0")}`,
+      fullPage: false
+    });
+    await input.page.keyboard.press("Escape");
+    await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+  }
+}
+
 async function captureMediaPageItems(input: {
   page: Page;
   auth: AuthState;
@@ -2241,6 +2482,8 @@ async function captureRoute(input: {
         ["media-pickers", captureMediaPickers],
         ["inline-editing", captureInlineEditing],
         ["studio-cards", captureStudioCards],
+        ["audit-surfaces", captureAuditIdentifiedSurfaces],
+        ["confirmation-dialogs", captureConfirmationDialogs],
         ["media-inspectors", captureMediaPageItems],
         ["form-validation", captureFormValidationStates],
         ["commission-visualizer", captureVisualizerStates],
@@ -2600,8 +2843,8 @@ async function main() {
         config.authStatePath
       );
 
-    if (inventory.schemaVersion !== 2 || !inventory.mediaEvidence) {
-      throw new Error("The target does not expose the schema-v2 protected media inventory required for evidence-tier capture.");
+    if (inventory.schemaVersion !== 3 || !inventory.mediaEvidence || !inventory.studioViews) {
+      throw new Error("The target does not expose the schema-v3 protected media and Studio-state inventory required for evidence-tier capture.");
     }
 
     const targetHost = new URL(config.baseUrl).hostname;

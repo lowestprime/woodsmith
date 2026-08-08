@@ -17,6 +17,7 @@ import {
 } from "@/lib/db";
 import { visualAuditTokenValid } from "@/lib/visual-audit";
 import { buildPublicMediaEvidence, parseMediaProvenance } from "@/lib/visual-audit-media-evidence";
+import { VISUAL_AUDIT_STUDIO_VIEWS } from "@/lib/visual-audit-policy";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -125,13 +126,14 @@ export async function GET(request: NextRequest) {
 
   return NextResponse.json(
     {
-      schemaVersion: 2,
+      schemaVersion: 3,
       generatedAt: new Date().toISOString(),
       buildSha: process.env.WOODSMITH_BUILD_SHA ?? "unknown",
 
       staticRoutes: STATIC_ROUTES,
       legacyRoutes: LEGACY_ROUTES,
       studioPanels: STUDIO_PANELS,
+      studioViews: VISUAL_AUDIT_STUDIO_VIEWS,
 
       dynamicPatterns: [
         "/[slug]",
