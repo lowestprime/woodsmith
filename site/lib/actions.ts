@@ -58,6 +58,7 @@ import {
   getUserByVerificationToken,
   listCartItems,
   listMedia,
+  listMediaSourceFolderRules,
   listPieceMediaLinks,
   listPieceMediaLinksForPath,
   listPieces,
@@ -113,6 +114,7 @@ import {
   type MediaFolderRuleRole,
   type MediaKindFilter,
   type MediaSort,
+  type MediaSourceFolderRuleRecord,
   type MediaOperationBatchRecord,
   type MediaRecord,
   type OrderRecord,
@@ -406,6 +408,7 @@ function syncPieceMediaMembership(
   input: {
     actorEmail: string;
     assignmentSource: MediaAssignmentSource;
+    recordAudit?: boolean;
   }
 ) {
   const touched = new Set([previousPieceSlug, nextPieceSlug].filter((slug): slug is string => Boolean(slug)));
@@ -434,6 +437,7 @@ function syncPieceMediaMembership(
           {
             actorEmail: input.actorEmail,
             assignmentSource: input.assignmentSource,
+            recordAudit: input.recordAudit ?? true,
             markReviewed: false,
             reconcileRelativePaths: [relativePath]
           }
@@ -505,6 +509,7 @@ function syncPieceMediaMembership(
           {
             actorEmail: input.actorEmail,
             assignmentSource: input.assignmentSource,
+            recordAudit: input.recordAudit ?? true,
             markReviewed: publishable,
             reconcileRelativePaths: [relativePath]
           }
@@ -3969,6 +3974,665 @@ export async function applyMediaFolderRulesAction(): Promise<MediaActionResult> 
   } catch (error) {
     return mediaActionFailure(error, "Folder rules could not be applied.");
   }
+}
+
+export type MediaMetadataAutosavePatch = {
+  relativePath: string;
+  altText: string;
+  pieceSlug: string | null;
+  postSlug: string | null;
+  pageSlug: string | null;
+  projectReference: string | null;
+  focalX: number;
+  focalY: number;
+  zoom: number;
+  reviewed: boolean;
+  tags: string[];
+  visualLabels: string[];
+  cleanupMode:
+    | "original"
+    | "soft-matte"
+    | "warm-crop"
+    | "subject-isolate";
+  photoQuality:
+    | "unrated"
+    | "shop-ready"
+    | "portfolio-ready"
+    | "background-distracting"
+    | "needs-reshoot";
+  displayOrder: number;
+  sourceCredit: string;
+  cropAspect:
+    | "free"
+    | "square"
+    | "portrait"
+    | "wide";
+  cropNote: string;
+};
+
+export type MediaFolderRuleAutosavePatch = {
+  id: string;
+  normalizedFolder: string;
+  pieceSlug: string;
+  enabled: boolean;
+  priority: number;
+  defaultRole: MediaFolderRuleRole;
+  defaultPublic: boolean;
+};
+
+export type MediaFolderRuleAutosaveResult =
+  | (
+      Extract<
+        StudioMutationResult<
+          MediaSourceFolderRuleRecord
+        >,
+        { ok: true }
+      > & {
+        preview: MediaFolderRulePreview;
+        message: string;
+      }
+    )
+  | Extract<
+      StudioMutationResult<
+        MediaSourceFolderRuleRecord
+      >,
+      { ok: false }
+    >;
+
+const MEDIA_METADATA_AUTOSAVE_MUTATION_SCOPE =
+  "media-metadata-autosave";
+
+const MEDIA_FOLDER_RULE_AUTOSAVE_MUTATION_SCOPE =
+  "media-folder-rule-autosave";
+
+const MEDIA_CLEANUP_MODES = [
+  "original",
+  "soft-matte",
+  "warm-crop",
+  "subject-isolate"
+] as const;
+
+const MEDIA_PHOTO_QUALITIES = [
+  "unrated",
+  "shop-ready",
+  "portfolio-ready",
+  "background-distracting",
+  "needs-reshoot"
+] as const;
+
+const MEDIA_CROP_ASPECTS = [
+  "free",
+  "square",
+  "portrait",
+  "wide"
+] as const;
+
+function validateMediaMetadataAutosavePatch(
+  patch: MediaMetadataAutosavePatch
+): MediaMetadataAutosavePatch {
+  if (
+    !patch ||
+    typeof patch !== "object" ||
+    Array.isArray(patch)
+  ) {
+    throw new StudioMutationValidationError(
+      "A complete media metadata patch is required."
+    );
+  }
+
+  const relativePath = boundedStudioString(
+    patch.relativePath,
+    "Media path",
+    2_048,
+    true
+  );
+  const altText = boundedStudioString(
+    patch.altText,
+    "Alt text",
+    4_000
+  ).trim();
+  const pieceSlug = nullableStudioString(
+    patch.pieceSlug,
+    "Piece assignment",
+    160
+  );
+  const postSlug = nullableStudioString(
+    patch.postSlug,
+    "Process-note assignment",
+    160
+  );
+  const pageSlug = nullableStudioString(
+    patch.pageSlug,
+    "Page assignment",
+    160
+  );
+
+  if (pieceSlug && !getPiece(pieceSlug)) {
+    throw new StudioMutationValidationError(
+      "The selected piece no longer exists. Choose another assignment."
+    );
+  }
+  if (postSlug && !getPost(postSlug)) {
+    throw new StudioMutationValidationError(
+      "The selected process note no longer exists. Choose another assignment."
+    );
+  }
+  if (pageSlug && !getPage(pageSlug)) {
+    throw new StudioMutationValidationError(
+      "The selected page no longer exists. Choose another assignment."
+    );
+  }
+
+  const reviewed = studioBoolean(
+    patch.reviewed,
+    "Reviewed state"
+  );
+  if (reviewed && !altText) {
+    throw new StudioMutationValidationError(
+      "Add accurate alt text before approving media for public use."
+    );
+  }
+
+  if (
+    !MEDIA_CLEANUP_MODES.includes(
+      patch.cleanupMode
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Cleanup mode is invalid."
+    );
+  }
+  if (
+    !MEDIA_PHOTO_QUALITIES.includes(
+      patch.photoQuality
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Photo quality is invalid."
+    );
+  }
+  if (
+    !MEDIA_CROP_ASPECTS.includes(
+      patch.cropAspect
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "Crop frame is invalid."
+    );
+  }
+
+  return {
+    relativePath,
+    altText,
+    pieceSlug,
+    postSlug,
+    pageSlug,
+    projectReference: nullableStudioString(
+      patch.projectReference,
+      "Project reference",
+      240
+    ),
+    focalX: boundedStudioNumber(
+      patch.focalX,
+      "Focal X",
+      0,
+      100
+    ),
+    focalY: boundedStudioNumber(
+      patch.focalY,
+      "Focal Y",
+      0,
+      100
+    ),
+    zoom: boundedStudioNumber(
+      patch.zoom,
+      "Crop zoom",
+      1,
+      4
+    ),
+    reviewed,
+    tags: boundedStudioStringList(
+      patch.tags,
+      "Media tags",
+      100,
+      160
+    ),
+    visualLabels: boundedStudioStringList(
+      patch.visualLabels,
+      "Visual labels",
+      100,
+      240
+    ),
+    cleanupMode: patch.cleanupMode,
+    photoQuality: patch.photoQuality,
+    displayOrder: boundedStudioNumber(
+      patch.displayOrder,
+      "Display order",
+      0,
+      9_999,
+      true
+    ),
+    sourceCredit: boundedStudioString(
+      patch.sourceCredit,
+      "Source credit",
+      1_000
+    ),
+    cropAspect: patch.cropAspect,
+    cropNote: boundedStudioString(
+      patch.cropNote,
+      "Crop note",
+      2_000
+    )
+  };
+}
+
+function validateMediaFolderRuleAutosavePatch(
+  patch: MediaFolderRuleAutosavePatch
+): MediaFolderRuleAutosavePatch {
+  if (
+    !patch ||
+    typeof patch !== "object" ||
+    Array.isArray(patch)
+  ) {
+    throw new StudioMutationValidationError(
+      "A complete source-folder rule patch is required."
+    );
+  }
+
+  const pieceSlug = boundedStudioString(
+    patch.pieceSlug,
+    "Rule piece",
+    160,
+    true
+  );
+  if (!getPiece(pieceSlug)) {
+    throw new StudioMutationValidationError(
+      "The selected rule destination no longer exists."
+    );
+  }
+  if (
+    !MEDIA_FOLDER_RULE_ROLES.includes(
+      patch.defaultRole
+    )
+  ) {
+    throw new StudioMutationValidationError(
+      "The default media role is invalid."
+    );
+  }
+
+  return {
+    id: boundedStudioString(
+      patch.id,
+      "Rule identity",
+      240,
+      true
+    ),
+    normalizedFolder: boundedStudioString(
+      patch.normalizedFolder,
+      "Source folder",
+      500,
+      true
+    ),
+    pieceSlug,
+    enabled: studioBoolean(
+      patch.enabled,
+      "Rule enabled state"
+    ),
+    priority: boundedStudioNumber(
+      patch.priority,
+      "Rule priority",
+      0,
+      1_000_000,
+      true
+    ),
+    defaultRole: patch.defaultRole,
+    defaultPublic: studioBoolean(
+      patch.defaultPublic,
+      "Default public state"
+    )
+  };
+}
+
+export async function saveMediaMetadataAutosaveAction(
+  input: StudioServerMutationInput<
+    MediaMetadataAutosavePatch
+  >
+): Promise<StudioMutationResult<MediaRecord>> {
+  let affected = {
+    pieceSlugs: [] as string[],
+    postSlugs: [] as string[],
+    pageSlugs: [] as string[]
+  };
+
+  return executeAdminRecordAutosave(
+    input,
+    {
+      scope:
+        MEDIA_METADATA_AUTOSAVE_MUTATION_SCOPE,
+      entityType: "media",
+      conflictMessage:
+        "This media record changed in another session.",
+      validate:
+        validateMediaMetadataAutosavePatch,
+      loadCurrent: (patch) =>
+        getMedia(patch.relativePath),
+      save: (current, patch, actorEmail) => {
+        if (!current) {
+          throw new StudioMutationValidationError(
+            "This media record no longer exists. Refresh the library before editing it."
+          );
+        }
+
+        affected = {
+          pieceSlugs: [
+            ...new Set(
+              [current.pieceSlug, patch.pieceSlug]
+                .filter((slug): slug is string =>
+                  Boolean(slug)
+                )
+            )
+          ],
+          postSlugs: [
+            ...new Set(
+              [current.postSlug, patch.postSlug]
+                .filter((slug): slug is string =>
+                  Boolean(slug)
+                )
+            )
+          ],
+          pageSlugs: [
+            ...new Set(
+              [current.pageSlug, patch.pageSlug]
+                .filter((slug): slug is string =>
+                  Boolean(slug)
+                )
+            )
+          ]
+        };
+
+        const timestamp =
+          new Date().toISOString();
+        const assignmentChanged =
+          current.pieceSlug !==
+            patch.pieceSlug ||
+          current.reviewed !==
+            patch.reviewed;
+        const acceptedForPiece =
+          patch.reviewed &&
+          Boolean(patch.pieceSlug);
+        const acceptedTrainingChanged =
+          acceptedForPiece &&
+          (
+            !current.reviewed ||
+            current.pieceSlug !==
+              patch.pieceSlug ||
+            current.metadata.aiTrainingLabel !==
+              "accepted" ||
+            current.metadata.aiTrainingPieceSlug !==
+              patch.pieceSlug
+          );
+        const rejectedSlugs =
+          Array.isArray(
+            current.metadata
+              .aiRejectedPieceSlugs
+          )
+            ? current.metadata
+                .aiRejectedPieceSlugs
+                .map(String)
+                .filter(
+                  (slug) =>
+                    slug &&
+                    slug !==
+                      patch.pieceSlug
+                )
+            : [];
+        const verifiedAt =
+          acceptedForPiece
+            ? assignmentChanged ||
+              current.metadata
+                .verifiedPieceSlug !==
+                patch.pieceSlug
+              ? timestamp
+              : String(
+                  current.metadata
+                    .verifiedAt ||
+                    timestamp
+                )
+            : "";
+        const trainingAt =
+          acceptedTrainingChanged
+            ? timestamp
+            : String(
+                current.metadata
+                  .aiTrainingUpdatedAt ||
+                  ""
+              );
+
+        saveMediaMetadata({
+          relativePath:
+            patch.relativePath,
+          altText: patch.altText,
+          pieceSlug: patch.pieceSlug,
+          postSlug: patch.postSlug,
+          pageSlug: patch.pageSlug,
+          projectReference:
+            patch.projectReference,
+          userEmail: current.userEmail,
+          focalX: patch.focalX,
+          focalY: patch.focalY,
+          zoom: patch.zoom,
+          reviewed: patch.reviewed,
+          tags: [
+            ...new Set([
+              ...patch.tags,
+              ...patch.visualLabels
+            ])
+          ],
+          metadata: {
+            ...current.metadata,
+            cleanupMode:
+              patch.cleanupMode,
+            photoQuality:
+              patch.photoQuality,
+            displayOrder:
+              patch.displayOrder,
+            sourceCredit:
+              patch.sourceCredit,
+            verifiedPieceSlug:
+              acceptedForPiece
+                ? patch.pieceSlug
+                : "",
+            verifiedAt,
+            verifiedBy:
+              acceptedForPiece
+                ? "woodshop-dashboard"
+                : "",
+            aiRejectedPieceSlugs:
+              acceptedForPiece
+                ? rejectedSlugs
+                : Array.isArray(
+                    current.metadata
+                      .aiRejectedPieceSlugs
+                  )
+                  ? current.metadata
+                      .aiRejectedPieceSlugs
+                  : [],
+            aiTrainingLabel:
+              acceptedForPiece
+                ? "accepted"
+                : current.metadata
+                    .aiTrainingLabel ||
+                  "",
+            aiTrainingPieceSlug:
+              acceptedForPiece
+                ? patch.pieceSlug
+                : current.metadata
+                    .aiTrainingPieceSlug ||
+                  "",
+            aiTrainingUpdatedAt:
+              acceptedForPiece
+                ? trainingAt
+                : current.metadata
+                    .aiTrainingUpdatedAt ||
+                  "",
+            aiTrainingSource:
+              acceptedForPiece
+                ? "woodshop-dashboard"
+                : current.metadata
+                    .aiTrainingSource ||
+                  "",
+            cropAspect:
+              patch.cropAspect,
+            cropNote: patch.cropNote,
+            visualLabels:
+              patch.visualLabels
+          },
+          assignmentSource:
+            assignmentChanged
+              ? "manual-media-panel"
+              : current.assignmentSource,
+          assignmentRuleId:
+            assignmentChanged
+              ? null
+              : current.assignmentRuleId,
+          assignedAt:
+            assignmentChanged
+              ? timestamp
+              : current.assignedAt,
+          assignedBy:
+            assignmentChanged
+              ? actorEmail
+              : current.assignedBy,
+          manualOverride:
+            assignmentChanged
+              ? true
+              : current.manualOverride
+        });
+
+        if (assignmentChanged) {
+          syncPieceMediaMembership(
+            patch.relativePath,
+            current.pieceSlug,
+            patch.pieceSlug,
+            patch.reviewed,
+            {
+              actorEmail,
+              assignmentSource:
+                "manual-media-panel",
+              recordAudit: false
+            }
+          );
+        }
+
+        const saved =
+          getMedia(patch.relativePath);
+        if (!saved) {
+          throw new StudioMutationTransientError(
+            "The saved media record could not be reloaded."
+          );
+        }
+        return saved;
+      },
+      loadCanonical: (_saved, patch) =>
+        getMedia(patch.relativePath),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityKey: (entity) =>
+        entity.relativePath,
+      operation: () => "update",
+      invalidate: () => {
+        revalidatePath("/studio");
+        revalidateMediaSurfaces(
+          affected
+        );
+      }
+    }
+  );
+}
+
+export async function saveMediaFolderRuleAutosaveAction(
+  input: StudioServerMutationInput<
+    MediaFolderRuleAutosavePatch
+  >
+): Promise<MediaFolderRuleAutosaveResult> {
+  const result =
+    await executeAdminRecordAutosave(
+      input,
+      {
+        scope:
+          MEDIA_FOLDER_RULE_AUTOSAVE_MUTATION_SCOPE,
+        entityType:
+          "media-folder-rule",
+        conflictMessage:
+          "This source-folder rule changed in another session.",
+        validate:
+          validateMediaFolderRuleAutosavePatch,
+        loadCurrent: (patch) =>
+          listMediaSourceFolderRules()
+            .find((rule) =>
+              rule.id === patch.id
+            ) ?? null,
+        save: (
+          current,
+          patch,
+          actorEmail
+        ) => {
+          if (!current) {
+            throw new StudioMutationValidationError(
+              "This source-folder rule no longer exists. Refresh the media workspace before editing it."
+            );
+          }
+          if (
+            current.normalizedFolder !==
+              patch.normalizedFolder
+          ) {
+            throw new StudioMutationValidationError(
+              "A source folder cannot be renamed through a rule edit."
+            );
+          }
+
+          return saveMediaSourceFolderRule({
+            id: current.id,
+            normalizedFolder:
+              current.normalizedFolder,
+            pieceSlug:
+              patch.pieceSlug,
+            enabled: patch.enabled,
+            priority: patch.priority,
+            defaultRole:
+              patch.defaultRole,
+            defaultPublic:
+              patch.defaultPublic,
+            updatedBy: actorEmail
+          });
+        },
+        loadCanonical: (_saved, patch) =>
+          listMediaSourceFolderRules()
+            .find((rule) =>
+              rule.id === patch.id
+            ) ?? null,
+        updatedAt: (entity) =>
+          entity.updatedAt,
+        entityKey: (entity) =>
+          entity.id,
+        operation: () => "update",
+        invalidate: () => {
+          revalidatePath("/studio");
+        }
+      }
+    );
+
+  if (!result.ok) {
+    return result;
+  }
+
+  return {
+    ...result,
+    preview:
+      previewMediaFolderRules(),
+    message:
+      "Folder rule saved. Review the dry-run counts before applying it."
+  };
 }
 
 export type NotificationPolicyAutosavePatch = {

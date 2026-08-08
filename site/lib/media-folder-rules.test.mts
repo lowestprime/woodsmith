@@ -289,6 +289,10 @@ test("rule editing is exact and rejects excluded or missing destinations", () =>
     });
     assert.equal(hiddenRole.defaultRole, "source");
     assert.equal(hiddenRole.defaultPublic, false);
+    assert.ok(
+      Date.parse(hiddenRole.updatedAt) >
+        Date.parse(saved.updatedAt)
+    );
 
     assert.throws(() => saveMediaSourceFolderRuleInDatabase(db, {
       normalizedFolder: "other",

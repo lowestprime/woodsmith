@@ -5,8 +5,19 @@ import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, us
 import { ActionForm } from "@/components/action-form";
 import { MediaCollection } from "@/components/media-collection";
 import { MediaCropEditor } from "@/components/media-crop-editor";
+import { ConfirmDestructiveAction } from "@/components/studio/confirm-destructive-action";
+import { StudioAutosaveForm } from "@/components/studio/studio-autosave-form";
+import { flushStudioNavigationQueues } from "@/components/studio/studio-navigation-state";
+import { useStudioRecordDraft } from "@/components/studio/use-studio-record-draft";
 import { toMediaUrl } from "@/lib/format";
-import type { MediaActionResult, MediaPageRequest, MediaPageResult } from "@/lib/actions";
+import type {
+  MediaActionResult,
+  MediaFolderRuleAutosavePatch,
+  MediaFolderRuleAutosaveResult,
+  MediaMetadataAutosavePatch,
+  MediaPageRequest,
+  MediaPageResult
+} from "@/lib/actions";
 import type {
   MediaAiFilter,
   MediaAssignmentFilter,
@@ -15,12 +26,31 @@ import type {
   MediaKindFilter,
   MediaOperationBatchRecord,
   MediaRecord,
-  MediaSort
+  MediaSort,
+  MediaSourceFolderRuleRecord
 } from "@/lib/db";
 import type { MediaMatchCandidate } from "@/lib/media-audit";
 import { mediaRequiresDirectBrowserRequest } from "@/lib/media-access";
+import type {
+  StudioMutationRequest,
+  StudioMutationResult,
+  StudioMutationSnapshot,
+  StudioServerMutationInput
+} from "@/lib/studio-mutations";
 
 type MediaAction = (state: MediaActionResult | null, formData: FormData) => Promise<MediaActionResult>;
+
+type MediaMetadataAutosaveAction = (
+  input: StudioServerMutationInput<
+    MediaMetadataAutosavePatch
+  >
+) => Promise<StudioMutationResult<MediaRecord>>;
+
+type MediaFolderRuleAutosaveAction = (
+  input: StudioServerMutationInput<
+    MediaFolderRuleAutosavePatch
+  >
+) => Promise<MediaFolderRuleAutosaveResult>;
 
 type StudioOption = {
   slug: string;
@@ -85,13 +115,13 @@ type StudioMediaWorkspaceProps = {
   uploadAction: MediaAction;
   renameAction: MediaAction;
   deleteAction: MediaAction;
-  saveAction: MediaAction;
+  saveAction: MediaMetadataAutosaveAction;
   cleanupAction: MediaAction;
   organizeBatchAction: MediaAction;
   rollbackBatchAction: MediaAction;
   assignAction: MediaAction;
   rejectSuggestionAction: MediaAction;
-  saveFolderRuleAction: MediaAction;
+  saveFolderRuleAction: MediaFolderRuleAutosaveAction;
   applyFolderRulesAction: () => Promise<MediaActionResult>;
   refreshAction: () => Promise<MediaActionResult>;
   loadPageAction: (request: MediaPageRequest) => Promise<MediaPageResult>;
@@ -183,9 +213,84 @@ function parseList(value: FormDataEntryValue | null) {
     .filter(Boolean);
 }
 
-function parseNumber(value: FormDataEntryValue | null, fallback: number) {
-  const parsed = Number(value?.toString() || "");
-  return Number.isFinite(parsed) ? parsed : fallback;
+function formText(
+  formData: FormData,
+  name: string
+) {
+  return formData.get(name)?.toString() ?? "";
+}
+
+function mediaMetadataPayload(
+  form: HTMLFormElement
+): MediaMetadataAutosavePatch {
+  const formData = new FormData(form);
+
+  return {
+    relativePath:
+      formText(formData, "relativePath"),
+    altText:
+      formText(formData, "altText"),
+    pieceSlug:
+      formText(formData, "pieceSlug").trim() ||
+      null,
+    postSlug:
+      formText(formData, "postSlug").trim() ||
+      null,
+    pageSlug:
+      formText(formData, "pageSlug").trim() ||
+      null,
+    projectReference:
+      formText(
+        formData,
+        "projectReference"
+      ).trim() || null,
+    focalX:
+      Number(formText(formData, "focalX")),
+    focalY:
+      Number(formText(formData, "focalY")),
+    zoom:
+      Number(formText(formData, "zoom")),
+    reviewed: formData.has("reviewed"),
+    tags: parseList(formData.get("tagsText")),
+    visualLabels: parseList(
+      formData.get("visualLabelsText")
+    ),
+    cleanupMode: formText(
+      formData,
+      "cleanupMode"
+    ) as MediaMetadataAutosavePatch["cleanupMode"],
+    photoQuality: formText(
+      formData,
+      "photoQuality"
+    ) as MediaMetadataAutosavePatch["photoQuality"],
+    displayOrder: Number(
+      formText(formData, "displayOrder")
+    ),
+    sourceCredit:
+      formText(formData, "sourceCredit"),
+    cropAspect: formText(
+      formData,
+      "cropAspect"
+    ) as MediaMetadataAutosavePatch["cropAspect"],
+    cropNote:
+      formText(formData, "cropNote")
+  };
+}
+
+function mediaFolderRulePatch(
+  rule: MediaSourceFolderRuleRecord
+): MediaFolderRuleAutosavePatch {
+  return {
+    id: rule.id,
+    normalizedFolder:
+      rule.normalizedFolder,
+    pieceSlug: rule.pieceSlug,
+    enabled: rule.enabled,
+    priority: rule.priority,
+    defaultRole: rule.defaultRole,
+    defaultPublic:
+      rule.defaultPublic
+  };
 }
 
 function mergeMediaRecords(
@@ -357,18 +462,224 @@ function MediaBatchPanel({
   );
 }
 
+function FolderRuleEditor({
+  rule,
+  count,
+  pieces,
+  saveAction,
+  onPreview
+}: {
+  rule: MediaSourceFolderRuleRecord;
+  count:
+    | MediaFolderRulePreview["byRule"][number]
+    | undefined;
+  pieces: StudioOption[];
+  saveAction: MediaFolderRuleAutosaveAction;
+  onPreview: (
+    preview: MediaFolderRulePreview,
+    message: string
+  ) => void;
+}) {
+  const {
+    draft,
+    draftRef,
+    adoptDraft,
+    captureQueue,
+    adoptCanonicalSnapshot
+  } = useStudioRecordDraft<
+    MediaFolderRuleAutosavePatch,
+    MediaSourceFolderRuleRecord
+  >(
+    mediaFolderRulePatch(rule),
+    mediaFolderRulePatch
+  );
+  const saveActionRef =
+    useRef(saveAction);
+  const onPreviewRef =
+    useRef(onPreview);
+
+  useEffect(() => {
+    saveActionRef.current =
+      saveAction;
+    onPreviewRef.current =
+      onPreview;
+  }, [onPreview, saveAction]);
+
+  const mutate = useCallback(
+    async (
+      request: StudioMutationRequest<
+        MediaFolderRuleAutosavePatch
+      >
+    ) => {
+      const result =
+        await saveActionRef.current({
+          patch: request.payload,
+          operationId:
+            request.operationId,
+          expectedUpdatedAt:
+            request.expectedUpdatedAt
+        });
+
+      if (result.ok) {
+        onPreviewRef.current(
+          result.preview,
+          result.message
+        );
+      }
+
+      return result;
+    },
+    []
+  );
+
+  const createPayload = useCallback(
+    () =>
+      structuredClone(
+        draftRef.current
+      ),
+    [draftRef]
+  );
+
+  function patchRule(
+    patch:
+      Partial<
+        MediaFolderRuleAutosavePatch
+      >
+  ) {
+    adoptDraft({
+      ...draftRef.current,
+      ...patch
+    });
+  }
+
+  return (
+    <StudioAutosaveForm<
+      MediaFolderRuleAutosavePatch,
+      MediaSourceFolderRuleRecord
+    >
+      className="request-form compact-form"
+      createPayload={createPayload}
+      entityKey={`media-folder-rule:${rule.id}`}
+      expectedUpdatedAt={rule.updatedAt}
+      mutate={mutate}
+      onQueue={captureQueue}
+      onStatus={adoptCanonicalSnapshot}
+      statusIdleLabel="Up to date"
+    >
+      <strong>{draft.normalizedFolder}</strong>
+      <small>{count?.assignedByRule ?? 0} assigned · {count?.eligible ?? 0} eligible · {count?.preserved ?? 0} preserved · {count?.conflicts ?? 0} conflicts</small>
+      <label>
+        <span>Piece</span>
+        <select
+          name={`folder-rule-${rule.id}-piece`}
+          onChange={(event) =>
+            patchRule({
+              pieceSlug:
+                event.target.value
+            })
+          }
+          value={draft.pieceSlug}
+        >
+          {pieces.map((piece) => (
+            <option
+              key={piece.slug}
+              value={piece.slug}
+            >
+              {piece.title}
+              {typeof piece.mediaCount === "number"
+                ? ` (${piece.mediaCount})`
+                : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="field-grid two-up compact-grid">
+        <label>
+          <span>Priority</span>
+          <input
+            name={`folder-rule-${rule.id}-priority`}
+            onChange={(event) =>
+              patchRule({
+                priority:
+                  Number(
+                    event.target.value
+                  )
+              })
+            }
+            type="number"
+            value={draft.priority}
+          />
+        </label>
+        <label>
+          <span>Role</span>
+          <select
+            name={`folder-rule-${rule.id}-role`}
+            onChange={(event) =>
+              patchRule({
+                defaultRole:
+                  event.target.value as
+                    MediaFolderRuleAutosavePatch["defaultRole"]
+              })
+            }
+            value={draft.defaultRole}
+          >
+            {MEDIA_ROLES.map((role) => (
+              <option
+                key={role}
+                value={role}
+              >
+                {role.replaceAll("-", " ")}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <label className="checkbox-row">
+        <input
+          checked={draft.enabled}
+          name={`folder-rule-${rule.id}-enabled`}
+          onChange={(event) =>
+            patchRule({
+              enabled:
+                event.target.checked
+            })
+          }
+          type="checkbox"
+        />
+        <span>Enabled</span>
+      </label>
+      <label className="checkbox-row">
+        <input
+          checked={draft.defaultPublic}
+          name={`folder-rule-${rule.id}-public`}
+          onChange={(event) =>
+            patchRule({
+              defaultPublic:
+                event.target.checked
+            })
+          }
+          type="checkbox"
+        />
+        <span>Public relation by default</span>
+      </label>
+    </StudioAutosaveForm>
+  );
+}
+
 function FolderRulesPanel({
   preview,
   pieces,
   saveAction,
   applyAction,
-  onPreview
+  onPreview,
+  onApplied
 }: {
   preview: MediaFolderRulePreview;
   pieces: StudioOption[];
-  saveAction: MediaAction;
+  saveAction: MediaFolderRuleAutosaveAction;
   applyAction: () => Promise<MediaActionResult>;
   onPreview: (preview: MediaFolderRulePreview, message: string) => void;
+  onApplied: () => void;
 }) {
   const [isApplying, setIsApplying] = useState(false);
   const ruleCounts = new Map(preview.byRule.map((entry) => [entry.ruleId, entry]));
@@ -380,6 +691,7 @@ function FolderRulesPanel({
       const result = await applyAction();
       if (result.ok && result.kind === "folder-rule") {
         onPreview(result.preview, result.message);
+        onApplied();
       } else if (!result.ok) {
         onPreview(preview, result.message);
       }
@@ -406,27 +718,16 @@ function FolderRulesPanel({
         </button>
       </div>
       <div className="studio-verification-list">
-        {preview.rules.map((rule) => {
-          const count = ruleCounts.get(rule.id);
-          return (
-            <ActionForm action={saveAction} className="request-form compact-form" key={`${rule.id}:${rule.updatedAt}`} onSuccess={(result) => {
-              if (result.kind === "folder-rule") onPreview(result.preview, result.message);
-            }}>
-              <input name="id" type="hidden" value={rule.id} />
-              <input name="normalizedFolder" type="hidden" value={rule.normalizedFolder} />
-              <strong>{rule.normalizedFolder}</strong>
-              <small>{count?.assignedByRule ?? 0} assigned · {count?.eligible ?? 0} eligible · {count?.preserved ?? 0} preserved · {count?.conflicts ?? 0} conflicts</small>
-              <label><span>Piece</span><select defaultValue={rule.pieceSlug} name="pieceSlug">{pieces.map((piece) => <option key={piece.slug} value={piece.slug}>{piece.title}{typeof piece.mediaCount === "number" ? ` (${piece.mediaCount})` : ""}</option>)}</select></label>
-              <div className="field-grid two-up compact-grid">
-                <label><span>Priority</span><input defaultValue={rule.priority} name="priority" type="number" /></label>
-                <label><span>Role</span><select defaultValue={rule.defaultRole} name="defaultRole">{MEDIA_ROLES.map((role) => <option key={role} value={role}>{role.replaceAll("-", " ")}</option>)}</select></label>
-              </div>
-              <label className="checkbox-row"><input defaultChecked={rule.enabled} name="enabled" type="checkbox" value="1" /><span>Enabled</span></label>
-              <label className="checkbox-row"><input defaultChecked={rule.defaultPublic} name="defaultPublic" type="checkbox" value="1" /><span>Public relation by default</span></label>
-              <button className="button-secondary" type="submit">Save rule</button>
-            </ActionForm>
-          );
-        })}
+        {preview.rules.map((rule) => (
+          <FolderRuleEditor
+            count={ruleCounts.get(rule.id)}
+            key={rule.id}
+            onPreview={onPreview}
+            pieces={pieces}
+            rule={rule}
+            saveAction={saveAction}
+          />
+        ))}
       </div>
       {preview.conflictRows.length > 0 ? (
         <details className="media-advanced-actions">
@@ -453,6 +754,7 @@ function MediaInspector({
   onDelete,
   onRename,
   onSave,
+  onAdvance,
   onCleanup,
   onDirty,
   onAnalyze,
@@ -466,19 +768,156 @@ function MediaInspector({
   pages: StudioOption[];
   renameAction: MediaAction;
   deleteAction: MediaAction;
-  saveAction: MediaAction;
+  saveAction: MediaMetadataAutosaveAction;
   cleanupAction: MediaAction;
   rejectSuggestionAction: MediaAction;
   onDelete: (relativePath: string) => void;
   onRename: (result: Extract<MediaActionResult, { ok: true; kind: "rename" }>, formData: FormData | null) => void;
-  onSave: (relativePath: string, formData: FormData | null) => void;
+  onSave: (item: MediaRecord) => void;
+  onAdvance: (relativePath: string) => void;
   onCleanup: (result: Extract<MediaActionResult, { ok: true; kind: "cleanup" }>, formData: FormData | null) => void;
-  onDirty: () => void;
+  onDirty: (dirty: boolean) => void;
   onAnalyze: (relativePath: string) => void;
   onEmbed: (relativePath: string) => void;
   onInspectCluster: (clusterId: string) => void;
   onRejected: (relativePath: string, pieceSlug: string) => void;
 }) {
+  const saveActionRef =
+    useRef(saveAction);
+  const onSaveRef =
+    useRef(onSave);
+  const onDirtyRef =
+    useRef(onDirty);
+  const onAdvanceRef =
+    useRef(onAdvance);
+  const [isAdvancing,
+    setIsAdvancing] =
+    useState(false);
+
+  useEffect(() => {
+    saveActionRef.current =
+      saveAction;
+    onSaveRef.current = onSave;
+    onDirtyRef.current = onDirty;
+    onAdvanceRef.current =
+      onAdvance;
+  }, [onAdvance, onDirty, onSave, saveAction]);
+
+  const mutate = useCallback(
+    (
+      request: StudioMutationRequest<
+        MediaMetadataAutosavePatch
+      >
+    ) =>
+      saveActionRef.current({
+        patch: request.payload,
+        operationId:
+          request.operationId,
+        expectedUpdatedAt:
+          request.expectedUpdatedAt
+      }),
+    []
+  );
+
+  const createPayload = useCallback(
+    (form: HTMLFormElement) =>
+      mediaMetadataPayload(form),
+    []
+  );
+
+  const handleStatus = useCallback(
+    (
+      snapshot:
+        StudioMutationSnapshot<
+          MediaRecord
+        >
+    ) => {
+      const dirty =
+        snapshot.hasUnsavedChanges ||
+        [
+          "dirty",
+          "saving",
+          "retrying",
+          "conflict",
+          "error"
+        ].includes(snapshot.phase);
+
+      onDirtyRef.current(dirty);
+
+      if (
+        snapshot.phase === "saved" &&
+        !snapshot.hasUnsavedChanges &&
+        snapshot.currentEntity
+      ) {
+        onSaveRef.current(
+          snapshot.currentEntity
+        );
+      }
+    },
+    []
+  );
+
+  async function advance(
+    form: HTMLFormElement | null,
+    approve: boolean
+  ) {
+    if (isAdvancing || !form) {
+      return;
+    }
+
+    setIsAdvancing(true);
+    try {
+      if (approve) {
+        const reviewed =
+          form.elements.namedItem(
+            "reviewed"
+          );
+        if (
+          reviewed instanceof
+            HTMLInputElement &&
+          !reviewed.checked
+        ) {
+          reviewed.click();
+        }
+      }
+
+      await flushStudioNavigationQueues();
+      onAdvanceRef.current(
+        item.relativePath
+      );
+    } catch {
+      // The autosave status already exposes validation, conflict, or transport failure.
+    } finally {
+      setIsAdvancing(false);
+    }
+  }
+
+  async function deleteCurrentMedia() {
+    await flushStudioNavigationQueues();
+
+    const formData = new FormData();
+    formData.set(
+      "relativePath",
+      item.relativePath
+    );
+    const result =
+      await deleteAction(
+        null,
+        formData
+      );
+
+    if (!result.ok) {
+      throw new Error(result.message);
+    }
+    if (result.kind !== "delete") {
+      throw new Error(
+        "The media delete action returned an unexpected result."
+      );
+    }
+
+    onDelete(result.relativePath);
+  }
+
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.map(String) : [];
   const aiTags = Array.isArray(item.metadata.aiTags) ? item.metadata.aiTags.map(String) : [];
@@ -504,7 +943,6 @@ function MediaInspector({
     const current = merge ? parseList(field.value).concat(parseList(value)) : [];
     field.value = merge ? [...new Set(current)].join(", ") : value;
     field.dispatchEvent(new Event("input", { bubbles: true }));
-    onDirty();
   }
 
   return (
@@ -535,14 +973,13 @@ function MediaInspector({
           <p className="muted-copy">{item.reviewed ? "Reviewed for public use" : "Needs review"} · Cluster {item.clusterKey}</p>
           {aiDescription || aiTags.length > 0 ? <p className="muted-copy">AI notes: {aiDescription || aiTags.join(", ")}</p> : null}
         </div>
-        <ActionForm action={deleteAction} confirmMessage={`Permanently delete ${item.fileName} from the media library?`} onSuccess={(result) => {
-          if (result.kind === "delete") {
-            onDelete(result.relativePath);
-          }
-        }}>
-          <input name="relativePath" type="hidden" value={item.relativePath} />
-          <button className="button-secondary" type="submit">Delete</button>
-        </ActionForm>
+        <ConfirmDestructiveAction
+          confirmLabel="Delete media"
+          description={`Permanently delete ${item.fileName} from the media library? This also removes its saved site references.`}
+          onConfirm={deleteCurrentMedia}
+          title="Delete media file"
+          triggerLabel="Delete"
+        />
       </div>
 
       <section className="media-ai-notes" aria-label="AI review notes">
@@ -589,11 +1026,18 @@ function MediaInspector({
         <button className="button-secondary" type="submit">Rename</button>
       </ActionForm>
 
-      <ActionForm action={saveAction} className="request-form compact-form" onInput={onDirty} onSuccess={(result, context) => {
-        if (result.kind === "save") {
-          onSave(result.relativePath, context.formData);
-        }
-      }}>
+      <StudioAutosaveForm<
+        MediaMetadataAutosavePatch,
+        MediaRecord
+      >
+        className="request-form compact-form"
+        createPayload={createPayload}
+        entityKey={`media:${item.relativePath}`}
+        expectedUpdatedAt={item.updatedAt}
+        mutate={mutate}
+        onStatus={handleStatus}
+        statusIdleLabel="Up to date"
+      >
         <input name="relativePath" type="hidden" value={item.relativePath} />
         <label><span>Alt text</span><input defaultValue={item.altText} name="altText" type="text" /></label>
         <div className="field-grid two-up compact-grid">
@@ -670,11 +1114,34 @@ function MediaInspector({
         </details>
         <label className="checkbox-row"><input defaultChecked={item.reviewed} name="reviewed" type="checkbox" value="1" /><span>Reviewed for public use</span></label>
         <div className="button-row studio-media-save-actions">
-          <button className="button-primary" name="submitIntent" type="submit" value="save">Save</button>
-          <button className="button-secondary" name="submitIntent" type="submit" value="save-next">Save &amp; next</button>
-          <button className="button-secondary" name="submitIntent" type="submit" value="approve-next">Approve &amp; next</button>
+          <button
+            className="button-secondary"
+            disabled={isAdvancing}
+            onClick={(event) => {
+              void advance(
+                event.currentTarget.form,
+                false
+              );
+            }}
+            type="button"
+          >
+            Next
+          </button>
+          <button
+            className="button-secondary"
+            disabled={isAdvancing}
+            onClick={(event) => {
+              void advance(
+                event.currentTarget.form,
+                true
+              );
+            }}
+            type="button"
+          >
+            Approve &amp; next
+          </button>
         </div>
-      </ActionForm>
+      </StudioAutosaveForm>
 
       {item.kind === "image" ? (
         <details className="media-inspector-advanced"><summary>AI background cleanup</summary><ActionForm action={cleanupAction} className="request-form compact-form ai-cleanup-form" onSuccess={(result, context) => {
@@ -762,9 +1229,33 @@ export function StudioMediaWorkspace({
   const [isAutomating, setIsAutomating] = useState(false);
   const [mobilePane, setMobilePane] = useState<"tools" | "browser" | "inspector">("browser");
   const [isPagePending, startPageTransition] = useTransition();
-  const deferredQuery = useDeferredValue(query.trim());
   const requestSequence = useRef(0);
   const initialRequest = useRef(true);
+  const deferredQuery = useDeferredValue(query.trim());
+  const filterSignature = JSON.stringify([
+    page,
+    pageSize,
+    deferredQuery,
+    pieceFilter,
+    assignmentFilter,
+    assignmentSourceFilter,
+    sort,
+    kindFilter,
+    aiFilter
+  ]);
+  const lastFilterRequest = useRef(
+    JSON.stringify([
+      initialPage,
+      initialPageSize,
+      initialQuery.trim(),
+      initialPieceSlug,
+      initialAssignment,
+      initialAssignmentSource,
+      initialSort,
+      initialKind,
+      initialAiFilter
+    ])
+  );
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   useEffect(() => {
@@ -902,36 +1393,60 @@ export function StudioMediaWorkspace({
       initialRequest.current = false;
       return;
     }
+    if (
+      lastFilterRequest.current ===
+      filterSignature
+    ) {
+      return;
+    }
     if (isDirty) {
-      setPageMessage("Save or discard the current metadata edits before changing the library view.");
+      setPageMessage("The pending media save will finish before the library view changes.");
       return;
     }
     const timeout = window.setTimeout(() => {
+      lastFilterRequest.current =
+        filterSignature;
       void fetchPage({ page, pageSize, query: deferredQuery, pieceSlug: pieceFilter, assignment: assignmentFilter, assignmentSource: assignmentSourceFilter, sort, kind: kindFilter, aiFilter });
     }, 220);
     return () => window.clearTimeout(timeout);
-  }, [aiFilter, assignmentFilter, assignmentSourceFilter, deferredQuery, fetchPage, isDirty, kindFilter, page, pageSize, pieceFilter, sort]);
+  }, [aiFilter, assignmentFilter, assignmentSourceFilter, deferredQuery, fetchPage, filterSignature, isDirty, kindFilter, page, pageSize, pieceFilter, sort]);
 
   function updateItem(relativePath: string, updater: (current: MediaRecord) => MediaRecord) {
     setItems((current) => current.map((item) => (item.relativePath === relativePath ? updater(item) : item)));
     setDetachedItem((current) => current?.relativePath === relativePath ? updater(current) : current);
   }
 
-  function selectItem(relativePath: string) {
+  async function selectItem(relativePath: string) {
     if (relativePath === selectedPath) return;
-    if (isDirty && !window.confirm("Discard unsaved metadata changes and inspect another file?")) return;
-    setIsDirty(false);
-    setDetachedItem(null);
-    setSelectedPath(relativePath);
-    setMobilePane("inspector");
+    try {
+      await flushStudioNavigationQueues();
+      setIsDirty(false);
+      setDetachedItem(null);
+      setSelectedPath(relativePath);
+      setMobilePane("inspector");
+    } catch {
+      setPageMessage(
+        "Resolve the current media save before opening another file."
+      );
+    }
   }
 
-  function inspectCandidate(item: MediaRecord) {
-    if (isDirty && item.relativePath !== selectedPath && !window.confirm("Discard unsaved metadata changes and inspect this candidate?")) return;
-    setIsDirty(false);
-    setDetachedItem(items.some((entry) => entry.relativePath === item.relativePath) ? null : item);
-    setSelectedPath(item.relativePath);
-    setMobilePane("inspector");
+  async function inspectCandidate(item: MediaRecord) {
+    if (item.relativePath === selectedPath) {
+      setMobilePane("inspector");
+      return;
+    }
+    try {
+      await flushStudioNavigationQueues();
+      setIsDirty(false);
+      setDetachedItem(items.some((entry) => entry.relativePath === item.relativePath) ? null : item);
+      setSelectedPath(item.relativePath);
+      setMobilePane("inspector");
+    } catch {
+      setPageMessage(
+        "Resolve the current media save before opening this candidate."
+      );
+    }
   }
 
   const verificationCards = useMemo(() => queue
@@ -1079,10 +1594,12 @@ export function StudioMediaWorkspace({
 
         <FolderRulesPanel
           applyAction={applyFolderRulesAction}
+          onApplied={() => {
+            void refreshWorkspaceData(false);
+          }}
           onPreview={(preview, message) => {
             setFolderPreview(preview);
             setPageMessage(message);
-            void refreshWorkspaceData(false);
           }}
           pieces={pieces}
           preview={folderPreview}
@@ -1164,7 +1681,7 @@ export function StudioMediaWorkspace({
                       const { item, score, evidence, margin, reasonCodes } = candidate;
                       return (
                       <div className="candidate-assignment-card" data-media-id={item.relativePath} data-media-item="true" data-media-order={entry.suggestions.indexOf(candidate)} key={item.relativePath}>
-                        <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
+                        <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => void inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
                           <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item.relativePath, item.projectReference)} />
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
                         </button>
@@ -1235,7 +1752,7 @@ export function StudioMediaWorkspace({
                 data-media-active={item.relativePath === selectedItem?.relativePath ? "true" : "false"}
                 data-media-index={index + 1}
                 data-media-path={item.relativePath}
-                onClick={() => selectItem(item.relativePath)}
+                onClick={() => void selectItem(item.relativePath)}
                 tabIndex={item.relativePath === selectedItem?.relativePath || (!selectedItem && index === 0) ? 0 : -1}
                 type="button"
               >
@@ -1267,8 +1784,24 @@ export function StudioMediaWorkspace({
             deleteAction={deleteAction}
             item={selectedItem}
             key={selectedItem.relativePath}
+            onAdvance={(relativePath) => {
+              const currentIndex =
+                items.findIndex(
+                  (entry) =>
+                    entry.relativePath ===
+                    relativePath
+                );
+              const nextPath =
+                items[currentIndex + 1]
+                  ?.relativePath ??
+                items[0]?.relativePath ??
+                "";
+              setDetachedItem(null);
+              setSelectedPath(nextPath);
+              setMobilePane("inspector");
+            }}
             onAnalyze={(relativePath) => void runAutomation("analyze", "selected", [relativePath])}
-            onDirty={() => setIsDirty(true)}
+            onDirty={setIsDirty}
             onEmbed={(relativePath) => void runAutomation("embed", "selected", [relativePath])}
             onInspectCluster={(clusterId) => { setPage(1); setQuery(clusterId); setMobilePane("browser"); }}
             onRejected={(relativePath, pieceSlug) => updateItem(relativePath, (current) => ({ ...current, metadata: { ...current.metadata, aiRejectedPieceSlugs: [...new Set([...metadataStrings(current, "aiRejectedPieceSlugs"), pieceSlug])], aiNeedsHumanReview: true, aiReviewReason: `Reviewer rejected AI suggestion for ${pieceSlug}.` } }))}
@@ -1320,51 +1853,12 @@ export function StudioMediaWorkspace({
               setIsDirty(false);
               void formData;
             }}
-            onSave={(relativePath, formData) => {
-              const intent = formData?.get("submitIntent")?.toString() || "save";
-              const currentIndex = items.findIndex((entry) => entry.relativePath === relativePath);
-              const nextPath = items[currentIndex + 1]?.relativePath ?? items[0]?.relativePath ?? "";
-              updateItem(relativePath, (current) => {
-                const pieceSlug = formData?.get("pieceSlug")?.toString().trim() || null;
-                const reviewed = formData?.get("reviewed") != null || intent === "approve-next";
-                return {
-                  ...current,
-                  altText: formData?.get("altText")?.toString().trim() ?? "",
-                  pieceSlug,
-                  postSlug: formData?.get("postSlug")?.toString().trim() || null,
-                  pageSlug: formData?.get("pageSlug")?.toString().trim() || null,
-                  projectReference: formData?.get("projectReference")?.toString().trim() || null,
-                  focalX: parseNumber(formData?.get("focalX") ?? null, current.focalX),
-                  focalY: parseNumber(formData?.get("focalY") ?? null, current.focalY),
-                  zoom: parseNumber(formData?.get("zoom") ?? null, current.zoom),
-                  reviewed,
-                  tags: parseList(formData?.get("tagsText") ?? null),
-                  assignmentSource: "manual-media-panel",
-                  assignmentRuleId: null,
-                  assignedAt: new Date().toISOString(),
-                  assignedBy: "studio",
-                  manualOverride: true,
-                  metadata: {
-                    ...current.metadata,
-                    cleanupMode: formData?.get("cleanupMode")?.toString() || current.metadata.cleanupMode || "original",
-                    photoQuality: formData?.get("photoQuality")?.toString() || current.metadata.photoQuality || "unrated",
-                    displayOrder: parseNumber(formData?.get("displayOrder") ?? null, Number(current.metadata.displayOrder ?? 0)),
-                    sourceCredit: formData?.get("sourceCredit")?.toString().trim() || "",
-                    verifiedPieceSlug: reviewed ? pieceSlug : null,
-                    cropAspect: formData?.get("cropAspect")?.toString() || current.metadata.cropAspect || "free",
-                    cropNote: formData?.get("cropNote")?.toString().trim() || "",
-                    visualLabels: parseList(formData?.get("visualLabelsText") ?? null)
-                  },
-                  updatedAt: new Date().toISOString()
-                };
-              });
+            onSave={(savedItem) => {
+              updateItem(
+                savedItem.relativePath,
+                () => savedItem
+              );
               setIsDirty(false);
-              if (intent === "save-next" || intent === "approve-next") {
-                setSelectedPath(nextPath);
-              }
-              if (assignmentFilter !== "all" || assignmentSourceFilter !== "all" || pieceFilter || kindFilter !== "all" || query) {
-                void fetchPage({ page, pageSize, query, pieceSlug: pieceFilter, assignment: assignmentFilter, assignmentSource: assignmentSourceFilter, sort, kind: kindFilter, aiFilter });
-              }
             }}
             pages={pages}
             pieces={pieces}

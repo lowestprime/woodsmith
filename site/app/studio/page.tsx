@@ -16,8 +16,8 @@ import {
   rollbackMediaBatchAction,
   saveCommissionTypeAction,
   savePieceCategoryAction,
-  saveMediaMetadataAction,
-  saveMediaSourceFolderRuleAction,
+  saveMediaFolderRuleAutosaveAction,
+  saveMediaMetadataAutosaveAction,
   savePieceAction,
   savePostAction,
   saveUserProfileAdminAction,
@@ -1096,8 +1096,8 @@ export default async function StudioPage({
           refreshAction={refreshMediaLibraryAction}
           renameAction={renameMediaAction}
           rollbackBatchAction={rollbackMediaBatchAction}
-          saveAction={saveMediaMetadataAction}
-          saveFolderRuleAction={saveMediaSourceFolderRuleAction}
+          saveAction={saveMediaMetadataAutosaveAction}
+          saveFolderRuleAction={saveMediaFolderRuleAutosaveAction}
           uploadAction={uploadMediaAction}
           verificationQueue={verificationQueue.map((entry) => ({ pieceSlug: entry.piece.slug, pieceTitle: entry.piece.title, assignedCount: entry.assigned.length, needsReview: entry.needsReview, suggestions: entry.suggestions }))}
         />

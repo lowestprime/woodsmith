@@ -52,7 +52,7 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - custom work types
 - users and public profiles
 - process notes
-- media metadata, visual crop controls, optional AI-cleaned copies, visual labels, verification queue, and media file operations
+- durable typed autosave for media metadata and existing source-folder rules, visual crop controls, optional AI-cleaned copies, visual labels, a manual verification queue, transactional media operations, and Cancel-first file deletion
 - projects and timeline updates
 - orders, invoices, shipping labels, and tracking state
 - reviews
@@ -133,7 +133,7 @@ The sidecar accelerator state is explicit `auto|cpu|cuda`. It probes the real Py
 
 Runtime recovery is paired rather than database-only. The production image includes `/app/site/ops/runtime-state.mjs`, which creates an online-consistent SQLite snapshot, copies and hashes the matching media tree, optionally protects a copy of `.env`, rejects symlinks and changing sources, and writes an exact manifest. Verification checks every hash, rejects missing or extra files, and runs SQLite `quick_check`; restore refuses existing targets and writes only to new staging paths before an explicit stopped-service swap.
 
-SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, human-review reason, accepted training labels, and rejected training labels. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors, then subtracts negative reviewer signals. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate.
+SQLite media metadata stores analysis schema/provider/model/time, object/class/context/stage, tags and alt draft, candidate confidence/evidence, uncertainty, unsafe reason, embedding provider/model/version/hash/time, cluster ID/representative/score/label, human-review reason, accepted training labels, and rejected training labels. Existing media fields and source-folder rules use optimistic, replay-safe typed autosave with monotonic record versions and one redacted audit row per operation. Piece assignment compatibility fields and normalized links synchronize in the same transaction without a nested duplicate audit. The ranker combines visual similarity, VLM candidate confidence, lexical overlap, verified cluster propagation, folder context, and manual priors, then subtracts negative reviewer signals. It requires a configurable minimum score and runner-up margin. Context/detail/ambiguous or reviewer-rejected matches are not proposed. Manual reviewed assignment plus accurate alt text remains the only public publishing gate; folder-rule application and AI suggestions remain explicit.
 
 ## Commerce and operations
 

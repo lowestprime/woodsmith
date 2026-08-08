@@ -2837,6 +2837,34 @@ function reconcileLegacyMediaPieceAssignmentInDatabase(
   relativePath: string,
   input: ReconcileLegacyMediaPieceAssignmentInput
 ) {
+  const currentVersion = db.prepare(`
+    SELECT updated_at AS updatedAt
+    FROM media_items
+    WHERE relative_path = ?
+    LIMIT 1
+  `).get(relativePath) as
+    | { updatedAt?: unknown }
+    | undefined;
+  const previousUpdatedAt =
+    currentVersion?.updatedAt
+      ? String(currentVersion.updatedAt)
+      : "";
+  const requestedTime =
+    Date.parse(input.timestamp);
+  const previousTime =
+    Date.parse(previousUpdatedAt);
+  const timestamp =
+    previousUpdatedAt &&
+    (
+      !Number.isFinite(requestedTime) ||
+      (
+        Number.isFinite(previousTime) &&
+        requestedTime <= previousTime
+      )
+    )
+      ? isoAfter(previousUpdatedAt)
+      : input.timestamp;
+
   const remaining = db.prepare(`
     SELECT
       COUNT(DISTINCT piece_slug) AS pieceCount,
@@ -2869,9 +2897,9 @@ function reconcileLegacyMediaPieceAssignmentInDatabase(
     nextPieceSlug,
     input.markReviewed ? 1 : 0,
     input.assignmentSource,
-    input.timestamp,
+    timestamp,
     input.actorEmail,
-    input.timestamp,
+    timestamp,
     relativePath
   );
 
@@ -4018,7 +4046,9 @@ export function saveMediaMetadata(input: {
     assignedAt: input.assignedAt === undefined ? previous?.assignedAt ?? null : input.assignedAt,
     assignedBy: input.assignedBy === undefined ? previous?.assignedBy ?? null : input.assignedBy,
     manualOverride: input.manualOverride === undefined ? previous?.manualOverride ? 1 : 0 : input.manualOverride ? 1 : 0,
-    updatedAt: nowIso()
+    updatedAt: previous
+      ? isoAfter(previous.updatedAt)
+      : nowIso()
   });
 }
 

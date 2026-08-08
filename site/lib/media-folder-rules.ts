@@ -141,6 +141,18 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+function isoAfter(previous: string) {
+  const previousTime = Date.parse(previous);
+  return new Date(
+    Math.max(
+      Date.now(),
+      Number.isFinite(previousTime)
+        ? previousTime + 1
+        : 0
+    )
+  ).toISOString();
+}
+
 function readJson<T>(value: unknown, fallback: T): T {
   if (typeof value !== "string" || !value) return fallback;
   try {
@@ -230,13 +242,15 @@ export function saveMediaSourceFolderRuleInDatabase(
   const piece = db.prepare("SELECT slug FROM pieces WHERE slug = ? LIMIT 1").get(input.pieceSlug) as { slug?: unknown } | undefined;
   if (!piece) throw new Error(`Piece '${input.pieceSlug}' does not exist.`);
   const priority = Math.max(0, Math.min(1_000_000, Math.round(Number(input.priority) || 0)));
-  const timestamp = nowIso();
   const existing = db.prepare(`
-    SELECT id, created_at AS createdAt
+    SELECT id, created_at AS createdAt, updated_at AS updatedAt
     FROM media_source_folder_rules
     WHERE normalized_folder = ?
     LIMIT 1
   `).get(normalizedFolder) as Record<string, unknown> | undefined;
+  const timestamp = existing?.updatedAt
+    ? isoAfter(String(existing.updatedAt))
+    : nowIso();
   const id = existing?.id ? String(existing.id) : input.id?.trim() || mediaFolderRuleId(normalizedFolder);
   const createdAt = existing?.createdAt ? String(existing.createdAt) : timestamp;
   const updatedBy = input.updatedBy.trim().toLowerCase() || "studio";
