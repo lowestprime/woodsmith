@@ -15,6 +15,9 @@ import {
 import {
   DEFAULT_NOTIFICATION_TYPES
 } from "./notification-policy.ts";
+import {
+  redactAuditPayload
+} from "./audit-redaction.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -811,6 +814,167 @@ const migrations: Migration[] = [
         seededTemplate: Number(
           template.changes ?? 0
         )
+      };
+    }
+  },
+  {
+    version: 12,
+    name: "privacy-preserving-visitor-analytics",
+    checksum: "2026-08-visitor-analytics-privacy-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS visitor_sessions (
+          id TEXT PRIMARY KEY,
+          session_token TEXT NOT NULL UNIQUE,
+          first_path TEXT NOT NULL,
+          last_path TEXT NOT NULL,
+          referrer TEXT,
+          host TEXT,
+          country_code TEXT,
+          city TEXT,
+          region TEXT,
+          latitude REAL,
+          longitude REAL,
+          ip_hash TEXT,
+          cf_ray TEXT,
+          user_agent TEXT,
+          visit_count INTEGER NOT NULL DEFAULT 1,
+          first_seen_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL
+        ) STRICT;
+      `);
+
+      const addedColumns: string[] = [];
+      const add = (column: string, definition: string) => {
+        if (addColumn(db, "visitor_sessions", column, definition)) {
+          addedColumns.push(column);
+        }
+      };
+      add("visitor_pseudonym", "TEXT");
+      add("session_pseudonym", "TEXT");
+      add("pseudonym_key_id", "TEXT NOT NULL DEFAULT 'legacy'");
+      add("referrer_host", "TEXT");
+      add(
+        "device_class",
+        "TEXT NOT NULL DEFAULT 'unknown' CHECK (device_class IN ('desktop', 'mobile', 'tablet', 'other', 'unknown'))"
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS visitor_pageviews (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          visitor_pseudonym TEXT NOT NULL,
+          pseudonym_key_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          referrer_host TEXT,
+          country_code TEXT,
+          city TEXT,
+          region TEXT,
+          device_class TEXT NOT NULL DEFAULT 'unknown' CHECK (device_class IN ('desktop', 'mobile', 'tablet', 'other', 'unknown')),
+          occurred_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES visitor_sessions(id) ON DELETE CASCADE,
+          UNIQUE (session_id, path)
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS visitor_analytics_policy (
+          id TEXT PRIMARY KEY CHECK (id = 'default'),
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          retention_days INTEGER NOT NULL DEFAULT 90 CHECK (retention_days BETWEEN 1 AND 730),
+          store_city INTEGER NOT NULL DEFAULT 1 CHECK (store_city IN (0, 1)),
+          store_referrer INTEGER NOT NULL DEFAULT 1 CHECK (store_referrer IN (0, 1)),
+          updated_at TEXT NOT NULL,
+          updated_by TEXT
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_visitor_sessions_last_seen
+          ON visitor_sessions(last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_sessions_pseudonym
+          ON visitor_sessions(pseudonym_key_id, visitor_pseudonym, last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_occurred
+          ON visitor_pageviews(occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_visitor
+          ON visitor_pageviews(pseudonym_key_id, visitor_pseudonym, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_country
+          ON visitor_pageviews(country_code, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_created
+          ON admin_edit_audit(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_operation
+          ON admin_edit_audit(operation, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_entity
+          ON admin_edit_audit(entity_type, created_at DESC);
+      `);
+
+      const timestamp = nowIso();
+      db.prepare(`
+        INSERT OR IGNORE INTO visitor_analytics_policy (
+          id, enabled, retention_days, store_city,
+          store_referrer, updated_at, updated_by
+        ) VALUES ('default', 1, 90, 1, 1, ?, 'migration-v12')
+      `).run(timestamp);
+
+      const legacySensitive = db.prepare(`
+        SELECT
+          SUM(CASE WHEN ip_hash IS NOT NULL THEN 1 ELSE 0 END) AS ipHashes,
+          SUM(CASE WHEN user_agent IS NOT NULL THEN 1 ELSE 0 END) AS userAgents,
+          SUM(CASE WHEN referrer IS NOT NULL THEN 1 ELSE 0 END) AS referrers,
+          COUNT(*) AS sessions
+        FROM visitor_sessions
+      `).get() as Record<string, unknown>;
+
+      db.exec(`
+        UPDATE visitor_sessions
+        SET session_token = 'legacy:' || id,
+            session_pseudonym = COALESCE(NULLIF(session_pseudonym, ''), 'legacy:' || id),
+            visitor_pseudonym = COALESCE(NULLIF(visitor_pseudonym, ''), 'legacy:' || id),
+            pseudonym_key_id = COALESCE(NULLIF(pseudonym_key_id, ''), 'legacy'),
+            referrer = NULL,
+            referrer_host = NULL,
+            latitude = NULL,
+            longitude = NULL,
+            ip_hash = NULL,
+            cf_ray = NULL,
+            user_agent = NULL,
+            device_class = COALESCE(NULLIF(device_class, ''), 'unknown');
+      `);
+
+      const auditRows = db.prepare(`
+        SELECT id, before_json AS beforeJson, after_json AS afterJson
+        FROM admin_edit_audit
+      `).all() as Array<Record<string, unknown>>;
+      const updateAudit = db.prepare(`
+        UPDATE admin_edit_audit
+        SET before_json = ?, after_json = ?
+        WHERE id = ?
+      `);
+      let redactedAudits = 0;
+      for (const row of auditRows) {
+        const before = readJson<unknown>(row.beforeJson, null);
+        const after = readJson<unknown>(row.afterJson, null);
+        const redactedBefore = redactAuditPayload(before);
+        const redactedAfter = redactAuditPayload(after);
+        const beforeJson = JSON.stringify(redactedBefore);
+        const afterJson = JSON.stringify(redactedAfter);
+        if (
+          beforeJson !== String(row.beforeJson) ||
+          afterJson !== String(row.afterJson)
+        ) {
+          updateAudit.run(beforeJson, afterJson, String(row.id));
+          redactedAudits += 1;
+        }
+      }
+
+      return {
+        tables: [
+          "visitor_sessions",
+          "visitor_pageviews",
+          "visitor_analytics_policy"
+        ],
+        addedColumns,
+        legacySessions: Number(legacySensitive.sessions ?? 0),
+        scrubbedIpHashes: Number(legacySensitive.ipHashes ?? 0),
+        scrubbedUserAgents: Number(legacySensitive.userAgents ?? 0),
+        scrubbedReferrers: Number(legacySensitive.referrers ?? 0),
+        redactedAudits
       };
     }
   }

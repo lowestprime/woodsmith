@@ -50,6 +50,14 @@ import {
   NOTIFICATION_TYPE_KEYS,
   type NotificationRecipientMode
 } from "./notification-policy.ts";
+import {
+  maskAuditActor,
+  redactAuditIdentifier,
+  redactAuditPayload
+} from "./audit-redaction.ts";
+import type {
+  VisitorDeviceClass
+} from "./visitor-privacy.ts";
 
 export type UserRole = "admin" | "woodworker" | "customer";
 export type PublicationStatus = "published" | "draft" | "archived";
@@ -203,6 +211,90 @@ export type AdminEditAuditRecord = {
   requestId: string | null;
   revertedById: string | null;
   createdAt: string;
+};
+
+export type AdminAuditSummaryRecord = {
+  id: string;
+  actorLabel: string;
+  entityType: string;
+  entityKey: string;
+  operation: string;
+  revertedById: string | null;
+  createdAt: string;
+};
+
+export type AdminAuditDetailRecord =
+  AdminAuditSummaryRecord & {
+    before: unknown;
+    after: unknown;
+  };
+
+export type AdminAuditFilters = {
+  page?: number;
+  limit?: number;
+  entityType?: string;
+  operation?: string;
+  query?: string;
+  from?: string;
+  to?: string;
+};
+
+export type VisitorAnalyticsPolicyRecord = {
+  enabled: boolean;
+  retentionDays: number;
+  storeCity: boolean;
+  storeReferrer: boolean;
+  updatedAt: string;
+  updatedBy: string | null;
+};
+
+export type VisitorSessionRecord = {
+  id: string;
+  firstPath: string;
+  lastPath: string;
+  referrerHost: string | null;
+  host: string | null;
+  countryCode: string | null;
+  city: string | null;
+  region: string | null;
+  deviceClass: VisitorDeviceClass;
+  pageviewCount: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+};
+
+export type VisitorInsightsSnapshot = {
+  rangeDays: number;
+  page: number;
+  pageSize: number;
+  totalSessions: number;
+  summary: {
+    uniqueVisitors: number;
+    sessions: number;
+    pageviews: number;
+    previousUniqueVisitors: number;
+    previousSessions: number;
+    previousPageviews: number;
+  };
+  countries: Array<{
+    countryCode: string;
+    uniqueVisitors: number;
+    sessions: number;
+    pageviews: number;
+  }>;
+  trend: Array<{
+    date: string;
+    uniqueVisitors: number;
+    sessions: number;
+    pageviews: number;
+  }>;
+  sessions: VisitorSessionRecord[];
+  cohorts: Array<{
+    keyId: string;
+    uniqueVisitors: number;
+    firstSeenAt: string;
+    lastSeenAt: string;
+  }>;
 };
 
 export type StudioMutationOperationRecord<TResponse = unknown> = {
@@ -3046,13 +3138,250 @@ export function recordAdminEditAudit(input: {
     input.entityType,
     input.entityKey,
     input.operation,
-    writeJson(input.before ?? null),
-    writeJson(input.after ?? null),
+    writeJson(
+      redactAuditPayload(
+        input.before ?? null
+      )
+    ),
+    writeJson(
+      redactAuditPayload(
+        input.after ?? null
+      )
+    ),
     input.requestId ?? null,
     input.revertedById ?? null,
     nowIso()
   );
   return id;
+}
+
+function boundedAuditFilter(
+  value: string | undefined,
+  maxLength: number
+) {
+  return (value ?? "")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function validAuditDate(
+  value: string | undefined,
+  endOfDay = false
+) {
+  if (!value) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? `${value}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`
+    : value;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed)
+    ? new Date(parsed).toISOString()
+    : null;
+}
+
+function adminAuditWhere(
+  input: AdminAuditFilters
+) {
+  const clauses: string[] = [];
+  const parameters: Array<string | number> = [];
+  const entityType = boundedAuditFilter(
+    input.entityType,
+    80
+  );
+  const operation = boundedAuditFilter(
+    input.operation,
+    80
+  );
+  const query = boundedAuditFilter(
+    input.query,
+    120
+  );
+  const from = validAuditDate(input.from);
+  const to = validAuditDate(input.to, true);
+  if (entityType) {
+    clauses.push("entity_type = ?");
+    parameters.push(entityType);
+  }
+  if (operation) {
+    clauses.push("operation = ?");
+    parameters.push(operation);
+  }
+  if (query) {
+    clauses.push(
+      "(entity_key LIKE ? ESCAPE '\\' OR entity_type LIKE ? ESCAPE '\\' OR operation LIKE ? ESCAPE '\\')"
+    );
+    const escaped = query
+      .replace(/\\/g, "\\\\")
+      .replace(/%/g, "\\%")
+      .replace(/_/g, "\\_");
+    const like = `%${escaped}%`;
+    parameters.push(like, like, like);
+  }
+  if (from) {
+    clauses.push("created_at >= ?");
+    parameters.push(from);
+  }
+  if (to) {
+    clauses.push("created_at <= ?");
+    parameters.push(to);
+  }
+  return {
+    sql: clauses.length > 0
+      ? `WHERE ${clauses.join(" AND ")}`
+      : "",
+    parameters
+  };
+}
+
+function mapAdminAuditSummary(
+  row: Record<string, unknown>
+): AdminAuditSummaryRecord {
+  return {
+    id: String(row.id),
+    actorLabel: maskAuditActor(
+      row.actorEmail == null
+        ? null
+        : String(row.actorEmail)
+    ),
+    entityType: String(row.entityType),
+    entityKey: redactAuditIdentifier(
+      String(row.entityKey)
+    ),
+    operation: String(row.operation),
+    revertedById: row.revertedById == null
+      ? null
+      : String(row.revertedById),
+    createdAt: String(row.createdAt)
+  };
+}
+
+export function listAdminEditAudits(
+  input: AdminAuditFilters = {}
+) {
+  const page = Math.max(
+    1,
+    Math.trunc(Number(input.page) || 1)
+  );
+  const limit = Math.min(
+    100,
+    Math.max(
+      10,
+      Math.trunc(Number(input.limit) || 25)
+    )
+  );
+  const offset = (page - 1) * limit;
+  const where = adminAuditWhere(input);
+  const db = getDatabase();
+  const total = Number(
+    (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM admin_edit_audit
+      ${where.sql}
+    `).get(...where.parameters) as {
+      count?: unknown;
+    } | undefined)?.count ?? 0
+  );
+  const rows = db.prepare(`
+    SELECT id, actor_email AS actorEmail,
+           entity_type AS entityType,
+           entity_key AS entityKey,
+           operation, reverted_by_id AS revertedById,
+           created_at AS createdAt
+    FROM admin_edit_audit
+    ${where.sql}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(
+    ...where.parameters,
+    limit,
+    offset
+  ) as Array<Record<string, unknown>>;
+  return {
+    records: rows.map(mapAdminAuditSummary),
+    total,
+    page,
+    pageSize: limit
+  };
+}
+
+export function getAdminEditAuditDetail(
+  id: string
+): AdminAuditDetailRecord | null {
+  const row = getDatabase().prepare(`
+    SELECT id, actor_email AS actorEmail,
+           entity_type AS entityType,
+           entity_key AS entityKey,
+           operation, before_json AS beforeJson,
+           after_json AS afterJson,
+           reverted_by_id AS revertedById,
+           created_at AS createdAt
+    FROM admin_edit_audit
+    WHERE id = ?
+    LIMIT 1
+  `).get(id.trim()) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  return {
+    ...mapAdminAuditSummary(row),
+    before: redactAuditPayload(
+      readJson(row.beforeJson, null)
+    ),
+    after: redactAuditPayload(
+      readJson(row.afterJson, null)
+    )
+  };
+}
+
+export function getAdminAuditFilterOptions() {
+  const db = getDatabase();
+  const entityTypes = db.prepare(`
+    SELECT DISTINCT entity_type AS value
+    FROM admin_edit_audit
+    ORDER BY entity_type ASC
+    LIMIT 100
+  `).all() as Array<{ value: string }>;
+  const operations = db.prepare(`
+    SELECT DISTINCT operation AS value
+    FROM admin_edit_audit
+    ORDER BY operation ASC
+    LIMIT 100
+  `).all() as Array<{ value: string }>;
+  return {
+    entityTypes: entityTypes.map(
+      (row) => row.value
+    ),
+    operations: operations.map(
+      (row) => row.value
+    )
+  };
+}
+
+export function exportAdminEditAudits(
+  input: AdminAuditFilters = {}
+) {
+  const where = adminAuditWhere(input);
+  const rows = getDatabase().prepare(`
+    SELECT id, actor_email AS actorEmail,
+           entity_type AS entityType,
+           entity_key AS entityKey,
+           operation, before_json AS beforeJson,
+           after_json AS afterJson,
+           reverted_by_id AS revertedById,
+           created_at AS createdAt
+    FROM admin_edit_audit
+    ${where.sql}
+    ORDER BY created_at DESC, id DESC
+    LIMIT 500
+  `).all(
+    ...where.parameters
+  ) as Array<Record<string, unknown>>;
+  return rows.map((row) => ({
+    ...mapAdminAuditSummary(row),
+    before: redactAuditPayload(
+      readJson(row.beforeJson, null)
+    ),
+    after: redactAuditPayload(
+      readJson(row.afterJson, null)
+    )
+  }));
 }
 
 export function getStudioMutationOperation<TResponse = unknown>(
@@ -6505,139 +6834,429 @@ export function setUserEmailVerification(
   );
 }
 
-function ensureVisitorSessionsTableCompat() {
-  const db = getDatabase();
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS visitor_sessions (
-      id TEXT PRIMARY KEY,
-      session_token TEXT NOT NULL UNIQUE,
-      first_path TEXT NOT NULL,
-      last_path TEXT NOT NULL,
-      referrer TEXT,
-      host TEXT,
-      country_code TEXT,
-      city TEXT,
-      region TEXT,
-      latitude REAL,
-      longitude REAL,
-      ip_hash TEXT,
-      cf_ray TEXT,
-      user_agent TEXT,
-      visit_count INTEGER NOT NULL DEFAULT 1,
-      first_seen_at TEXT NOT NULL,
-      last_seen_at TEXT NOT NULL
-    ) STRICT;
-  `);
-  return db;
-}
-
-function mapVisitorSessionCompat(row: Record<string, unknown>) {
+function mapVisitorSession(
+  row: Record<string, unknown>
+): VisitorSessionRecord {
   return {
     id: String(row.id),
-    sessionToken: String(row.session_token),
-    firstPath: String(row.first_path),
-    lastPath: String(row.last_path),
-    referrer: row.referrer == null ? null : String(row.referrer),
+    firstPath: String(row.firstPath ?? row.first_path),
+    lastPath: String(row.lastPath ?? row.last_path),
+    referrerHost: row.referrerHost == null && row.referrer_host == null
+      ? null
+      : String(row.referrerHost ?? row.referrer_host),
     host: row.host == null ? null : String(row.host),
-    countryCode: row.country_code == null ? null : String(row.country_code),
+    countryCode: row.countryCode == null && row.country_code == null
+      ? null
+      : String(row.countryCode ?? row.country_code),
     city: row.city == null ? null : String(row.city),
     region: row.region == null ? null : String(row.region),
-    latitude: row.latitude == null ? null : Number(row.latitude),
-    longitude: row.longitude == null ? null : Number(row.longitude),
-    ipHash: row.ip_hash == null ? null : String(row.ip_hash),
-    cfRay: row.cf_ray == null ? null : String(row.cf_ray),
-    userAgent: row.user_agent == null ? null : String(row.user_agent),
-    visitCount: Number(row.visit_count ?? 1),
-    firstSeenAt: String(row.first_seen_at),
-    lastSeenAt: String(row.last_seen_at),
+    deviceClass: String(
+      row.deviceClass ?? row.device_class ?? "unknown"
+    ) as VisitorDeviceClass,
+    pageviewCount: Number(
+      row.pageviewCount ?? row.visit_count ?? 0
+    ),
+    firstSeenAt: String(
+      row.firstSeenAt ?? row.first_seen_at
+    ),
+    lastSeenAt: String(
+      row.lastSeenAt ?? row.last_seen_at
+    )
   };
 }
 
-export function upsertVisitorSession(input: {
-  sessionToken: string;
+function visitorPolicyInDatabase(
+  db: DatabaseSync
+): VisitorAnalyticsPolicyRecord {
+  const row = db.prepare(`
+    SELECT enabled, retention_days AS retentionDays,
+           store_city AS storeCity,
+           store_referrer AS storeReferrer,
+           updated_at AS updatedAt,
+           updated_by AS updatedBy
+    FROM visitor_analytics_policy
+    WHERE id = 'default'
+    LIMIT 1
+  `).get() as Record<string, unknown>;
+  return {
+    enabled: toBoolean(row.enabled),
+    retentionDays: Number(row.retentionDays),
+    storeCity: toBoolean(row.storeCity),
+    storeReferrer: toBoolean(row.storeReferrer),
+    updatedAt: String(row.updatedAt),
+    updatedBy: row.updatedBy == null
+      ? null
+      : String(row.updatedBy)
+  };
+}
+
+export function getVisitorAnalyticsPolicy() {
+  return visitorPolicyInDatabase(getDatabase());
+}
+
+export function saveVisitorAnalyticsPolicy(input: {
+  enabled: boolean;
+  retentionDays: number;
+  storeCity: boolean;
+  storeReferrer: boolean;
+  updatedBy: string;
+}) {
+  const retentionDays = Math.trunc(input.retentionDays);
+  if (retentionDays < 1 || retentionDays > 730) {
+    throw new Error("Visitor retention must be between 1 and 730 days.");
+  }
+  const current = getVisitorAnalyticsPolicy();
+  const updatedAt = isoAfter(current.updatedAt);
+  getDatabase().prepare(`
+    UPDATE visitor_analytics_policy
+    SET enabled = ?, retention_days = ?, store_city = ?,
+        store_referrer = ?, updated_at = ?, updated_by = ?
+    WHERE id = 'default'
+  `).run(
+    input.enabled ? 1 : 0,
+    retentionDays,
+    input.storeCity ? 1 : 0,
+    input.storeReferrer ? 1 : 0,
+    updatedAt,
+    input.updatedBy.trim().toLowerCase()
+  );
+  return getVisitorAnalyticsPolicy();
+}
+
+export function recordVisitorPageview(input: {
+  visitorPseudonym: string;
+  sessionPseudonym: string;
+  pseudonymKeyId: string;
   path: string;
-  referrer?: string | null;
   host?: string | null;
+  referrerHost?: string | null;
   countryCode?: string | null;
   city?: string | null;
   region?: string | null;
-  latitude?: number | null;
-  longitude?: number | null;
-  ipHash?: string | null;
-  cfRay?: string | null;
-  userAgent?: string | null;
+  deviceClass: VisitorDeviceClass;
 }) {
-  const db = ensureVisitorSessionsTableCompat();
-  const timestamp = nowIso();
+  return withDatabaseTransaction((db) => {
+    const policy = visitorPolicyInDatabase(db);
+    if (!policy.enabled) {
+      return {
+        recorded: false as const,
+        created: false,
+        pageviewCreated: false,
+        record: null
+      };
+    }
+    const timestamp = nowIso();
+    const existing = db.prepare(`
+      SELECT id
+      FROM visitor_sessions
+      WHERE pseudonym_key_id = ?
+        AND session_pseudonym = ?
+      LIMIT 1
+    `).get(
+      input.pseudonymKeyId,
+      input.sessionPseudonym
+    ) as { id?: unknown } | undefined;
+    const sessionId = existing?.id
+      ? String(existing.id)
+      : randomUUID();
+    const referrerHost = policy.storeReferrer
+      ? input.referrerHost ?? null
+      : null;
+    const city = policy.storeCity
+      ? input.city ?? null
+      : null;
 
-  const existing = db
-    .prepare(`SELECT * FROM visitor_sessions WHERE session_token = ? LIMIT 1`)
-    .get(input.sessionToken) as Record<string, unknown> | undefined;
+    if (!existing) {
+      db.prepare(`
+        INSERT INTO visitor_sessions (
+          id, session_token, first_path, last_path,
+          referrer, host, country_code, city, region,
+          latitude, longitude, ip_hash, cf_ray, user_agent,
+          visit_count, first_seen_at, last_seen_at,
+          visitor_pseudonym, session_pseudonym,
+          pseudonym_key_id, referrer_host, device_class
+        ) VALUES (
+          ?, ?, ?, ?, NULL, ?, ?, ?, ?,
+          NULL, NULL, NULL, NULL, NULL,
+          0, ?, ?, ?, ?, ?, ?, ?
+        )
+      `).run(
+        sessionId,
+        input.sessionPseudonym,
+        input.path,
+        input.path,
+        input.host ?? null,
+        input.countryCode ?? null,
+        city,
+        input.region ?? null,
+        timestamp,
+        timestamp,
+        input.visitorPseudonym,
+        input.sessionPseudonym,
+        input.pseudonymKeyId,
+        referrerHost,
+        input.deviceClass
+      );
+    }
 
-  if (existing) {
+    const pageview = db.prepare(`
+      INSERT OR IGNORE INTO visitor_pageviews (
+        id, session_id, visitor_pseudonym,
+        pseudonym_key_id, path, referrer_host,
+        country_code, city, region, device_class,
+        occurred_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      randomUUID(),
+      sessionId,
+      input.visitorPseudonym,
+      input.pseudonymKeyId,
+      input.path,
+      referrerHost,
+      input.countryCode ?? null,
+      city,
+      input.region ?? null,
+      input.deviceClass,
+      timestamp
+    );
+    const pageviewCreated = Number(
+      pageview.changes ?? 0
+    ) === 1;
+
     db.prepare(`
       UPDATE visitor_sessions
-      SET last_path = :lastPath,
-          referrer = COALESCE(:referrer, referrer),
-          host = COALESCE(:host, host),
-          country_code = COALESCE(:countryCode, country_code),
-          city = COALESCE(:city, city),
-          region = COALESCE(:region, region),
-          latitude = COALESCE(:latitude, latitude),
-          longitude = COALESCE(:longitude, longitude),
-          ip_hash = COALESCE(:ipHash, ip_hash),
-          cf_ray = COALESCE(:cfRay, cf_ray),
-          user_agent = COALESCE(:userAgent, user_agent),
-          visit_count = visit_count + 1,
-          last_seen_at = :lastSeenAt
-      WHERE session_token = :sessionToken
-    `).run({
-      sessionToken: input.sessionToken,
-      lastPath: input.path,
-      referrer: input.referrer ?? null,
-      host: input.host ?? null,
-      countryCode: input.countryCode ?? null,
-      city: input.city ?? null,
-      region: input.region ?? null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      ipHash: input.ipHash ?? null,
-      cfRay: input.cfRay ?? null,
-      userAgent: input.userAgent ?? null,
-      lastSeenAt: timestamp,
-    });
-  } else {
-    db.prepare(`
-      INSERT INTO visitor_sessions (
-        id, session_token, first_path, last_path, referrer, host, country_code, city, region,
-        latitude, longitude, ip_hash, cf_ray, user_agent, visit_count, first_seen_at, last_seen_at
-      ) VALUES (
-        :id, :sessionToken, :firstPath, :lastPath, :referrer, :host, :countryCode, :city, :region,
-        :latitude, :longitude, :ipHash, :cfRay, :userAgent, 1, :firstSeenAt, :lastSeenAt
-      )
-    `).run({
-      id: randomUUID(),
-      sessionToken: input.sessionToken,
-      firstPath: input.path,
-      lastPath: input.path,
-      referrer: input.referrer ?? null,
-      host: input.host ?? null,
-      countryCode: input.countryCode ?? null,
-      city: input.city ?? null,
-      region: input.region ?? null,
-      latitude: input.latitude ?? null,
-      longitude: input.longitude ?? null,
-      ipHash: input.ipHash ?? null,
-      cfRay: input.cfRay ?? null,
-      userAgent: input.userAgent ?? null,
-      firstSeenAt: timestamp,
-      lastSeenAt: timestamp,
-    });
-  }
+      SET last_path = ?,
+          host = COALESCE(?, host),
+          country_code = COALESCE(?, country_code),
+          city = COALESCE(?, city),
+          region = COALESCE(?, region),
+          referrer_host = COALESCE(?, referrer_host),
+          device_class = ?,
+          visit_count = visit_count + ?,
+          last_seen_at = ?
+      WHERE id = ?
+    `).run(
+      input.path,
+      input.host ?? null,
+      input.countryCode ?? null,
+      city,
+      input.region ?? null,
+      referrerHost,
+      input.deviceClass,
+      pageviewCreated ? 1 : 0,
+      timestamp,
+      sessionId
+    );
 
-  const row = db
-    .prepare(`SELECT * FROM visitor_sessions WHERE session_token = ? LIMIT 1`)
-    .get(input.sessionToken) as Record<string, unknown>;
+    const row = db.prepare(`
+      SELECT id, first_path AS firstPath,
+             last_path AS lastPath,
+             referrer_host AS referrerHost,
+             host, country_code AS countryCode,
+             city, region, device_class AS deviceClass,
+             visit_count AS pageviewCount,
+             first_seen_at AS firstSeenAt,
+             last_seen_at AS lastSeenAt
+      FROM visitor_sessions
+      WHERE id = ?
+    `).get(sessionId) as Record<string, unknown>;
+    return {
+      recorded: true as const,
+      created: !existing,
+      pageviewCreated,
+      record: mapVisitorSession(row)
+    };
+  });
+}
 
-  return { created: !existing, record: mapVisitorSessionCompat(row) };
+function boundedVisitorRange(value: number | undefined) {
+  const requested = Math.trunc(Number(value) || 30);
+  return [7, 30, 90].includes(requested)
+    ? requested
+    : 30;
+}
+
+function visitorAggregate(
+  db: DatabaseSync,
+  start: string,
+  end: string
+) {
+  const row = db.prepare(`
+    SELECT
+      COUNT(*) AS pageviews,
+      COUNT(DISTINCT session_id) AS sessions,
+      COUNT(DISTINCT pseudonym_key_id || ':' || visitor_pseudonym) AS uniqueVisitors
+    FROM visitor_pageviews
+    WHERE occurred_at >= ? AND occurred_at < ?
+  `).get(start, end) as Record<string, unknown>;
+  return {
+    pageviews: Number(row.pageviews ?? 0),
+    sessions: Number(row.sessions ?? 0),
+    uniqueVisitors: Number(row.uniqueVisitors ?? 0)
+  };
+}
+
+export function getVisitorInsights(input: {
+  rangeDays?: number;
+  page?: number;
+  pageSize?: number;
+  now?: Date;
+} = {}): VisitorInsightsSnapshot {
+  const rangeDays = boundedVisitorRange(input.rangeDays);
+  const page = Math.max(1, Math.trunc(Number(input.page) || 1));
+  const pageSize = Math.min(
+    50,
+    Math.max(10, Math.trunc(Number(input.pageSize) || 20))
+  );
+  const now = input.now ?? new Date();
+  const rangeMs = rangeDays * 24 * 60 * 60 * 1000;
+  const start = new Date(now.getTime() - rangeMs);
+  const previousStart = new Date(start.getTime() - rangeMs);
+  const db = getDatabase();
+  const current = visitorAggregate(
+    db,
+    start.toISOString(),
+    now.toISOString()
+  );
+  const previous = visitorAggregate(
+    db,
+    previousStart.toISOString(),
+    start.toISOString()
+  );
+  const totalSessions = Number(
+    (db.prepare(`
+      SELECT COUNT(*) AS count
+      FROM visitor_sessions
+      WHERE last_seen_at >= ? AND last_seen_at < ?
+    `).get(start.toISOString(), now.toISOString()) as {
+      count?: unknown;
+    }).count ?? 0
+  );
+  const sessionRows = db.prepare(`
+    SELECT id, first_path AS firstPath,
+           last_path AS lastPath,
+           referrer_host AS referrerHost,
+           host, country_code AS countryCode,
+           city, region, device_class AS deviceClass,
+           visit_count AS pageviewCount,
+           first_seen_at AS firstSeenAt,
+           last_seen_at AS lastSeenAt
+    FROM visitor_sessions
+    WHERE last_seen_at >= ? AND last_seen_at < ?
+    ORDER BY last_seen_at DESC, id DESC
+    LIMIT ? OFFSET ?
+  `).all(
+    start.toISOString(),
+    now.toISOString(),
+    pageSize,
+    (page - 1) * pageSize
+  ) as Array<Record<string, unknown>>;
+  const countryRows = db.prepare(`
+    SELECT country_code AS countryCode,
+           COUNT(*) AS pageviews,
+           COUNT(DISTINCT session_id) AS sessions,
+           COUNT(DISTINCT pseudonym_key_id || ':' || visitor_pseudonym) AS uniqueVisitors
+    FROM visitor_pageviews
+    WHERE occurred_at >= ? AND occurred_at < ?
+      AND country_code GLOB '[A-Z][A-Z]'
+    GROUP BY country_code
+    ORDER BY uniqueVisitors DESC, country_code ASC
+    LIMIT 250
+  `).all(
+    start.toISOString(),
+    now.toISOString()
+  ) as Array<Record<string, unknown>>;
+  const trendRows = db.prepare(`
+    SELECT substr(occurred_at, 1, 10) AS date,
+           COUNT(*) AS pageviews,
+           COUNT(DISTINCT session_id) AS sessions,
+           COUNT(DISTINCT pseudonym_key_id || ':' || visitor_pseudonym) AS uniqueVisitors
+    FROM visitor_pageviews
+    WHERE occurred_at >= ? AND occurred_at < ?
+    GROUP BY substr(occurred_at, 1, 10)
+    ORDER BY date ASC
+  `).all(
+    start.toISOString(),
+    now.toISOString()
+  ) as Array<Record<string, unknown>>;
+  const trendByDate = new Map(
+    trendRows.map((row) => [String(row.date), row])
+  );
+  const trend = Array.from(
+    { length: rangeDays },
+    (_, index) => {
+      const date = new Date(
+        start.getTime() + index * 24 * 60 * 60 * 1000
+      ).toISOString().slice(0, 10);
+      const row = trendByDate.get(date);
+      return {
+        date,
+        pageviews: Number(row?.pageviews ?? 0),
+        sessions: Number(row?.sessions ?? 0),
+        uniqueVisitors: Number(row?.uniqueVisitors ?? 0)
+      };
+    }
+  );
+  const cohortRows = db.prepare(`
+    SELECT pseudonym_key_id AS keyId,
+           COUNT(DISTINCT visitor_pseudonym) AS uniqueVisitors,
+           MIN(occurred_at) AS firstSeenAt,
+           MAX(occurred_at) AS lastSeenAt
+    FROM visitor_pageviews
+    GROUP BY pseudonym_key_id
+    ORDER BY lastSeenAt DESC
+    LIMIT 24
+  `).all() as Array<Record<string, unknown>>;
+
+  return {
+    rangeDays,
+    page,
+    pageSize,
+    totalSessions,
+    summary: {
+      ...current,
+      previousUniqueVisitors: previous.uniqueVisitors,
+      previousSessions: previous.sessions,
+      previousPageviews: previous.pageviews
+    },
+    countries: countryRows.map((row) => ({
+      countryCode: String(row.countryCode),
+      uniqueVisitors: Number(row.uniqueVisitors ?? 0),
+      sessions: Number(row.sessions ?? 0),
+      pageviews: Number(row.pageviews ?? 0)
+    })),
+    trend,
+    sessions: sessionRows.map(mapVisitorSession),
+    cohorts: cohortRows.map((row) => ({
+      keyId: String(row.keyId),
+      uniqueVisitors: Number(row.uniqueVisitors ?? 0),
+      firstSeenAt: String(row.firstSeenAt),
+      lastSeenAt: String(row.lastSeenAt)
+    }))
+  };
+}
+
+export function purgeVisitorAnalytics(
+  now = new Date()
+) {
+  return withDatabaseTransaction((db) => {
+    const policy = visitorPolicyInDatabase(db);
+    const cutoff = new Date(
+      now.getTime() -
+        policy.retentionDays * 24 * 60 * 60 * 1000
+    ).toISOString();
+    const pageviews = db.prepare(`
+      DELETE FROM visitor_pageviews
+      WHERE occurred_at < ?
+    `).run(cutoff);
+    const sessions = db.prepare(`
+      DELETE FROM visitor_sessions
+      WHERE last_seen_at < ?
+    `).run(cutoff);
+    return {
+      cutoff,
+      deletedPageviews: Number(pageviews.changes ?? 0),
+      deletedSessions: Number(sessions.changes ?? 0)
+    };
+  });
 }

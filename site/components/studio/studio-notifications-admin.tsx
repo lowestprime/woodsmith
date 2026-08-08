@@ -3,7 +3,8 @@
 import {
   useCallback,
   useState,
-  useTransition
+  useTransition,
+  type KeyboardEvent
 } from "react";
 
 import {
@@ -21,12 +22,24 @@ import {
 } from "@/lib/actions";
 
 import type {
+  AdminAuditSummaryRecord,
   NotificationDeliveryDetail,
   NotificationDeliverySummary,
   NotificationPolicyRecord,
   NotificationTemplateRecord,
-  SmtpVerificationRecord
+  SmtpVerificationRecord,
+  VisitorAnalyticsPolicyRecord,
+  VisitorInsightsSnapshot
 } from "@/lib/db";
+
+import {
+  StudioVisitorInsights,
+  type VisitorIdentityStatus
+} from "@/components/studio/studio-visitor-insights";
+
+import {
+  StudioAuditLog
+} from "@/components/studio/studio-audit-log";
 
 import {
   notificationTypeDefinition,
@@ -74,6 +87,19 @@ type NotificationsAdminProps = {
   initialSummary: NotificationAdminSummary;
   smtpConfiguration: SmtpPublicConfiguration;
   initialSmtpVerification: SmtpVerificationRecord | null;
+  initialVisitorInsights: VisitorInsightsSnapshot;
+  initialVisitorPolicy: VisitorAnalyticsPolicyRecord;
+  visitorIdentityStatus: VisitorIdentityStatus;
+  initialAuditPage: {
+    records: AdminAuditSummaryRecord[];
+    total: number;
+    page: number;
+    pageSize: number;
+  };
+  auditFilterOptions: {
+    entityTypes: string[];
+    operations: string[];
+  };
 };
 
 type WorkspaceTab =
@@ -81,6 +107,8 @@ type WorkspaceTab =
   | "types"
   | "templates"
   | "delivery"
+  | "visitors"
+  | "audit"
   | "smtp";
 
 const WORKSPACE_TABS: Array<{
@@ -91,8 +119,50 @@ const WORKSPACE_TABS: Array<{
   { key: "types", label: "Types" },
   { key: "templates", label: "Templates" },
   { key: "delivery", label: "Delivery" },
+  { key: "visitors", label: "Visitors" },
+  { key: "audit", label: "Audit" },
   { key: "smtp", label: "SMTP" }
 ];
+
+function moveWorkspaceTab(
+  event: KeyboardEvent<HTMLButtonElement>
+) {
+  if (
+    ![
+      "ArrowLeft",
+      "ArrowRight",
+      "Home",
+      "End"
+    ].includes(event.key)
+  ) {
+    return;
+  }
+  const tabs = Array.from(
+    event.currentTarget
+      .closest('[role="tablist"]')
+      ?.querySelectorAll<HTMLButtonElement>(
+        '[role="tab"]'
+      ) ?? []
+  );
+  const currentIndex = tabs.indexOf(
+    event.currentTarget
+  );
+  if (currentIndex < 0 || tabs.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const nextIndex = event.key === "Home"
+    ? 0
+    : event.key === "End"
+      ? tabs.length - 1
+      : (
+          currentIndex +
+          (event.key === "ArrowRight" ? 1 : -1) +
+          tabs.length
+        ) % tabs.length;
+  tabs[nextIndex]?.focus();
+  tabs[nextIndex]?.click();
+}
 
 const SAMPLE_VARIABLES: Record<string, string> = {
   siteName: "Beaman Woodworks",
@@ -1105,7 +1175,12 @@ export function StudioNotificationsAdmin({
   initialDeliveries,
   initialSummary,
   smtpConfiguration,
-  initialSmtpVerification
+  initialSmtpVerification,
+  initialVisitorInsights,
+  initialVisitorPolicy,
+  visitorIdentityStatus,
+  initialAuditPage,
+  auditFilterOptions
 }: NotificationsAdminProps) {
   const [tab, setTab] =
     useState<WorkspaceTab>("overview");
@@ -1164,13 +1239,17 @@ export function StudioNotificationsAdmin({
       >
         {WORKSPACE_TABS.map((item) => (
           <button
+            aria-controls="notification-workspace-panel"
             aria-selected={tab === item.key}
             className={tab === item.key ? "is-active" : ""}
+            id={`notification-workspace-tab-${item.key}`}
             key={item.key}
             onClick={() => {
               setTab(item.key);
             }}
+            onKeyDown={moveWorkspaceTab}
             role="tab"
+            tabIndex={tab === item.key ? 0 : -1}
             type="button"
           >
             {item.label}
@@ -1178,7 +1257,14 @@ export function StudioNotificationsAdmin({
         ))}
       </div>
 
-      {tab === "overview" ? (
+      <div
+        aria-labelledby={`notification-workspace-tab-${tab}`}
+        className="studio-workspace-panel"
+        id="notification-workspace-panel"
+        role="tabpanel"
+        tabIndex={0}
+      >
+        {tab === "overview" ? (
         <div className="studio-grid notification-summary-grid">
           <article className="studio-panel">
             <strong>{initialSummary.total}</strong>
@@ -1263,12 +1349,28 @@ export function StudioNotificationsAdmin({
         />
       ) : null}
 
+      {tab === "visitors" ? (
+        <StudioVisitorInsights
+          identityStatus={visitorIdentityStatus}
+          initialInsights={initialVisitorInsights}
+          initialPolicy={initialVisitorPolicy}
+        />
+      ) : null}
+
+      {tab === "audit" ? (
+        <StudioAuditLog
+          filterOptions={auditFilterOptions}
+          initialPage={initialAuditPage}
+        />
+      ) : null}
+
       {tab === "smtp" ? (
         <SmtpWorkspace
           configuration={smtpConfiguration}
           initialVerification={initialSmtpVerification}
         />
       ) : null}
+      </div>
     </div>
   );
 }

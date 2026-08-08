@@ -4,11 +4,11 @@ This document replaces the earlier Woodsmith DeepWiki export with the current Be
 
 ## Overview
 
-Beaman Woodworks is a self-hosted Next.js 16 application with a SQLite-backed content and operations layer. It is designed to run on a Synology NAS and keep portfolio, shop, process writing, contact-first custom work intake, project tracking, media management, commerce operations, and private Woodshop administration inside one deployment.
+Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed content and operations layer. It is designed to run on a Synology NAS and keep portfolio, shop, process writing, contact-first custom work intake, project tracking, media management, commerce operations, and private Woodshop administration inside one deployment.
 
 ## Stack
 
-- Next.js 16 App Router
+- Next.js 16.3 App Router
 - React 19
 - Node `node:sqlite` via `DatabaseSync`
 - Local ITC New Rennie Mackintosh font assets
@@ -57,6 +57,8 @@ Project trackers live at `/requests/[reference]`. Access is allowed only when th
 - orders, invoices, shipping labels, and tracking state
 - reviews
 - queued notifications
+- privacy-preserving visitor aggregates, retention policy, country map/list, and pseudonym cohorts
+- filtered, paginated, redacted administrative audit detail and export
 - buyer email verification at `/account/verify`
 - visitor-session logging endpoint at `/api/visits`
 
@@ -85,6 +87,9 @@ The SQLite schema includes these primary tables:
 - `notification_templates`
 - `notification_deliveries`
 - `notification_delivery_attempts`
+- `visitor_sessions`
+- `visitor_pageviews`
+- `visitor_analytics_policy`
 - `smtp_verification_checks`
 - `project_lifecycle_events`
 - `project_deletion_ledger`
@@ -102,11 +107,11 @@ The SQLite schema includes these primary tables:
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v6 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
-The independent additive migration ledger applies through schema version 11. Versions 9-11 normalize typed notification policy/template/delivery/attempt data, preserve SMTP verification results without storing the SMTP password, add project lifecycle and deletion-decision records, and seed a disabled-by-default visitor-session notification policy. Legacy notification rows are compatibility-linked into the normalized delivery history rather than discarded.
+The independent additive migration ledger applies through schema version 12. Versions 9-11 normalize typed notification policy/template/delivery/attempt data, preserve SMTP verification results without storing the SMTP password, add project lifecycle and deletion-decision records, and seed a disabled-by-default visitor-session notification policy. Version 12 adds minimized pageviews and collection/retention policy, indexes audit queries, scrubs legacy visitor identifiers, and redacts sensitive legacy audit payloads. Legacy notification rows are compatibility-linked into normalized delivery history rather than discarded.
 
 Projects retain active/archived/cancelled lifecycle state, assignment and target dates, completion/archive/cancellation timestamps, and cancellation reason. Lifecycle transitions and dependency-aware deletion previews/refusals/deletions are separately audited; media quarantine prevents a hard-delete request from silently destroying referenced files.
 
-User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor-session telemetry is persisted in the `visitor_sessions` table so the dashboard can render a world map and recent-session list without any third-party analytics dependency. Visitor-session email is policy-controlled and disabled by default.
+User records keep buyer email-verification state in dedicated `email_verified`, `verification_token`, and `verification_expires_at` columns. Visitor telemetry uses purpose-separated HMAC visitor/session pseudonyms plus a public `pseudonym_key_id`; new records persist only minimized host/path, country/optional city-region, optional referrer host, and device class data. Raw IP addresses, full user-agent strings, complete referrer URLs, Cloudflare ray IDs, and precise coordinates are not stored. The dashboard renders aggregate trends, an accessible world map/list, recent sessions, retention controls, and key-cohort labels without a third-party analytics dependency. Visitor-session email is separately policy-controlled and disabled by default.
 
 ## Media system
 
@@ -204,7 +209,11 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/lib/payments.ts`: Stripe and EasyPost integration
 - `site/lib/notification-policy.ts`: typed notification definitions, recipient policy, template validation, retry/retention defaults, and variable allowlists
 - `site/lib/notifications.ts`: pooled SMTP transport, normalized delivery queue, idempotency, bounded retry processing, redacted diagnostics, and legacy compatibility
-- `site/components/studio/studio-notifications-admin.tsx`: compact policy/template/delivery/SMTP administration with on-demand detail
+- `site/lib/visitor-privacy.ts`: keyed visitor/session pseudonyms, bot/internal filtering, trusted Cloudflare location parsing, and telemetry minimization
+- `site/lib/audit-redaction.ts`: recursive administrative payload redaction shared by migration, detail, and export paths
+- `site/components/studio/studio-notifications-admin.tsx`: accessible seven-panel notification, visitor, audit, and SMTP administration shell
+- `site/components/studio/studio-visitor-insights.tsx`: aggregate visitor trends, responsive map/list, session pagination, policy, retention, and cohort controls
+- `site/components/studio/studio-audit-log.tsx`: paginated filters plus on-demand redacted detail and bounded redacted JSON export
 - `site/components/studio/studio-projects-admin.tsx`: compact project master-detail editing, lifecycle transitions, timelines, and guarded dependency-aware deletion
 - `site/components/forms.tsx`: public, account, profile, and custom work forms
 - `site/components/inline-edit-assistant.tsx`: capture-phase in-place editing and structural-editor handoff
@@ -213,7 +222,7 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/components/header-shell.tsx`: client scroll-state wrapper that compacts and hides the header chrome during downward scrolling
 - `site/components/media-picker.tsx`: visual library picker used by page, piece, and process editors
 - `site/components/studio-media-workspace.tsx`: compact media-management workspace for `/studio?panel=media`
-- `site/components/visitor-tracker.tsx` + `site/components/visitor-insights.tsx`: client visit logging and dashboard visitor map/list
+- `site/components/visitor-tracker.tsx`: minimized client pageview dispatch; aggregation and administrative rendering remain server-side
 - `site/components/visualizer.tsx`: route-local R3F conceptual preview orchestration, deterministic SVG/text fallback payloads, optional AI preview trigger, and server-authoritative estimator fields
 - `site/components/commission-scene.tsx`: route-local React Three Fiber templates, cameras, lighting, dimensions, and fallback-safe scene controls
 - `visual-audit/`: deterministic two-mode visual archive, reports, validation, comparison, NAS scripts, strict benchmark-gated accelerator selection, and recorded per-stage/browser backend provenance

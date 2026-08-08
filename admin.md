@@ -103,13 +103,23 @@ Public piece and shop cards request responsive optimized thumbnails rather than 
 
 ### Visitor map
 
-The overview workspace now shows recent visitor sessions on a world map and in a recent-session list. The map is sourced from session records stored in SQLite.
+Open **Notifications → Visitors** for privacy-preserving aggregate analytics. The workspace shows unique visitors, sessions, and pageviews; a paginated trend; an accessible country map and equivalent text list; recent minimized sessions; and the active pseudonym-key cohorts. The map is responsive in both themes and never replaces the text alternative.
 
 - visitor-session email is represented by a dedicated notification policy and is disabled by default; session recording alone does not send mail
 - enabling that policy is an explicit administrative action and still requires a working SMTP configuration and recipient policy
 - country detail uses Cloudflare's `CF-IPCountry` header when available
 - city, region, latitude, and longitude require Cloudflare visitor-location headers to be enabled
-- if Cloudflare location headers are not present, the dashboard still records the session and host/path but shows unknown location data
+- precise coordinates are parsed only transiently from trusted Cloudflare headers and discarded before persistence; the map uses the retained country code
+- new records do not store raw IP addresses, full user-agent strings, complete referrer URLs, Cloudflare ray IDs, or precise coordinates
+- visitor and session identities are separate keyed HMAC pseudonyms; set `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, label it with `VISITOR_HMAC_KEY_ID`, and rotate both together to start a new unlinkable cohort
+- `VISITOR_TRACK_INTERNAL=false` excludes local/private traffic, and common automated clients are ignored
+- if Cloudflare location headers are not present, the dashboard still records the minimized host/path/session data but shows unknown location data
+
+Use the policy form to enable or pause recording, retain or omit city and referrer-host fields, and choose a retention period from 1 to 730 days. The retained **Save** button is an explicit flush for the same in-place autosave queue; saving must not navigate, reset scroll, or create a duplicate audit entry. **Purge expired records** removes only sessions/pageviews older than the configured cutoff and records the administrative action.
+
+### Audit log
+
+Open **Notifications → Audit** to inspect administrative changes without exposing private values. Filter by operation, entity type, or search text; page through bounded summaries; open details only when needed; and export a maximum of 500 matching records as redacted JSON. Secrets, passwords, tokens, cookies, authorization values, raw visitor identifiers, private contact fields, and equivalent nested values remain redacted both on screen and in exports. Opening or exporting the log is itself auditable.
 
 ### Projects
 
@@ -127,7 +137,7 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, and **SMTP** views. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
+The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Visitors**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
 
 Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
 

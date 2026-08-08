@@ -229,14 +229,16 @@ export function StudioAutosaveForm<
       TEntity
     >({
       mutate,
-      expectedUpdatedAt,
+      // Canonical versions are synchronized below. Keeping them out of
+      // queue construction preserves the visible saved state after a
+      // parent adopts the server's updated record.
+      expectedUpdatedAt: null,
       coalesce,
       retryDelaysMs
     });
   }, [
     coalesce,
     entityKey,
-    expectedUpdatedAt,
     mutate,
     retryDelaysMs
   ]);

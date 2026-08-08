@@ -196,7 +196,7 @@ docker compose -f docker-compose.synology.yml up -d
 
 The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
 
-The independent SQLite schema ledger currently applies through version 11. Versions 1-8 persist normalized piece/media truth, commerce policies, edit and rename history, account drafts, idempotency keys, expiring project-access grants, render/submission quotas, media-operation snapshots, and source-folder assignment rules. Versions 9-11 add typed notification policies/templates/deliveries/attempts, SMTP verification history, project lifecycle/dependency-deletion ledgers, and the disabled-by-default visitor-session notification policy. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
+The independent SQLite schema ledger currently applies through version 12. Versions 1-8 persist normalized piece/media truth, commerce policies, edit and rename history, account drafts, idempotency keys, expiring project-access grants, render/submission quotas, media-operation snapshots, and source-folder assignment rules. Versions 9-11 add typed notification policies/templates/deliveries/attempts, SMTP verification history, project lifecycle/dependency-deletion ledgers, and the disabled-by-default visitor-session notification policy. Version 12 adds minimized visitor pageviews and policy data, indexed redacted audit queries, and a one-time scrub of legacy raw visitor and sensitive audit fields. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
 
 ## Reverse proxy
 
@@ -218,7 +218,9 @@ If you want the dashboard visitor map to show country and city data, enable Clou
 - `CF-IPCountry` carries the two-letter visitor country code
 - the visitor-location transform can add city, region, latitude, and longitude headers
 
-Without those headers, the app still records visitor sessions, paths, and hosts, but the map/list will show unknown location data.
+Without those headers, the app still records minimized visitor sessions, paths, and hosts, but the map/list will show unknown location data. New records never persist the incoming raw IP address, full user-agent string, complete referrer URL, Cloudflare ray ID, or precise latitude/longitude.
+
+Generate `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, set a descriptive `VISITOR_HMAC_KEY_ID`, and rotate both together when starting a new deliberately unlinkable analytics cohort. The application can fall back to `SESSION_SECRET`, but that is a compatibility path rather than the preferred production configuration. Leave `VISITOR_TRACK_INTERNAL=false` unless there is a documented reason to count private-network requests. In **Notifications → Visitors**, verify the collection/city/referrer-host policy and retention period before release; purge is bounded by that policy and is audited.
 
 Visitor recording does not automatically send email. The `visitor_session` notification policy is disabled by default and must remain disabled unless an administrator intentionally enables it and verifies the recipient/retention policy. SMTP credentials remain environment-only and must never be copied into browser evidence or deployment logs.
 
@@ -448,8 +450,9 @@ The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- After a candidate starts, confirm Studio reports schema version 11 and `quick_check=ok`; inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
-- In Notifications, verify all five views render, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
+- The application dependency is Next.js 16.3.0; the current local WP06 dependency audit reports zero known vulnerabilities at the configured high threshold, but release deployment still requires a fresh candidate audit and image build.
+- After a candidate starts, confirm Studio reports schema version 12 and `quick_check=ok`; inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
+- In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

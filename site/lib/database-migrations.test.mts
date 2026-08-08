@@ -110,7 +110,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     const second = applySchemaMigrations(db);
     assert.equal(first.quickCheckBefore, "ok");
     assert.equal(first.quickCheckAfter, "ok");
-    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
     assert.equal(second.applied.length, 0);
 
     const policies = (db.prepare(`SELECT slug, price_mode AS priceMode, price_cents AS priceCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode FROM pieces ORDER BY slug`).all() as Array<Record<string, unknown>>).map((row) => ({ ...row }));
@@ -200,7 +200,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     ]);
 
     const migrationCount = db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number };
-    assert.equal(migrationCount.n, 11);
+    assert.equal(migrationCount.n, 12);
   } finally {
     db.close();
     rmSync(directory, { recursive: true, force: true });
@@ -234,7 +234,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [7, 8, 9, 10, 11]
+      [7, 8, 9, 10, 11, 12]
     );
     const policyCount = db.prepare(`
         SELECT COUNT(*) AS count
@@ -251,7 +251,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
     `).all() as Array<{ version: number }>;
     assert.deepEqual(
       versions.map((row) => row.version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     );
   } finally {
     db.close();
@@ -283,7 +283,7 @@ test("a schema-version-10 fixture adds the disabled visitor-session policy", () 
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [11]
+      [11, 12]
     );
     assert.deepEqual(
       {
@@ -309,6 +309,132 @@ test("a schema-version-10 fixture adds the disabled visitor-session policy", () 
     assert.equal(
       applySchemaMigrations(db)
         .applied.length,
+      0
+    );
+  } finally {
+    db.close();
+    rmSync(directory, {
+      recursive: true,
+      force: true
+    });
+  }
+});
+
+test("schema version 12 scrubs legacy visitor identifiers and audit private data", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, {
+      throughVersion: 11
+    });
+    const stamp = "2026-08-08T00:00:00.000Z";
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS visitor_sessions (
+        id TEXT PRIMARY KEY,
+        session_token TEXT NOT NULL UNIQUE,
+        first_path TEXT NOT NULL,
+        last_path TEXT NOT NULL,
+        referrer TEXT,
+        host TEXT,
+        country_code TEXT,
+        city TEXT,
+        region TEXT,
+        latitude REAL,
+        longitude REAL,
+        ip_hash TEXT,
+        cf_ray TEXT,
+        user_agent TEXT,
+        visit_count INTEGER NOT NULL DEFAULT 1,
+        first_seen_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL
+      ) STRICT;
+    `);
+    db.prepare(`
+      INSERT INTO visitor_sessions (
+        id, session_token, first_path, last_path, referrer, host,
+        country_code, city, region, latitude, longitude, ip_hash,
+        cf_ray, user_agent, visit_count, first_seen_at, last_seen_at
+      ) VALUES (?, ?, '/', '/portfolio', ?, 'woodmat.ch', 'US',
+                'Los Angeles', 'California', 34.05, -118.24, ?, ?, ?, 2, ?, ?)
+    `).run(
+      "legacy-session",
+      "raw-browser-token",
+      "https://example.com/private?token=yes",
+      "unsalted-ip-digest",
+      "legacy-ray",
+      "Mozilla/5.0 complete user agent",
+      stamp,
+      stamp
+    );
+    db.prepare(`
+      INSERT INTO admin_edit_audit (
+        id, actor_email, entity_type, entity_key, operation,
+        before_json, after_json, request_id, reverted_by_id, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+    `).run(
+      "audit-private",
+      "admin@example.com",
+      "notification-template",
+      "password-reset",
+      "update",
+      JSON.stringify({ body: "private", status: "draft" }),
+      JSON.stringify({ token: "secret", status: "published" }),
+      stamp
+    );
+
+    const upgrade = applySchemaMigrations(db);
+    assert.deepEqual(
+      upgrade.applied.map((entry) => entry.version),
+      [12]
+    );
+    const visitor = db.prepare(`
+      SELECT session_token AS sessionToken,
+             session_pseudonym AS sessionPseudonym,
+             visitor_pseudonym AS visitorPseudonym,
+             pseudonym_key_id AS keyId,
+             referrer, referrer_host AS referrerHost,
+             latitude, longitude,
+             ip_hash AS ipHash, cf_ray AS cfRay,
+             user_agent AS userAgent, device_class AS deviceClass
+      FROM visitor_sessions
+      WHERE id = 'legacy-session'
+    `).get() as Record<string, unknown>;
+    assert.deepEqual({ ...visitor }, {
+      sessionToken: "legacy:legacy-session",
+      sessionPseudonym: "legacy:legacy-session",
+      visitorPseudonym: "legacy:legacy-session",
+      keyId: "legacy",
+      referrer: null,
+      referrerHost: null,
+      latitude: null,
+      longitude: null,
+      ipHash: null,
+      cfRay: null,
+      userAgent: null,
+      deviceClass: "unknown"
+    });
+    const audit = db.prepare(`
+      SELECT before_json AS beforeJson, after_json AS afterJson
+      FROM admin_edit_audit
+      WHERE id = 'audit-private'
+    `).get() as Record<string, unknown>;
+    assert.deepEqual(
+      JSON.parse(String(audit.beforeJson)),
+      { body: "[redacted]", status: "draft" }
+    );
+    assert.deepEqual(
+      JSON.parse(String(audit.afterJson)),
+      { token: "[redacted]", status: "published" }
+    );
+    assert.equal(
+      db.prepare(`
+        SELECT retention_days AS retentionDays
+        FROM visitor_analytics_policy
+        WHERE id = 'default'
+      `).get().retentionDays,
+      90
+    );
+    assert.equal(
+      applySchemaMigrations(db).applied.length,
       0
     );
   } finally {

@@ -727,6 +727,21 @@ test(
       source,
       /event\.preventDefault\(\)/
     );
+
+    assert.match(
+      source,
+      /expectedUpdatedAt:\s*null/
+    );
+
+    assert.match(
+      source,
+      /queue\.updateExpectedUpdatedAt\(\s*expectedUpdatedAt\s*\)/
+    );
+
+    assert.doesNotMatch(
+      source,
+      /queueVersionRef/
+    );
   }
 );
 

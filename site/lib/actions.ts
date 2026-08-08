@@ -44,6 +44,10 @@ import {
   getNotificationDeliveryDetail,
   getNotificationPolicy,
   getNotificationTemplate,
+  getVisitorAnalyticsPolicy,
+  getVisitorInsights,
+  getAdminEditAuditDetail,
+  getAdminAuditFilterOptions,
   getSiteSettings,
   getStudioMutationOperation,
   getUserByEmail,
@@ -56,6 +60,9 @@ import {
   markEmailVerified,
   markCommissionDraftSubmitted,
   purgeExpiredNotificationDeliveries,
+  purgeVisitorAnalytics,
+  listAdminEditAudits,
+  exportAdminEditAudits,
   recordProjectDeletionRefusal,
   recordProjectDeletionPreview,
   rollbackCommissionSubmission,
@@ -69,6 +76,7 @@ import {
   saveMediaSourceFolderRule,
   saveNotificationPolicy,
   saveNotificationTemplate,
+  saveVisitorAnalyticsPolicy,
   saveOrder,
   savePage,
   savePiece,
@@ -113,6 +121,8 @@ import {
   type NotificationPolicyRecord,
   type NotificationRecipientMode,
   type NotificationTemplateRecord,
+  type VisitorAnalyticsPolicyRecord,
+  type AdminAuditFilters,
   type SiteSettings,
   type UserRecord
 } from "@/lib/db";
@@ -3972,6 +3982,13 @@ export type NotificationTemplateAutosavePatch = {
   htmlTemplate: string;
 };
 
+export type VisitorAnalyticsPolicyAutosavePatch = {
+  enabled: boolean;
+  retentionDays: number;
+  storeCity: boolean;
+  storeReferrer: boolean;
+};
+
 export type ProjectAdminAutosavePatch = {
   reference: string;
   status: string;
@@ -3992,6 +4009,9 @@ const NOTIFICATION_POLICY_MUTATION_SCOPE =
 
 const NOTIFICATION_TEMPLATE_MUTATION_SCOPE =
   "notification-template-autosave";
+
+const VISITOR_ANALYTICS_POLICY_MUTATION_SCOPE =
+  "visitor-analytics-policy-autosave";
 
 const PROJECT_ADMIN_MUTATION_SCOPE =
   "project-admin-autosave";
@@ -4451,6 +4471,136 @@ export async function saveNotificationTemplateAutosaveAction(
             entity: auditInput.after,
             updatedAt:
               auditInput.after.updatedAt,
+            auditId
+          }
+        });
+        return auditId;
+      },
+      invalidate: () => {
+        revalidatePath(
+          "/studio?panel=notifications"
+        );
+      }
+    }
+  );
+}
+
+function validateVisitorAnalyticsPolicyPatch(
+  patch: VisitorAnalyticsPolicyAutosavePatch
+) {
+  if (
+    typeof patch.enabled !== "boolean" ||
+    typeof patch.storeCity !== "boolean" ||
+    typeof patch.storeReferrer !== "boolean"
+  ) {
+    throw new StudioMutationValidationError(
+      "Visitor privacy toggles must be true or false."
+    );
+  }
+  return {
+    enabled: patch.enabled,
+    retentionDays: boundedInteger(
+      patch.retentionDays,
+      "Visitor retention",
+      1,
+      730
+    ),
+    storeCity: patch.storeCity,
+    storeReferrer: patch.storeReferrer
+  };
+}
+
+export async function saveVisitorAnalyticsPolicyAutosaveAction(
+  input: StudioServerMutationInput<
+    VisitorAnalyticsPolicyAutosavePatch
+  >
+): Promise<
+  StudioMutationResult<VisitorAnalyticsPolicyRecord>
+> {
+  let actorEmail = "";
+  let requestHash = "";
+  return executeStudioServerMutation(
+    input,
+    {
+      authorize: async () => {
+        const user = await getCurrentUser();
+        if (!user || user.role !== "admin") {
+          return null;
+        }
+        actorEmail = user.email
+          .trim()
+          .toLowerCase();
+        return { email: actorEmail };
+      },
+      originAllowed:
+        studioServerActionOriginAllowed,
+      validate: (patch) => {
+        const validated =
+          validateVisitorAnalyticsPolicyPatch(
+            patch
+          );
+        requestHash = mutationRequestHash(
+          validated
+        );
+        return validated;
+      },
+      transaction: (work) =>
+        withDatabaseTransaction(() => work()),
+      findCompletedOperation:
+        (operationId, patch) => {
+          const completed =
+            getStudioMutationOperation<
+              StudioServerMutationCommit<
+                VisitorAnalyticsPolicyRecord
+              >
+            >(operationId);
+          if (!completed) return null;
+          if (
+            completed.mutationScope !==
+              VISITOR_ANALYTICS_POLICY_MUTATION_SCOPE ||
+            completed.actorEmail !== actorEmail ||
+            completed.requestHash !==
+              mutationRequestHash(patch)
+          ) {
+            throw new StudioMutationConflictError(
+              "This operation ID has already been used for a different visitor policy save."
+            );
+          }
+          return completed.response;
+        },
+      loadCurrent: () =>
+        getVisitorAnalyticsPolicy(),
+      save: (_current, patch) =>
+        saveVisitorAnalyticsPolicy({
+          ...patch,
+          updatedBy: actorEmail
+        }),
+      loadCanonical: () =>
+        getVisitorAnalyticsPolicy(),
+      updatedAt: (entity) =>
+        entity.updatedAt,
+      entityType: "visitor-analytics-policy",
+      entityKey: () => "default",
+      operation: () => "update",
+      audit: (auditInput) => {
+        const auditId = recordAdminEditAudit({
+          actorEmail: auditInput.actorEmail,
+          entityType: auditInput.entityType,
+          entityKey: auditInput.entityKey,
+          operation: auditInput.operation,
+          before: auditInput.before,
+          after: auditInput.after,
+          requestId: auditInput.requestId
+        });
+        recordStudioMutationOperation({
+          operationId: auditInput.requestId,
+          actorEmail: auditInput.actorEmail,
+          mutationScope:
+            VISITOR_ANALYTICS_POLICY_MUTATION_SCOPE,
+          requestHash,
+          response: {
+            entity: auditInput.after,
+            updatedAt: auditInput.after.updatedAt,
             auditId
           }
         });
@@ -4943,6 +5093,162 @@ export async function purgeExpiredNotificationDeliveriesAction() {
     return adminActionFailure(
       error,
       "Expired deliveries could not be purged."
+    );
+  }
+}
+
+export async function loadVisitorInsightsAction(input: {
+  rangeDays?: number;
+  page?: number;
+  pageSize?: number;
+}) {
+  try {
+    await requireTrustedAdminAction();
+    return {
+      ok: true as const,
+      message: "Visitor insights loaded.",
+      data: getVisitorInsights(input)
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Visitor insights could not be loaded."
+    );
+  }
+}
+
+export async function purgeVisitorAnalyticsAction() {
+  try {
+    const admin = await requireTrustedAdminAction();
+    const result = purgeVisitorAnalytics();
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType: "visitor-analytics",
+      entityKey: "retention-purge",
+      operation: "purge",
+      after: result
+    });
+    revalidatePath(
+      "/studio?panel=notifications"
+    );
+    return {
+      ok: true as const,
+      message: `Deleted ${result.deletedPageviews} pageview${result.deletedPageviews === 1 ? "" : "s"} and ${result.deletedSessions} expired session${result.deletedSessions === 1 ? "" : "s"}.`,
+      data: result
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Visitor retention could not be applied."
+    );
+  }
+}
+
+export async function loadAdminAuditPageAction(
+  filters: AdminAuditFilters
+) {
+  try {
+    await requireTrustedAdminAction();
+    return {
+      ok: true as const,
+      message: "Audit records loaded.",
+      data: listAdminEditAudits(filters)
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Audit records could not be loaded."
+    );
+  }
+}
+
+export async function loadAdminAuditDetailAction(
+  id: string
+) {
+  try {
+    await requireTrustedAdminAction();
+    const detail = getAdminEditAuditDetail(
+      boundedStudioString(
+        id,
+        "Audit record",
+        160,
+        true
+      )
+    );
+    if (!detail) {
+      return {
+        ok: false as const,
+        message: "Audit record no longer exists."
+      };
+    }
+    return {
+      ok: true as const,
+      message: "Audit detail loaded.",
+      data: detail
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Audit detail could not be loaded."
+    );
+  }
+}
+
+export async function exportAdminAuditAction(
+  filters: AdminAuditFilters
+) {
+  try {
+    const admin = await requireTrustedAdminAction();
+    const records = exportAdminEditAudits(filters);
+    const generatedAt = new Date().toISOString();
+    recordAdminEditAudit({
+      actorEmail: admin.email,
+      entityType: "admin-audit",
+      entityKey: "redacted-export",
+      operation: "export",
+      after: {
+        count: records.length,
+        filters: {
+          entityType: filters.entityType ?? "",
+          operation: filters.operation ?? "",
+          from: filters.from ?? "",
+          to: filters.to ?? ""
+        }
+      }
+    });
+    return {
+      ok: true as const,
+      message: `Prepared ${records.length} redacted audit record${records.length === 1 ? "" : "s"}.`,
+      data: {
+        filename: `woodsmith-audit-${generatedAt.slice(0, 10)}.json`,
+        content: JSON.stringify({
+          generatedAt,
+          redacted: true,
+          maximumRecords: 500,
+          records
+        }, null, 2)
+      }
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Redacted audit export could not be prepared."
+    );
+  }
+}
+
+export async function loadAdminAuditFilterOptionsAction() {
+  try {
+    await requireTrustedAdminAction();
+    return {
+      ok: true as const,
+      message: "Audit filters loaded.",
+      data: getAdminAuditFilterOptions()
+    };
+  } catch (error) {
+    return adminActionFailure(
+      error,
+      "Audit filters could not be loaded."
     );
   }
 }
