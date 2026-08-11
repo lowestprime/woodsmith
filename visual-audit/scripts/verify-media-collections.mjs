@@ -1,4 +1,5 @@
 import { chromium } from "playwright";
+import { isExpectedNextPrefetchAbort } from "../dist/diagnostics.js";
 
 const baseUrl = (process.env.MEDIA_TEST_BASE_URL || "http://127.0.0.1:3017").replace(/\/$/, "");
 const publicRoute = process.env.MEDIA_TEST_PUBLIC_ROUTE?.trim() || null;
@@ -158,11 +159,23 @@ function attachDiagnostics(page, diagnostics) {
   page.on("console", (message) => {
     if (message.type() === "error") diagnostics.push({ type: "console", message: message.text() });
   });
-  page.on("requestfailed", (request) => diagnostics.push({
-    type: "requestfailed",
-    url: request.url(),
-    message: request.failure()?.errorText
-  }));
+  page.on("requestfailed", (request) => {
+    const failure = request.failure()?.errorText || "unknown request failure";
+    if (isExpectedNextPrefetchAbort({
+      method: request.method(),
+      url: request.url(),
+      failure,
+      resourceType: request.resourceType(),
+      headers: request.headers(),
+      baseUrl
+    })) return;
+
+    diagnostics.push({
+      type: "requestfailed",
+      url: request.url(),
+      message: failure
+    });
+  });
 }
 
 const browser = await chromium.launch(browserChannel ? { channel: browserChannel } : {});
