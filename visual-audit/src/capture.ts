@@ -105,6 +105,7 @@ async function restoreFixedSurfaces(page: Page) {
   await page.evaluate(() => {
     document.getElementById("woodsmith-visual-audit-neutralize")?.remove();
     delete document.documentElement.dataset.auditScrollCapture;
+    delete document.documentElement.dataset.auditScrollContainerCapture;
     document.querySelectorAll<HTMLElement>("[data-audit-original-position]").forEach((element) => delete element.dataset.auditOriginalPosition);
     document.querySelectorAll<HTMLElement>("[data-audit-original-content-visibility]").forEach((element) => delete element.dataset.auditOriginalContentVisibility);
     window.scrollTo(0, 0);
@@ -339,6 +340,9 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
   await markScrollableCandidates(page);
   await neutralizeFixedSurfaces(page);
   try {
+  await page.evaluate(() => {
+    document.documentElement.dataset.auditScrollContainerCapture = "true";
+  });
   const candidates = page.locator('[data-audit-scroll], [data-audit-scroll-candidate="true"]');
   const count = await candidates.count();
   const dimensions = await pageDimensions(page);
