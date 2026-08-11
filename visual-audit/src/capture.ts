@@ -26,6 +26,7 @@ async function pageDimensions(page: Page): Promise<Dimensions> {
 
 async function neutralizeFixedSurfaces(page: Page) {
   await page.evaluate((scrollCaptureCss) => {
+    document.documentElement.dataset.auditScrollCapture = "true";
     const style = document.createElement("style");
     style.id = "woodsmith-visual-audit-neutralize";
     style.textContent = `
@@ -45,8 +46,12 @@ async function neutralizeFixedSurfaces(page: Page) {
     `;
     document.head.append(style);
     document.querySelectorAll<HTMLElement>("body *").forEach((element) => {
-      const position = getComputedStyle(element).position;
+      const computed = getComputedStyle(element);
+      const position = computed.position;
       if (position === "fixed" || position === "sticky") element.dataset.auditOriginalPosition = position;
+      if (computed.contentVisibility === "auto") {
+        element.dataset.auditOriginalContentVisibility = "auto";
+      }
     });
   }, SCROLL_CAPTURE_STABILITY_CSS);
 }
@@ -99,6 +104,7 @@ async function markScrollableCandidates(page: Page) {
 async function restoreFixedSurfaces(page: Page) {
   await page.evaluate(() => {
     document.getElementById("woodsmith-visual-audit-neutralize")?.remove();
+    delete document.documentElement.dataset.auditScrollCapture;
     document.querySelectorAll<HTMLElement>("[data-audit-original-position]").forEach((element) => delete element.dataset.auditOriginalPosition);
     document.querySelectorAll<HTMLElement>("[data-audit-original-content-visibility]").forEach((element) => delete element.dataset.auditOriginalContentVisibility);
     window.scrollTo(0, 0);

@@ -2,7 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { browserOperationId } from "./browser-id.ts";
 import { secureCookieRequired } from "./cookie-policy.ts";
-import { clampLightboxZoom, clampPanOffset, isNavigationCurrent } from "./ui-behavior.ts";
+import {
+  clampLightboxZoom,
+  clampPanOffset,
+  isNavigationCurrent,
+  shouldFreezeHeaderForVisualCapture
+} from "./ui-behavior.ts";
 
 test("production cookies stay secure outside an explicitly isolated HTTP audit", () => {
   assert.equal(secureCookieRequired({ NODE_ENV: "production" }), true);
@@ -43,6 +48,12 @@ test("navigation current state matches exact roots and nested routes", () => {
   assert.equal(isNavigationCurrent("/shop", "/portfolio"), false);
   assert.equal(isNavigationCurrent("/about", "https://example.com"), false);
   assert.equal(isNavigationCurrent("/about", "//example.com"), false);
+});
+
+test("header motion freezes only for an explicit visual capture", () => {
+  assert.equal(shouldFreezeHeaderForVisualCapture({}), false);
+  assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "false" }), false);
+  assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "true" }), true);
 });
 
 test("lightbox zoom and pan stay within visible bounds", () => {

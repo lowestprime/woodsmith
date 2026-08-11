@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { shouldFreezeHeaderForVisualCapture } from "@/lib/ui-behavior";
 
 export function HeaderShell({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
@@ -37,6 +38,16 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       if (!el) return;
       const y = Math.max(0, window.scrollY);
       const delta = y - lastY;
+
+      if (shouldFreezeHeaderForVisualCapture(document.documentElement.dataset)) {
+        el.classList.remove("is-compact", "is-hidden");
+        el.dataset.headerState = "audit-capture";
+        lastY = y;
+        direction = null;
+        directionStartY = y;
+        ticking = false;
+        return;
+      }
 
       if (y > 18) {
         el.classList.add("is-compact");
