@@ -151,3 +151,28 @@ test(
     );
   },
 );
+
+test(
+  "local full archives can retain only their validated output volume",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(source, /\[switch\]\$PreserveOutput/);
+    assert.match(
+      source,
+      /if \(\$resumeExistingRun -and \$PreserveOutput\)[\s\S]*resumed output is already retained/,
+    );
+    assert.match(
+      source,
+      /if \(\$PreserveOutput -and \$volume -eq \$outputVolume\)[\s\S]*continue/,
+    );
+    assert.match(source, /PRESERVED_OUTPUT_VOLUME=/);
+    assert.match(source, /PRESERVED_OUTPUT_VOLUMES=/);
+    assert.match(
+      source,
+      /-not \$PreserveOutput -or \$_ -ne \$outputVolume/,
+    );
+  },
+);

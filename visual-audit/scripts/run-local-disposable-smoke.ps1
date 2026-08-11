@@ -14,7 +14,8 @@ param(
   [ValidateRange(1, 8)]
   [int]$ReportWorkers = 6,
   [string]$ResumeRunId = "",
-  [string]$ResumeOutputVolume = ""
+  [string]$ResumeOutputVolume = "",
+  [switch]$PreserveOutput
 )
 
 $ErrorActionPreference = "Stop"
@@ -49,6 +50,9 @@ if ($hasResumeRunId -ne $hasResumeOutputVolume) {
   throw "ResumeRunId and ResumeOutputVolume must be supplied together."
 }
 $resumeExistingRun = $hasResumeRunId -and $hasResumeOutputVolume
+if ($resumeExistingRun -and $PreserveOutput) {
+  throw "PreserveOutput is only valid for a new run; resumed output is already retained."
+}
 if ($resumeExistingRun) {
   if ($ResumeRunId -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,191}$") {
     throw "ResumeRunId contains unsupported characters."
@@ -684,6 +688,9 @@ console.log(JSON.stringify({
 
   $failed = $false
   Write-Output "LOCAL_DISPOSABLE_AUDIT_OK=1"
+  if ($PreserveOutput) {
+    Write-Output ("PRESERVED_OUTPUT_VOLUME=" + $outputVolume)
+  }
 }
 finally {
   $existingApp = @(
@@ -734,6 +741,9 @@ console.log(`LOCAL_AUDIT_FAILURE_SUMMARY=${JSON.stringify({
 
   & docker rm -f $appContainer 2>$null | Out-Null
   foreach ($volume in $managedVolumes) {
+    if ($PreserveOutput -and $volume -eq $outputVolume) {
+      continue
+    }
     & docker volume rm -f $volume 2>$null | Out-Null
   }
 
@@ -743,8 +753,23 @@ console.log(`LOCAL_AUDIT_FAILURE_SUMMARY=${JSON.stringify({
   )
   $remainingVolumes = @(
     & docker volume ls --format "{{.Name}}" |
-      Where-Object { $_ -like ("*" + $suffix + "*") }
+      Where-Object {
+        $_ -like ("*" + $suffix + "*") -and
+        (-not $PreserveOutput -or $_ -ne $outputVolume)
+      }
   )
+  $preservedOutputVolumes = @()
+  if ($PreserveOutput) {
+    $preservedOutputVolumes = @(
+      & docker volume ls --format "{{.Name}}" |
+        Where-Object { $_ -eq $outputVolume }
+    )
+  }
   Write-Output ("CLEANUP_CONTAINERS=" + $remainingContainers.Count)
   Write-Output ("CLEANUP_VOLUMES=" + $remainingVolumes.Count)
+  Write-Output ("PRESERVED_OUTPUT_VOLUMES=" + $preservedOutputVolumes.Count)
+
+  if (-not $failed -and $PreserveOutput -and $preservedOutputVolumes.Count -ne 1) {
+    throw "The validated output volume was not preserved."
+  }
 }

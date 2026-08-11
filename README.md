@@ -62,7 +62,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - `ITC_New_Rennie_Mackintosh_Complete_Family_Pack/`: source font assets for the site typography
 - `docker-compose.synology.yml`: Synology runtime model
 - `visual-audit/`: pinned Playwright capture, report, comparison, validation, and NAS automation package
-- `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows live-readonly or clone-only snapshot-lab smoke using fake credentials, synthetic media, non-root containers, and automatically removed volumes
+- `visual-audit/scripts/run-local-disposable-smoke.ps1`: exact-image Windows live-readonly or clone-only snapshot-lab validation using fake credentials, synthetic media, non-root containers, automatic cleanup, and opt-in retention of a validated full-archive output volume
 - `visual-audit/scripts/docker-command.sh`: fail-closed Docker resolution and exact `linux/amd64` image/build-identity checks for Synology archive runs
 - `site/scripts/runtime-state.mjs`: backup, verify, and staging-only restore CLI included in the production image at `/app/site/ops/runtime-state.mjs`
 - `docs/visual-archive.md`: private live-readonly and snapshot-lab operating guide
