@@ -57,6 +57,46 @@ test(
 );
 
 test(
+  "snapshot-lab preparation creates a private writable backup parent and cleans partial state",
+  async () => {
+    const source = await readScript(
+      "prepare-snapshot-lab.sh",
+    );
+
+    assert.match(
+      source,
+      /LAB_RUN_ID.*\^\[A-Za-z0-9\]/,
+    );
+    assert.match(
+      source,
+      /BACKUP_HOST_DIR="\$\{ROOT\}\/site\/data\/\.visual-audit-backup-\$\{LAB_RUN_ID\}"/,
+    );
+    assert.match(
+      source,
+      /cleanup\(\) \{[\s\S]*rm -f -- "\$BACKUP_HOST_PATH"[\s\S]*rmdir -- "\$BACKUP_HOST_DIR"/,
+    );
+    assert.match(
+      source,
+      /status.*-ne 0[\s\S]*rm -rf -- "\$LAB_ROOT"[\s\S]*rm -rf -- "\$LAB_MEDIA_ROOT"/,
+    );
+
+    const trap = source.indexOf("trap cleanup EXIT");
+    const createBackup = source.indexOf(
+      'mkdir -m 700 -- "$BACKUP_HOST_DIR"',
+    );
+    const ownBackup = source.indexOf(
+      'chown "${runtime_uid}:${runtime_gid}" "$BACKUP_HOST_DIR"',
+    );
+    const vacuum = source.indexOf("docker_cmd exec -i -e BACKUP_PATH=");
+
+    assert.ok(trap >= 0);
+    assert.ok(createBackup > trap);
+    assert.ok(ownBackup > createBackup);
+    assert.ok(vacuum > ownBackup);
+  },
+);
+
+test(
   "snapshot-lab failure evidence is captured before disposable resources are removed",
   async () => {
     const source = await readScript(

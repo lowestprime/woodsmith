@@ -282,7 +282,7 @@ visual-audit/scripts/prepare-snapshot-lab.sh
 visual-audit/scripts/run-snapshot-lab.sh
 ```
 
-Preparation performs an online SQLite backup with `VACUUM INTO`, verifies `PRAGMA quick_check`, copies the database into a unique lab root, and creates a Btrfs reflink media copy when supported. If reflinks are unavailable, it performs a full `rsync -a` copy. Hardlinks are forbidden because lab rename/delete operations must not alter production originals.
+Preparation validates the run ID, creates a run-scoped mode-700 backup directory inside the mounted data root, and assigns it to the configured non-root `PUID:PGID` before asking the production container to perform an online SQLite `VACUUM INTO`. It verifies `PRAGMA quick_check`, copies the database into a unique lab root, and removes the transient backup directory on both success and failure. A failed preparation also removes only its validated run-scoped partial data and media trees. The media clone uses a Btrfs reflink when supported and otherwise performs a full `rsync -a` copy. Hardlinks are forbidden because lab rename/delete operations must not alter production originals.
 
 Preparation writes the ignored lab environment with `AUDIT_EVIDENCE_TIER=tier-2-production-clone` and `AUDIT_MEDIA_PROVENANCE=production-clone`. The runner refuses a mismatch before starting Compose.
 

@@ -8,11 +8,18 @@ LAB_ROOT="${ROOT}/visual-audit-lab/${LAB_RUN_ID}"
 LAB_DATA="${LAB_ROOT}/data"
 LAB_MEDIA_ROOT="/volume1/homes/Cooper/visual-audit-lab/${LAB_RUN_ID}"
 LAB_MEDIA="${LAB_MEDIA_ROOT}/pics"
-BACKUP_HOST_PATH="${ROOT}/site/data/backups/visual-audit-lab-${LAB_RUN_ID}.sqlite"
-BACKUP_CONTAINER_PATH="/app/site/data/backups/visual-audit-lab-${LAB_RUN_ID}.sqlite"
+BACKUP_HOST_DIR="${ROOT}/site/data/.visual-audit-backup-${LAB_RUN_ID}"
+BACKUP_HOST_PATH="${BACKUP_HOST_DIR}/woodsmith.sqlite"
+BACKUP_CONTAINER_DIR="/app/site/data/.visual-audit-backup-${LAB_RUN_ID}"
+BACKUP_CONTAINER_PATH="${BACKUP_CONTAINER_DIR}/woodsmith.sqlite"
 
 cd "$ROOT"
 umask 077
+
+if [[ ! "$LAB_RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,95}$ ]]; then
+  printf '%s\n' "LAB_RUN_ID must contain only letters, numbers, periods, underscores, or hyphens." >&2
+  exit 1
+fi
 
 if [[ ! -s .env ]]; then
   printf '%s\n' "Required runtime .env file is missing or empty." >&2
@@ -67,8 +74,56 @@ if [[ ! -d "$MEDIA_SOURCE" || ! -s secrets/woodsmith_visual_audit_token ]]; then
   exit 1
 fi
 
+lab_paths_created=false
+backup_dir_created=false
+
+cleanup() {
+  status=$?
+  trap - EXIT
+  set +e
+
+  if [[ "$backup_dir_created" == "true" ]]; then
+    rm -f -- "$BACKUP_HOST_PATH"
+    rmdir -- "$BACKUP_HOST_DIR" 2>/dev/null || true
+  fi
+
+  if [[ "$status" -ne 0 && "$lab_paths_created" == "true" ]]; then
+    case "$LAB_ROOT" in
+      "${ROOT}/visual-audit-lab/"*) rm -rf -- "$LAB_ROOT" ;;
+      *) printf 'Refusing unsafe snapshot-lab data cleanup: %s\n' "$LAB_ROOT" >&2 ;;
+    esac
+
+    case "$LAB_MEDIA_ROOT" in
+      "/volume1/homes/Cooper/visual-audit-lab/"*) rm -rf -- "$LAB_MEDIA_ROOT" ;;
+      *) printf 'Refusing unsafe snapshot-lab media cleanup: %s\n' "$LAB_MEDIA_ROOT" >&2 ;;
+    esac
+  fi
+
+  exit "$status"
+}
+
+trap cleanup EXIT
+
+lab_paths_created=true
 mkdir -p "$LAB_DATA" "$LAB_MEDIA"
 chmod 700 "$LAB_ROOT" "$LAB_MEDIA_ROOT" "$LAB_DATA" "$LAB_MEDIA"
+
+mkdir -m 700 -- "$BACKUP_HOST_DIR"
+backup_dir_created=true
+chown "${runtime_uid}:${runtime_gid}" "$BACKUP_HOST_DIR"
+chmod 700 "$BACKUP_HOST_DIR"
+
+backup_owner="$(stat -c '%u:%g' "$BACKUP_HOST_DIR")"
+if [[ "$backup_owner" != "${runtime_uid}:${runtime_gid}" ]]; then
+  printf \
+    'Snapshot-lab backup directory ownership mismatch: %s is %s, expected %s:%s.\n' \
+    "$BACKUP_HOST_DIR" \
+    "$backup_owner" \
+    "$runtime_uid" \
+    "$runtime_gid" \
+    >&2
+  exit 1
+fi
 
 docker_cmd exec -i -e BACKUP_PATH="$BACKUP_CONTAINER_PATH" woodsmith node --experimental-sqlite - <<'NODE'
 const fs = require("node:fs");
@@ -78,11 +133,18 @@ const destination = process.env.BACKUP_PATH;
 if (!destination) throw new Error("BACKUP_PATH is missing.");
 if (fs.existsSync(destination)) throw new Error("Refusing to overwrite an existing lab backup.");
 const database = new DatabaseSync(source);
-database.exec(`VACUUM INTO '${destination.replaceAll("'", "''")}'`);
-database.close();
+try {
+  database.exec(`VACUUM INTO '${destination.replaceAll("'", "''")}'`);
+} finally {
+  database.close();
+}
 const verification = new DatabaseSync(destination, { readOnly: true });
-const result = verification.prepare("PRAGMA quick_check").all();
-verification.close();
+let result;
+try {
+  result = verification.prepare("PRAGMA quick_check").all();
+} finally {
+  verification.close();
+}
 if (!result.some((row) => row.quick_check === "ok")) throw new Error("Snapshot-lab database quick_check failed.");
 console.log("Snapshot-lab database quick_check: ok");
 NODE
