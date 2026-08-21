@@ -8,7 +8,6 @@ import {
 
 import {
   deletePostAction,
-  loadMediaPageAction,
   savePostAutosaveAction,
   type PostAutosavePatch
 } from "@/lib/actions";
@@ -395,9 +394,6 @@ export function StudioPostEditor({
           helperText="Choose a cover image from the mounted media library."
           items={mediaItems}
           label="Cover media"
-          loadPageAction={
-            loadMediaPageAction
-          }
           name="coverMediaPath"
           onSelectionChange={selectCover}
         />

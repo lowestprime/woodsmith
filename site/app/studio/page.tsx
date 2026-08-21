@@ -308,9 +308,6 @@ function NewPageEditor({
           helperText="Choose one image or video from the mounted media library."
           items={mediaItems}
           label="Hero media"
-          loadPageAction={
-            loadMediaPageAction
-          }
           name="heroMediaPath"
         />
 
@@ -412,7 +409,7 @@ function NewPieceEditor({ piece, categories, mediaItems, mediaLinks, highlight =
         <Area label="Story" name="story" defaultValue={piece.story} rows={5} />
         <Area label="Details, one per line" name="detailsText" defaultValue={piece.details.join("\n")} rows={4} />
         <div className="field-grid two-up compact-grid"><Area label="Materials" name="materialsText" defaultValue={piece.materials.join("\n")} rows={4} /><Area label="Tags" name="tagsText" defaultValue={piece.tags.join(", ")} rows={4} /></div>
-        <PieceMediaEditor entityKey={`piece:${piece.slug}`} items={mediaItems} legacyPaths={piece.mediaPaths} links={mediaLinks} loadPageAction={loadMediaPageAction} />
+        <PieceMediaEditor entityKey={`piece:${piece.slug}`} items={mediaItems} legacyPaths={piece.mediaPaths} links={mediaLinks} publicAssignmentPieceSlug={piece.slug} />
         <div className="field-grid three-up compact-grid"><Field label="Width" name="width" defaultValue={piece.dimensions?.width ?? ""} type="number" /><Field label="Depth" name="depth" defaultValue={piece.dimensions?.depth ?? ""} type="number" /><Field label="Height" name="height" defaultValue={piece.dimensions?.height ?? ""} type="number" /></div>
         <div className="field-grid three-up compact-grid"><Field label="Asking price cents" name="priceCents" defaultValue={piece.priceCents ?? ""} type="number" /><Field label="Internal estimate cents" name="internalEstimateCents" defaultValue={piece.internalEstimateCents ?? ""} type="number" /><Field label="Public price label" name="publicPriceLabel" defaultValue={piece.publicPriceLabel ?? ""} /></div>
         <div className="field-grid three-up compact-grid"><Field label="Inventory" name="inventoryCount" defaultValue={piece.inventoryCount} type="number" /><Field label="Lead time days" name="leadTimeDays" defaultValue={piece.leadTimeDays} type="number" /><Field label="Commission type" name="commissionTypeSlug" defaultValue={piece.commissionTypeSlug ?? ""} /></div>
@@ -470,7 +467,7 @@ function NewPostEditor({ post, mediaItems, highlight = false }: { post: Omit<Pos
         <Area label="Excerpt" name="excerpt" defaultValue={post.excerpt} rows={3} />
         <Area label="Body" name="body" defaultValue={post.body} rows={8} />
         <Field label="Published at" name="publishedAt" defaultValue={post.publishedAt ?? ""} />
-        <MediaPicker defaultValue={post.coverMediaPath} helperText="Choose a cover image from the mounted media library." items={mediaItems} label="Cover media" loadPageAction={loadMediaPageAction} name="coverMediaPath" />
+        <MediaPicker defaultValue={post.coverMediaPath} helperText="Choose a cover image from the mounted media library." items={mediaItems} label="Cover media" name="coverMediaPath" />
         <div className="field-grid two-up compact-grid"><Field label="Source URL" name="sourceUrl" defaultValue={post.sourceUrl ?? ""} /><Field label="Source label" name="sourceLabel" defaultValue={post.sourceLabel ?? ""} /></div>
         <Area label="Tags" name="tagsText" defaultValue={post.tags.join(", ")} rows={2} />
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
@@ -618,7 +615,7 @@ function NewUserEditor({
           <label><span>Role</span><select defaultValue={user.role} name="role"><option value="admin">Admin</option><option value="woodworker">Woodworker</option><option value="customer">Customer</option></select></label>
           <Field label="Headline" name="headline" defaultValue={user.headline} />
         </div>
-        <MediaPicker defaultValue={user.avatarPath} helperText="Choose a profile image from the mounted media library." items={mediaItems} label="Profile image" loadPageAction={loadMediaPageAction} name="avatarPath" />
+        <MediaPicker defaultValue={user.avatarPath} helperText="Choose a profile image from the mounted media library." items={mediaItems} label="Profile image" name="avatarPath" />
         <Area label="Bio" name="bio" defaultValue={user.bio} rows={4} />
         <div className="field-grid three-up compact-grid"><Field label="Website URL" name="websiteUrl" defaultValue={link("website")} /><Field label="Instagram URL" name="instagramUrl" defaultValue={link("instagram")} /><Field label="GitHub URL" name="githubUrl" defaultValue={link("github")} /></div>
         <div className="field-grid three-up compact-grid">

@@ -11,10 +11,6 @@ import {
   MediaPicker,
   type MediaPickerItem
 } from "@/components/media-picker";
-import type {
-  MediaPageRequest,
-  MediaPageResult
-} from "@/lib/actions";
 import { toMediaUrl } from "@/lib/format";
 import {
   mediaDirectPublicEligible
@@ -53,10 +49,7 @@ type PieceMediaEditorProps = {
   items: MediaPickerItem[];
   legacyPaths: string[];
   links: PieceMediaEditorLinkInput[];
-  loadPageAction:
-    (
-      request: MediaPageRequest
-    ) => Promise<MediaPageResult>;
+  publicAssignmentPieceSlug?: string;
   onLinksChange?: (
     links: NormalizedPieceMediaLink[],
     mode: PieceMediaEditorChangeMode
@@ -102,7 +95,7 @@ export function PieceMediaEditor({
   items,
   legacyPaths,
   links: initialLinks,
-  loadPageAction,
+  publicAssignmentPieceSlug,
   onLinksChange
 }: PieceMediaEditorProps) {
   const signature =
@@ -448,11 +441,11 @@ export function PieceMediaEditor({
         items={items}
         key={`${entityKey}:display:${displayPaths.join("\u0000")}`}
         label="Public gallery"
-        loadPageAction={
-          loadPageAction
-        }
         maxSelections={12}
         name="galleryMediaSelection"
+        publicAssignmentPieceSlug={
+          publicAssignmentPieceSlug
+        }
         onSelectionChange={(
           paths
         ) =>
@@ -471,11 +464,11 @@ export function PieceMediaEditor({
         items={items}
         key={`${entityKey}:build:${buildPaths.join("\u0000")}`}
         label="Build record media"
-        loadPageAction={
-          loadPageAction
-        }
         maxSelections={24}
         name="buildMediaSelection"
+        publicAssignmentPieceSlug={
+          publicAssignmentPieceSlug
+        }
         onSelectionChange={(
           paths
         ) =>

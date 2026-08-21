@@ -8,7 +8,6 @@ import {
 
 import {
   deletePieceAction,
-  loadMediaPageAction,
   savePieceAutosaveAction,
   type PieceAutosaveEntity,
   type PieceAutosaveInquiryMode,
@@ -652,22 +651,6 @@ export function StudioPieceEditor({
         queueRef.current =
           queue;
       },
-      []
-    );
-
-  const loadPieceMediaPage =
-    useCallback(
-      (
-        request:
-          Parameters<
-            typeof loadMediaPageAction
-          >[0]
-      ) =>
-        loadMediaPageAction({
-          ...request,
-          publicAssignmentPieceSlug:
-            pieceRef.current.slug
-        }),
       []
     );
 
@@ -1401,11 +1384,11 @@ export function StudioPieceEditor({
           links={
             draft.mediaLinks
           }
-          loadPageAction={
-            loadPieceMediaPage
-          }
           onLinksChange={
             updateMediaLinks
+          }
+          publicAssignmentPieceSlug={
+            draft.slug
           }
         />
 

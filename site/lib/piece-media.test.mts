@@ -676,7 +676,7 @@ test("WP03 Slice C source contract removes approval gates and preserves atomic d
   }
 });
 
-test("media picker dialog stops picker-local input and change events before the parent autosave boundary", async () => {
+test("media picker browsing stays outside parent autosave and mutation transports", async () => {
   const { readFile } = await import("node:fs/promises");
   const source = await readFile(
     new URL("../components/media-picker.tsx", import.meta.url),
@@ -704,6 +704,8 @@ test("media picker dialog stops picker-local input and change events before the 
   const openingTag = source.slice(openingStart, openingEnd + 1);
 
   for (const token of [
+    'data-studio-autosave="ignore"',
+    "onBlur={(event) => event.stopPropagation()}",
     "onInput={(event) => event.stopPropagation()}",
     "onChange={(event) => event.stopPropagation()}"
   ]) {
@@ -723,4 +725,54 @@ test("media picker dialog stops picker-local input and change events before the 
   if (!source.includes("onSelectionChange?.([relativePath])")) {
     throw new Error("The picker single-selection callback was not preserved.");
   }
+
+  for (const token of [
+    'fetch(',
+    '`/api/studio/media-library?${searchParams.toString()}`',
+    'credentials: "same-origin"',
+    'cache: "no-store"'
+  ]) {
+    assert.equal(
+      source.includes(token),
+      true,
+      `The media picker read-only GET transport lacks ${token}.`
+    );
+  }
+
+  assert.equal(
+    source.includes("loadPageAction"),
+    false,
+    "Media picker browsing must not invoke a POST-backed Next server action."
+  );
+});
+
+test("media library pagination is an authenticated private GET route", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const route = await readFile(
+    new URL(
+      "../app/api/studio/media-library/route.ts",
+      import.meta.url
+    ),
+    "utf8"
+  );
+
+  for (const token of [
+    "export async function GET(",
+    "getCurrentUser()",
+    'user.role !== "admin"',
+    "loadMediaPage(mediaRequest)",
+    '"private, no-store, max-age=0"'
+  ]) {
+    assert.equal(
+      route.includes(token),
+      true,
+      `The media library GET boundary lacks ${token}.`
+    );
+  }
+
+  assert.equal(
+    /export\s+async\s+function\s+POST\s*\(/.test(route),
+    false,
+    "Read-only media library pagination must not expose a POST handler."
+  );
 });

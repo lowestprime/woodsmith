@@ -191,9 +191,18 @@ import {
   type NormalizedPieceMediaLink
 } from "@/lib/piece-media";
 import {
-  classifyMediaAccess,
   mediaDirectPublicEligible
 } from "@/lib/media-access";
+import {
+  loadMediaPage,
+  mediaRecordForPieceEditor,
+  type MediaPageRequest,
+  type MediaPageResult
+} from "@/lib/media-page";
+export type {
+  MediaPageRequest,
+  MediaPageResult
+} from "@/lib/media-page";
 import {
   NOTIFICATION_RECIPIENT_MODES,
   validateNotificationTemplate
@@ -260,61 +269,6 @@ function revalidateMediaSurfaces(affected?: {
   for (const slug of affected.pageSlugs) {
     revalidatePath(slug === "home" ? "/" : `/${slug}`);
   }
-}
-
-function pieceEditorMediaAccess(
-  relativePath: string,
-  pieceSlug?: string | null
-) {
-  const associations =
-    getMediaAccessAssociations(
-      relativePath
-    );
-
-  const privateAssociation =
-    listPieceMediaLinksForPath(
-      relativePath
-    ).some(
-      (link) =>
-        link.role ===
-          "private-project" ||
-        (
-          !link.public &&
-          link.pieceSlug !==
-            pieceSlug
-        )
-    );
-
-  return classifyMediaAccess(
-    relativePath,
-    {
-      ...associations,
-      privateAssociation
-    }
-  );
-}
-
-function mediaRecordForPieceEditor(
-  media: MediaRecord,
-  pieceSlug?: string | null
-): MediaRecord {
-  const access =
-    pieceEditorMediaAccess(
-      media.relativePath,
-      pieceSlug
-    );
-
-  return {
-    ...media,
-    metadata: {
-      ...media.metadata,
-      mediaAccessKind:
-        access.kind,
-      mediaDirectPublicEligible:
-        access.kind ===
-        "public-library"
-    }
-  };
 }
 
 function canonicalizeDirectPieceMediaLinks(
@@ -3218,34 +3172,6 @@ export type MediaActionResult =
   | { ok: true; kind: "refresh" | "folder-rule"; message: string; preview: MediaFolderRulePreview }
   | { ok: false; kind: "error"; message: string };
 
-export type MediaPageRequest = {
-  page?: number;
-  pageSize?: number;
-  query?: string;
-  pieceSlug?: string;
-  assignment?: MediaAssignmentFilter;
-  assignmentSource?: MediaAssignmentSourceFilter;
-  sort?: MediaSort;
-  kind?: MediaKindFilter;
-  aiFilter?: MediaAiFilter;
-  publicAssignmentPieceSlug?: string;
-};
-
-export type MediaPageResult = {
-  ok: true;
-  items: MediaRecord[];
-  total: number;
-  page: number;
-  pageSize: number;
-  query: string;
-  pieceSlug: string;
-  assignment: MediaAssignmentFilter;
-  assignmentSource: MediaAssignmentSourceFilter;
-  sort: MediaSort;
-  kind: MediaKindFilter;
-  aiFilter: MediaAiFilter;
-};
-
 export type MediaVerificationEntry = {
   pieceSlug: string;
   pieceTitle: string;
@@ -3264,81 +3190,7 @@ function mediaActionFailure(error: unknown, fallback: string): MediaActionResult
 
 export async function loadMediaPageAction(request: MediaPageRequest): Promise<MediaPageResult> {
   await requireAdmin();
-  const pageSize = Math.round(clampNumber(String(request.pageSize ?? 48), 48, 12, 96));
-  const query = request.query?.trim().slice(0, 160) ?? "";
-  const pieceSlug = request.pieceSlug?.trim().slice(0, 160) ?? "";
-  const assignment: MediaAssignmentFilter = ["unassigned", "assigned", "review"].includes(request.assignment ?? "")
-    ? request.assignment as MediaAssignmentFilter
-    : "all";
-  const assignmentSourceValues = ["none", ...MEDIA_ASSIGNMENT_SOURCES] as readonly string[];
-  const assignmentSource: MediaAssignmentSourceFilter = assignmentSourceValues.includes(String(request.assignmentSource ?? ""))
-    ? request.assignmentSource as MediaAssignmentSourceFilter
-    : "all";
-  const sort: MediaSort = MEDIA_SORTS.includes(request.sort as MediaSort)
-    ? request.sort as MediaSort
-    : "updated-desc";
-  const kind: MediaKindFilter = ["image", "video"].includes(request.kind ?? "")
-    ? request.kind as MediaKindFilter
-    : "all";
-  const aiFilter: MediaAiFilter = ["high", "ambiguous", "details", "unanalyzed", "missing-alt", "representatives"].includes(request.aiFilter ?? "")
-    ? request.aiFilter as MediaAiFilter
-    : "all";
-  const options = {
-    includeUnreviewed: true,
-    ...(query ? { query } : {}),
-    ...(pieceSlug ? { pieceSlug } : {}),
-    assignment,
-    assignmentSource,
-    sort,
-    kind,
-    aiFilter
-  } as const;
-  const total = countMedia(options);
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const page = Math.min(totalPages, Math.max(1, Math.round(Number(request.page) || 1)));
-  const publicAssignmentPieceSlug =
-    request
-      .publicAssignmentPieceSlug
-      ?.trim()
-      .slice(
-        0,
-        160
-      ) ||
-    null;
-
-  const items =
-    listMedia({
-      ...options,
-      limit:
-        pageSize,
-      offset:
-        (
-          page -
-          1
-        ) *
-        pageSize
-    }).map(
-      (media) =>
-        mediaRecordForPieceEditor(
-          media,
-          publicAssignmentPieceSlug
-        )
-    );
-
-  return {
-    ok: true,
-    items,
-    total,
-    page,
-    pageSize,
-    query,
-    pieceSlug,
-    assignment,
-    assignmentSource,
-    sort,
-    kind,
-    aiFilter
-  };
+  return loadMediaPage(request);
 }
 
 export async function loadMediaVerificationQueueAction(): Promise<MediaVerificationEntry[]> {

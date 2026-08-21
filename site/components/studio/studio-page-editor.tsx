@@ -8,7 +8,6 @@ import {
 
 import {
   deletePageAction,
-  loadMediaPageAction,
   savePageAutosaveAction,
   type PageAutosavePatch
 } from "@/lib/actions";
@@ -570,9 +569,6 @@ export function StudioPageEditor({
           helperText="Choose one image or video from the mounted media library."
           items={mediaItems}
           label="Hero media"
-          loadPageAction={
-            loadMediaPageAction
-          }
           name="heroMediaPath"
           onSelectionChange={
             selectHeroMedia

@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useDeferredValue, useEffect, useRef, useState, useTransition, type KeyboardEvent } from "react";
-import type { MediaPageRequest, MediaPageResult } from "@/lib/actions";
+import type { MediaPageResult } from "@/lib/media-page";
 import { cn, toMediaUrl } from "@/lib/format";
 
 export type MediaPickerItem = {
@@ -28,7 +28,7 @@ type MediaPickerProps = {
   defaultValue?: string | string[] | null;
   helperText?: string;
   maxSelections?: number;
-  loadPageAction?: (request: MediaPageRequest) => Promise<MediaPageResult>;
+  publicAssignmentPieceSlug?: string;
   onSelectionChange?: (paths: string[]) => void;
 };
 
@@ -56,7 +56,7 @@ export function MediaPicker({
   defaultValue = null,
   helperText,
   maxSelections,
-  loadPageAction,
+  publicAssignmentPieceSlug,
   onSelectionChange
 }: MediaPickerProps) {
   const multiple = selectionMode === "multiple";
@@ -122,10 +122,59 @@ export function MediaPicker({
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function loadBrowserPage(nextPage: number, nextQuery = deferredQuery) {
-    if (!loadPageAction) return;
     setLoadError("");
+    const searchParams = new URLSearchParams({
+      page: String(nextPage),
+      pageSize: String(pageSize),
+      query: nextQuery,
+      kind: "all",
+      assignment: "all",
+      aiFilter: "all"
+    });
+    if (publicAssignmentPieceSlug) {
+      searchParams.set(
+        "publicAssignmentPieceSlug",
+        publicAssignmentPieceSlug
+      );
+    }
     startTransition(() => {
-      void loadPageAction({ page: nextPage, pageSize, query: nextQuery, kind: "all", assignment: "all", aiFilter: "all" })
+      void fetch(
+        `/api/studio/media-library?${searchParams.toString()}`,
+        {
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            Accept: "application/json"
+          }
+        }
+      )
+        .then(async (response) => {
+          const result = await response
+            .json()
+            .catch(() => null) as
+              | MediaPageResult
+              | {
+                  ok?: false;
+                  message?: string;
+                }
+              | null;
+          if (
+            !response.ok ||
+            !result ||
+            result.ok !== true
+          ) {
+            throw new Error(
+              (
+                result &&
+                "message" in result
+                  ? result.message
+                  : ""
+              ) ||
+              "The media library could not be loaded."
+            );
+          }
+          return result;
+        })
         .then((result) => {
           const nextItems = result.items as MediaPickerItem[];
           setBrowserItems(nextItems);
@@ -210,7 +259,7 @@ export function MediaPicker({
       {open ? (
         <div className="media-picker-shell" role="presentation">
           <button aria-label="Close media browser" className="media-picker-backdrop" onClick={closeBrowser} type="button" />
-          <div aria-labelledby={`media-picker-${name}`} aria-modal="true" className="media-picker-dialog" onChange={(event) => event.stopPropagation()} onInput={(event) => event.stopPropagation()} ref={dialogRef} role="dialog">
+          <div aria-labelledby={`media-picker-${name}`} aria-modal="true" className="media-picker-dialog" data-studio-autosave="ignore" onBlur={(event) => event.stopPropagation()} onChange={(event) => event.stopPropagation()} onInput={(event) => event.stopPropagation()} ref={dialogRef} role="dialog">
             <div className="media-picker-toolbar"><div><h3 id={`media-picker-${name}`}>{label}</h3><p className="muted-copy">Browse the writable mounted library. Selection is saved with the content record; no path entry is required.</p></div><button aria-label="Close media browser" className="lightbox-close media-picker-close" onClick={closeBrowser} type="button">×</button></div>
             <div className="media-picker-controls">
               <label><span>Search</span><span className="media-picker-search-row"><input onKeyDown={onSearchKeyDown} onChange={(event) => setQuery(event.target.value)} placeholder="Filename, folder, tag, or assignment" ref={searchRef} type="search" value={query} /><button className="button-secondary" disabled={loading} onClick={() => loadBrowserPage(1, query)} type="button">Search</button></span></label>

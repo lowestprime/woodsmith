@@ -7,7 +7,6 @@ import {
 
 import {
   deleteUserProfileAdminAction,
-  loadMediaPageAction,
   saveUserProfileAutosaveAction,
   type UserProfileAutosavePatch
 } from "@/lib/actions";
@@ -409,9 +408,6 @@ export function StudioProfileEditor({
           helperText="Choose a profile image from the mounted media library."
           items={mediaItems}
           label="Profile image"
-          loadPageAction={
-            loadMediaPageAction
-          }
           name="avatarPath"
           onSelectionChange={selectAvatar}
         />
