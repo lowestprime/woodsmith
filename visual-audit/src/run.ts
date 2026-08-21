@@ -831,11 +831,7 @@ async function captureFormValidationStates(input: {
       element => {
         const field =
           element as HTMLInputElement;
-        if (field.form) {
-          field.form.reportValidity();
-        } else {
-          field.reportValidity();
-        }
+        field.reportValidity();
       }
     );
 

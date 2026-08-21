@@ -216,3 +216,30 @@ test(
     );
   },
 );
+
+test(
+  "validation-state capture reports only the visible required control",
+  async () => {
+    const source = await readFile(
+      new URL("../src/run.ts", import.meta.url),
+      "utf8",
+    );
+    const start = source.indexOf(
+      "async function captureFormValidationStates",
+    );
+    const end = source.indexOf(
+      "function snapshotMutationCompleted",
+      start,
+    );
+
+    assert.ok(start >= 0);
+    assert.ok(end > start);
+
+    const validationCapture = source.slice(start, end);
+    assert.match(validationCapture, /field\.reportValidity\(\)/);
+    assert.doesNotMatch(
+      validationCapture,
+      /field\.form\.reportValidity\(\)/,
+    );
+  },
+);
