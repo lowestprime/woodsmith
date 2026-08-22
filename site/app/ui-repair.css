@@ -3533,6 +3533,16 @@ main:focus {
 
 .search-result-status {
   margin-block: 0.75rem;
+  overflow-wrap: anywhere;
+}
+
+.search-results,
+.search-results > .studio-panel {
+  min-width: 0;
+}
+
+.search-results :where(h2, a, p) {
+  overflow-wrap: anywhere;
 }
 
 @media (max-width: 520px) {

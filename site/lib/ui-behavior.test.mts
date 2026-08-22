@@ -1,7 +1,13 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { browserOperationId } from "./browser-id.ts";
 import { secureCookieRequired } from "./cookie-policy.ts";
+import {
+  formatDate,
+  formatDateTime,
+  WOODSHOP_TIME_ZONE
+} from "./format.ts";
 import {
   clampLightboxZoom,
   clampPanOffset,
@@ -63,4 +69,39 @@ test("lightbox zoom and pan stay within visible bounds", () => {
   assert.deepEqual(clampPanOffset({ x: 80, y: -60 }, 1, { width: 400, height: 300 }), { x: 0, y: 0 });
   assert.deepEqual(clampPanOffset({ x: 999, y: -999 }, 2, { width: 400, height: 300 }), { x: 200, y: -150 });
   assert.deepEqual(clampPanOffset({ x: Number.NaN, y: Number.POSITIVE_INFINITY }, 2, { width: 400, height: 300 }), { x: 0, y: 0 });
+});
+
+test("woodshop dates are stable across server host timezones", () => {
+  const originalTimezone = process.env.TZ;
+  const outputs = new Set<string>();
+
+  try {
+    for (const timezone of ["UTC", "Pacific/Honolulu", "Asia/Tokyo"]) {
+      process.env.TZ = timezone;
+      outputs.add(formatDateTime("2026-08-22T06:30:00.000Z"));
+    }
+  } finally {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  }
+
+  assert.equal(WOODSHOP_TIME_ZONE, "America/Los_Angeles");
+  assert.deepEqual([...outputs], ["Aug 21, 2026, 11:30 PM"]);
+  assert.equal(formatDate("2026-08-22T06:30:00.000Z"), "August 21, 2026");
+});
+
+test("search result cards cannot expand the document for unbroken metadata", async () => {
+  const [styles, page] = await Promise.all([
+    readFile(new URL("../app/ui-repair.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/search/page.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(page, /className="search-results"/);
+  assert.match(page, /className="studio-panel"/);
+  assert.match(styles, /\.search-results > \.studio-panel\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.search-results :where\(h2, a, p\)\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(styles, /\.search-result-status\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 });

@@ -14,6 +14,10 @@ import {
 
 import { chromiumLaunchOptions } from "./browser-launch.js";
 import {
+  VISUAL_AUDIT_NO_RESULTS_QUERY,
+  VISUAL_AUDIT_NO_RESULTS_ROUTE
+} from "./audit-sentinels.js";
+import {
   buildAccelerationProvenance,
   probeBrowserGpu,
   probeCuda,
@@ -2592,7 +2596,7 @@ async function captureMediaPickers(input: {
         .catch(() => false)
     ) {
       await filter.fill(
-        "__visual_audit_no_results__"
+        VISUAL_AUDIT_NO_RESULTS_QUERY
       );
       await dialog.getByRole("button", { name: "Search" }).click();
       await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => input.page.waitForTimeout(500));
@@ -2797,7 +2801,7 @@ function routesForCurrentScope(routes: ReturnType<typeof buildRoutes>, inventory
     "/shop",
     "/commissions",
     "/contact",
-    "/search?q=__visual_audit_no_results__",
+    VISUAL_AUDIT_NO_RESULTS_ROUTE,
     "/account/login",
     "/studio/login",
     "/__visual-audit-route-not-found__"
