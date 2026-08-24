@@ -45,10 +45,12 @@ import {
 } from "./config.js";
 import {
   isExpectedCaptureTeardownAbort,
+  isExpectedCompletedMediaRangeAbort,
   isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
+  isValidPartialMediaResponse,
   requestBlockKey
 } from "./diagnostics.js";
 import {
@@ -284,6 +286,7 @@ function attachDiagnostics(
   blockedRequests: ReadonlySet<string>
 ) {
   const pendingRequests = new Set<Request>();
+  const validPartialMediaRequests = new WeakSet<Request>();
   pendingVisualRequests.set(page, pendingRequests);
   pageCapturePhases.set(page, "diagnostics-attached");
 
@@ -371,6 +374,10 @@ function attachDiagnostics(
       route,
       message: `${method} ${request.url()} — ${failure} [phase=${pageCapturePhases.get(page) ?? "unknown"}]`,
       expected: isExpectedNextPrefetchAbort(evidence) ||
+        isExpectedCompletedMediaRangeAbort({
+          ...evidence,
+          validPartialResponseObserved: validPartialMediaRequests.has(request)
+        }) ||
         isExpectedCompletedSnapshotMutationAbort({
           targetMode: config.targetMode,
           method,
@@ -384,6 +391,16 @@ function attachDiagnostics(
   page.on("response", response => {
     const request = response.request();
     const method = request.method().toUpperCase();
+
+    if (
+      request.resourceType() === "media" &&
+      isValidPartialMediaResponse({
+        status: response.status(),
+        headers: response.headers()
+      })
+    ) {
+      validPartialMediaRequests.add(request);
+    }
 
     if (
       isUnsafeMethod(method) &&

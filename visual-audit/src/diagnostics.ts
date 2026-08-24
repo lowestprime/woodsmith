@@ -9,6 +9,55 @@ export type RequestFailureEvidence = {
   baseUrl: string;
 };
 
+export function isValidPartialMediaResponse(input: {
+  status: number;
+  headers: Record<string, string>;
+}) {
+  if (input.status !== 206) return false;
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.trim().toLowerCase()])
+  );
+  if (headers["accept-ranges"] !== "bytes") return false;
+
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headers["content-range"] ?? "");
+  if (!match) return false;
+
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = Number(match[3]);
+  const length = Number(headers["content-length"]);
+  return [start, end, total, length].every(Number.isSafeInteger) &&
+    start >= 0 &&
+    end >= start &&
+    total > end &&
+    length === end - start + 1;
+}
+
+export function isExpectedCompletedMediaRangeAbort(input: RequestFailureEvidence & {
+  validPartialResponseObserved: boolean;
+}) {
+  if (!input.validPartialResponseObserved) return false;
+
+  const method = input.method.toUpperCase();
+  if (
+    !input.failure.includes("ERR_ABORTED") ||
+    !["GET", "HEAD"].includes(method) ||
+    input.resourceType !== "media" ||
+    !isSameOrigin(input.url, input.baseUrl)
+  ) {
+    return false;
+  }
+
+  const requestUrl = new URL(input.url);
+  if (!requestUrl.pathname.startsWith("/media/")) return false;
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.toLowerCase()])
+  );
+  return /^bytes=\d*-\d*$/.test(headers.range ?? "");
+}
+
 export function requestBlockKey(method: string, url: string) {
   return `${method.toUpperCase()} ${url}`;
 }

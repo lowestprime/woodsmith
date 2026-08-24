@@ -3,11 +3,13 @@ import test from "node:test";
 
 import {
   isExpectedCaptureTeardownAbort,
+  isExpectedCompletedMediaRangeAbort,
   isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
   isExpectedAuditMutationBlock,
   isKnownExpectedDiagnostic,
+  isValidPartialMediaResponse,
   requestBlockKey
 } from "./diagnostics.js";
 
@@ -45,6 +47,37 @@ test("only safe same-origin visual requests canceled during deliberate teardown 
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, method: "POST" }, true), false);
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, resourceType: "fetch" }, true), false);
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, failure: "net::ERR_CONNECTION_RESET" }, true), false);
+});
+
+test("only completed direct-media byte ranges may end in an expected browser cancellation", () => {
+  const response = {
+    status: 206,
+    headers: {
+      "accept-ranges": "bytes",
+      "content-range": "bytes 0-1023/4096",
+      "content-length": "1024"
+    }
+  };
+  assert.equal(isValidPartialMediaResponse(response), true);
+  assert.equal(isValidPartialMediaResponse({ ...response, status: 200 }), false);
+  assert.equal(isValidPartialMediaResponse({ ...response, headers: { ...response.headers, "content-range": "bytes */4096" } }), false);
+  assert.equal(isValidPartialMediaResponse({ ...response, headers: { ...response.headers, "content-length": "1023" } }), false);
+
+  const input = {
+    ...baseFailure,
+    url: "https://woodmat.ch/media/Furniture/work-video.mp4",
+    resourceType: "media",
+    headers: { range: "bytes=0-" },
+    validPartialResponseObserved: true
+  };
+  assert.equal(isExpectedCompletedMediaRangeAbort(input), true);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, validPartialResponseObserved: false }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, url: "https://other.example/work-video.mp4" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, url: "https://woodmat.ch/api/video" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, resourceType: "fetch" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, method: "POST" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, headers: {} }), false);
 });
 
 test("only a clone mutation with an observed successful response may end in an expected abort", () => {
