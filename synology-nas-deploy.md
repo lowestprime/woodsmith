@@ -246,9 +246,10 @@ docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'test -w /ap
 curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
 etag=$(curl -sS -D - -o /dev/null http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG | awk 'BEGIN{IGNORECASE=1} /^etag:/{sub(/\r$/, "", $2); print $2; exit}')
 curl -sS -o /dev/null -w '%{http_code}\n' -H "If-None-Match: $etag" http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+curl -sS -D - -o /dev/null -H 'Range: bytes=0-1023' http://127.0.0.1:3002/media/Furniture/scientists-desk/scientists-desk_video_1.mp4
 ```
 
-An unchanged conditional request must return **304**. Media responses include ETag and Last-Modified validators with immediate revalidation, so browser and Next image-cache entries can avoid retransferring unchanged originals without hiding same-path updates. Missing or removed files must return **404** (not a broken stream). Stale `media_items` rows pointing at deleted paths used to trigger `failed to pipe response` in logs when the dashboard rendered hundreds of thumbnails at once.
+An unchanged conditional request must return **304**. The byte-range request must return **206**, `Accept-Ranges: bytes`, `Content-Range: bytes 0-1023/<full-size>`, and `Content-Length: 1024`; an interval beginning beyond the file must return **416** with `Content-Range: bytes */<full-size>`. Media responses include ETag and Last-Modified validators with immediate revalidation, so browser and Next image-cache entries can avoid retransferring unchanged originals without hiding same-path updates. Bounded range delivery lets browser video metadata and seek requests complete without transferring an entire original MP4. Missing or removed files must return **404** (not a broken stream). Stale `media_items` rows pointing at deleted paths used to trigger `failed to pipe response` in logs when the dashboard rendered hundreds of thumbnails at once.
 
 Portfolio, shop, cart, and carousel thumbnails use the mounted writable Next image cache at `/app/site/.next/cache`; the full-screen lightbox still requests the original `/media/...` source. Keep that cache mount writable and retain the configured Next image qualities during upgrades.
 
