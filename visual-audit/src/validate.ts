@@ -18,6 +18,7 @@ import {
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
 import { buildNoOverlapReport, type NoOverlapReport } from "./media-overlap.js";
 import { buildMediaEvidenceReports } from "./media-evidence.js";
+import { inspectPdfStructure } from "./pdf-validation.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
 import type { RunManifest } from "./types.js";
 import { exists, listFiles, relativeTo, writeJsonAtomic } from "./util.js";
@@ -41,13 +42,12 @@ async function validatePdf(file: string, failures: string[]) {
     failures.push(`Compiled PDF is missing: ${relativeTo(config.runRoot, file)}`);
     return 0;
   }
-  const data = await fs.readFile(file);
-  if (!data.subarray(0, 5).equals(Buffer.from("%PDF-"))) failures.push(`Invalid PDF header: ${relativeTo(config.runRoot, file)}`);
-  const text = data.toString("latin1");
-  const pageCount = (text.match(/\/Type\s*\/Page\b/g) ?? []).length;
-  if (pageCount < 1) failures.push(`PDF contains no detectable pages: ${relativeTo(config.runRoot, file)}`);
-  if (!/\/Outlines\b/.test(text)) failures.push(`PDF does not contain an outline/bookmark tree: ${relativeTo(config.runRoot, file)}`);
-  return pageCount;
+  const inspection = await inspectPdfStructure(file);
+  if (!inspection.validHeader) failures.push(`Invalid PDF header: ${relativeTo(config.runRoot, file)}`);
+  if (!inspection.hasEof) failures.push(`PDF does not contain a near-tail EOF marker: ${relativeTo(config.runRoot, file)}`);
+  if (inspection.pageCount < 1) failures.push(`PDF contains no detectable pages: ${relativeTo(config.runRoot, file)}`);
+  if (!inspection.hasOutlines) failures.push(`PDF does not contain an outline/bookmark tree: ${relativeTo(config.runRoot, file)}`);
+  return inspection.pageCount;
 }
 
 function appendCanonicalFindings(failures: string[], findings: ValidationFinding[]) {

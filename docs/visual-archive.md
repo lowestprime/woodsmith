@@ -191,6 +191,8 @@ End-to-end wall time also includes application startup, comparison, report gener
 
 The validator reads decoded pixel channels as a sequential stream and computes the same sample standard deviation used by Sharp without materializing full raw images or asking libvips for random-access statistics. This prevents large full-page PNG validation from spilling temporary images into the bounded scratch filesystem. Decode dimensions, blank-image thresholds, checksums, diagnostics, seam checks, and canonical output ordering remain unchanged.
 
+Compiled PDF validation is bounded in the same way. The validator reads only a fixed header and tail plus 4 MiB scan chunks with a 64 KiB overlap, so a large atlas is never converted into one JavaScript string. It still counts page objects across chunk boundaries and requires the `%PDF-` header, a near-tail `%%EOF` marker, at least one page, and the native outline/bookmark tree. The focused suite exercises a sparse PDF larger than Node's maximum string length and verifies that the largest decoded window remains bounded.
+
 A corrected full-clone benchmark over 37,957 checksummed artifacts produced the same 23 pre-existing validation failures, two diagnostics, semantic digest `2d20c9c564fc4dae4e468936aa5a054f7f2326a8613aaf3af6084e53fc080d74`, validation hash, and checksum hashes at every worker count:
 
 | Validation workers | Artifact seconds | Total seconds | Speedup | CPU seconds | Peak container bytes |
@@ -347,7 +349,7 @@ The shareable edition includes the same deterministic representatives filtered t
 - unexpected status codes, redirects, console/page errors, request failures, broken media, or horizontal overflow;
 - invalid, blank, missing, or duplicate PNG captures;
 - raw-tile coverage gaps or seam-correlation failures;
-- missing HTML contents targets, PDFs, PDF pages, or bookmark trees;
+- missing HTML contents targets or PDFs, an invalid PDF header or near-tail EOF marker, no detectable PDF pages, or a missing bookmark tree;
 - a report selection count mismatch, unknown capture key, or omitted route;
 - commit/run/mode mismatches;
 - successful unsafe live requests;
