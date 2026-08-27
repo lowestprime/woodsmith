@@ -105,3 +105,14 @@ test("search result cards cannot expand the document for unbroken metadata", asy
   assert.match(styles, /\.search-results :where\(h2, a, p\)\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(styles, /\.search-result-status\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 });
+
+test("Studio persistence diagnostics cannot expand cards or the document", async () => {
+  const [styles, page] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/studio/page.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(page, /persistence-status-card/);
+  assert.match(styles, /\.studio-panel,\s*\.request-panel\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.estimate-list dd,\s*\.detail-list dd\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere/s);
+});
