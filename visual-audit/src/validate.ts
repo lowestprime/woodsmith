@@ -259,7 +259,9 @@ async function main() {
     if (route.surfaces!.mediaPickerOpeners > 0 && !hasState("media-picker-")) failures.push(`Deep coverage missed media pickers for ${route.auth} ${route.route}.`);
     if (route.auth === "admin" && route.surfaces!.inlineEditLinks > 0 && !hasState("inline-section-")) failures.push(`Deep coverage missed inline-edit states for ${route.route}.`);
     if (route.auth === "admin" && route.surfaces!.studioCards > 0 && !hasState("studio-editor-")) failures.push(`Deep coverage missed Studio record editors for ${route.route}.`);
-    if (config.targetMode === "snapshot-lab" && route.surfaces!.validationForms > 0 && !hasState("form-")) failures.push(`Snapshot-lab deep coverage missed form validation for ${route.route}.`);
+    if (config.targetMode === "snapshot-lab" && route.surfaces!.validationForms > 0 && !hasState("form-")) {
+      failures.push(`Snapshot-lab deep coverage missed form validation for ${route.auth} ${route.route} (${route.theme}/${route.viewport}).`);
+    }
     if (route.surfaces!.visualizer && !hasState("visualizer-")) failures.push(`Deep coverage missed commission visualizer states for ${route.route}.`);
     if (route.surfaces!.interactiveElements > 0 && !hasState("element-")) failures.push(`Deep coverage missed the element atlas for ${route.auth} ${route.route}.`);
     if (route.surfaces!.scrollContainers > 0 && !captures.some((capture) => capture.files.some((file) => file.includes("__scroll-")))) {

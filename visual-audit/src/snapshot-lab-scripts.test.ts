@@ -236,6 +236,18 @@ test(
     assert.ok(end > start);
 
     const validationCapture = source.slice(start, end);
+    assert.match(
+      validationCapture,
+      /input\[required\]:visible/,
+    );
+    assert.match(
+      validationCapture,
+      /form:visible/,
+    );
+    assert.match(
+      validationCapture,
+      /filter\(\{[\s\S]*has: input\.page\.locator\(requiredControlSelector\)/,
+    );
     assert.match(validationCapture, /field\.reportValidity\(\)/);
     assert.doesNotMatch(
       validationCapture,

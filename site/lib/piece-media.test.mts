@@ -746,6 +746,23 @@ test("media picker browsing stays outside parent autosave and mutation transport
   );
 });
 
+test("Studio media previews bypass the optimizer unless public access is explicit", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const source = await readFile(
+    new URL("../components/studio-media-workspace.tsx", import.meta.url),
+    "utf8"
+  );
+
+  assert.match(
+    source,
+    /item\.metadata\.mediaDirectPublicEligible !== true/
+  );
+  assert.equal(
+    (source.match(/unoptimized=\{imageNeedsUnoptimized\(item\)\}/g) ?? []).length,
+    2
+  );
+});
+
 test("media library pagination is an authenticated private GET route", async () => {
   const { readFile } = await import("node:fs/promises");
   const route = await readFile(

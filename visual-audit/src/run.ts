@@ -801,8 +801,16 @@ async function captureFormValidationStates(input: {
     return;
   }
 
+  const requiredControlSelector =
+    [
+      "input[required]:visible",
+      "textarea[required]:visible",
+      "select[required]:visible"
+    ].join(",");
   const forms =
-    input.page.locator("form");
+    input.page.locator("form:visible").filter({
+      has: input.page.locator(requiredControlSelector)
+    });
 
   const count = deepCount(await forms.count(), 4);
 
@@ -822,13 +830,7 @@ async function captureFormValidationStates(input: {
     }
 
     const requiredField =
-      form.locator(
-        [
-          "input[required]",
-          "textarea[required]",
-          "select[required]"
-        ].join(",")
-      ).first();
+      form.locator(requiredControlSelector).first();
 
     if (
       !await requiredField
