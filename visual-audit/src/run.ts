@@ -34,7 +34,11 @@ import {
   captureElement,
   capturePageSurface
 } from "./capture.js";
-import { runBoundedCaptureTasks } from "./capture-scheduler.js";
+import {
+  createSerialTaskRunner,
+  runBoundedCaptureTasks,
+  runMutabilityAwareCaptureTasks
+} from "./capture-scheduler.js";
 import {
   inlineFieldSelector,
   type InlineFieldIdentity
@@ -119,6 +123,30 @@ let preAuthenticationUnsafeBlocks = 0;
 const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
 const pendingVisualRequests = new WeakMap<Page, Set<Request>>();
 const successfulSnapshotLabRequests = new WeakSet<Request>();
+const runSnapshotLabMutationSerial = createSerialTaskRunner();
+let snapshotLabMutationInFlight = 0;
+let snapshotLabMutationMaxInFlight = 0;
+let snapshotLabMutationTasks = 0;
+
+async function runSerializedSnapshotLabMutation(task: () => Promise<void>) {
+  await runSnapshotLabMutationSerial(async () => {
+    snapshotLabMutationInFlight += 1;
+    snapshotLabMutationTasks += 1;
+    snapshotLabMutationMaxInFlight = Math.max(
+      snapshotLabMutationMaxInFlight,
+      snapshotLabMutationInFlight
+    );
+    if (snapshotLabMutationMaxInFlight > 1) {
+      throw new Error("Snapshot-lab mutation handlers overlapped.");
+    }
+
+    try {
+      await task();
+    } finally {
+      snapshotLabMutationInFlight -= 1;
+    }
+  });
+}
 
 const coverageExclusions = [
   { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
@@ -1104,6 +1132,84 @@ async function captureSearchIndexMutations(input: {
   }
 }
 
+type SnapshotLabMutationTarget =
+  | "commission-draft"
+  | "project"
+  | "search-index"
+  | "notification-policy"
+  | "notification-template"
+  | "visitor-policy";
+
+function snapshotLabMutationStates(target: SnapshotLabMutationTarget) {
+  if (target === "commission-draft") return [SNAPSHOT_LAB_COMMISSION_DRAFT_STATE];
+  if (target === "project") return [SNAPSHOT_LAB_PROJECT_STATE];
+  if (target === "search-index") {
+    return [SNAPSHOT_LAB_SEARCH_CHECK_STATE, SNAPSHOT_LAB_SEARCH_REBUILD_STATE];
+  }
+  if (target === "notification-policy") return [SNAPSHOT_LAB_NOTIFICATION_POLICY_STATE];
+  if (target === "notification-template") return [SNAPSHOT_LAB_NOTIFICATION_TEMPLATE_STATE];
+  return [SNAPSHOT_LAB_VISITOR_POLICY_STATE];
+}
+
+function snapshotLabMutationTarget(input: {
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: Pick<ViewportProfile, "name">;
+}): SnapshotLabMutationTarget | null {
+  const targetProfile = config.scope === "smoke"
+    ? "desktop-1440"
+    : "desktop-archival";
+  if (
+    config.targetMode !== "snapshot-lab" ||
+    input.auth !== "admin" ||
+    input.theme !== "dark" ||
+    input.profile.name !== targetProfile
+  ) {
+    return null;
+  }
+
+  const route = new URL(input.route, config.baseUrl);
+  if (route.pathname === "/commissions") return "commission-draft";
+  if (route.pathname !== "/studio") return null;
+
+  const panel = route.searchParams.get("panel");
+  const view = route.searchParams.get("view");
+  if (panel === "overview" && view === "search-index") return "search-index";
+  if (
+    panel === "projects" &&
+    view === "editor" &&
+    snapshotLabProjectMutationRequired(manifest.inventory.counts.projects)
+  ) {
+    return "project";
+  }
+  if (panel !== "notifications") return null;
+  if (view === "types") return "notification-policy";
+  if (view === "templates") return "notification-template";
+  if (view === "visitors") return "visitor-policy";
+  return null;
+}
+
+function snapshotLabMutationTargetCompleted(
+  input: {
+    auth: AuthState;
+    route: string;
+    theme: ThemeMode;
+    profile: ViewportProfile;
+  },
+  target: SnapshotLabMutationTarget
+) {
+  return snapshotLabMutationStates(target).every((state) => manifest.completedKeys.includes(
+    captureKey({
+      auth: input.auth,
+      route: input.route,
+      theme: input.theme,
+      viewport: input.profile.name,
+      state
+    })
+  ));
+}
+
 async function captureSnapshotLabMutationState(input: {
   page: Page;
   auth: AuthState;
@@ -1112,72 +1218,51 @@ async function captureSnapshotLabMutationState(input: {
   profile: ViewportProfile;
   status: number | null;
 }) {
-  const route = new URL(input.route, config.baseUrl);
-  const targetProfile =
-    config.scope === "smoke"
-      ? "desktop-1440"
-      : "desktop-archival";
+  const target = snapshotLabMutationTarget(input);
+  if (!target) return;
 
-  if (
-    config.targetMode !== "snapshot-lab" ||
-    input.auth !== "admin" ||
-    input.theme !== "dark" ||
-    input.profile.name !== targetProfile
-  ) {
-    return;
-  }
-
-  if (route.pathname === "/commissions") {
-    await captureCommissionDraftMutation(input);
-    return;
-  }
-
-  if (route.pathname !== "/studio") return;
-
-  const panel = route.searchParams.get("panel");
-  const view = route.searchParams.get("view");
-  if (panel === "overview" && view === "search-index") {
-    await captureSearchIndexMutations(input);
-  } else if (
-    panel === "projects" &&
-    view === "editor" &&
-    snapshotLabProjectMutationRequired(manifest.inventory.counts.projects)
-  ) {
-    await roundTripAutosaveField({
-      ...input,
-      entityKeyPrefix: "project:",
-      fieldName: "publicNotes",
-      state: SNAPSHOT_LAB_PROJECT_STATE,
-      changedValue: (original) => `${original}\n[visual audit]`.trim()
-    });
-  } else if (panel === "notifications" && view === "types") {
-    await roundTripAutosaveField({
-      ...input,
-      entityKeyPrefix: "notification-policy:",
-      fieldName: "label",
-      state: SNAPSHOT_LAB_NOTIFICATION_POLICY_STATE,
-      changedValue: (original) => `${original.slice(0, 100)} [audit]`
-    });
-  } else if (panel === "notifications" && view === "templates") {
-    await roundTripAutosaveField({
-      ...input,
-      entityKeyPrefix: "notification-template:",
-      fieldName: "subjectTemplate",
-      state: SNAPSHOT_LAB_NOTIFICATION_TEMPLATE_STATE,
-      changedValue: (original) => `${original.slice(0, 180)} [audit]`
-    });
-  } else if (panel === "notifications" && view === "visitors") {
-    await roundTripAutosaveField({
-      ...input,
-      entityKeyPrefix: "visitor-analytics-policy:",
-      fieldName: "retentionDays",
-      state: SNAPSHOT_LAB_VISITOR_POLICY_STATE,
-      changedValue: (original) => {
-        const days = Number.parseInt(original, 10);
-        return String(Number.isFinite(days) && days < 730 ? days + 1 : 729);
-      }
-    });
-  }
+  await runSerializedSnapshotLabMutation(async () => {
+    if (target === "commission-draft") {
+      await captureCommissionDraftMutation(input);
+    } else if (target === "search-index") {
+      await captureSearchIndexMutations(input);
+    } else if (target === "project") {
+      await roundTripAutosaveField({
+        ...input,
+        entityKeyPrefix: "project:",
+        fieldName: "publicNotes",
+        state: SNAPSHOT_LAB_PROJECT_STATE,
+        changedValue: (original) => `${original}\n[visual audit]`.trim()
+      });
+    } else if (target === "notification-policy") {
+      await roundTripAutosaveField({
+        ...input,
+        entityKeyPrefix: "notification-policy:",
+        fieldName: "label",
+        state: SNAPSHOT_LAB_NOTIFICATION_POLICY_STATE,
+        changedValue: (original) => `${original.slice(0, 100)} [audit]`
+      });
+    } else if (target === "notification-template") {
+      await roundTripAutosaveField({
+        ...input,
+        entityKeyPrefix: "notification-template:",
+        fieldName: "subjectTemplate",
+        state: SNAPSHOT_LAB_NOTIFICATION_TEMPLATE_STATE,
+        changedValue: (original) => `${original.slice(0, 180)} [audit]`
+      });
+    } else if (target === "visitor-policy") {
+      await roundTripAutosaveField({
+        ...input,
+        entityKeyPrefix: "visitor-analytics-policy:",
+        fieldName: "retentionDays",
+        state: SNAPSHOT_LAB_VISITOR_POLICY_STATE,
+        changedValue: (original) => {
+          const days = Number.parseInt(original, 10);
+          return String(Number.isFinite(days) && days < 730 ? days + 1 : 729);
+        }
+      });
+    }
+  });
 }
 
 function routeLabel(route: string) {
@@ -2480,19 +2565,6 @@ async function captureRoute(input: {
       });
     }
 
-    try {
-      await captureSnapshotLabMutationState(base);
-    } catch (error) {
-      manifest.diagnostics.push({
-        timestamp: now(),
-        type: "pageerror",
-        route: input.route,
-        message:
-          "Snapshot-lab mutation capture failed: " +
-          (error instanceof Error ? error.message : String(error))
-      });
-    }
-
     if (input.deep) {
       const steps = [
         ["details", captureDetailsStates],
@@ -2549,6 +2621,62 @@ async function captureRoute(input: {
     });
 
     await persistManifest();
+  } finally {
+    pageCapturePhases.set(page, "deliberate-teardown");
+    pagesInDeliberateTeardown.add(page);
+    await page.close();
+  }
+}
+
+async function captureSnapshotLabMutationRoute(input: {
+  context: BrowserContext;
+  auth: AuthState;
+  route: string;
+  theme: ThemeMode;
+  profile: ViewportProfile;
+}) {
+  const page = await input.context.newPage();
+  attachDiagnostics(
+    page,
+    input.route,
+    intentionalMutationBlocks.get(input.context) ?? new Set<string>()
+  );
+
+  try {
+    pageCapturePhases.set(page, "snapshot-lab-mutation-navigation");
+    const response = await page.goto(input.route, {
+      waitUntil: "domcontentloaded",
+      timeout: 60_000
+    });
+    pageCapturePhases.set(page, "snapshot-lab-mutation-readiness");
+    await waitForSettledVisualReady(page);
+    await captureSnapshotLabMutationState({
+      page,
+      auth: input.auth,
+      route: input.route,
+      theme: input.theme,
+      profile: input.profile,
+      status: response?.status() ?? null
+    });
+    pageCapturePhases.set(page, "snapshot-lab-mutation-final-settle");
+    await waitForVisualIdle(page);
+    await waitForCaptureRequestDrain(page, {
+      intervalMs: 100,
+      quietSamples: 6,
+      timeoutMs: 15_000
+    });
+    await persistManifest();
+  } catch (error) {
+    manifest.diagnostics.push({
+      timestamp: now(),
+      type: "pageerror",
+      route: input.route,
+      message:
+        "Snapshot-lab mutation capture failed: " +
+        (error instanceof Error ? error.stack || error.message : String(error))
+    });
+    await persistManifest();
+    throw error;
   } finally {
     pageCapturePhases.set(page, "deliberate-teardown");
     pagesInDeliberateTeardown.add(page);
@@ -2656,19 +2784,46 @@ async function runRoutes(
 ) {
   const matrix = options.matrix ?? canonicalCoverageMatrix(config.scope, viewports);
   const coverageTier = options.coverageTier ?? "canonical";
-  const tasks = unique(routes).flatMap((route) => matrix.flatMap((entry) => (
+  const routeTasks = unique(routes).flatMap((route) => matrix.flatMap((entry) => (
     routeResultCompleted({ auth, route, theme: entry.theme, viewport: entry.profile.name })
       ? []
-      : [{ route, entry }]
+      : [{ kind: "route" as const, route, entry }]
   )));
-  const workerCount = config.targetMode === "snapshot-lab" ? 1 : config.captureWorkers;
-  const startedAt = performance.now();
-  const run = await runBoundedCaptureTasks(tasks, {
-    workerCount,
+  const mutationTasks = unique(routes).flatMap((route) => matrix.flatMap((entry) => {
+    const target = snapshotLabMutationTarget({
+      auth,
+      route,
+      theme: entry.theme,
+      profile: entry.profile
+    });
+    if (
+      target === null ||
+      snapshotLabMutationTargetCompleted({
+        auth,
+        route,
+        theme: entry.theme,
+        profile: entry.profile
+      }, target)
+    ) {
+      return [];
+    }
+    return [{ kind: "mutation" as const, route, entry }];
+  }));
+  const tasks = [...routeTasks, ...mutationTasks];
+  const run = await runMutabilityAwareCaptureTasks(tasks, {
+    workerCount: config.captureWorkers,
+    classify: (task) => task.kind === "route"
+      ? "read-only-independent"
+      : "ordered-mutation",
     execute: async (task, _index, signal) => {
       if (signal.aborted) throw new Error("Capture task was cancelled before context creation.");
-      if (routeResultCompleted({ auth, route: task.route, theme: task.entry.theme, viewport: task.entry.profile.name })) return;
-      const taskIdentity = `${auth}::${task.route}::${task.entry.theme}::${task.entry.profile.name}`;
+      if (
+        task.kind === "route" &&
+        routeResultCompleted({ auth, route: task.route, theme: task.entry.theme, viewport: task.entry.profile.name })
+      ) {
+        return;
+      }
+      const taskIdentity = `${task.kind}::${auth}::${task.route}::${task.entry.theme}::${task.entry.profile.name}`;
       const taskScratch = path.join(config.tmpRoot, "capture-workers", createHash("sha256").update(taskIdentity).digest("hex").slice(0, 20));
       await ensureDirectory(taskScratch);
       await writeJsonAtomic(path.join(taskScratch, "task.json"), {
@@ -2679,29 +2834,42 @@ async function runRoutes(
       let context: BrowserContext | null = null;
       try {
         context = await createCaptureContext(browser, auth, task.entry.profile, task.entry.theme);
-        await captureRoute({
-          context,
-          auth,
-          route: task.route,
-          theme: task.entry.theme,
-          profile: task.entry.profile,
-          deep: task.entry.deep,
-          coverageTier
-        });
+        if (task.kind === "route") {
+          await captureRoute({
+            context,
+            auth,
+            route: task.route,
+            theme: task.entry.theme,
+            profile: task.entry.profile,
+            deep: task.entry.deep,
+            coverageTier
+          });
+        } else {
+          await captureSnapshotLabMutationRoute({
+            context,
+            auth,
+            route: task.route,
+            theme: task.entry.theme,
+            profile: task.entry.profile
+          });
+        }
       } finally {
         await context?.close();
         await fs.rm(taskScratch, { recursive: true, force: true });
       }
     }
   });
-  console.log(`CAPTURE_STAGE=${JSON.stringify({
-    auth,
-    coverageTier,
-    tasks: tasks.length,
-    workers: run.metrics.workerCount,
-    maxInFlight: run.metrics.maxInFlight,
-    seconds: Number(((performance.now() - startedAt) / 1_000).toFixed(3))
-  })}`);
+  for (const phase of run.phases) {
+    console.log(`CAPTURE_STAGE=${JSON.stringify({
+      auth,
+      coverageTier,
+      phase: phase.phase,
+      tasks: phase.submitted,
+      workers: phase.workerCount,
+      maxInFlight: phase.maxInFlight,
+      seconds: phase.seconds
+    })}`);
+  }
 }
 
 function captureableDiscoveredRoute(route: string, auth: AuthState) {
@@ -2790,7 +2958,7 @@ async function runVisualizerFallbackStates(browser: Browser) {
   ];
 
   await runBoundedCaptureTasks(variants, {
-    workerCount: config.targetMode === "snapshot-lab" ? 1 : config.captureWorkers,
+    workerCount: config.captureWorkers,
     execute: async (variant, _index, signal) => {
       if (signal.aborted) throw new Error("Visualizer fallback capture was cancelled.");
       const taskIdentity = `anonymous::${variant.route}::dark::${profile.name}`;
@@ -2962,6 +3130,16 @@ async function main() {
     );
 
     await runVisualizerFallbackStates(browser);
+
+    if (config.targetMode === "snapshot-lab") {
+      if (snapshotLabMutationMaxInFlight > 1) {
+        throw new Error("Snapshot-lab mutation concurrency exceeded one handler.");
+      }
+      console.log(`SNAPSHOT_LAB_MUTATION_STAGE=${JSON.stringify({
+        tasks: snapshotLabMutationTasks,
+        maxInFlight: snapshotLabMutationMaxInFlight
+      })}`);
+    }
 
     if (config.targetMode === "live-readonly" && manifest.security.successfulUnsafeRequests > 0) {
       throw new Error(`Live read-only audit observed ${manifest.security.successfulUnsafeRequests} successful unsafe request(s).`);

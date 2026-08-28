@@ -175,6 +175,36 @@ test(
 );
 
 test(
+  "snapshot-lab parallelizes routes while serializing mutation handlers",
+  async () => {
+    const source = await readFile(
+      new URL("../src/run.ts", import.meta.url),
+      "utf8",
+    );
+    const scheduler = await readFile(
+      new URL("../src/capture-scheduler.ts", import.meta.url),
+      "utf8",
+    );
+
+    assert.match(source, /runMutabilityAwareCaptureTasks/);
+    assert.match(source, /workerCount: config\.captureWorkers/);
+    assert.match(
+      source,
+      /task\.kind === "route"[\s\S]*\? "read-only-independent"[\s\S]*: "ordered-mutation"/,
+    );
+    assert.match(source, /captureSnapshotLabMutationRoute/);
+    assert.doesNotMatch(
+      source,
+      /config\.targetMode === "snapshot-lab" \? 1 : config\.captureWorkers/,
+    );
+    assert.match(source, /runSerializedSnapshotLabMutation/);
+    assert.match(scheduler, /phase === "ordered-mutation" \? 1 : options\.workerCount/);
+    assert.match(source, /snapshotLabMutationMaxInFlight > 1/);
+    assert.match(source, /SNAPSHOT_LAB_MUTATION_STAGE=/);
+  },
+);
+
+test(
   "local snapshot-lab smoke requires all v19 round trips and exact unsafe-request accounting",
   async () => {
     const source = await readScript(

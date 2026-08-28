@@ -105,10 +105,11 @@ The runner permits `WOODSMITH_BUILD_SHA=unknown` only for the bounded loopback d
 
 ## Live Read-Only Smoke
 
-Always run a smoke archive before the full archive. One exported `AUDIT_RUN_ID` must be shared by capture, comparison, report, and validation.
+Always run a smoke archive before the full archive. Release evidence runs on Laptop Docker Desktop, never through an interactive NAS SSH session or a Synology-scheduled Playwright/report/validation job. Load the exact app and audit images on the laptop, use a native-Linux/WSL2 checkout or Docker named volumes for active output, and keep one exported `AUDIT_RUN_ID` across capture, comparison, report, and validation. The NAS remains the production, snapshot-export, immutable-storage, and rollback control plane.
 
 ```bash
-cd /volume2/docker_ssd/woodsmith
+# Run from the native WSL checkout connected to Laptop Docker Desktop.
+cd /home/cbeaman/src/woodsmith
 
 export TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
 export AUDIT_RUN_ID="smoke-$(date -u '+%Y%m%dT%H%M%SZ')-$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
@@ -151,7 +152,8 @@ A successful response followed by Chromium `ERR_ABORTED` is treated as expected 
 ## Full Live Archive
 
 ```bash
-cd /volume2/docker_ssd/woodsmith
+# Run from the native WSL checkout connected to Laptop Docker Desktop.
+cd /home/cbeaman/src/woodsmith
 
 export TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
 export AUDIT_RUN_ID="full-$(date -u '+%Y%m%dT%H%M%SZ')-$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
@@ -176,7 +178,7 @@ Every captured route state receives a deterministic keyboard skip-link focus and
 
 ## Bounded Parallelism And Benchmarks
 
-`VISUAL_AUDIT_CAPTURE_WORKERS`, `VISUAL_AUDIT_VALIDATION_WORKERS`, and `VISUAL_AUDIT_REPORT_WORKERS` accept `auto` or a bounded integer. `auto` uses the available CPU parallelism with measured caps of 2 capture workers and 6 validation/report workers. Explicit capture values are limited to 1-6; validation and report values are limited to 1-8. Snapshot-lab capture is always forced to one worker because its mutation states are ordered, although its post-capture validation and report work can remain bounded and parallel.
+`VISUAL_AUDIT_CAPTURE_WORKERS`, `VISUAL_AUDIT_VALIDATION_WORKERS`, and `VISUAL_AUDIT_REPORT_WORKERS` accept `auto` or a bounded integer. `auto` uses the available CPU parallelism with measured caps of 2 capture workers and 6 validation/report workers. Explicit capture values are limited to 1-6; validation and report values are limited to 1-8. Snapshot-lab route capture first drains every independent read-only task through the configured bounded pool, then runs mutation-bearing route/profile tasks through a one-worker phase and a FIFO serial handler. This prevents a read-only screenshot from observing a temporary write before its rollback. The runner asserts and logs a mutation-handler `maxInFlight` of one before completing the archive, while report and validation work remain independently bounded and parallel.
 
 A disposable live-readonly capture matrix kept the serial mutation-sensitive special stage separate and preserved 310 captures, 27 routes, zero unexpected diagnostics, zero successful unsafe requests, and complete cleanup at each worker count:
 
@@ -187,7 +189,9 @@ A disposable live-readonly capture matrix kept the serial mutation-sensitive spe
 | 4 | 11.216 | 18.047 | 45.159 | 74.422 | 1.87x |
 | 6 | 8.517 | 12.303 | 45.139 | 65.959 | 2.10x |
 
-End-to-end wall time also includes application startup, comparison, report generation, validation, and cleanup; the measured totals were 156.226, 109.242, 90.804, and 80.292 seconds respectively. Two workers remain the automatic capture cap because they materially reduce route capture time without imposing the four- or six-browser peak load on the NAS. After replacing resize-based full-page screenshots with tiled capture, three consecutive two-worker smokes completed in stable 104.750-105.029 second capture-stage totals. Each produced 310 captures, 39 tile manifests, 689 checksums, zero unexpected diagnostics, zero successful unsafe requests, 29 blocked unsafe requests, zero cross-origin requests, no temporary files, and zero residual containers or volumes.
+End-to-end wall time also includes application startup, comparison, report generation, validation, and cleanup; the measured totals were 156.226, 109.242, 90.804, and 80.292 seconds respectively. Two workers remain the portable automatic capture cap; an explicitly prevalidated laptop production-clone run may select up to six after a short representative 4-versus-6 equivalence and resource check. A live-production run must benchmark two versus four and may use four only when server load, request stability, diagnostics, media completion, and read-only enforcement remain acceptable. After replacing resize-based full-page screenshots with tiled capture, three consecutive two-worker smokes completed in stable 104.750-105.029 second capture-stage totals. Each produced 310 captures, 39 tile manifests, 689 checksums, zero unexpected diagnostics, zero successful unsafe requests, 29 blocked unsafe requests, zero cross-origin requests, no temporary files, and zero residual containers or volumes.
+
+A source-equivalent six-worker synthetic snapshot-lab smoke then proved the phased scheduler end to end: anonymous and admin read-only phases reached `maxInFlight=6`; five mutation-bearing route/profile tasks ran at one worker; the FIFO mutation handler reported `maxInFlight=1`; validation accepted 446 captures, 48 routes, six mutation states, exactly ten permitted clone writes, 1,131 checksums, zero unexpected diagnostics, zero residual drafts, unchanged source data/media, SQLite `quick_check`, and complete container/volume cleanup. Exact-candidate Tier 1 and production-clone Tier 2 must repeat those invariants after the candidate SHA is frozen.
 
 The validator reads decoded pixel channels as a sequential stream and computes the same sample standard deviation used by Sharp without materializing full raw images or asking libvips for random-access statistics. This prevents large full-page PNG validation from spilling temporary images into the bounded scratch filesystem. Decode dimensions, blank-image thresholds, checksums, diagnostics, seam checks, and canonical output ordering remain unchanged.
 
@@ -215,7 +219,7 @@ visual-audit/scripts/benchmark-validator-volume.ps1 `
   -TargetCommit <full-40-character-sha>
 ```
 
-Do not increase worker counts blindly. Re-run the matrix against representative full-run evidence after changing the capture matrix, image sizes, NAS CPU/memory limits, Sharp, libvips, Playwright, or report selection logic.
+Do not increase worker counts blindly. Re-run the matrix against representative full-run evidence after changing the capture matrix, image sizes, laptop/Docker CPU or memory limits, Sharp, libvips, Playwright, or report selection logic.
 
 ## Accelerator Contract And GPU Evidence
 
@@ -278,15 +282,24 @@ The browser procedure follows Chromium's official headless GPU guidance and veri
 
 ## Snapshot Lab
 
-Prepare a new isolated lab for every mutation-state run:
+Tier 2 uses a fresh, verified production snapshot copied to the laptop before any mutation-state run. Import that snapshot into run-scoped Docker volumes, prove the source manifest and SQLite hash, and invoke the source-controlled local harness in `snapshot-lab` mode. Active clone data, clone media, screenshots, reports, and checksums stay on local Docker/NVMe storage. Never mount production data or production media into the laptop lab, and never run Playwright, report generation, validation, or checksumming on the NAS.
 
-```bash
-cd /volume2/docker_ssd/woodsmith
-visual-audit/scripts/prepare-snapshot-lab.sh
-visual-audit/scripts/run-snapshot-lab.sh
+For a bounded synthetic scheduler and safety gate:
+
+```powershell
+visual-audit/scripts/run-local-disposable-smoke.ps1 `
+  -TargetMode snapshot-lab `
+  -AppImage woodsmith:candidate-<short-sha> `
+  -AuditImage woodsmith-visual-audit:candidate-<short-sha> `
+  -CommitSha <full-40-character-sha> `
+  -CaptureWorkers 6 `
+  -ValidationWorkers 8 `
+  -ReportWorkers 6
 ```
 
-Preparation validates the run ID, creates a run-scoped mode-700 backup directory inside the mounted data root, and assigns it to the configured non-root `PUID:PGID` before asking the production container to perform an online SQLite `VACUUM INTO`. It verifies `PRAGMA quick_check`, copies the database into a unique lab root, and removes the transient backup directory on both success and failure. A failed preparation also removes only its validated run-scoped partial data and media trees. The media clone uses a Btrfs reflink when supported and otherwise performs a full `rsync -a` copy. Hardlinks are forbidden because lab rename/delete operations must not alter production originals.
+The full production-clone wrapper additionally imports the paired NAS snapshot into those run-scoped volumes and rechecks its source manifest before starting the same capture/report/validation containers. The wrapper is intentionally outside Git because it contains restricted workstation paths; it may supply only run IDs, exact image identities, verified snapshot paths, nonsecret worker counts, and ignored secret files. It must preserve the source-controlled harness, validator, and cleanup behavior without patching container code.
+
+The retained `prepare-snapshot-lab.sh` and `run-snapshot-lab.sh` scripts remain recovery utilities for an isolated Linux control plane. They validate the run ID, create a run-scoped mode-700 backup directory, use online SQLite `VACUUM INTO`, verify `PRAGMA quick_check`, and keep data/media clones distinct. They are not the release-compute path and must not be scheduled or launched on the production NAS.
 
 Preparation writes the ignored lab environment with `AUDIT_EVIDENCE_TIER=tier-2-production-clone` and `AUDIT_MEDIA_PROVENANCE=production-clone`. The runner refuses a mismatch before starting Compose.
 
@@ -360,14 +373,9 @@ Checksums cover the final report, validation record, PNGs, raw tiles, manifests,
 
 ## Scheduling And Retention
 
-Use Synology Task Scheduler as `root` after deployment and after the first manual full run succeeds:
+Schedule periodic capture only on the laptop after the first manual Tier 3 full run succeeds. The scheduled wrapper must acquire one host lock, verify Docker Desktop and exact image identities, write active output to local Docker/NVMe storage, and transfer only a completed checksum-verified archive to the restricted NAS archive root. Do not expose private output through public CI and do not configure Synology Task Scheduler to run Playwright, report, validation, or checksum stages.
 
-```bash
-AUDIT_SCOPE=full /volume2/docker_ssd/woodsmith/visual-audit/scripts/run-live-audit.sh \
-  >> /volume2/docker_ssd/woodsmith/visual-audits/scheduler.log 2>&1
-```
-
-The run script uses a lock directory to prevent overlap. Retention is dry-run by default:
+Retention remains dry-run by default and may run on the NAS only after transfer has completed, because it performs storage management rather than visual compute:
 
 ```bash
 AUDIT_RETENTION_DAYS=90 visual-audit/scripts/prune-audits.sh
@@ -383,4 +391,4 @@ Retention refuses roots outside `/volume2/docker_ssd/woodsmith/visual-audits` an
 
 ## Release Gate
 
-Do not deploy merely to obtain screenshots. The application candidate must first pass the normal database backup, `quick_check`, no-embedded-database, disposable-data, mounted media/data/cache, route, log, rollback-image, and public canonical-origin gates. Run the smoke archive against the promoted candidate, then the full live archive and isolated lab archive. Keep the previous image and database backup until the post-deployment archive validates.
+Do not deploy merely to obtain screenshots. The application candidate must first pass the normal database backup, `quick_check`, no-embedded-database, disposable-data, mounted media/data/cache, route, log, rollback-image, and public canonical-origin gates. Run the laptop smoke archive against the promoted candidate, then the laptop full live archive and isolated production-clone lab archive. Keep the previous image and database backup until the post-deployment archive validates.
