@@ -1,6 +1,21 @@
-import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  mkdirSync,
+  openSync,
+  readSync,
+  readdirSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+
+import type {
+  MediaPreviewInspection
+} from "./media-preview.ts";
 
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png", ".webp", ".avif", ".gif", ".svg", ".bmp", ".heic", ".heif", ".tif", ".tiff"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".m4v", ".webm"]);
@@ -19,6 +34,7 @@ export type MediaScanRecord = {
   updatedAt: string;
   clusterKey: string;
   guessedAlt: string;
+  preview: MediaPreviewInspection;
 };
 
 export function getMediaRoot() {
@@ -70,6 +86,145 @@ export function detectMediaKind(fileName: string): MediaKind {
   }
 
   return "other";
+}
+
+function bufferStartsWith(
+  buffer: Buffer,
+  signature: readonly number[]
+) {
+  return signature.every(
+    (value, index) => buffer[index] === value
+  );
+}
+
+function bufferIncludesPair(
+  buffer: Buffer,
+  first: number,
+  second: number
+) {
+  for (let index = buffer.length - 2; index >= 0; index -= 1) {
+    if (buffer[index] === first && buffer[index + 1] === second) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function unavailable(reason: string): MediaPreviewInspection {
+  return { status: "unavailable", reason };
+}
+
+export function inspectMediaPreviewFile(
+  absolutePath: string,
+  fileName: string,
+  kind: MediaKind,
+  sizeBytes: number
+): MediaPreviewInspection {
+  if (kind !== "image") {
+    return { status: "available", reason: null };
+  }
+  if (sizeBytes <= 0) return unavailable("empty-file");
+
+  const extension = path.extname(fileName).toLowerCase();
+  const headLength = Math.min(4_096, sizeBytes);
+  const tailLength = Math.min(4_096, sizeBytes);
+  const head = Buffer.alloc(headLength);
+  const tail = Buffer.alloc(tailLength);
+  let descriptor: number | null = null;
+
+  try {
+    descriptor = openSync(absolutePath, "r");
+    const headRead = readSync(
+      descriptor,
+      head,
+      0,
+      headLength,
+      0
+    );
+    const tailRead = readSync(
+      descriptor,
+      tail,
+      0,
+      tailLength,
+      Math.max(0, sizeBytes - tailLength)
+    );
+    const header = head.subarray(0, headRead);
+    const footer = tail.subarray(0, tailRead);
+
+    if (extension === ".jpg" || extension === ".jpeg") {
+      if (!bufferStartsWith(header, [0xff, 0xd8])) {
+        return unavailable("invalid-jpeg-signature");
+      }
+      return bufferIncludesPair(footer, 0xff, 0xd9)
+        ? { status: "available", reason: null }
+        : unavailable("truncated-jpeg");
+    }
+
+    if (extension === ".png") {
+      if (!bufferStartsWith(header, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
+        return unavailable("invalid-png-signature");
+      }
+      return footer.includes(Buffer.from("IEND", "ascii"))
+        ? { status: "available", reason: null }
+        : unavailable("truncated-png");
+    }
+
+    if (extension === ".gif") {
+      const signature = header.subarray(0, 6).toString("ascii");
+      if (signature !== "GIF87a" && signature !== "GIF89a") {
+        return unavailable("invalid-gif-signature");
+      }
+      return footer.includes(0x3b)
+        ? { status: "available", reason: null }
+        : unavailable("truncated-gif");
+    }
+
+    if (extension === ".webp") {
+      const signatureValid =
+        header.subarray(0, 4).toString("ascii") === "RIFF" &&
+        header.subarray(8, 12).toString("ascii") === "WEBP";
+      if (!signatureValid || header.length < 12) {
+        return unavailable("invalid-webp-signature");
+      }
+      const declaredBytes = header.readUInt32LE(4) + 8;
+      return declaredBytes <= sizeBytes
+        ? { status: "available", reason: null }
+        : unavailable("truncated-webp");
+    }
+
+    if (extension === ".svg") {
+      const source = header.toString("utf8").replace(/^\ufeff/, "").toLowerCase();
+      return source.includes("<svg")
+        ? { status: "available", reason: null }
+        : unavailable("invalid-svg-signature");
+    }
+
+    if (extension === ".bmp") {
+      return header.subarray(0, 2).toString("ascii") === "BM"
+        ? { status: "available", reason: null }
+        : unavailable("invalid-bmp-signature");
+    }
+
+    if (extension === ".tif" || extension === ".tiff") {
+      const littleEndian = bufferStartsWith(header, [0x49, 0x49, 0x2a, 0x00]);
+      const bigEndian = bufferStartsWith(header, [0x4d, 0x4d, 0x00, 0x2a]);
+      return littleEndian || bigEndian
+        ? { status: "available", reason: null }
+        : unavailable("invalid-tiff-signature");
+    }
+
+    if ([".avif", ".heic", ".heif"].includes(extension)) {
+      return header.subarray(4, 8).toString("ascii") === "ftyp"
+        ? { status: "available", reason: null }
+        : unavailable("invalid-bmff-signature");
+    }
+
+    return { status: "available", reason: null };
+  } catch {
+    return unavailable("unreadable-image");
+  } finally {
+    if (descriptor !== null) closeSync(descriptor);
+  }
 }
 
 function shouldIgnoreMediaEntry(name: string) {
@@ -159,7 +314,13 @@ function walkMedia(directory: string, root: string, output: MediaScanRecord[]) {
       createdAt: stats.birthtime.toISOString(),
       updatedAt: stats.mtime.toISOString(),
       clusterKey: deriveClusterKey(relativePath),
-      guessedAlt: guessAltFromPath(relativePath)
+      guessedAlt: guessAltFromPath(relativePath),
+      preview: inspectMediaPreviewFile(
+        absolutePath,
+        entry.name,
+        detectMediaKind(entry.name),
+        stats.size
+      )
     });
   }
 }
@@ -248,7 +409,13 @@ export function scanMediaAsset(relativePath: string): MediaScanRecord | null {
     createdAt: stats.birthtime.toISOString(),
     updatedAt: stats.mtime.toISOString(),
     clusterKey: deriveClusterKey(normalized),
-    guessedAlt: guessAltFromPath(normalized)
+    guessedAlt: guessAltFromPath(normalized),
+    preview: inspectMediaPreviewFile(
+      absolutePath,
+      fileName,
+      detectMediaKind(fileName),
+      stats.size
+    )
   };
 }
 

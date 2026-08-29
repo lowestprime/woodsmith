@@ -59,6 +59,7 @@ type ProjectMediaItem = {
   height: number | null;
   projectReference: string;
   displayOrder: number;
+  previewAvailable: boolean;
 };
 
 type ProjectsAdminProps = {
@@ -512,15 +513,28 @@ function ProjectEditor({
           data-media-collection-variant="carousel"
           role="region"
         >
-          {media.map((item) => (
-            <a
+          {media.map((item) => item.kind === "image" && !item.previewAvailable ? (
+            <div
+              className="project-media-preview-unavailable"
+              data-audit-placeholder="media-type-fallback"
+              data-audit-placeholder-allowed="source-image-preview-unavailable"
               data-media-id={item.relativePath}
               data-media-item="true"
               data-media-order={item.displayOrder}
-              href={toMediaUrl(item.relativePath)}
               key={item.relativePath}
             >
-              {item.kind === "image" ? (
+              <strong>Preview unavailable</strong>
+              <span>{item.fileName}</span>
+            </div>
+          ) : (
+              <a
+                data-media-id={item.relativePath}
+                data-media-item="true"
+                data-media-order={item.displayOrder}
+                href={toMediaUrl(item.relativePath)}
+                key={item.relativePath}
+              >
+                {item.kind === "image" ? (
                 <Image
                   alt={item.altText || item.fileName}
                   height={Math.max(
@@ -535,15 +549,15 @@ function ProjectEditor({
                     item.width ?? 1600
                   )}
                 />
-              ) : (
-                <video
-                  aria-label={item.altText || item.fileName}
-                  muted
-                  preload="metadata"
-                  src={toMediaUrl(item.relativePath)}
-                />
-              )}
-            </a>
+                ) : (
+                  <video
+                    aria-label={item.altText || item.fileName}
+                    muted
+                    preload="metadata"
+                    src={toMediaUrl(item.relativePath)}
+                  />
+                )}
+              </a>
           ))}
         </div>
       ) : (

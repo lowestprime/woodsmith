@@ -13,6 +13,7 @@ import {
   type HomeServiceDefinition
 } from "./seed.ts";
 import { scanMediaAsset, scanMediaLibrary } from "./media.ts";
+import { mergeMediaPreviewMetadata } from "./media-preview.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
@@ -1656,6 +1657,10 @@ function syncMediaLibraryIntoDatabase(
       WHERE relative_path = ?
       LIMIT 1
     `).get(media.relativePath) as Record<string, unknown> | undefined;
+    const metadata = mergeMediaPreviewMetadata(
+      readJson(existing?.metadataJson, {}),
+      media.preview
+    );
 
     db.prepare(`
       INSERT INTO media_items (
@@ -1707,6 +1712,7 @@ function syncMediaLibraryIntoDatabase(
         kind = excluded.kind,
         size_bytes = excluded.size_bytes,
         cluster_key = excluded.cluster_key,
+        metadata_json = excluded.metadata_json,
         updated_at = excluded.updated_at
     `).run({
       relativePath: media.relativePath,
@@ -1726,7 +1732,7 @@ function syncMediaLibraryIntoDatabase(
       zoom: existing?.zoom ? Number(existing.zoom) : 1,
       reviewed: existing?.reviewed ? Number(existing.reviewed) : 0,
       tagsJson: existing?.tagsJson ? String(existing.tagsJson) : "[]",
-      metadataJson: existing?.metadataJson ? String(existing.metadataJson) : "{}",
+      metadataJson: JSON.stringify(metadata),
       createdAt: existing?.createdAt ? String(existing.createdAt) : media.createdAt,
       updatedAt: media.updatedAt
     });

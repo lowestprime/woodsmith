@@ -16,6 +16,9 @@ import {
   mediaDirectPublicEligible
 } from "@/lib/media-access";
 import {
+  mediaPreviewAvailable
+} from "@/lib/media-preview";
+import {
   buildInitialPieceMediaLinks,
   pieceMediaDefaultPublic,
   type EditablePieceMediaRole,
@@ -533,7 +536,7 @@ export function PieceMediaEditor({
                   >
                     <div className="piece-media-relation-preview">
                       {item?.kind ===
-                      "image" ? (
+                      "image" && mediaPreviewAvailable(item) ? (
                         <Image
                           alt={
                             item.altText ||
@@ -552,9 +555,21 @@ export function PieceMediaEditor({
                           }
                         />
                       ) : (
-                        <span>
-                          {item?.kind ||
-                            "media"}
+                        <span
+                          data-audit-placeholder={
+                            item?.kind === "image"
+                              ? "media-type-fallback"
+                              : undefined
+                          }
+                          data-audit-placeholder-allowed={
+                            item?.kind === "image"
+                              ? "source-image-preview-unavailable"
+                              : undefined
+                          }
+                        >
+                          {item?.kind === "image"
+                            ? "Preview unavailable"
+                            : item?.kind || "media"}
                         </span>
                       )}
                     </div>

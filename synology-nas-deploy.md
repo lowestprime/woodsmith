@@ -169,6 +169,8 @@ Optional local container smoke test:
 
 For local app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. Both local modes run without production mounts or credentials; a dirty pre-commit app must retain the Dockerfile's `WOODSMITH_BUILD_SHA=unknown`, which these bounded loopback smokes accept without treating it as an exact candidate. After committing, rebuild with the exact SHA before accepting any Tier 2 or release evidence. The `-TargetMode snapshot-lab` variant proves the inventory-derived v19 mutation round trips against separate online-cloned SQLite and copied synthetic-media volumes. It expects ten successful clone-only writes with no projects or twelve with at least one project, rejects every unrelated successful write, restores ordinary edited values, removes its draft, and verifies source fingerprints. Both modes remove their temporary app, data, media, output, and secret resources after validation.
 
+Media synchronization performs bounded source-signature inspection and records an unavailable-preview status for empty, unreadable, invalid-signature, or detectably truncated images. It does not alter originals. Public piece galleries omit known-unavailable images, and authenticated media tools render a labeled fallback without requesting the broken source. Replace or repair an original only through a separately approved media-maintenance workflow, then refresh the Media library so the status is recomputed. The signature guard catches the observed missing JPEG end marker and common malformed files but does not replace full decoder validation or human photo review.
+
 ```bash
 docker run --rm -p 3002:3002 \
   --env-file .env \

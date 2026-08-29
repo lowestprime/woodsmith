@@ -31,6 +31,10 @@ import type {
 } from "@/lib/db";
 import type { MediaMatchCandidate } from "@/lib/media-audit";
 import { mediaRequiresDirectBrowserRequest } from "@/lib/media-access";
+import {
+  mediaPreviewAvailable,
+  mediaPreviewReasonLabel
+} from "@/lib/media-preview";
 import type {
   StudioMutationRequest,
   StudioMutationResult,
@@ -949,7 +953,7 @@ function MediaInspector({
 
   return (
     <article className="studio-panel studio-media-inspector" key={item.relativePath}>
-      {item.kind === "image" || item.kind === "video" ? (
+      {(item.kind === "image" || item.kind === "video") && mediaPreviewAvailable(item) ? (
         <MediaCollection
           className="studio-media-preview"
           collectionId={`studio-inspector:${item.relativePath}`}
@@ -967,7 +971,16 @@ function MediaInspector({
           title={item.fileName}
           variant="single"
         />
-      ) : <div className="piece-card-placeholder" data-audit-placeholder="media-type-fallback" data-audit-placeholder-allowed="non-image-media-preview">{item.kind}</div>}
+      ) : (
+        <div
+          className="piece-card-placeholder studio-media-preview-unavailable"
+          data-audit-placeholder="media-type-fallback"
+          data-audit-placeholder-allowed={item.kind === "image" ? "source-image-preview-unavailable" : "non-image-media-preview"}
+        >
+          <strong>{item.kind === "image" ? "Preview unavailable" : item.kind}</strong>
+          {item.kind === "image" ? <span>{mediaPreviewReasonLabel(item)}</span> : null}
+        </div>
+      )}
       <div className="studio-media-inspector-head">
         <div>
           <h3>{item.fileName}</h3>
@@ -1095,7 +1108,7 @@ function MediaInspector({
             <label><span>Display order</span><input defaultValue={Number(item.metadata.displayOrder ?? 0)} name="displayOrder" type="number" /></label>
           </div>
           <label><span>Source credit</span><input defaultValue={String(item.metadata.sourceCredit ?? "")} name="sourceCredit" type="text" /></label>
-          {item.kind === "image" ? (
+          {item.kind === "image" && mediaPreviewAvailable(item) ? (
             <MediaCropEditor
               altText={item.altText}
               cleanupMode={cleanupMode}
@@ -1106,10 +1119,17 @@ function MediaInspector({
               zoom={item.zoom}
             />
           ) : (
-            <div className="field-grid three-up compact-grid">
-              <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
-              <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
-              <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+            <div className="studio-media-crop-fallback">
+              {item.kind === "image" ? (
+                <p className="muted-copy" role="status">
+                  Crop preview is disabled because the source image is incomplete or unreadable. Metadata remains editable and the original file is unchanged.
+                </p>
+              ) : null}
+              <div className="field-grid three-up compact-grid">
+                <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
+                <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
+                <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+              </div>
             </div>
           )}
           <label><span>Crop note</span><input defaultValue={String(item.metadata.cropNote ?? "")} name="cropNote" type="text" /></label>
@@ -1145,7 +1165,7 @@ function MediaInspector({
         </div>
       </StudioAutosaveForm>
 
-      {item.kind === "image" ? (
+      {item.kind === "image" && mediaPreviewAvailable(item) ? (
         <details className="media-inspector-advanced"><summary>AI background cleanup</summary><ActionForm action={cleanupAction} className="request-form compact-form ai-cleanup-form" onSuccess={(result, context) => {
           if (result.kind === "cleanup") {
             onCleanup(result, context.formData);
@@ -1684,7 +1704,15 @@ export function StudioMediaWorkspace({
                       return (
                       <div className="candidate-assignment-card" data-media-id={item.relativePath} data-media-item="true" data-media-order={entry.suggestions.indexOf(candidate)} key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => void inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
-                          <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                          {mediaPreviewAvailable(item) ? (
+                            <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                          ) : (
+                            <span
+                              className="media-picker-chip-fallback"
+                              data-audit-placeholder="media-type-fallback"
+                              data-audit-placeholder-allowed="source-image-preview-unavailable"
+                            >Preview unavailable</span>
+                          )}
                           <span className={`candidate-confidence ${confidenceForScore(score).className}`}>{confidenceForScore(score).label}</span>
                         </button>
                         <details className="candidate-evidence"><summary>Why {score}%</summary><span>Visual {compactMetric(evidence.visualSimilarity)}</span><span>VLM {compactMetric(evidence.vlmConfidence)}</span><span>Text {compactMetric(evidence.lexicalScore)}</span><span>Cluster training {compactMetric(evidence.clusterPropagation)}</span><span>Folder training {compactMetric(evidence.folderDateContext)}</span><span>Manual label {compactMetric(evidence.manualPrior)}</span><span>Rejected signal {compactMetric(evidence.negativeReviewSignal)}</span><span>Margin {compactMetric(margin)}</span><small>{reasonCodes.join(" · ")}</small></details>
@@ -1759,8 +1787,14 @@ export function StudioMediaWorkspace({
                 type="button"
               >
                 <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
-                  {item.kind === "image"
+                  {item.kind === "image" && mediaPreviewAvailable(item)
                     ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                    : item.kind === "image"
+                      ? <span
+                          className="media-picker-chip-fallback"
+                          data-audit-placeholder="media-type-fallback"
+                          data-audit-placeholder-allowed="source-image-preview-unavailable"
+                        >Preview unavailable</span>
                     : item.kind === "video"
                       ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}

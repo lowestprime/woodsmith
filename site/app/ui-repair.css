@@ -1116,6 +1116,49 @@ body:has(.inline-edit-hint) main {
   max-height: 17rem;
 }
 
+.studio-media-preview-unavailable {
+  align-content: center;
+  gap: 0.35rem;
+  min-height: 12rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, transparent 0 48%, color-mix(in srgb, var(--line) 54%, transparent) 49% 51%, transparent 52% 100%),
+    var(--bg-soft);
+}
+
+.studio-media-preview-unavailable strong {
+  color: var(--text);
+}
+
+.studio-media-preview-unavailable span {
+  max-width: 30rem;
+  color: var(--muted);
+}
+
+.studio-media-crop-fallback {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.project-media-preview-unavailable {
+  display: grid;
+  place-content: center;
+  gap: 0.35rem;
+  min-block-size: 12rem;
+  padding: 1rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--bg-soft);
+  color: var(--text);
+  text-align: center;
+}
+
+.project-media-preview-unavailable span {
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
 .studio-media-inspector .request-form,
 .studio-media-inspector .compact-form {
   gap: 0.45rem;

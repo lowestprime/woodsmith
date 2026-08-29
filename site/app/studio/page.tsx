@@ -109,6 +109,7 @@ import { normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/ca
 import { getPieceInquiryMode, getPiecePriceMode, getPieceReviewsMode } from "@/lib/piece-model";
 import { visualAuditRequestAuthorized } from "@/lib/visual-audit";
 import { classifyMediaAccess } from "@/lib/media-access";
+import { mediaPreviewAvailable } from "@/lib/media-preview";
 import { getSmtpPublicConfiguration } from "@/lib/notifications";
 import { StudioNotificationsAdmin } from "@/components/studio/studio-notifications-admin";
 import { StudioProjectsAdmin } from "@/components/studio/studio-projects-admin";
@@ -1118,7 +1119,8 @@ export default async function StudioPage({
             width: null,
             height: null,
             projectReference: item.projectReference ?? "",
-            displayOrder: Number(item.metadata.displayOrder ?? 0)
+            displayOrder: Number(item.metadata.displayOrder ?? 0),
+            previewAvailable: mediaPreviewAvailable(item)
           }))}
           pieces={pieces.map((item) => ({ slug: item.slug, title: item.title }))}
         />
