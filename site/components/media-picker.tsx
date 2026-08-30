@@ -239,7 +239,11 @@ export function MediaPicker({
 
   return (
     <div className="media-picker">
-      {multiple ? <textarea className="visually-hidden" name={name} readOnly value={(selection as string[]).join("\n")} /> : <input name={name} type="hidden" value={selection as string} />}
+      <input
+        name={name}
+        type="hidden"
+        value={multiple ? (selection as string[]).join("\n") : selection as string}
+      />
       <div className="media-picker-head">
         <div><span>{label}</span>{helperText ? <p className="muted-copy">{helperText}</p> : null}</div>
         <div className="media-picker-actions"><button className="button-secondary" onClick={openBrowser} ref={openerRef} type="button">Browse library</button>{selectedPaths.length > 0 ? <button className="text-button" onClick={() => { setSelection(multiple ? [] : ""); onSelectionChange?.([]); }} type="button">Clear</button> : null}</div>

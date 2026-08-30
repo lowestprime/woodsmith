@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 
 const READINESS_CSS = `
   *, *::before, *::after {
@@ -89,27 +89,52 @@ async function settleMedia(page: Page) {
   });
 }
 
-async function waitForStableLayout(page: Page) {
-  const stable = await page.evaluate(() => new Promise<boolean>((resolve) => {
+async function waitForStableLayout(page: Page, locator?: Locator) {
+  const target = locator ? await locator.elementHandle() : null;
+  if (locator && !target) {
+    throw new Error("The visual-readiness target detached before layout sampling.");
+  }
+
+  const result = await page.evaluate((element: Element | null) => new Promise<{
+    stable: boolean;
+    changedFields: string[];
+  }>((resolve) => {
     const deadline = performance.now() + 5_000;
     let previous = "";
+    let previousSample: Record<string, boolean | number> | null = null;
     let stableSamples = 0;
     const sample = () => {
-      const current = JSON.stringify({
-        width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-        height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
-        images: Array.from(document.images).filter((image) => image.complete).length,
-        dialogs: document.querySelectorAll('[role="dialog"],dialog[open]').length
-      });
+      const rect = element?.getBoundingClientRect() ?? null;
+      const root: Element | Document = element ?? document;
+      const currentSample: Record<string, boolean | number> = {
+        connected: element?.isConnected ?? true,
+        width: rect ? Math.round(rect.width) : Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+        height: rect ? Math.round(rect.height) : Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
+        scrollWidth: element instanceof HTMLElement ? element.scrollWidth : document.documentElement.scrollWidth,
+        scrollHeight: element instanceof HTMLElement ? element.scrollHeight : document.documentElement.scrollHeight,
+        images: Array.from(root.querySelectorAll<HTMLImageElement>("img")).filter((image) => image.complete).length,
+        dialogs: root.querySelectorAll('[role="dialog"],dialog[open]').length +
+          (element?.matches('[role="dialog"],dialog[open]') ? 1 : 0)
+      };
+      const current = JSON.stringify(currentSample);
+      const changedFields = previousSample
+        ? Object.keys(currentSample).filter((key) => currentSample[key] !== previousSample?.[key])
+        : Object.keys(currentSample);
       stableSamples = current === previous ? stableSamples + 1 : 0;
       previous = current;
-      if (stableSamples >= 2) resolve(true);
-      else if (performance.now() >= deadline) resolve(false);
+      previousSample = currentSample;
+      if (stableSamples >= 2) resolve({ stable: true, changedFields: [] });
+      else if (performance.now() >= deadline) resolve({ stable: false, changedFields });
       else requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }));
-  if (!stable) throw new Error("Visual readiness did not reach three consecutive stable layout frames.");
+  }), target).finally(async () => {
+    await target?.dispose();
+  });
+  if (!result.stable) {
+    const fields = result.changedFields.length > 0 ? result.changedFields.join(", ") : "unknown";
+    throw new Error(`Visual readiness did not reach three consecutive stable layout frames. Unstable fields: ${fields}.`);
+  }
 }
 
 async function waitForBusySurfaces(page: Page) {
@@ -123,9 +148,9 @@ async function waitForBusySurfaces(page: Page) {
   }, { timeout: 15_000 });
 }
 
-export async function waitForVisualIdle(page: Page) {
+export async function waitForVisualIdle(page: Page, locator?: Locator) {
   await settleMedia(page);
-  await waitForStableLayout(page);
+  await waitForStableLayout(page, locator);
   await waitForBusySurfaces(page);
 }
 

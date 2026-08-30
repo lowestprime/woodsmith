@@ -24,7 +24,14 @@ export async function waitForNavigationSettle(input: {
   let consecutiveStableSamples = 0;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await input.sleep(intervalMs);
+    try {
+      await input.sleep(intervalMs);
+    } catch (error) {
+      if (!isNavigationInterruption(error)) throw error;
+      previousUrl = "";
+      consecutiveStableSamples = 0;
+      continue;
+    }
 
     let current: NavigationSample;
     try {

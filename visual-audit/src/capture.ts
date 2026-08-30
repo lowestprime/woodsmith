@@ -181,20 +181,21 @@ async function stabilizeScrollableCandidate(locator: Locator) {
       let previous = "";
       let stableSamples = 0;
       for (let attempt = 0; attempt < 32; attempt += 1) {
-        const sample = JSON.stringify({
+        const geometry = {
           clientWidth: element.clientWidth,
           clientHeight: element.clientHeight,
           scrollWidth: element.scrollWidth,
           scrollHeight: element.scrollHeight,
           pendingImages: Array.from(element.querySelectorAll<HTMLImageElement>("img")).filter((image) => !image.complete).length,
           pendingVideos: Array.from(element.querySelectorAll<HTMLVideoElement>("video")).filter((video) => video.readyState < 1 && !video.error).length
-        });
+        };
+        const sample = JSON.stringify(geometry);
         if (sample === previous) stableSamples += 1;
         else {
           previous = sample;
           stableSamples = 0;
         }
-        if (stableSamples >= 2) return JSON.parse(sample) as ScrollSurfaceGeometry & { pendingImages: number; pendingVideos: number };
+        if (stableSamples >= 2) return geometry;
         await pauseFrames();
       }
       throw new Error("Scrollable surface did not reach three consecutive stable geometry samples.");

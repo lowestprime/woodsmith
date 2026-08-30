@@ -2728,7 +2728,12 @@ async function captureMediaPageItems(input: {
       throw new Error(`Media card ${index + 1} is missing its stable data-media-path identity.`);
     }
 
-    await card.click();
+    if (!await card.isEnabled()) {
+      throw new Error(`Media card ${index + 1} is disabled and cannot open its inspector.`);
+    }
+    await card.evaluate((element) => {
+      (element as HTMLElement).click();
+    });
 
     const inspector =
       input.page.locator(
@@ -2748,7 +2753,7 @@ async function captureMediaPageItems(input: {
       return activeCard?.dataset.mediaActive === "true" &&
         inspectorPaths.some((field) => field.value === expectedPath);
     }, relativePath, { timeout: 10_000 });
-    await waitForVisualIdle(input.page);
+    await waitForVisualIdle(input.page, inspector);
     await waitForCaptureRequestDrain(input.page);
 
     await saveCapture({
@@ -2766,7 +2771,7 @@ async function captureMediaPageItems(input: {
           (node as HTMLDetailsElement).open = true;
         });
       });
-    await waitForVisualIdle(input.page);
+    await waitForVisualIdle(input.page, inspector);
 
     await saveCapture({
       ...input,
@@ -2782,7 +2787,12 @@ async function captureMediaPageItems(input: {
     if (
       await preview.isVisible().catch(() => false)
     ) {
-      await preview.click();
+      if (!await preview.isEnabled()) {
+        throw new Error(`Media inspector ${index + 1} lightbox control is disabled.`);
+      }
+      await preview.evaluate((element) => {
+        (element as HTMLElement).click();
+      });
 
       const dialog =
         input.page.locator(
@@ -2792,7 +2802,7 @@ async function captureMediaPageItems(input: {
       await dialog.waitFor({
         state: "visible"
       });
-      await waitForVisualIdle(input.page);
+      await waitForVisualIdle(input.page, dialog);
       await waitForCaptureRequestDrain(input.page);
 
       await saveCapture({
@@ -2803,14 +2813,19 @@ async function captureMediaPageItems(input: {
         fullPage: false
       });
 
-      await dialog
+      const closeButton = dialog
         .getByRole(
           "button",
           { name: "Close image preview" }
-        )
-        .click();
+        );
+      if (!await closeButton.isEnabled()) {
+        throw new Error(`Media inspector ${index + 1} lightbox close control is disabled.`);
+      }
+      await closeButton.evaluate((element) => {
+        (element as HTMLElement).click();
+      });
       await dialog.waitFor({ state: "hidden", timeout: 10_000 });
-      await waitForVisualIdle(input.page);
+      await waitForVisualIdle(input.page, inspector);
     }
   }
 

@@ -223,6 +223,24 @@ test(
 );
 
 test(
+  "unknown app identity is accepted only for a live-readonly smoke",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /\$appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and\s+\$TargetMode -eq "live-readonly" -and\s+\$Scope -eq "smoke"/,
+    );
+    assert.match(
+      source,
+      /Only an unstamped live-readonly loopback smoke is permitted before commit/,
+    );
+  },
+);
+
+test(
   "local full archives apply the measured concurrency and fail-fast budget",
   async () => {
     const source = await readScript(

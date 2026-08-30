@@ -108,11 +108,12 @@ $appBuildIdentity = if ($appBuildSha -eq $expectedBuildSha) {
   "exact"
 } elseif (
   $appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and
+  $TargetMode -eq "live-readonly" -and
   $Scope -eq "smoke"
 ) {
   "unknown-loopback-smoke"
 } else {
-  throw "The app image build identity does not match CommitSha. Only an unstamped loopback disposable smoke is permitted before commit."
+  throw "The app image build identity does not match CommitSha. Only an unstamped live-readonly loopback smoke is permitted before commit."
 }
 
 $shortSha = $CommitSha.Substring(0, 8)

@@ -744,6 +744,17 @@ test("media picker browsing stays outside parent autosave and mutation transport
     false,
     "Media picker browsing must not invoke a POST-backed Next server action."
   );
+
+  assert.equal(
+    source.includes('<textarea className="visually-hidden"'),
+    false,
+    "Serialized picker values must not create a focusable visually hidden control."
+  );
+  assert.equal(
+    source.includes('type="hidden"'),
+    true,
+    "Serialized picker values must use a noninteractive hidden input."
+  );
 });
 
 test("Studio media previews bypass the optimizer unless public access is explicit", async () => {
