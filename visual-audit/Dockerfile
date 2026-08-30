@@ -1,5 +1,9 @@
 FROM mcr.microsoft.com/playwright:v1.61.0-noble
 
+ARG WOODSMITH_BUILD_SHA=unknown
+
+LABEL org.opencontainers.image.revision="${WOODSMITH_BUILD_SHA}"
+
 WORKDIR /audit
 
 ENV NODE_ENV=production

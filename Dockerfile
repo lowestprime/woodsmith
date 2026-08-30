@@ -2,6 +2,8 @@ FROM node:22-bookworm-slim AS builder
 
 ARG WOODSMITH_BUILD_SHA=unknown
 
+LABEL org.opencontainers.image.revision="${WOODSMITH_BUILD_SHA}"
+
 WORKDIR /app/site
 
 ENV NEXT_TELEMETRY_DISABLED=1
