@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
@@ -194,7 +195,7 @@ async function stabilizeScrollableCandidate(locator: Locator) {
           stableSamples = 0;
         }
         if (stableSamples >= 2) return JSON.parse(sample) as ScrollSurfaceGeometry & { pendingImages: number; pendingVideos: number };
-        await wait(125);
+        await pauseFrames();
       }
       throw new Error("Scrollable surface did not reach three consecutive stable geometry samples.");
     } finally {
@@ -252,7 +253,7 @@ async function stitchVerticalPage(page: Page, outputDirectory: string, baseName:
   if (!viewport) throw new Error("A fixed viewport is required for tiled capture.");
 
   const rawRoot = path.join(outputDirectory, "raw", safeName(baseName));
-  await ensureDirectory(rawRoot);
+  if (config.retainRawTiles) await ensureDirectory(rawRoot);
   const maxSegmentCssHeight = Math.max(viewport.height, Math.floor(config.maxStitchedSegmentHeight / dimensions.deviceScaleFactor));
   const positions = overlappingPositions(dimensions.height, viewport.height);
   const outputFiles: string[] = [];
@@ -279,9 +280,12 @@ async function stitchVerticalPage(page: Page, outputDirectory: string, baseName:
         const buffer = await page.screenshot({ type: "png", scale: "device", animations: "disabled", caret: "hide" });
         const metadata = await sharp(buffer).metadata();
         const rawFile = path.join(rawRoot, `segment-${String(segmentIndex + 1).padStart(3, "0")}-tile-${String(tileRecords.length + 1).padStart(4, "0")}.png`);
-        await fs.writeFile(rawFile, buffer, { mode: 0o600 });
+        if (config.retainRawTiles) await fs.writeFile(rawFile, buffer, { mode: 0o600 });
         tileRecords.push({
-          file: relativeTo(config.runRoot, rawFile),
+          ...(config.retainRawTiles ? { file: relativeTo(config.runRoot, rawFile) } : {}),
+          sha256: createHash("sha256").update(buffer).digest("hex"),
+          retained: config.retainRawTiles,
+          bytes: buffer.length,
           x: 0,
           y: Math.round(actualY * dimensions.deviceScaleFactor),
           width: metadata.width ?? Math.round(viewport.width * dimensions.deviceScaleFactor),
@@ -325,11 +329,13 @@ async function stitchVerticalPage(page: Page, outputDirectory: string, baseName:
   }
 
   const tileManifest: TileManifest = {
+    schemaVersion: 2,
     kind: "page",
     createdAt: new Date().toISOString(),
     sourceWidth: Math.round(viewport.width * dimensions.deviceScaleFactor),
     sourceHeight: Math.round(dimensions.height * dimensions.deviceScaleFactor),
     deviceScaleFactor: dimensions.deviceScaleFactor,
+    rawTilePolicy: config.retainRawTiles ? "retain-all" : "failure-only",
     segments
   };
   await writeJsonAtomic(path.join(outputDirectory, `${baseName}__tiles.json`), tileManifest);
@@ -385,7 +391,7 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
     const clipOrigin = viewportClipOrigin(info);
 
     const rawRoot = path.join(outputDirectory, "raw", `${safeName(baseName)}-scroll-${String(captured + 1).padStart(3, "0")}`);
-    await ensureDirectory(rawRoot);
+    if (config.retainRawTiles) await ensureDirectory(rawRoot);
     const xPositions = overlappingPositions(info.scrollWidth, info.clientWidth);
     const yPositions = overlappingPositions(info.scrollHeight, info.clientHeight);
     const maxSegmentCssHeight = Math.max(info.clientHeight, Math.floor(config.maxStitchedSegmentHeight / dimensions.deviceScaleFactor));
@@ -448,9 +454,12 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
             });
             const metadata = await sharp(buffer).metadata();
             const rawFile = path.join(rawRoot, `segment-${String(segmentIndex + 1).padStart(3, "0")}-tile-${String(tileRecords.length + 1).padStart(4, "0")}.png`);
-            await fs.writeFile(rawFile, buffer, { mode: 0o600 });
+            if (config.retainRawTiles) await fs.writeFile(rawFile, buffer, { mode: 0o600 });
             tileRecords.push({
-              file: relativeTo(config.runRoot, rawFile),
+              ...(config.retainRawTiles ? { file: relativeTo(config.runRoot, rawFile) } : {}),
+              sha256: createHash("sha256").update(buffer).digest("hex"),
+              retained: config.retainRawTiles,
+              bytes: buffer.length,
               x: Math.round(actual.x * dimensions.deviceScaleFactor),
               y: Math.round(actual.y * dimensions.deviceScaleFactor),
               width: metadata.width ?? Math.round(info.clientWidth * dimensions.deviceScaleFactor),
@@ -495,11 +504,13 @@ async function captureScrollableContainers(page: Page, outputDirectory: string, 
     }
 
     const tileManifest: TileManifest = {
+      schemaVersion: 2,
       kind: "scroll-container",
       createdAt: new Date().toISOString(),
       sourceWidth: Math.round(info.scrollWidth * dimensions.deviceScaleFactor),
       sourceHeight: Math.round(info.scrollHeight * dimensions.deviceScaleFactor),
       deviceScaleFactor: dimensions.deviceScaleFactor,
+      rawTilePolicy: config.retainRawTiles ? "retain-all" : "failure-only",
       segments
     };
     await writeJsonAtomic(path.join(outputDirectory, `${baseName}__scroll-${String(captured + 1).padStart(3, "0")}-${safeName(info.id)}__tiles.json`), tileManifest);

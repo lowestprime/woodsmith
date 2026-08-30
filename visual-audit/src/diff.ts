@@ -22,6 +22,8 @@ async function main() {
   const current = JSON.parse(await fs.readFile(currentManifestFile, "utf8")) as RunManifest;
   const baselineByKey = new Map(baseline.captures.map((capture) => [capture.key, capture]));
   const currentByKey = new Map(current.captures.map((capture) => [capture.key, capture]));
+  const baselineObservations = new Map((baseline.observations ?? []).map((observation) => [observation.key, observation]));
+  const currentObservations = new Map((current.observations ?? []).map((observation) => [observation.key, observation]));
   const diffRoot = path.join(config.runRoot, "diff");
   await ensureDirectory(diffRoot);
   const differences: Array<Record<string, unknown>> = [];
@@ -89,6 +91,18 @@ async function main() {
   const newDiagnostics = current.diagnostics
     .filter((item) => !item.expected && !baselineDiagnostics.has(diagnosticKey(item)))
     .map((item) => ({ type: item.type, route: item.route, message: item.message }));
+  const observationChanges = [...currentObservations.values()].flatMap((observation) => {
+    const previous = baselineObservations.get(observation.key);
+    if (!previous) return [{ key: observation.key, status: "new-observation" }];
+    const currentBehavior = JSON.stringify({ passed: observation.passed, findings: observation.findings, geometry: observation.geometry, accessibility: observation.accessibility, media: observation.media });
+    const previousBehavior = JSON.stringify({ passed: previous.passed, findings: previous.findings, geometry: previous.geometry, accessibility: previous.accessibility, media: previous.media });
+    if (currentBehavior !== previousBehavior) return [{ key: observation.key, status: "behavior-change" }];
+    if (observation.evidenceIdentity.digest !== previous.evidenceIdentity.digest) return [{ key: observation.key, status: "dependency-change" }];
+    return [];
+  });
+  for (const observation of baselineObservations.values()) {
+    if (!currentObservations.has(observation.key)) observationChanges.push({ key: observation.key, status: "removed-observation" });
+  }
 
   await writeJsonAtomic(output, {
     comparedAt: new Date().toISOString(),
@@ -103,16 +117,21 @@ async function main() {
       dimensionChanges: differences.filter((item) => item.status === "dimension-change").length,
       addedRoutes: addedRoutes.length,
       removedRoutes: removedRoutes.length,
-      newDiagnostics: newDiagnostics.length
+      newDiagnostics: newDiagnostics.length,
+      logicalObservations: currentObservations.size,
+      observationChanges: observationChanges.length,
+      reusedMaterializations: (current.observations ?? []).filter((observation) => observation.reusedFrom).length
     },
     environment: {
       browserChanged: baseline.browserVersion !== current.browserVersion,
       modeChanged: baseline.mode !== current.mode,
-      scopeChanged: baseline.scope !== current.scope
+      scopeChanged: baseline.scope !== current.scope,
+      contractChanged: baseline.evidenceContract?.version !== current.evidenceContract?.version
     },
     routes: { added: addedRoutes, removed: removedRoutes },
     newDiagnostics,
-    differences
+    differences,
+    observationChanges
   });
 }
 

@@ -40,6 +40,35 @@ export function canonicalCoverageMatrix(
   );
 }
 
+export function concreteRouteCoverageMatrix(
+  scope: AuditScope,
+  viewports: ViewportProfile[]
+): CoverageMatrixEntry[] {
+  if (scope === "smoke") return canonicalCoverageMatrix(scope, viewports);
+  return [{
+    profile: profileByName(viewports, "desktop-1440"),
+    theme: "dark",
+    deep: false
+  }];
+}
+
+export function nonCartesianRouteCoveragePlan(input: {
+  scope: AuditScope;
+  viewports: ViewportProfile[];
+  routes: readonly string[];
+  familySentinels: ReadonlySet<string>;
+  expandedMatrix?: CoverageMatrixEntry[];
+}) {
+  const concreteRoutes = [...new Set(input.routes)].sort();
+  const familyRoutes = concreteRoutes.filter((route) => input.familySentinels.has(route));
+  return {
+    concreteRoutes,
+    familyRoutes,
+    concreteMatrix: concreteRouteCoverageMatrix(input.scope, input.viewports),
+    familyMatrix: input.expandedMatrix ?? canonicalCoverageMatrix(input.scope, input.viewports)
+  };
+}
+
 export function discoveredCoverageMatrix(
   scope: AuditScope,
   viewports: ViewportProfile[]

@@ -11,6 +11,10 @@ const READINESS_CSS = `
     caret-color: transparent !important;
   }
   html { scroll-behavior: auto !important; }
+  .media-run-summary > span:last-child {
+    color: transparent !important;
+    inline-size: 5rem !important;
+  }
 `;
 
 async function triggerLazyContent(page: Page) {
@@ -71,7 +75,9 @@ async function settleMedia(page: Page) {
       if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
     }));
 
-    await Promise.all(Array.from(document.querySelectorAll<HTMLVideoElement>("video")).map((video) => {
+    await Promise.all(Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
+      .filter((video) => video.preload !== "none")
+      .map((video) => {
       if (video.readyState >= 1 || video.error) return Promise.resolve();
       return new Promise<void>((resolve) => {
         const done = () => resolve();
@@ -84,28 +90,26 @@ async function settleMedia(page: Page) {
 }
 
 async function waitForStableLayout(page: Page) {
-  let previous = "";
-  let stableSamples = 0;
-
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    const current = await page.evaluate(() => JSON.stringify({
-      width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-      height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
-      images: Array.from(document.images).filter((image) => image.complete).length,
-      dialogs: document.querySelectorAll('[role="dialog"],dialog[open]').length
-    }));
-
-    if (current === previous) stableSamples += 1;
-    else {
+  const stable = await page.evaluate(() => new Promise<boolean>((resolve) => {
+    const deadline = performance.now() + 5_000;
+    let previous = "";
+    let stableSamples = 0;
+    const sample = () => {
+      const current = JSON.stringify({
+        width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
+        height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
+        images: Array.from(document.images).filter((image) => image.complete).length,
+        dialogs: document.querySelectorAll('[role="dialog"],dialog[open]').length
+      });
+      stableSamples = current === previous ? stableSamples + 1 : 0;
       previous = current;
-      stableSamples = 0;
-    }
-
-    if (stableSamples >= 2) return;
-    await page.waitForTimeout(125);
-  }
-
-  throw new Error("Visual readiness did not reach three consecutive stable layout samples.");
+      if (stableSamples >= 2) resolve(true);
+      else if (performance.now() >= deadline) resolve(false);
+      else requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }));
+  if (!stable) throw new Error("Visual readiness did not reach three consecutive stable layout frames.");
 }
 
 async function waitForBusySurfaces(page: Page) {
@@ -120,7 +124,6 @@ async function waitForBusySurfaces(page: Page) {
 }
 
 export async function waitForVisualIdle(page: Page) {
-  await page.waitForTimeout(100);
   await settleMedia(page);
   await waitForStableLayout(page);
   await waitForBusySurfaces(page);

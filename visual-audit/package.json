@@ -14,6 +14,7 @@
     "benchmark:artifacts": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/benchmark-artifacts.js",
     "benchmark:browser-gpu": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/benchmark-browser-gpu.js",
     "benchmark:phases": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/benchmark-phases.js",
+    "benchmark:special": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/benchmark-special-stage.js",
     "benchmark:validator": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/benchmark-validator.js",
     "all": "node ./node_modules/typescript/bin/tsc -p tsconfig.json && node dist/run.js && node dist/diff.js && node dist/report.js && node dist/validate.js"
   },

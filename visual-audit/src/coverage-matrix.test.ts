@@ -3,7 +3,9 @@ import test from "node:test";
 
 import {
   canonicalCoverageMatrix,
-  discoveredCoverageMatrix
+  concreteRouteCoverageMatrix,
+  discoveredCoverageMatrix,
+  nonCartesianRouteCoveragePlan
 } from "./coverage-matrix.js";
 import type { ViewportProfile } from "./types.js";
 
@@ -27,6 +29,34 @@ test("canonical full coverage retains every configured viewport and theme", () =
     matrix.filter((entry) => entry.deep).map((entry) => `${entry.profile.name}:${entry.theme}`),
     ["desktop-archival:dark"]
   );
+});
+
+test("every concrete route receives one deterministic non-Cartesian baseline", () => {
+  assert.deepEqual(
+    concreteRouteCoverageMatrix("full", viewports).map((entry) => `${entry.profile.name}:${entry.theme}:${entry.deep}`),
+    ["desktop-1440:dark:false"]
+  );
+});
+
+test("family expansion retains every concrete route without Cartesian duplication", () => {
+  const routes = ["/portfolio/b", "/", "/portfolio/a"];
+  const plan = nonCartesianRouteCoveragePlan({
+    scope: "full",
+    viewports,
+    routes,
+    familySentinels: new Set(["/", "/portfolio/a"])
+  });
+  assert.deepEqual(plan.concreteRoutes, ["/", "/portfolio/a", "/portfolio/b"]);
+  assert.deepEqual(plan.familyRoutes, ["/", "/portfolio/a"]);
+  assert.equal(plan.concreteMatrix.length, 1);
+  assert.equal(plan.familyMatrix.length, viewports.length * 2);
+  const taskKeys = new Set([
+    ...plan.concreteRoutes.flatMap((route) => plan.concreteMatrix.map((entry) => `${route}:${entry.profile.name}:${entry.theme}`)),
+    ...plan.familyRoutes.flatMap((route) => plan.familyMatrix.map((entry) => `${route}:${entry.profile.name}:${entry.theme}`))
+  ]);
+  assert.ok(taskKeys.has("/portfolio/b:desktop-1440:dark"));
+  assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/b:")).length, 1);
+  assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/a:")).length, viewports.length * 2);
 });
 
 test("discovered links use representative structural states without deep duplication", () => {
