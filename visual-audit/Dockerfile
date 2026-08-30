@@ -7,6 +7,7 @@ LABEL org.opencontainers.image.revision="${WOODSMITH_BUILD_SHA}"
 WORKDIR /audit
 
 ENV NODE_ENV=production
+ENV WOODSMITH_BUILD_SHA=${WOODSMITH_BUILD_SHA}
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 ENV HOME=/tmp
 
