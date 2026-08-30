@@ -123,6 +123,17 @@ test("media deletion uses the shared cancel-first confirmation dialog", () => {
   assert.match(inspector, /await flushStudioNavigationQueues\(\)/);
 });
 
+test("Studio media cards do not preload every video in the paginated grid", () => {
+  assert.match(
+    mediaWorkspaceSource,
+    /<video muted playsInline preload="none" src=\{toMediaUrl\(item\.relativePath\)\} \/>/
+  );
+  assert.doesNotMatch(
+    mediaWorkspaceSource,
+    /<video muted playsInline preload="metadata" src=\{toMediaUrl\(item\.relativePath\)\} \/>/
+  );
+});
+
 test("persisted media versions advance monotonically across immediate saves", async () => {
   const previousNodeEnv = process.env.NODE_ENV;
   const previousDataRoot = process.env.DATA_ROOT;

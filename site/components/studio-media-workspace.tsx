@@ -1796,7 +1796,7 @@ export function StudioMediaWorkspace({
                           data-audit-placeholder-allowed="source-image-preview-unavailable"
                         >Preview unavailable</span>
                     : item.kind === "video"
-                      ? <video muted playsInline preload="metadata" src={toMediaUrl(item.relativePath)} />
+                      ? <video muted playsInline preload="none" src={toMediaUrl(item.relativePath)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
                   <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i>{analyzed ? <i>{disposition.label}</i> : null}<i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
                 </div>
