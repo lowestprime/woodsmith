@@ -223,6 +223,49 @@ test(
 );
 
 test(
+  "local full archives apply the measured concurrency and fail-fast budget",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /\[ValidateRange\(1, 12\)\]\s+\[int\]\$CaptureWorkers/,
+    );
+    assert.match(source, /AUDIT_VISUAL_MATERIALIZATION=selective/);
+    assert.match(source, /AUDIT_RETAIN_RAW_TILES=false/);
+
+    for (const environmentName of [
+      "AUDIT_ROUTE_TASK_SECONDS",
+      "AUDIT_SPECIAL_TASK_SECONDS",
+      "AUDIT_MUTATION_TASK_SECONDS",
+      "AUDIT_MATERIALIZATION_SECONDS",
+      "AUDIT_REPORT_RUNTIME_SECONDS",
+      "AUDIT_VALIDATION_RUNTIME_SECONDS",
+      "AUDIT_FIXED_RUNTIME_SECONDS",
+      "AUDIT_PERSISTENT_BYTES_PER_MATERIALIZATION",
+      "AUDIT_TEMP_BYTES_PER_MATERIALIZATION",
+      "AUDIT_REPORT_ARTIFACT_MULTIPLIER",
+      "AUDIT_PROJECTED_WRITE_AMPLIFICATION_RATIO",
+      "AUDIT_TARGET_RUNTIME_MINUTES",
+      "AUDIT_HARD_RUNTIME_MINUTES",
+    ]) {
+      assert.match(
+        source,
+        new RegExp(`${environmentName}=.{0,160}\\$`),
+        `${environmentName} must be passed into every audit stage`,
+      );
+    }
+
+    assert.match(
+      source,
+      /HardRuntimeMinutes must be greater than or equal to TargetRuntimeMinutes/,
+    );
+  },
+);
+
+test(
   "local full archives can retain only their validated output volume",
   async () => {
     const source = await readScript(

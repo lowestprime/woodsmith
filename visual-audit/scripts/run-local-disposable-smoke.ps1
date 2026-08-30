@@ -7,12 +7,38 @@ param(
   [string]$TargetMode = "live-readonly",
   [ValidateSet("smoke", "full")]
   [string]$Scope = "smoke",
-  [ValidateRange(1, 6)]
+  [ValidateRange(1, 12)]
   [int]$CaptureWorkers = 2,
   [ValidateRange(1, 8)]
   [int]$ValidationWorkers = 6,
   [ValidateRange(1, 8)]
   [int]$ReportWorkers = 6,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$RouteTaskSeconds = 2.4,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$SpecialTaskSeconds = 14.212,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$MutationTaskSeconds = 8,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$MaterializationSeconds = 0.8,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$ReportRuntimeSeconds = 60,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$ValidationRuntimeSeconds = 60,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$FixedRuntimeSeconds = 60,
+  [ValidateRange(1, 1099511627776)]
+  [long]$PersistentBytesPerMaterialization = 3247552,
+  [ValidateRange(1, 1099511627776)]
+  [long]$TemporaryBytesPerMaterialization = 1497427,
+  [ValidateRange(0.0, 100.0)]
+  [double]$ReportArtifactMultiplier = 1,
+  [ValidateRange(0.001, 100.0)]
+  [double]$ProjectedWriteAmplificationRatio = 1.186,
+  [ValidateRange(0.001, 1440.0)]
+  [double]$TargetRuntimeMinutes = 30,
+  [ValidateRange(0.001, 1440.0)]
+  [double]$HardRuntimeMinutes = 45,
   [string]$ResumeRunId = "",
   [string]$ResumeOutputVolume = "",
   [switch]$PreserveOutput
@@ -42,6 +68,9 @@ if ([string]::IsNullOrWhiteSpace($CommitSha)) {
 
 if ($CommitSha -notmatch "^[0-9a-f]{40}$") {
   throw "CommitSha must be a full 40-character lowercase Git SHA."
+}
+if ($HardRuntimeMinutes -lt $TargetRuntimeMinutes) {
+  throw "HardRuntimeMinutes must be greater than or equal to TargetRuntimeMinutes."
 }
 
 $hasResumeRunId = -not [string]::IsNullOrWhiteSpace($ResumeRunId)
@@ -489,9 +518,24 @@ console.log("SNAPSHOT_CLONE_QUICK_CHECK=ok");
     "-e", "ADMIN_PASSWORD_FILE=/run/secrets/admin_password",
     "-e", "AUDIT_TOKEN_FILE=/run/secrets/audit_token",
     "-e", "AUDIT_STRICT_DIAGNOSTICS=true",
+    "-e", "AUDIT_VISUAL_MATERIALIZATION=selective",
+    "-e", "AUDIT_RETAIN_RAW_TILES=false",
     "-e", ("VISUAL_AUDIT_CAPTURE_WORKERS=" + $CaptureWorkers),
     "-e", ("VISUAL_AUDIT_VALIDATION_WORKERS=" + $ValidationWorkers),
-    "-e", ("VISUAL_AUDIT_REPORT_WORKERS=" + $ReportWorkers)
+    "-e", ("VISUAL_AUDIT_REPORT_WORKERS=" + $ReportWorkers),
+    "-e", ("AUDIT_ROUTE_TASK_SECONDS=" + $RouteTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_SPECIAL_TASK_SECONDS=" + $SpecialTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_MUTATION_TASK_SECONDS=" + $MutationTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_MATERIALIZATION_SECONDS=" + $MaterializationSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_REPORT_RUNTIME_SECONDS=" + $ReportRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_VALIDATION_RUNTIME_SECONDS=" + $ValidationRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_FIXED_RUNTIME_SECONDS=" + $FixedRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_PERSISTENT_BYTES_PER_MATERIALIZATION=" + $PersistentBytesPerMaterialization),
+    "-e", ("AUDIT_TEMP_BYTES_PER_MATERIALIZATION=" + $TemporaryBytesPerMaterialization),
+    "-e", ("AUDIT_REPORT_ARTIFACT_MULTIPLIER=" + $ReportArtifactMultiplier.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_PROJECTED_WRITE_AMPLIFICATION_RATIO=" + $ProjectedWriteAmplificationRatio.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_TARGET_RUNTIME_MINUTES=" + $TargetRuntimeMinutes.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_HARD_RUNTIME_MINUTES=" + $HardRuntimeMinutes.ToString([Globalization.CultureInfo]::InvariantCulture))
   )
 
   Write-Output "CAPTURE_START"
