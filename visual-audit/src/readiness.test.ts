@@ -6,11 +6,15 @@ test("media inspector readiness scopes layout stability to the active surface", 
   const readiness = await readFile(new URL("../src/readiness.ts", import.meta.url), "utf8");
   const runner = await readFile(new URL("../src/run.ts", import.meta.url), "utf8");
 
-  assert.match(readiness, /waitForStableLayout\(page: Page, locator\?: Locator\)/);
+  assert.match(readiness, /waitForStableLayout\(page: Page, locator\?: Locator, trackDocumentExtent = true\)/);
   assert.match(readiness, /const root: Element \| Document = element \?\? document/);
-  assert.match(readiness, /rect \? Math\.round\(rect\.width\)/);
+  assert.match(readiness, /rect\.right > 0/);
+  assert.match(readiness, /settleMedia\(page, locator, includeOffscreen\)/);
+  assert.match(readiness, /\? Math\.round\(rect\.width\)/);
   assert.match(readiness, /Unstable fields:/);
-  assert.match(readiness, /waitForStableLayout\(page, locator\)/);
+  assert.match(readiness, /waitForStableLayout\(page, locator, includeOffscreen\)/);
+  assert.match(readiness, /waitForStableLayout\(page, undefined, true\)/);
+  assert.match(readiness, /if \(includeOffscreen\) await triggerLazyContent\(page\)/);
   assert.match(readiness, /image\.loading = "eager"/);
   assert.match(readiness, /videos\.filter\(\(video\) => video\.preload !== "none"\)/);
   assert.doesNotMatch(readiness, /video\.preload\s*=/);
@@ -20,6 +24,9 @@ test("media inspector readiness scopes layout stability to the active surface", 
   assert.match(runner, /!loaded && !intentionallyDeferred/);
   assert.match(runner, /waitForVisualIdle\(input\.page, inspector\)/);
   assert.match(runner, /waitForVisualIdle\(input\.page, dialog\)/);
+  assert.match(runner, /relevantPendingVisualRequests\(page, pendingRequests\)/);
+  assert.match(runner, /relevantRequests\.length > 0/);
+  assert.match(runner, /\.site-header"\)\?\.classList\.remove\("is-hidden"\)/);
   assert.match(
     runner,
     /keyboard\.press\("Enter"\);[\s\S]*waitForVisualIdle\(input\.page, collection\);[\s\S]*quietSamples: 6[\s\S]*last-selected/,

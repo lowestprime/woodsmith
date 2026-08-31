@@ -59,14 +59,31 @@ async function triggerLazyContent(page: Page) {
   });
 }
 
-async function settleMedia(page: Page) {
-  const pending = await page.evaluate(async () => {
+async function settleMedia(page: Page, locator?: Locator, includeOffscreen = false) {
+  const target = locator ? await locator.elementHandle() : null;
+  if (locator && !target) {
+    throw new Error("The visual-readiness media target detached before media sampling.");
+  }
+
+  const pending = await page.evaluate(async ({ element, includeOffscreen }: {
+    element: Element | null;
+    includeOffscreen: boolean;
+  }) => {
     await document.fonts.ready;
 
     const visible = (element: HTMLElement) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
-      return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
+      return rect.width > 1 &&
+        rect.height > 1 &&
+        (includeOffscreen || (
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < window.innerWidth &&
+          rect.top < window.innerHeight
+        )) &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
     };
     const waitForMediaEvent = (target: EventTarget, events: string[], timeoutMs: number) => new Promise<void>((resolve) => {
       let settled = false;
@@ -81,7 +98,11 @@ async function settleMedia(page: Page) {
       events.forEach((event) => target.addEventListener(event, done, { once: true }));
     });
 
-    const images = Array.from(document.images).filter((image) => (
+    const root: Element | Document = element ?? document;
+    const images = [
+      ...(element instanceof HTMLImageElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLImageElement>("img"))
+    ].filter((image) => (
       visible(image) && Boolean(image.currentSrc || image.getAttribute("src") || image.getAttribute("srcset"))
     ));
     for (const image of images) {
@@ -96,7 +117,10 @@ async function settleMedia(page: Page) {
       if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
     }));
 
-    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>("video")).filter((video) => (
+    const videos = [
+      ...(element instanceof HTMLVideoElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLVideoElement>("video"))
+    ].filter((video) => (
       visible(video) && Boolean(video.currentSrc || video.getAttribute("src") || video.querySelector("source[src]"))
     ));
     const videosToAwait = videos.filter((video) => video.preload !== "none");
@@ -110,6 +134,8 @@ async function settleMedia(page: Page) {
       images: images.filter((image) => !image.complete).length,
       videos: videosToAwait.filter((video) => video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error).length
     };
+  }, { element: target, includeOffscreen }).finally(async () => {
+    await target?.dispose();
   });
 
   if (pending.images > 0 || pending.videos > 0) {
@@ -119,13 +145,16 @@ async function settleMedia(page: Page) {
   }
 }
 
-async function waitForStableLayout(page: Page, locator?: Locator) {
+async function waitForStableLayout(page: Page, locator?: Locator, trackDocumentExtent = true) {
   const target = locator ? await locator.elementHandle() : null;
   if (locator && !target) {
     throw new Error("The visual-readiness target detached before layout sampling.");
   }
 
-  const result = await page.evaluate((element: Element | null) => new Promise<{
+  const result = await page.evaluate(({ element, trackDocumentExtent }: {
+    element: Element | null;
+    trackDocumentExtent: boolean;
+  }) => new Promise<{
     stable: boolean;
     changedFields: string[];
   }>((resolve) => {
@@ -138,10 +167,26 @@ async function waitForStableLayout(page: Page, locator?: Locator) {
       const root: Element | Document = element ?? document;
       const currentSample: Record<string, boolean | number> = {
         connected: element?.isConnected ?? true,
-        width: rect ? Math.round(rect.width) : Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-        height: rect ? Math.round(rect.height) : Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
-        scrollWidth: element instanceof HTMLElement ? element.scrollWidth : document.documentElement.scrollWidth,
-        scrollHeight: element instanceof HTMLElement ? element.scrollHeight : document.documentElement.scrollHeight,
+        width: rect
+          ? Math.round(rect.width)
+          : trackDocumentExtent
+            ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+            : window.innerWidth,
+        height: rect
+          ? Math.round(rect.height)
+          : trackDocumentExtent
+            ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+            : window.innerHeight,
+        scrollWidth: element instanceof HTMLElement
+          ? element.scrollWidth
+          : trackDocumentExtent
+            ? document.documentElement.scrollWidth
+            : window.innerWidth,
+        scrollHeight: element instanceof HTMLElement
+          ? element.scrollHeight
+          : trackDocumentExtent
+            ? document.documentElement.scrollHeight
+            : window.innerHeight,
         images: Array.from(root.querySelectorAll<HTMLImageElement>("img")).filter((image) => image.complete).length,
         dialogs: root.querySelectorAll('[role="dialog"],dialog[open]').length +
           (element?.matches('[role="dialog"],dialog[open]') ? 1 : 0)
@@ -158,7 +203,7 @@ async function waitForStableLayout(page: Page, locator?: Locator) {
       else requestAnimationFrame(sample);
     };
     requestAnimationFrame(sample);
-  }), target).finally(async () => {
+  }), { element: target, trackDocumentExtent }).finally(async () => {
     await target?.dispose();
   });
   if (!result.stable) {
@@ -178,20 +223,20 @@ async function waitForBusySurfaces(page: Page) {
   }, { timeout: 15_000 });
 }
 
-export async function waitForVisualIdle(page: Page, locator?: Locator) {
-  await settleMedia(page);
-  await waitForStableLayout(page, locator);
+export async function waitForVisualIdle(page: Page, locator?: Locator, includeOffscreen = false) {
+  await settleMedia(page, locator, includeOffscreen);
+  await waitForStableLayout(page, locator, includeOffscreen);
   await waitForBusySurfaces(page);
 }
 
-export async function waitForVisualReady(page: Page) {
+export async function waitForVisualReady(page: Page, includeOffscreen = false) {
   await page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
   await page.locator("main").first().waitFor({ state: "attached", timeout: 30_000 }).catch(() => undefined);
   await page.addStyleTag({ content: READINESS_CSS });
 
-  await triggerLazyContent(page);
-  await settleMedia(page);
-  await waitForStableLayout(page);
+  if (includeOffscreen) await triggerLazyContent(page);
+  await settleMedia(page, undefined, includeOffscreen);
+  await waitForStableLayout(page, undefined, true);
   await waitForBusySurfaces(page);
 
   await page.evaluate(() => {
@@ -210,5 +255,5 @@ export async function waitForVisualReady(page: Page) {
   // Restoring the canonical scroll position can select new responsive image
   // candidates. Settle those requests before screenshots begin so context
   // teardown never manufactures client-aborted image diagnostics.
-  await waitForVisualIdle(page);
+  await waitForVisualIdle(page, undefined, includeOffscreen);
 }

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isExpectedBrowserManagedVisualAbort,
   isExpectedCaptureTeardownAbort,
   isExpectedCompletedMediaRangeAbort,
   isExpectedCompletedSnapshotMutationAbort,
@@ -79,6 +80,41 @@ test("only completed direct-media byte ranges may end in an expected browser can
   assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, method: "POST" }), false);
   assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
   assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, headers: {} }), false);
+});
+
+test("browser-managed visual aborts remain narrowly scoped to proven same-origin lifecycles", () => {
+  const input = {
+    ...baseFailure,
+    url: "https://woodmat.ch/icon.svg",
+    resourceType: "image",
+    phase: "initial-readiness"
+  };
+  assert.equal(isExpectedBrowserManagedVisualAbort(input), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/icon-light" }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://other.example/icon.svg" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/media/piece.jpg" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({
+    ...input,
+    url: "https://woodmat.ch/media/piece.jpg",
+    phase: "capture:lightbox-next-boundary"
+  }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({
+    ...input,
+    url: "https://woodmat.ch/media/piece.jpg",
+    phase: "capture:lightbox-200-percent"
+  }), false);
+
+  const mediaInput = {
+    ...input,
+    url: "https://woodmat.ch/media/piece.mp4",
+    resourceType: "media",
+    headers: { range: "bytes=0-" }
+  };
+  assert.equal(isExpectedBrowserManagedVisualAbort(mediaInput), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, headers: {} }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, url: "https://other.example/piece.mp4" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, method: "POST" }), false);
 });
 
 test("only a clone mutation with an observed successful response may end in an expected abort", () => {

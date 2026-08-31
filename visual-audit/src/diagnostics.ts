@@ -58,6 +58,47 @@ export function isExpectedCompletedMediaRangeAbort(input: RequestFailureEvidence
   return /^bytes=\d*-\d*$/.test(headers.range ?? "");
 }
 
+export function isExpectedBrowserManagedVisualAbort(input: RequestFailureEvidence & {
+  phase: string;
+}) {
+  const method = input.method.toUpperCase();
+  if (
+    !input.failure.includes("ERR_ABORTED") ||
+    !["GET", "HEAD"].includes(method) ||
+    !isSameOrigin(input.url, input.baseUrl)
+  ) {
+    return false;
+  }
+
+  const requestUrl = new URL(input.url);
+  if (
+    input.resourceType === "image" &&
+    ["/icon.svg", "/icon-light"].includes(requestUrl.pathname)
+  ) {
+    return true;
+  }
+
+  if (
+    input.resourceType === "image" &&
+    requestUrl.pathname.startsWith("/media/") &&
+    /^capture:lightbox-(previous|next)-boundary$/.test(input.phase)
+  ) {
+    return true;
+  }
+
+  if (
+    input.resourceType !== "media" ||
+    !requestUrl.pathname.startsWith("/media/")
+  ) {
+    return false;
+  }
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.toLowerCase()])
+  );
+  return /^bytes=\d*-\d*$/.test(headers.range ?? "");
+}
+
 export function requestBlockKey(method: string, url: string) {
   return `${method.toUpperCase()} ${url}`;
 }

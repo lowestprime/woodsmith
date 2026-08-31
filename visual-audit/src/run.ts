@@ -60,6 +60,7 @@ import {
   type DependencyLedger
 } from "./dependency-ledger.js";
 import {
+  isExpectedBrowserManagedVisualAbort,
   isExpectedCaptureTeardownAbort,
   isExpectedCompletedMediaRangeAbort,
   isExpectedCompletedSnapshotMutationAbort,
@@ -620,6 +621,7 @@ function attachDiagnostics(
       return;
     }
 
+    const phase = pageCapturePhases.get(page) ?? "unknown";
     const evidence = {
       method,
       url: request.url(),
@@ -632,12 +634,13 @@ function attachDiagnostics(
       timestamp: now(),
       type: "requestfailed",
       route,
-      message: `${method} ${request.url()} — ${failure} [phase=${pageCapturePhases.get(page) ?? "unknown"}]`,
+      message: `${method} ${request.url()} — ${failure} [phase=${phase}]`,
       expected: isExpectedNextPrefetchAbort(evidence) ||
         isExpectedCompletedMediaRangeAbort({
           ...evidence,
           validPartialResponseObserved: validPartialMediaRequests.has(request)
         }) ||
+        isExpectedBrowserManagedVisualAbort({ ...evidence, phase }) ||
         isExpectedCompletedSnapshotMutationAbort({
           targetMode: config.targetMode,
           method,
@@ -700,6 +703,53 @@ function attachDiagnostics(
   });
 }
 
+async function relevantPendingVisualRequests(page: Page, pendingRequests: ReadonlySet<Request>) {
+  const active = await page.evaluate(() => {
+    const intersectsViewport = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 &&
+        rect.height > 1 &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+    };
+    const absolute = (value: string) => {
+      try {
+        return new URL(value, window.location.href).href;
+      } catch {
+        return value;
+      }
+    };
+    return {
+      fontsLoading: document.fonts.status !== "loaded",
+      images: Array.from(document.images)
+        .filter((image) => intersectsViewport(image) && !image.complete)
+        .map((image) => absolute(image.currentSrc || image.src))
+        .filter(Boolean),
+      media: Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
+        .filter((video) => intersectsViewport(video) && video.preload !== "none" && video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error)
+        .flatMap((video) => [
+          video.currentSrc || video.getAttribute("src") || "",
+          ...Array.from(video.querySelectorAll<HTMLSourceElement>("source[src]"), source => source.src)
+        ])
+        .filter(Boolean)
+        .map(absolute)
+    };
+  });
+  const imageUrls = new Set(active.images);
+  const mediaUrls = new Set(active.media);
+  return [...pendingRequests].filter((request) => {
+    if (request.resourceType() === "font") return active.fontsLoading;
+    if (request.resourceType() === "image") return imageUrls.has(request.url());
+    if (request.resourceType() === "media") return mediaUrls.has(request.url());
+    return false;
+  });
+}
+
 async function waitForCaptureRequestDrain(
   page: Page,
   options: {
@@ -734,15 +784,17 @@ async function waitForCaptureRequestDrain(
     page.once("requestfailed", onEvent);
   });
   while (Date.now() < deadline) {
-    if (pendingRequests.size === 0) {
+    const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
+    if (relevantRequests.length === 0) {
       const result = await waitForEventOrTimeout(Math.min(quietMs, deadline - Date.now()));
-      if (result === "timeout" && pendingRequests.size === 0) break;
+      if (result === "timeout" && (await relevantPendingVisualRequests(page, pendingRequests)).length === 0) break;
     } else {
       await waitForEventOrTimeout(Math.min(1_000, deadline - Date.now()));
     }
   }
-  if (pendingRequests.size > 0) {
-    throw new Error(`Visual requests did not drain within ${timeoutMs}ms (${pendingRequests.size} still pending).`);
+  const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
+  if (relevantRequests.length > 0) {
+    throw new Error(`Visual requests did not drain within ${timeoutMs}ms (${relevantRequests.length} relevant request(s) still pending).`);
   }
 
   await page.evaluate(async () => {
@@ -754,7 +806,7 @@ async function waitForCaptureRequestDrain(
   });
 }
 
-async function waitForSettledVisualReady(page: Page): Promise<NavigationSample> {
+async function waitForSettledVisualReady(page: Page, includeOffscreen = false): Promise<NavigationSample> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const settled = await waitForNavigationSettle({
       sleep: () => waitForUiFrames(page),
@@ -766,7 +818,7 @@ async function waitForSettledVisualReady(page: Page): Promise<NavigationSample> 
     });
 
     try {
-      await waitForVisualReady(page);
+      await waitForVisualReady(page, includeOffscreen);
       return settled;
     } catch (error) {
       if (!isNavigationInterruption(error) || attempt === 2) throw error;
@@ -1692,7 +1744,12 @@ async function collectPageEvidence(page: Page, route: string) {
         }
       }
 
-      const isVisible = visible(element);
+      const rect = element.getBoundingClientRect();
+      const isVisible = visible(element) &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight;
       const intentionallyDeferred = !isImage && element.preload === "none" && !element.error;
       const loaded = isImage
         ? element.complete && element.naturalWidth > 0
@@ -2119,7 +2176,9 @@ async function captureSkipLinkStates(input: {
   await input.page.evaluate(() => {
     window.scrollTo(0, 0);
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    document.querySelector<HTMLElement>(".site-header")?.classList.remove("is-hidden");
   });
+  await waitForUiFrames(input.page);
   await input.page.keyboard.press("Tab");
 
   const focusEvidence = await skipLink.evaluate((element) => {
@@ -3140,7 +3199,10 @@ async function captureRoute(input: {
     );
 
     pageCapturePhases.set(page, "initial-readiness");
-    const settledDocument = await waitForSettledVisualReady(page);
+    const settledDocument = await waitForSettledVisualReady(
+      page,
+      routeFamilySentinels.has(`${input.auth}::${input.route}`)
+    );
     const redirectChain: string[] = [];
     let redirected =
       response?.request().redirectedFrom();
@@ -3392,6 +3454,8 @@ async function captureMediaPickers(input: {
       state: "visible",
       timeout: 10_000
     });
+    await waitForVisualIdle(input.page, dialog);
+    await waitForCaptureRequestDrain(input.page);
 
     await saveCapture({
       ...input,
@@ -3413,6 +3477,8 @@ async function captureMediaPickers(input: {
       );
       await dialog.getByRole("button", { name: "Search" }).click();
       await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => waitForUiFrames(input.page));
+      await waitForVisualIdle(input.page, dialog);
+      await waitForCaptureRequestDrain(input.page);
 
       await saveCapture({
         ...input,
