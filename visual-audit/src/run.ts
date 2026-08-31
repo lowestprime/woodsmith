@@ -786,10 +786,10 @@ async function waitForCaptureRequestDrain(
   while (Date.now() < deadline) {
     const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
     if (relevantRequests.length === 0) {
-      const result = await waitForEventOrTimeout(Math.min(quietMs, deadline - Date.now()));
+      const result = await waitForEventOrTimeout(Math.max(1, Math.min(quietMs, deadline - Date.now())));
       if (result === "timeout" && (await relevantPendingVisualRequests(page, pendingRequests)).length === 0) break;
     } else {
-      await waitForEventOrTimeout(Math.min(1_000, deadline - Date.now()));
+      await waitForEventOrTimeout(Math.max(1, Math.min(1_000, deadline - Date.now())));
     }
   }
   const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
@@ -2955,7 +2955,7 @@ async function captureMediaPageItems(input: {
         state: "visible"
       });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page);
+      await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
 
       await saveCapture({
         ...input,
@@ -3443,65 +3443,58 @@ async function captureMediaPickers(input: {
       continue;
     }
 
-    await opener.click();
-
     const dialog =
       input.page.locator(
         '.media-picker-dialog[role="dialog"]'
       );
-
-    await dialog.waitFor({
-      state: "visible",
-      timeout: 10_000
-    });
-    await waitForVisualIdle(input.page, dialog);
-    await waitForCaptureRequestDrain(input.page);
-
-    await saveCapture({
-      ...input,
-      state:
-        `media-picker-${String(index + 1)
-          .padStart(3, "0")}-default`,
-      fullPage: false
-    });
-
-    const filter = dialog.getByLabel("Search");
-
-    if (
-      await filter
-        .isVisible()
-        .catch(() => false)
-    ) {
-      await filter.fill(
-        VISUAL_AUDIT_NO_RESULTS_QUERY
-      );
-      await dialog.getByRole("button", { name: "Search" }).click();
-      await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => waitForUiFrames(input.page));
+    await opener.click();
+    try {
+      await dialog.waitFor({
+        state: "visible",
+        timeout: 10_000
+      });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page);
+      await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
 
       await saveCapture({
         ...input,
         state:
           `media-picker-${String(index + 1)
-            .padStart(3, "0")}-empty-filter`,
+            .padStart(3, "0")}-default`,
         fullPage: false
       });
 
-      await filter.fill("");
+      const filter = dialog.getByLabel("Search");
+
+      if (
+        await filter
+          .isVisible()
+          .catch(() => false)
+      ) {
+        await filter.fill(
+          VISUAL_AUDIT_NO_RESULTS_QUERY
+        );
+        await dialog.getByRole("button", { name: "Search" }).click();
+        await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => waitForUiFrames(input.page));
+        await waitForVisualIdle(input.page, dialog);
+        await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
+
+        await saveCapture({
+          ...input,
+          state:
+            `media-picker-${String(index + 1)
+              .padStart(3, "0")}-empty-filter`,
+          fullPage: false
+        });
+      }
+    } finally {
+      if (await dialog.isVisible().catch(() => false)) {
+        const close = dialog.getByRole("button", { name: "Close media browser" });
+        if (await close.isEnabled().catch(() => false)) await close.click();
+        else await input.page.keyboard.press("Escape");
+        await dialog.waitFor({ state: "hidden", timeout: 10_000 });
+      }
     }
-
-    await dialog
-      .getByRole(
-        "button",
-        { name: "Close media browser" }
-      )
-      .click();
-
-    await dialog.waitFor({
-      state: "hidden",
-      timeout: 10_000
-    });
   }
 }
 

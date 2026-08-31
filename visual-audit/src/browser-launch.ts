@@ -21,6 +21,9 @@ export function chromiumLaunchOptions(
     // memory explicitly, so spilling Chromium into the bounded /tmp tmpfs can
     // terminate long, high-resolution archive runs.
     ignoreDefaultArgs: ["--disable-dev-shm-usage"],
-    args: ["--hide-scrollbars=false", ...backendArgs[backend]]
+    // Cloudflare can advertise HTTP/3 to the containerized browser even when
+    // the Docker network cannot sustain QUIC. Force the deterministic HTTP/2
+    // fallback rather than accepting intermittent media transport failures.
+    args: ["--hide-scrollbars=false", "--disable-quic", ...backendArgs[backend]]
   } satisfies Parameters<typeof chromium.launch>[0];
 }
