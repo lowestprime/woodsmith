@@ -67,6 +67,7 @@ function stableDataIdentity(inventory: Inventory) {
 export async function buildDependencyLedger(input: {
   repoRoot: string;
   expectedCommit: string;
+  auditCommit: string;
   browserIdentity: string;
   inventory: Inventory;
   routes: readonly string[];
@@ -117,7 +118,7 @@ export async function buildDependencyLedger(input: {
     schemaVersion: 1,
     generatedAt: input.generatedAt ?? new Date().toISOString(),
     appCommit: input.expectedCommit,
-    auditCommit: input.expectedCommit,
+    auditCommit: input.auditCommit,
     browserIdentity: input.browserIdentity,
     sharedSourceHash,
     cssThemeHash,

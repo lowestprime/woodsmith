@@ -381,6 +381,9 @@ async function main() {
   if (config.strictDiagnostics && unexpectedDiagnostics.length > 0) {
     failures.push(`${unexpectedDiagnostics.length} unexpected browser/network diagnostic(s) were recorded.`);
   }
+  if (manifest.security.crossOriginRequests > 0) {
+    failures.push(`${manifest.security.crossOriginRequests} unapproved cross-origin request(s) were blocked.`);
+  }
   if (config.targetMode === "live-readonly" && manifest.security.successfulUnsafeRequests > 0) failures.push("Live read-only capture recorded a successful unsafe request.");
   if (config.targetMode === "live-readonly" && manifest.diagnostics.some((record) => record.type === "security" && !record.expected)) failures.push("Live read-only capture recorded an unsafe security diagnostic.");
 

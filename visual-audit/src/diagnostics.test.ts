@@ -7,6 +7,7 @@ import {
   isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
+  isExpectedAuditCrossOriginBlock,
   isExpectedAuditMutationBlock,
   isKnownExpectedDiagnostic,
   isValidPartialMediaResponse,
@@ -102,6 +103,7 @@ test("read-only blocked failures require an unsafe request and an exact policy r
     method: "POST",
     url,
     baseUrl: "https://woodmat.ch",
+    resourceType: "script",
     failure: "net::ERR_BLOCKED_BY_CLIENT",
     blockedRequests
   };
@@ -119,6 +121,25 @@ test("read-only blocked failures require an unsafe request and an exact policy r
     url: visitUrl,
     blockedRequests: new Set([requestBlockKey("POST", visitUrl)])
   }), true);
+});
+
+test("cross-origin traffic is expected only when the exact request was blocked before continuation", () => {
+  const url = "https://static.cloudflareinsights.com/beacon.min.js";
+  const input = {
+    method: "GET",
+    url,
+    baseUrl: "https://woodmat.ch",
+    resourceType: "script",
+    failure: "net::ERR_BLOCKED_BY_CLIENT",
+    blockedRequests: new Set([requestBlockKey("GET", url)])
+  };
+
+  assert.equal(isExpectedAuditCrossOriginBlock(input), true);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, url: "https://woodmat.ch/beacon.min.js" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, url: "https://example.com/beacon.min.js" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, resourceType: "fetch" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, blockedRequests: new Set() }), false);
 });
 
 test("blocked console noise is expected only after a route-local read-only policy decision", () => {

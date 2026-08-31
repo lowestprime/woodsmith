@@ -38,17 +38,19 @@ test("dependency ledger conservatively invalidates route and theme identities", 
     await fs.writeFile(path.join(root, "site", "lib", "data.ts"), "shared-data");
     await fs.writeFile(path.join(root, "visual-audit", "src", "run.ts"), "audit-runner");
 
-    const first = await buildDependencyLedger({ repoRoot: root, expectedCommit: "commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a", "/portfolio/b"] });
+    const first = await buildDependencyLedger({ repoRoot: root, expectedCommit: "app-commit", auditCommit: "audit-commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a", "/portfolio/b"] });
     assert.equal(Object.keys(first.routeFamilies).length, 1);
     assert.ok(first.sourceFiles >= 5);
+    assert.equal(first.appCommit, "app-commit");
+    assert.equal(first.auditCommit, "audit-commit");
 
     await fs.writeFile(path.join(root, "site", "components", "card.tsx"), "changed-card");
-    const second = await buildDependencyLedger({ repoRoot: root, expectedCommit: "commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a"] });
+    const second = await buildDependencyLedger({ repoRoot: root, expectedCommit: "app-commit", auditCommit: "audit-commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a"] });
     assert.notEqual(second.sharedSourceHash, first.sharedSourceHash);
     assert.notDeepEqual(second.routeFamilies, first.routeFamilies);
 
     await fs.writeFile(path.join(root, "site", "app", "theme.css"), ":root{--ink:#222}");
-    const third = await buildDependencyLedger({ repoRoot: root, expectedCommit: "commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a"] });
+    const third = await buildDependencyLedger({ repoRoot: root, expectedCommit: "app-commit", auditCommit: "audit-commit", browserIdentity: "browser", inventory: inventory(), routes: ["/portfolio/a"] });
     assert.notEqual(third.cssThemeHash, second.cssThemeHash);
   } finally {
     await fs.rm(root, { recursive: true, force: true });

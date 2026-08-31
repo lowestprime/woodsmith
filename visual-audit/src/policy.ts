@@ -8,6 +8,30 @@ export function isSameOrigin(requestUrl: string | URL, baseUrl: string | URL) {
   return new URL(requestUrl).origin === new URL(baseUrl).origin;
 }
 
+export type CrossOriginRequestClassification =
+  | "same-origin"
+  | "approved-cloudflare-insights"
+  | "unapproved-cross-origin";
+
+export function classifyCrossOriginRequest(input: {
+  method: string;
+  requestUrl: string | URL;
+  baseUrl: string | URL;
+  resourceType: string;
+}): CrossOriginRequestClassification {
+  const request = new URL(input.requestUrl, input.baseUrl);
+  if (request.origin === new URL(input.baseUrl).origin) return "same-origin";
+  if (
+    input.method.toUpperCase() === "GET" &&
+    input.resourceType === "script" &&
+    request.origin === "https://static.cloudflareinsights.com" &&
+    /^\/beacon\.min\.js(?:\/|$)/.test(request.pathname)
+  ) {
+    return "approved-cloudflare-insights";
+  }
+  return "unapproved-cross-origin";
+}
+
 export function auditTokenEligible(requestUrl: string | URL, baseUrl: string | URL) {
   const request = new URL(requestUrl, baseUrl);
   if (request.origin !== new URL(baseUrl).origin) return false;

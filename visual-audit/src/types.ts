@@ -146,6 +146,7 @@ export type DiagnosticType =
   | "requestfailed"
   | "http-error"
   | "mutation-blocked"
+  | "cross-origin-blocked"
   | "broken-media"
   | "horizontal-overflow"
   | "media-overlap"

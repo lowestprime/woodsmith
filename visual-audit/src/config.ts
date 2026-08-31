@@ -117,6 +117,7 @@ export const config = {
   evidenceTier,
   baseUrl: baseUrl.toString().replace(/\/$/, ""),
   expectedCommit: required("TARGET_COMMIT_SHA"),
+  auditCommit: required("WOODSMITH_BUILD_SHA"),
   runId,
   outputRoot,
   runRoot: path.join(outputRoot, runId),

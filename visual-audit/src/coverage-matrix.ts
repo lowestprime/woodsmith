@@ -10,6 +10,10 @@ export type CoverageMatrixEntry = {
   deep: boolean;
 };
 
+function matrixEntryKey(entry: CoverageMatrixEntry) {
+  return `${entry.profile.name}:${entry.theme}`;
+}
+
 function profileByName(
   viewports: ViewportProfile[],
   name: string
@@ -61,11 +65,14 @@ export function nonCartesianRouteCoveragePlan(input: {
 }) {
   const concreteRoutes = [...new Set(input.routes)].sort();
   const familyRoutes = concreteRoutes.filter((route) => input.familySentinels.has(route));
+  const concreteMatrix = concreteRouteCoverageMatrix(input.scope, input.viewports);
+  const concreteKeys = new Set(concreteMatrix.map(matrixEntryKey));
+  const expandedMatrix = input.expandedMatrix ?? canonicalCoverageMatrix(input.scope, input.viewports);
   return {
     concreteRoutes,
     familyRoutes,
-    concreteMatrix: concreteRouteCoverageMatrix(input.scope, input.viewports),
-    familyMatrix: input.expandedMatrix ?? canonicalCoverageMatrix(input.scope, input.viewports)
+    concreteMatrix,
+    familyMatrix: expandedMatrix.filter((entry) => !concreteKeys.has(matrixEntryKey(entry)))
   };
 }
 

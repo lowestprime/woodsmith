@@ -2,10 +2,41 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  assertUniqueCaptureTaskKeys,
   createSerialTaskRunner,
   runBoundedCaptureTasks,
   runMutabilityAwareCaptureTasks
 } from "./capture-scheduler.js";
+
+test("semantic task keys are resume-independent and preserve every evidence dimension", () => {
+  const tasks = [
+    { auth: "admin", route: "/studio?panel=media", state: "default", viewport: "desktop-1440", theme: "dark", family: "route" },
+    { auth: "admin", route: "/studio?panel=media", state: "lightbox-open", viewport: "desktop-1440", theme: "dark", family: "lightbox" },
+    { auth: "admin", route: "/studio?panel=media", state: "default", viewport: "mobile-390", theme: "dark", family: "route" },
+    { auth: "anonymous", route: "/studio?panel=media", state: "default", viewport: "desktop-1440", theme: "dark", family: "route" }
+  ];
+  const key = (task: typeof tasks[number]) => [task.auth, task.route, task.state, task.viewport, task.theme, task.family].join("::");
+  const plan = (_resumeEnabled: boolean) => assertUniqueCaptureTaskKeys(tasks, key);
+
+  assert.deepEqual(plan(false), plan(true));
+  assert.equal(new Set(plan(false)).size, tasks.length);
+});
+
+test("scheduler rejects semantic task collisions before executing work", async () => {
+  const tasks = [
+    { key: "admin::/studio::dark::desktop::route", payload: "first" },
+    { key: "admin::/studio::dark::desktop::route", payload: "conflicting" }
+  ];
+  let executed = 0;
+  await assert.rejects(runBoundedCaptureTasks(tasks, {
+    workerCount: 2,
+    taskKey: (task) => task.key,
+    execute: async () => {
+      executed += 1;
+    }
+  }), /Duplicate semantic capture task key/);
+  assert.equal(executed, 0);
+});
 
 test("serial task runner preserves order and recovers after failure", async () => {
   const runSerial = createSerialTaskRunner();

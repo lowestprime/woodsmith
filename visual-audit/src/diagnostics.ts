@@ -1,4 +1,4 @@
-import { isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
+import { classifyCrossOriginRequest, isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 
 export type RequestFailureEvidence = {
   method: string;
@@ -131,6 +131,24 @@ export function isExpectedAuditMutationBlock(input: {
   return input.targetMode === "live-readonly" ||
     input.targetMode === "snapshot-lab" &&
       isSyntheticVisitTelemetry(input.method, input.url, input.baseUrl);
+}
+
+export function isExpectedAuditCrossOriginBlock(input: {
+  method: string;
+  url: string;
+  baseUrl: string;
+  resourceType: string;
+  failure: string;
+  blockedRequests: ReadonlySet<string>;
+}) {
+  return input.failure.includes("ERR_BLOCKED_BY_CLIENT") &&
+    classifyCrossOriginRequest({
+      method: input.method,
+      requestUrl: input.url,
+      baseUrl: input.baseUrl,
+      resourceType: input.resourceType
+    }) === "approved-cloudflare-insights" &&
+    input.blockedRequests.has(requestBlockKey(input.method, input.url));
 }
 
 export function isExpectedAuditBlockedConsole(input: {

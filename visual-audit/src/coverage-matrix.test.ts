@@ -50,11 +50,13 @@ test("family expansion retains every concrete route without Cartesian duplicatio
   assert.deepEqual(plan.concreteRoutes, ["/", "/portfolio/a", "/portfolio/b"]);
   assert.deepEqual(plan.familyRoutes, ["/", "/portfolio/a"]);
   assert.equal(plan.concreteMatrix.length, 1);
-  assert.equal(plan.familyMatrix.length, viewports.length * 2);
-  const taskKeys = new Set([
+  assert.equal(plan.familyMatrix.length, viewports.length * 2 - 1);
+  const tasks = [
     ...plan.concreteRoutes.flatMap((route) => plan.concreteMatrix.map((entry) => `${route}:${entry.profile.name}:${entry.theme}`)),
     ...plan.familyRoutes.flatMap((route) => plan.familyMatrix.map((entry) => `${route}:${entry.profile.name}:${entry.theme}`))
-  ]);
+  ];
+  const taskKeys = new Set(tasks);
+  assert.equal(taskKeys.size, tasks.length);
   assert.ok(taskKeys.has("/portfolio/b:desktop-1440:dark"));
   assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/b:")).length, 1);
   assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/a:")).length, viewports.length * 2);
@@ -103,4 +105,13 @@ test("smoke coverage remains one deterministic desktop dark state", () => {
     discoveredCoverageMatrix("smoke", viewports),
     canonicalCoverageMatrix("smoke", viewports)
   );
+
+  const plan = nonCartesianRouteCoveragePlan({
+    scope: "smoke",
+    viewports,
+    routes: ["/", "/portfolio"],
+    familySentinels: new Set(["/", "/portfolio"])
+  });
+  assert.equal(plan.concreteMatrix.length, 1);
+  assert.equal(plan.familyMatrix.length, 0);
 });

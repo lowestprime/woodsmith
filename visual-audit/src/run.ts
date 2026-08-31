@@ -65,6 +65,7 @@ import {
   isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
+  isExpectedAuditCrossOriginBlock,
   isExpectedAuditMutationBlock,
   isValidPartialMediaResponse,
   requestBlockKey
@@ -103,7 +104,7 @@ import {
   specialTaskGroupCounts,
   type SpecialTask
 } from "./special-task-plan.js";
-import { auditTokenEligible, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
+import { auditTokenEligible, classifyCrossOriginRequest, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
 import { assertFocusedSkipLink, assertMainFocusTransferred } from "./skip-link.js";
 import {
   SNAPSHOT_LAB_COMMISSION_DRAFT_STATE,
@@ -160,10 +161,14 @@ let manifestWriteChain = Promise.resolve();
 let journalWriteChain = Promise.resolve();
 let observationsSinceCheckpoint = 0;
 let lastManifestCheckpoint = 0;
+let initialCompletedCaptureKeys = new Set<string>();
+let initialCompletedRouteKeys = new Set<string>();
+const captureKeysInFlight = new Set<string>();
 const preAuthenticationDiagnostics: DiagnosticRecord[] = [];
 const pagesInDeliberateTeardown = new WeakSet<Page>();
 const pageCapturePhases = new WeakMap<Page, string>();
 let preAuthenticationUnsafeBlocks = 0;
+let preAuthenticationUnapprovedCrossOriginRequests = 0;
 const intentionalMutationBlocks = new WeakMap<BrowserContext, Set<string>>();
 const pendingVisualRequests = new WeakMap<Page, Set<Request>>();
 const successfulSnapshotLabRequests = new WeakSet<Request>();
@@ -247,7 +252,7 @@ async function runSerializedSnapshotLabMutation(task: () => Promise<void>) {
 }
 
 const coverageExclusions = [
-  { surface: "Third-party origins", reason: "Recorded as network diagnostics only; the archive never sends credentials or audit tokens cross-origin." },
+  { surface: "Third-party origins", reason: "The proven Cloudflare Insights script is recorded and blocked as expected infrastructure; every other cross-origin request is blocked and fails strict diagnostics." },
   { surface: "Admin authentication POST", reason: "The single Studio login submission is the only live unsafe request allowed before the read-only capture context exists." },
   { surface: "Successful production mutations", reason: "Forbidden in live-readonly mode and captured only against the isolated snapshot lab." },
   { surface: "Fabrication-ready 3D output", reason: "The public renderer is explicitly a conceptual proportional planning preview." },
@@ -306,13 +311,17 @@ function routeResultCompleted(input: {
   theme: ThemeMode;
   viewport: string;
 }) {
-  return config.resume && manifest.routes.some((result) => (
+  const key = [input.auth, input.route, input.theme, input.viewport].join("::");
+  const completed = manifest.routes.some((result) => (
     result.expected &&
     result.auth === input.auth &&
     result.route === input.route &&
     result.theme === input.theme &&
     result.viewport === input.viewport
   ));
+  if (!completed) return false;
+  if (initialCompletedRouteKeys.has(key)) return true;
+  throw new Error(`Duplicate current-run route task identity: ${key}`);
 }
 
 async function appendJournal(file: string, value: unknown) {
@@ -561,6 +570,36 @@ function attachDiagnostics(
 
     const method =
       request.method().toUpperCase();
+    const requestUrl = new URL(request.url());
+    const crossOriginClassification = classifyCrossOriginRequest({
+      method,
+      requestUrl,
+      baseUrl: config.baseUrl,
+      resourceType: request.resourceType()
+    });
+
+    if (
+      crossOriginClassification !== "same-origin" &&
+      failure.includes("ERR_BLOCKED_BY_CLIENT") &&
+      blockedRequests.has(requestBlockKey(method, request.url()))
+    ) {
+      const expected = isExpectedAuditCrossOriginBlock({
+        method,
+        url: request.url(),
+        baseUrl: config.baseUrl,
+        resourceType: request.resourceType(),
+        failure,
+        blockedRequests
+      });
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: expected ? "cross-origin-blocked" : "security",
+        route,
+        message: `${method} ${requestUrl.origin}${requestUrl.pathname}`,
+        expected
+      });
+      return;
+    }
 
     if (isExpectedAuditMutationBlock({
       targetMode: config.targetMode,
@@ -771,11 +810,31 @@ async function authenticateAdmin(
     }
 
     const sameOrigin = requestUrl.origin === targetOrigin;
+    const crossOriginClassification = classifyCrossOriginRequest({
+      method,
+      requestUrl,
+      baseUrl: config.baseUrl,
+      resourceType: request.resourceType()
+    });
     const isLoginSubmission =
       sameOrigin &&
       requestUrl.pathname === "/studio/login" &&
       method === "POST" &&
       allowLoginSubmission;
+
+    if (crossOriginClassification !== "same-origin") {
+      const approvedInfrastructure = crossOriginClassification === "approved-cloudflare-insights";
+      if (!approvedInfrastructure) preAuthenticationUnapprovedCrossOriginRequests += 1;
+      preAuthenticationDiagnostics.push({
+        timestamp: now(),
+        type: approvedInfrastructure ? "cross-origin-blocked" : "security",
+        route: requestUrl.pathname,
+        message: `Authentication guard blocked ${crossOriginClassification} ${method} ${requestUrl.origin}${requestUrl.pathname}`,
+        expected: approvedInfrastructure
+      });
+      await route.abort("blockedbyclient");
+      return;
+    }
 
     if (isUnsafeMethod(method) && !isLoginSubmission) {
       preAuthenticationUnsafeBlocks += 1;
@@ -919,8 +978,6 @@ async function createCaptureContext(
     });
   }
 
-  const targetOrigin =
-    new URL(config.baseUrl).origin;
   const blockedRequests = new Set<string>();
   intentionalMutationBlocks.set(context, blockedRequests);
 
@@ -940,26 +997,25 @@ async function createCaptureContext(
         return;
       }
 
-      if (requestUrl.origin !== targetOrigin) {
-        manifest.security.crossOriginRequests += 1;
+      const crossOriginClassification = classifyCrossOriginRequest({
+        method,
+        requestUrl,
+        baseUrl: config.baseUrl,
+        resourceType: request.resourceType()
+      });
 
-        if (
-          config.targetMode === "live-readonly" &&
-          isUnsafeMethod(method)
-        ) {
-          blockedRequests.add(requestBlockKey(method, request.url()));
-          manifest.diagnostics.push({
-            timestamp: now(),
-            type: "mutation-blocked",
-            route: request.url(),
-            message: `Client route guard blocked cross-origin ${method} ${request.url()}`,
-            expected: true
-          });
-          await route.abort("blockedbyclient");
-          return;
-        }
-
-        await route.continue();
+      if (crossOriginClassification !== "same-origin") {
+        const approvedInfrastructure = crossOriginClassification === "approved-cloudflare-insights";
+        if (!approvedInfrastructure) manifest.security.crossOriginRequests += 1;
+        blockedRequests.add(requestBlockKey(method, request.url()));
+        manifest.diagnostics.push({
+          timestamp: now(),
+          type: approvedInfrastructure ? "cross-origin-blocked" : "security",
+          route: requestUrl.pathname,
+          message: `Client route guard blocked ${crossOriginClassification} ${method} ${requestUrl.origin}${requestUrl.pathname}`,
+          expected: approvedInfrastructure
+        });
+        await route.abort("blockedbyclient");
         return;
       }
 
@@ -1159,7 +1215,7 @@ function snapshotMutationCompleted(
   },
   state: string
 ) {
-  return config.resume && manifest.completedKeys.includes(
+  return manifest.completedKeys.includes(
     captureKey({
       auth: input.auth,
       route: input.route,
@@ -1862,12 +1918,12 @@ async function saveCapture(input: {
     state: input.state
   });
 
-  if (
-    config.resume &&
-    manifest.completedKeys.includes(key)
-  ) {
-    return;
+  if (manifest.completedKeys.includes(key)) {
+    if (initialCompletedCaptureKeys.has(key)) return;
+    throw new Error(`Duplicate current-run capture identity: ${key}`);
   }
+  if (captureKeysInFlight.has(key)) throw new Error(`Concurrent capture identity collision: ${key}`);
+  captureKeysInFlight.add(key);
 
   const outputDirectory = path.join(
     captureRoot,
@@ -2043,6 +2099,7 @@ async function saveCapture(input: {
   }
 
   await persistManifest();
+  captureKeysInFlight.delete(key);
 }
 
 async function captureSkipLinkStates(input: {
@@ -3422,6 +3479,13 @@ async function runRoutes(
   const tasks = [...routeTasks, ...mutationTasks];
   const run = await runMutabilityAwareCaptureTasks(tasks, {
     workerCount: config.captureWorkers,
+    taskKey: (task) => [
+      task.kind,
+      auth,
+      task.route,
+      task.entry.theme,
+      task.entry.profile.name
+    ].join("::"),
     classify: (task) => task.kind === "route"
       ? "read-only-independent"
       : "ordered-mutation",
@@ -3686,6 +3750,7 @@ async function runSpecialTaskPlan(input: {
   const started = performance.now();
   const run = await runBoundedCaptureTasks(tasks, {
     workerCount: config.captureWorkers,
+    taskKey: (task) => task.key,
     execute: async (task, _index, signal) => {
       if (signal.aborted) throw new Error("Special-task queue was cancelled.");
       await captureSpecialTask(input.browser, input.profile, task);
@@ -3878,6 +3943,7 @@ async function main() {
     const currentDependencyLedger = await buildDependencyLedger({
       repoRoot: config.repoRoot,
       expectedCommit: config.expectedCommit,
+      auditCommit: config.auditCommit,
       browserIdentity: browser.version(),
       inventory,
       routes: allEvidenceRoutes
@@ -3909,6 +3975,10 @@ async function main() {
         inventory,
         acceleration
       );
+    initialCompletedCaptureKeys = new Set(manifest.completedKeys);
+    initialCompletedRouteKeys = new Set(manifest.routes
+      .filter((result) => result.expected)
+      .map((result) => [result.auth, result.route, result.theme, result.viewport].join("::")));
     compatibleBaseline = await loadCompatibleBaseline({
       baselineRoot: config.baselineRoot,
       mode: config.targetMode,
@@ -4022,6 +4092,7 @@ async function main() {
     });
     manifest.diagnostics.push(...preAuthenticationDiagnostics);
     manifest.security.sameOriginUnsafeRequestsBlocked += preAuthenticationUnsafeBlocks;
+    manifest.security.crossOriginRequests += preAuthenticationUnapprovedCrossOriginRequests;
 
     await writeJsonAtomic(
       path.join(

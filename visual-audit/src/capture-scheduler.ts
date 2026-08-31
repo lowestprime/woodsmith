@@ -14,6 +14,23 @@ export type CaptureTaskPhaseMetrics = CaptureSchedulerMetrics & {
   seconds: number;
 };
 
+export function assertUniqueCaptureTaskKeys<T>(
+  tasks: readonly T[],
+  taskKey: (task: T, index: number) => string
+) {
+  const indexesByKey = new Map<string, number>();
+  return tasks.map((task, index) => {
+    const key = taskKey(task, index);
+    if (!key.trim()) throw new Error(`Capture task at index ${index} has an empty semantic key.`);
+    const existingIndex = indexesByKey.get(key);
+    if (existingIndex !== undefined) {
+      throw new Error(`Duplicate semantic capture task key "${key}" at indexes ${existingIndex} and ${index}.`);
+    }
+    indexesByKey.set(key, index);
+    return key;
+  });
+}
+
 export function createSerialTaskRunner() {
   let tail = Promise.resolve();
 
@@ -38,6 +55,7 @@ export async function runBoundedCaptureTasks<T, R>(
   options: {
     workerCount: number;
     execute: (task: T, index: number, signal: AbortSignal) => Promise<R>;
+    taskKey?: (task: T, index: number) => string;
     signal?: AbortSignal;
   }
 ) {
@@ -45,6 +63,7 @@ export async function runBoundedCaptureTasks<T, R>(
     throw new Error("Capture worker count must be a positive safe integer.");
   }
   if (options.signal?.aborted) throw new Error("Capture queue was cancelled.");
+  if (options.taskKey) assertUniqueCaptureTaskKeys(tasks, options.taskKey);
   if (tasks.length === 0) {
     return {
       results: [] as R[],
@@ -103,9 +122,11 @@ export async function runMutabilityAwareCaptureTasks<T, R>(
     workerCount: number;
     classify: (task: T, index: number) => CaptureTaskPhase;
     execute: (task: T, index: number, signal: AbortSignal) => Promise<R>;
+    taskKey?: (task: T, index: number) => string;
     signal?: AbortSignal;
   }
 ) {
+  if (options.taskKey) assertUniqueCaptureTaskKeys(tasks, options.taskKey);
   const indexedTasks = tasks.map((task, index) => ({
     task,
     index,
