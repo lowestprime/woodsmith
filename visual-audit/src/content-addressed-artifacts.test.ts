@@ -45,3 +45,41 @@ test("tile manifests are rewritten to the final content-addressed artifact", asy
     await fs.rm(root, { recursive: true, force: true });
   }
 });
+
+test("concurrent rewrites update only their owned tile manifests atomically", async () => {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "woodsmith-cas-concurrent-"));
+  try {
+    const output = path.join(root, "png", "shared-route");
+    await fs.mkdir(output, { recursive: true });
+    const firstSource = path.join(output, "first__stitched-001.png");
+    const secondSource = path.join(output, "second__stitched-001.png");
+    await fs.writeFile(firstSource, "first-fixture");
+    await fs.writeFile(secondSource, "second-fixture");
+
+    const firstManifest = path.join(output, "first__tiles.json");
+    const secondManifest = path.join(output, "second__tiles.json");
+    const unrelatedManifest = path.join(output, "unrelated__tiles.json");
+    await fs.writeFile(firstManifest, JSON.stringify({ segments: [{ file: "png/shared-route/first__stitched-001.png" }] }));
+    await fs.writeFile(secondManifest, JSON.stringify({ segments: [{ file: "png/shared-route/second__stitched-001.png" }] }));
+    const unrelatedBytes = '{"segments":[';
+    await fs.writeFile(unrelatedManifest, unrelatedBytes);
+
+    const [firstArtifact] = await storeContentAddressedArtifacts({ files: [firstSource], runRoot: root });
+    const [secondArtifact] = await storeContentAddressedArtifacts({ files: [secondSource], runRoot: root });
+    const [firstChanged, secondChanged] = await Promise.all([
+      rewriteTileManifestArtifactReferences({ outputDirectory: output, runRoot: root, artifacts: [firstArtifact!] }),
+      rewriteTileManifestArtifactReferences({ outputDirectory: output, runRoot: root, artifacts: [secondArtifact!] })
+    ]);
+
+    assert.deepEqual(firstChanged, [firstManifest]);
+    assert.deepEqual(secondChanged, [secondManifest]);
+    const first = JSON.parse(await fs.readFile(firstManifest, "utf8")) as { segments: Array<{ file: string }> };
+    const second = JSON.parse(await fs.readFile(secondManifest, "utf8")) as { segments: Array<{ file: string }> };
+    assert.equal(first.segments[0]!.file, firstArtifact!.relativePath);
+    assert.equal(second.segments[0]!.file, secondArtifact!.relativePath);
+    assert.equal(await fs.readFile(unrelatedManifest, "utf8"), unrelatedBytes);
+    assert.equal((await fs.readdir(output)).some((entry) => entry.includes(".tmp-")), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});

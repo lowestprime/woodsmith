@@ -333,12 +333,15 @@ test(
     );
     assert.match(
       validationCapture,
-      /form:visible/,
+      /input\.page\.locator\("form"\)/,
     );
     assert.match(
       validationCapture,
-      /filter\(\{[\s\S]*has: input\.page\.locator\(requiredControlSelector\)/,
+      /has: input\.page\.locator\(requiredControlCandidateSelector\)/,
     );
+    assert.match(validationCapture, /current instanceof HTMLDetailsElement/);
+    assert.match(validationCapture, /current\.open = true/);
+    assert.match(validationCapture, /current\.open = Boolean\(states\[stateIndex\]\)/);
     assert.match(validationCapture, /field\.reportValidity\(\)/);
     assert.doesNotMatch(
       validationCapture,

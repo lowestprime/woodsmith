@@ -99,21 +99,16 @@ async function settleMedia(page: Page) {
     const videos = Array.from(document.querySelectorAll<HTMLVideoElement>("video")).filter((video) => (
       visible(video) && Boolean(video.currentSrc || video.getAttribute("src") || video.querySelector("source[src]"))
     ));
-    for (const video of videos) {
-      if (video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error) {
-        video.preload = "metadata";
-        video.load();
-      }
-    }
+    const videosToAwait = videos.filter((video) => video.preload !== "none");
 
-    await Promise.all(videos.map((video) => {
+    await Promise.all(videosToAwait.map((video) => {
       if (video.readyState >= 1 || video.error) return Promise.resolve();
       return waitForMediaEvent(video, ["loadedmetadata", "error"], 15_000);
     }));
 
     return {
       images: images.filter((image) => !image.complete).length,
-      videos: videos.filter((video) => video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error).length
+      videos: videosToAwait.filter((video) => video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error).length
     };
   });
 

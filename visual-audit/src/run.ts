@@ -1054,9 +1054,11 @@ async function captureFormValidationStates(input: {
       "textarea[required]:visible",
       "select[required]:visible"
     ].join(",");
+  const requiredControlCandidateSelector =
+    "input[required],textarea[required],select[required]";
   const forms =
-    input.page.locator("form:visible").filter({
-      has: input.page.locator(requiredControlSelector)
+    input.page.locator("form").filter({
+      has: input.page.locator(requiredControlCandidateSelector)
     });
 
   const count = deepCount(await forms.count(), 4);
@@ -1067,27 +1069,40 @@ async function captureFormValidationStates(input: {
     index += 1
   ) {
     const form = forms.nth(index);
-
-    if (
-      !await form
-        .isVisible()
-        .catch(() => false)
-    ) {
-      continue;
-    }
-
-    const requiredField =
-      form.locator(requiredControlSelector).first();
-
-    if (
-      !await requiredField
-        .isVisible()
-        .catch(() => false)
-    ) {
-      continue;
-    }
+    const disclosureStates = await form.evaluate(element => {
+      const states: boolean[] = [];
+      let current = element.parentElement;
+      while (current) {
+        if (current instanceof HTMLDetailsElement) {
+          states.push(current.open);
+          current.open = true;
+        }
+        current = current.parentElement;
+      }
+      return states;
+    });
+    await waitForUiFrames(input.page);
 
     try {
+      if (
+        !await form
+          .isVisible()
+          .catch(() => false)
+      ) {
+        continue;
+      }
+
+      const requiredField =
+        form.locator(requiredControlSelector).first();
+
+      if (
+        !await requiredField
+          .isVisible()
+          .catch(() => false)
+      ) {
+        continue;
+      }
+
       await requiredField.evaluate(
         element => {
           (
@@ -1114,13 +1129,23 @@ async function captureFormValidationStates(input: {
         locator: form
       });
     } finally {
-      await requiredField.evaluate(
+      await form.locator(requiredControlSelector).first().evaluate(
         element => {
-          (
-            element as HTMLInputElement
-          ).setCustomValidity("");
+          (element as HTMLInputElement).setCustomValidity("");
         }
-      );
+      ).catch(() => undefined);
+      await form.evaluate((element, states) => {
+        let stateIndex = 0;
+        let current = element.parentElement;
+        while (current) {
+          if (current instanceof HTMLDetailsElement) {
+            current.open = Boolean(states[stateIndex]);
+            stateIndex += 1;
+          }
+          current = current.parentElement;
+        }
+      }, disclosureStates);
+      await waitForUiFrames(input.page);
     }
   }
 }
@@ -1612,6 +1637,7 @@ async function collectPageEvidence(page: Page, route: string) {
       }
 
       const isVisible = visible(element);
+      const intentionallyDeferred = !isImage && element.preload === "none" && !element.error;
       const loaded = isImage
         ? element.complete && element.naturalWidth > 0
         : !element.error && element.readyState >= HTMLMediaElement.HAVE_METADATA;
@@ -1621,7 +1647,7 @@ async function collectPageEvidence(page: Page, route: string) {
         fingerprintKey,
         visible: isVisible,
         loaded,
-        failedVisible: isVisible && Boolean(source) && !loaded,
+        failedVisible: isVisible && Boolean(source) && !loaded && !intentionallyDeferred,
         missingAlt: isImage && !element.hasAttribute("alt")
       };
     });

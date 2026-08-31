@@ -12,8 +12,12 @@ test("media inspector readiness scopes layout stability to the active surface", 
   assert.match(readiness, /Unstable fields:/);
   assert.match(readiness, /waitForStableLayout\(page, locator\)/);
   assert.match(readiness, /image\.loading = "eager"/);
-  assert.match(readiness, /video\.preload = "metadata"/);
+  assert.match(readiness, /videos\.filter\(\(video\) => video\.preload !== "none"\)/);
+  assert.doesNotMatch(readiness, /video\.preload\s*=/);
+  assert.doesNotMatch(readiness, /video\.load\(\)/);
   assert.match(readiness, /Visual media readiness timed out/);
+  assert.match(runner, /intentionallyDeferred = !isImage && element\.preload === "none"/);
+  assert.match(runner, /!loaded && !intentionallyDeferred/);
   assert.match(runner, /waitForVisualIdle\(input\.page, inspector\)/);
   assert.match(runner, /waitForVisualIdle\(input\.page, dialog\)/);
   assert.match(

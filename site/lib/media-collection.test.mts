@@ -65,7 +65,10 @@ test("media dates are hydration-stable and fail closed for invalid metadata", ()
 });
 
 test("shared component exposes explicit non-overlapping variants and audit identities", async () => {
-  const source = await readFile(new URL("../components/media-collection.tsx", import.meta.url), "utf8");
+  const [source, lightbox] = await Promise.all([
+    readFile(new URL("../components/media-collection.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../components/lightbox.tsx", import.meta.url), "utf8")
+  ]);
   for (const variant of ["detail-stage", "editorial-grid", "process-sequence", "picker-grid", "single"]) {
     assert.match(source, new RegExp(variant));
   }
@@ -74,6 +77,8 @@ test("shared component exposes explicit non-overlapping variants and audit ident
   assert.match(source, /data-media-lightbox-opener/);
   assert.match(source, /collectionId \?\? title/);
   assert.doesNotMatch(source, /setInterval|setTimeout|autoPlay/);
+  assert.match(source, /<video[^>]+preload="metadata"[^>]+src=\{item\.src\}/);
+  assert.match(lightbox, /<video[^>]+controls[^>]+preload="metadata"[^>]+src=\{activeItem\.src\}/);
 });
 
 test("rendered count matrix is isolated to snapshot lab and excluded from live inventory", async () => {

@@ -198,7 +198,7 @@ export function MediaLightboxDialog({
                 tabIndex={0}
               >
                 {activeItem.kind === "video" ? (
-                  <video className="lightbox-media" controls src={activeItem.src} />
+                  <video className="lightbox-media" controls preload="metadata" src={activeItem.src} />
                 ) : (
                   <img
                     alt={activeItem.alt}

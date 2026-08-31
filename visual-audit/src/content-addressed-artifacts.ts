@@ -3,7 +3,7 @@ import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { ensureDirectory, relativeTo } from "./util.js";
+import { ensureDirectory, relativeTo, writeJsonAtomic } from "./util.js";
 
 export type StoredArtifact = {
   source: string;
@@ -115,18 +115,29 @@ export async function rewriteTileManifestArtifactReferences(input: {
     relativeTo(input.runRoot, artifact.source),
     artifact.relativePath
   ]));
-  const entries = await fs.readdir(input.outputDirectory, { withFileTypes: true }).catch(() => []);
+  const resolvedOutput = path.resolve(input.outputDirectory);
+  const manifestNames = new Set(input.artifacts.flatMap((artifact) => {
+    const source = path.resolve(artifact.source);
+    if (path.dirname(source) !== resolvedOutput) return [];
+    const match = path.basename(source).match(/^(.*)__stitched-\d+\.png$/);
+    return match ? [`${match[1]}__tiles.json`] : [];
+  }));
   const manifests: string[] = [];
-  for (const entry of entries) {
-    if (!entry.isFile() || !entry.name.endsWith("__tiles.json")) continue;
-    const file = path.join(input.outputDirectory, entry.name);
+  for (const manifestName of [...manifestNames].sort()) {
+    const file = path.join(input.outputDirectory, manifestName);
     const value = JSON.parse(await fs.readFile(file, "utf8")) as {
       segments?: Array<{ file?: string }>;
     };
+    let changed = false;
     for (const segment of value.segments ?? []) {
-      if (segment.file && replacements.has(segment.file)) segment.file = replacements.get(segment.file)!;
+      const replacement = segment.file ? replacements.get(segment.file) : undefined;
+      if (replacement && replacement !== segment.file) {
+        segment.file = replacement;
+        changed = true;
+      }
     }
-    await fs.writeFile(file, `${JSON.stringify(value, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+    if (!changed) continue;
+    await writeJsonAtomic(file, value);
     manifests.push(file);
   }
   return manifests;
