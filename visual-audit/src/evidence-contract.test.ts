@@ -14,6 +14,25 @@ test("route families normalize records and pagination without merging panels", (
   assert.equal(routeFamilyKey("/studio?panel=pieces&piece=pastry-table"), "/studio?panel=pieces&piece=[record]");
   assert.notEqual(routeFamilyKey("/studio?panel=media"), routeFamilyKey("/studio?panel=pieces"));
 });
+
+test("transient Studio status URLs share one structural interaction family", () => {
+  const base = routeFamilyKey("/studio?panel=media");
+  for (const status of ["assigned", "cleaned", "deleted", "error", "refreshed", "renamed", "saved", "uploaded"]) {
+    assert.equal(routeFamilyKey(`/studio?panel=media&${status}=1`), base, status);
+  }
+  assert.notEqual(routeFamilyKey("/studio?panel=media&mediaKind=video"), base);
+  assert.equal(routeFamilyKey("/search?error=network"), "/search?error=[filter]");
+
+  const sentinels = buildRouteFamilySentinels({
+    anonymous: [],
+    admin: [
+      "/studio?panel=media&uploaded=1",
+      "/studio?panel=media",
+      "/studio?panel=media&deleted=1"
+    ]
+  });
+  assert.deepEqual([...sentinels], ["admin::/studio?panel=media"]);
+});
 test("route-family sentinels deterministically prefer the first pagination route", () => {
   const sentinels = buildRouteFamilySentinels({
     anonymous: ["/portfolio/b", "/portfolio/a", "/"],

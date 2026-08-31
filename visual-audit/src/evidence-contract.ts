@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { AuditScope, AuthState, CoverageTier, ThemeMode } from "./types.js";
 
-export const EVIDENCE_CONTRACT_VERSION = 2;
+export const EVIDENCE_CONTRACT_VERSION = 3;
 
 export type VisualMaterializationMode = "selective" | "all" | "diagnostic-only";
 
@@ -58,6 +58,21 @@ const recordParameters = new Set([
 
 const preservedParameters = new Set(["auditState", "panel", "view"]);
 
+// These query parameters only acknowledge a completed Studio action. They do
+// not change the page's structural interaction contract, so one base route can
+// prove forms and other deep states while every concrete status URL still gets
+// its own logical baseline.
+const transientStatusParameters = new Set([
+  "assigned",
+  "cleaned",
+  "deleted",
+  "error",
+  "refreshed",
+  "renamed",
+  "saved",
+  "uploaded"
+]);
+
 function normalizePathname(pathname: string) {
   const segments = pathname.split("/").filter(Boolean);
   if (segments.length < 2) return pathname;
@@ -77,6 +92,7 @@ function normalizePathname(pathname: string) {
 export function routeFamilyKey(route: string) {
   const url = new URL(route, "https://audit.invalid");
   const query = [...url.searchParams.keys()]
+    .filter((key) => !(url.pathname === "/studio" && transientStatusParameters.has(key)))
     .sort()
     .map((key) => {
       if (key === "mediaPage") return `${key}=[page]`;

@@ -11,8 +11,19 @@ test("media inspector readiness scopes layout stability to the active surface", 
   assert.match(readiness, /rect \? Math\.round\(rect\.width\)/);
   assert.match(readiness, /Unstable fields:/);
   assert.match(readiness, /waitForStableLayout\(page, locator\)/);
+  assert.match(readiness, /image\.loading = "eager"/);
+  assert.match(readiness, /video\.preload = "metadata"/);
+  assert.match(readiness, /Visual media readiness timed out/);
   assert.match(runner, /waitForVisualIdle\(input\.page, inspector\)/);
   assert.match(runner, /waitForVisualIdle\(input\.page, dialog\)/);
+  assert.match(
+    runner,
+    /keyboard\.press\("Enter"\);[\s\S]*waitForVisualIdle\(input\.page, collection\);[\s\S]*quietSamples: 6[\s\S]*last-selected/,
+  );
+  assert.match(
+    runner,
+    /thumbnails\.nth\(originalIndex\)\.click\(\);[\s\S]*waitForVisualIdle\(input\.page, collection\);[\s\S]*quietSamples: 6/,
+  );
   assert.match(
     runner,
     /if \(!await card\.isEnabled\(\)\)[\s\S]*element as HTMLElement\)\.click\(\)/,

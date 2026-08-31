@@ -7,6 +7,7 @@ import {
   discoveredCoverageMatrix,
   nonCartesianRouteCoveragePlan
 } from "./coverage-matrix.js";
+import { buildRouteFamilySentinels } from "./evidence-contract.js";
 import type { ViewportProfile } from "./types.js";
 
 const viewports: ViewportProfile[] = [
@@ -57,6 +58,26 @@ test("family expansion retains every concrete route without Cartesian duplicatio
   assert.ok(taskKeys.has("/portfolio/b:desktop-1440:dark"));
   assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/b:")).length, 1);
   assert.equal([...taskKeys].filter((key) => key.startsWith("/portfolio/a:")).length, viewports.length * 2);
+});
+
+test("transient Studio statuses keep concrete baselines without redundant deep expansion", () => {
+  const routes = [
+    "/studio?panel=media",
+    "/studio?panel=media&deleted=1",
+    "/studio?panel=media&uploaded=1"
+  ];
+  const sentinels = buildRouteFamilySentinels({ anonymous: [], admin: routes });
+  const plan = nonCartesianRouteCoveragePlan({
+    scope: "full",
+    viewports,
+    routes,
+    familySentinels: new Set(routes.filter((route) => sentinels.has(`admin::${route}`)))
+  });
+
+  assert.deepEqual(plan.concreteRoutes, [...routes].sort());
+  assert.deepEqual(plan.familyRoutes, ["/studio?panel=media"]);
+  assert.equal(plan.concreteRoutes.length, 3);
+  assert.equal(plan.familyRoutes.length, 1);
 });
 
 test("discovered links use representative structural states without deep duplication", () => {

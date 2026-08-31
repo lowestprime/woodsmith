@@ -2420,11 +2420,21 @@ async function captureMediaCollections(input: {
       const last = thumbnails.nth(thumbnailCount - 1);
       await last.focus();
       await input.page.keyboard.press("Enter");
-      await waitForUiFrames(input.page);
+      await waitForVisualIdle(input.page, collection);
+      await waitForCaptureRequestDrain(input.page, {
+        intervalMs: 100,
+        quietSamples: 6,
+        timeoutMs: 15_000
+      });
       await saveCapture({ ...input, state: `${statePrefix}-last-selected`, locator: collection });
     } finally {
       await thumbnails.nth(originalIndex).click();
-      await waitForUiFrames(input.page);
+      await waitForVisualIdle(input.page, collection);
+      await waitForCaptureRequestDrain(input.page, {
+        intervalMs: 100,
+        quietSamples: 6,
+        timeoutMs: 15_000
+      });
     }
   }
 }

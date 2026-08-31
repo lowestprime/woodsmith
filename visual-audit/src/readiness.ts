@@ -60,33 +60,68 @@ async function triggerLazyContent(page: Page) {
 }
 
 async function settleMedia(page: Page) {
-  await page.evaluate(async () => {
+  const pending = await page.evaluate(async () => {
     await document.fonts.ready;
 
-    await Promise.all(Array.from(document.images).map(async (image) => {
+    const visible = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 && rect.height > 1 && style.display !== "none" && style.visibility !== "hidden";
+    };
+    const waitForMediaEvent = (target: EventTarget, events: string[], timeoutMs: number) => new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        events.forEach((event) => target.removeEventListener(event, done));
+        resolve();
+      };
+      const timer = window.setTimeout(done, timeoutMs);
+      events.forEach((event) => target.addEventListener(event, done, { once: true }));
+    });
+
+    const images = Array.from(document.images).filter((image) => (
+      visible(image) && Boolean(image.currentSrc || image.getAttribute("src") || image.getAttribute("srcset"))
+    ));
+    for (const image of images) {
+      image.loading = "eager";
+      image.setAttribute("fetchpriority", "high");
+    }
+
+    await Promise.all(images.map(async (image) => {
       if (!image.complete) {
-        await new Promise<void>((resolve) => {
-          const done = () => resolve();
-          image.addEventListener("load", done, { once: true });
-          image.addEventListener("error", done, { once: true });
-          window.setTimeout(done, 10_000);
-        });
+        await waitForMediaEvent(image, ["load", "error"], 15_000);
       }
       if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
     }));
 
-    await Promise.all(Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
-      .filter((video) => video.preload !== "none")
-      .map((video) => {
+    const videos = Array.from(document.querySelectorAll<HTMLVideoElement>("video")).filter((video) => (
+      visible(video) && Boolean(video.currentSrc || video.getAttribute("src") || video.querySelector("source[src]"))
+    ));
+    for (const video of videos) {
+      if (video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error) {
+        video.preload = "metadata";
+        video.load();
+      }
+    }
+
+    await Promise.all(videos.map((video) => {
       if (video.readyState >= 1 || video.error) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        const done = () => resolve();
-        video.addEventListener("loadedmetadata", done, { once: true });
-        video.addEventListener("error", done, { once: true });
-        window.setTimeout(done, 5_000);
-      });
+      return waitForMediaEvent(video, ["loadedmetadata", "error"], 15_000);
     }));
+
+    return {
+      images: images.filter((image) => !image.complete).length,
+      videos: videos.filter((video) => video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error).length
+    };
   });
+
+  if (pending.images > 0 || pending.videos > 0) {
+    throw new Error(
+      `Visual media readiness timed out with ${pending.images} image(s) and ${pending.videos} video(s) still pending.`
+    );
+  }
 }
 
 async function waitForStableLayout(page: Page, locator?: Locator) {

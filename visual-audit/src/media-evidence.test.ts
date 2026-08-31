@@ -108,3 +108,35 @@ test("tier 1 records synthetic placeholders without misrepresenting provenance",
   assert.equal(result.placeholders.passed, true);
   assert.equal(expectedMediaProvenance("tier-2-production-clone"), "production-clone");
 });
+
+test("production media proof excludes audit-only snapshot-lab fixtures", () => {
+  const auditFixture = route({
+    route: "/snapshot-lab/media-collections",
+    auth: "admin",
+    mediaEvidence: {
+      ...route().mediaEvidence!,
+      total: 12,
+      visible: 12,
+      loaded: 1,
+      failedVisible: 11,
+      directMounted: 0,
+      optimizedMounted: 0,
+      inline: 12,
+      sourceDigests: ["audit-inline"],
+      mountedSourceDigests: []
+    }
+  });
+  const result = buildMediaEvidenceReports({
+    runId: "tier-2-audit-fixture-test",
+    generatedAt: "2026-08-30T00:00:00.000Z",
+    evidenceTier: "tier-2-production-clone",
+    mode: "snapshot-lab",
+    inventory: inventory({ provenance: "production-clone" }),
+    routes: [route(), auditFixture]
+  });
+
+  assert.equal(result.liveMedia.passed, true);
+  assert.equal(result.liveMedia.rendered.routeObservations, 1);
+  assert.equal(result.liveMedia.rendered.failedVisibleMediaElements, 0);
+  assert.equal(result.liveMedia.rendered.uniqueSourceDigests, 2);
+});
