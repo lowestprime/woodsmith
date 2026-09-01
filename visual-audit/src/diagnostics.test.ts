@@ -12,8 +12,10 @@ import {
   isExpectedAuditMutationBlock,
   isKnownExpectedDiagnostic,
   isValidPartialMediaResponse,
+  markRecoveredSpecialTaskDiagnostics,
   requestBlockKey
 } from "./diagnostics.js";
+import type { DiagnosticRecord } from "./types.js";
 
 const baseFailure = {
   method: "GET",
@@ -214,4 +216,32 @@ test("validator exceptions remain narrow and never hide arbitrary API failures",
     type: "console",
     route: "/portfolio/pastry-table"
   }), false);
+});
+
+test("serial special-task recovery marks only the exact retained failure", () => {
+  const diagnostics: DiagnosticRecord[] = [
+    {
+      timestamp: "2026-09-01T00:00:00.000Z",
+      type: "pageerror" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-recovered (media-inspectors) failed: transient image stall"
+    },
+    {
+      timestamp: "2026-09-01T00:00:01.000Z",
+      type: "pageerror" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-other (media-inspectors) failed: persistent image stall"
+    },
+    {
+      timestamp: "2026-09-01T00:00:02.000Z",
+      type: "security" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-recovered (media-inspectors) failed: unapproved request"
+    }
+  ];
+
+  assert.equal(markRecoveredSpecialTaskDiagnostics(diagnostics, "special-recovered"), 1);
+  assert.equal(diagnostics[0]!.expected, true);
+  assert.equal(diagnostics[1]!.expected, undefined);
+  assert.equal(diagnostics[2]!.expected, undefined);
 });

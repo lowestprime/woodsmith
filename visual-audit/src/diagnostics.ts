@@ -1,4 +1,5 @@
 import { classifyCrossOriginRequest, isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
+import type { DiagnosticRecord } from "./types.js";
 
 export type RequestFailureEvidence = {
   method: string;
@@ -8,6 +9,25 @@ export type RequestFailureEvidence = {
   headers: Record<string, string>;
   baseUrl: string;
 };
+
+export function markRecoveredSpecialTaskDiagnostics(
+  diagnostics: DiagnosticRecord[],
+  taskKey: string
+) {
+  const prefix = `Special task ${taskKey} (`;
+  let recovered = 0;
+  for (const diagnostic of diagnostics) {
+    if (
+      diagnostic.expected !== true &&
+      diagnostic.type === "pageerror" &&
+      diagnostic.message.startsWith(prefix)
+    ) {
+      diagnostic.expected = true;
+      recovered += 1;
+    }
+  }
+  return recovered;
+}
 
 export function isValidPartialMediaResponse(input: {
   status: number;

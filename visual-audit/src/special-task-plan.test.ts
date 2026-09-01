@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 import { buildSpecialTaskPlan, interactionSuiteGroups, partitionSpecialTasks, specialTaskGroupCounts } from "./special-task-plan.js";
@@ -92,4 +93,23 @@ test("deterministic shards are disjoint and merge to the authoritative plan", ()
     assert.deepEqual(merged, tasks);
     assert.equal(new Set(merged.map((task) => task.key)).size, tasks.length);
   }
+});
+
+test("failed media-inspector shards receive one serial fail-closed recovery pass", async () => {
+  const runner = await readFile(new URL("../src/run.ts", import.meta.url), "utf8");
+
+  assert.match(
+    runner,
+    /const recoveryTasks = tasks\.filter\(\(task\) => \([\s\S]*task\.group === "media-inspectors"[\s\S]*!specialTaskCompleted\(task\.key\)/
+  );
+  assert.match(
+    runner,
+    /runBoundedCaptureTasks\(recoveryTasks, \{[\s\S]*workerCount: 1,[\s\S]*taskKey: \(task\) => task\.key/
+  );
+  assert.match(runner, /if \(!recovered\) return false/);
+  assert.match(runner, /markRecoveredSpecialTaskDiagnostics\(manifest\.diagnostics, task\.key\)/);
+  assert.match(runner, /if \(marked < 1\)[\s\S]*has no retained failure diagnostic/);
+  assert.match(runner, /if \(!captureCompleted\(input, inspectorState\)\)/);
+  assert.match(runner, /if \(!captureCompleted\(input, expandedState\)\)/);
+  assert.match(runner, /!captureCompleted\(input, lightboxState\)/);
 });

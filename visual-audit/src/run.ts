@@ -69,6 +69,7 @@ import {
   isExpectedAuditCrossOriginBlock,
   isExpectedAuditMutationBlock,
   isValidPartialMediaResponse,
+  markRecoveredSpecialTaskDiagnostics,
   requestBlockKey
 } from "./diagnostics.js";
 import {
@@ -3024,13 +3025,14 @@ async function captureMediaPageItems(input: {
     await waitForVisualIdle(input.page, inspector);
     await waitForCaptureRequestDrain(input.page, { locator: inspector });
 
-    await saveCapture({
-      ...input,
-      state:
-        `media-inspector-${String(index + 1)
-          .padStart(4, "0")}`,
-      locator: inspector
-    });
+    const inspectorState = `media-inspector-${String(index + 1).padStart(4, "0")}`;
+    if (!captureCompleted(input, inspectorState)) {
+      await saveCapture({
+        ...input,
+        state: inspectorState,
+        locator: inspector
+      });
+    }
 
     await inspector
       .locator("details")
@@ -3041,18 +3043,21 @@ async function captureMediaPageItems(input: {
       });
     await waitForVisualIdle(input.page, inspector);
 
-    await saveCapture({
-      ...input,
-      state:
-        `media-inspector-${String(index + 1)
-          .padStart(4, "0")}-expanded`,
-      locator: inspector
-    });
+    const expandedState = `${inspectorState}-expanded`;
+    if (!captureCompleted(input, expandedState)) {
+      await saveCapture({
+        ...input,
+        state: expandedState,
+        locator: inspector
+      });
+    }
 
     const preview =
       inspector.locator('[data-media-lightbox-opener="true"]');
 
+    const lightboxState = `${inspectorState}-lightbox`;
     if (
+      !captureCompleted(input, lightboxState) &&
       await preview.isVisible().catch(() => false)
     ) {
       if (!await preview.isEnabled()) {
@@ -3075,9 +3080,7 @@ async function captureMediaPageItems(input: {
 
       await saveCapture({
         ...input,
-        state:
-          `media-inspector-${String(index + 1)
-            .padStart(4, "0")}-lightbox`,
+        state: lightboxState,
         fullPage: false,
         drainLocator: dialog,
         drainTimeoutMs: 60_000
@@ -3118,13 +3121,14 @@ async function captureMediaPageItems(input: {
         await button.isEnabled()
       ) {
         await button.click();
-
-        await saveCapture({
-          ...input,
-          state:
-            `media-mobile-pane-${pane.toLowerCase()}`,
-          fullPage: false
-        });
+        const paneState = `media-mobile-pane-${pane.toLowerCase()}`;
+        if (!captureCompleted(input, paneState)) {
+          await saveCapture({
+            ...input,
+            state: paneState,
+            fullPage: false
+          });
+        }
       }
     }
   }
@@ -3839,8 +3843,8 @@ async function recordSpecialTask(task: NonNullable<RunManifest["specialTasks"]>[
   await appendJournal(specialTaskJournalFile, task);
 }
 
-async function captureSpecialTask(browser: Browser, profile: ViewportProfile, task: SpecialTask) {
-  if (specialTaskCompleted(task.key)) return;
+async function captureSpecialTask(browser: Browser, profile: ViewportProfile, task: SpecialTask): Promise<boolean> {
+  if (specialTaskCompleted(task.key)) return true;
   const startedAt = now();
   const before = (manifest.observations ?? []).length;
   await recordSpecialTask({ ...task, status: "running", startedAt, completedAt: null, observationCount: 0, errorDigest: null });
@@ -3849,6 +3853,7 @@ async function captureSpecialTask(browser: Browser, profile: ViewportProfile, ta
   await writeJsonAtomic(path.join(taskScratch, "task.json"), { ...task, startedAt, mutability: "read-only-independent" });
   let context: BrowserContext | null = null;
   let page: Page | null = null;
+  let completed = false;
   try {
     context = await createCaptureContext(browser, task.auth, profile, task.theme);
     page = await context.newPage();
@@ -3897,6 +3902,7 @@ async function captureSpecialTask(browser: Browser, profile: ViewportProfile, ta
       observationCount: (manifest.observations ?? []).length - before,
       errorDigest: null
     });
+    completed = true;
   } catch (error) {
     const message = formatInteractionError(error);
     manifest.diagnostics.push({ timestamp: now(), type: "pageerror", route: task.route, message: `Special task ${task.key} (${task.group}) failed: ${message}` });
@@ -3918,6 +3924,7 @@ async function captureSpecialTask(browser: Browser, profile: ViewportProfile, ta
     await fs.rm(taskScratch, { recursive: true, force: true });
     await persistManifest();
   }
+  return completed;
 }
 
 async function runSpecialTaskPlan(input: {
@@ -3953,6 +3960,56 @@ async function runSpecialTaskPlan(input: {
     workers: run.metrics.workerCount,
     maxInFlight: run.metrics.maxInFlight,
     seconds: telemetry.seconds,
+    shardIndex: config.taskShardIndex,
+    shardCount: config.taskShardCount
+  })}`);
+
+  const recoveryTasks = tasks.filter((task) => (
+    task.group === "media-inspectors" && !specialTaskCompleted(task.key)
+  ));
+  if (recoveryTasks.length === 0) return;
+
+  const recoveryStartedAt = now();
+  const recoveryStarted = performance.now();
+  const recovery = await runBoundedCaptureTasks(recoveryTasks, {
+    workerCount: 1,
+    taskKey: (task) => task.key,
+    execute: async (task, _index, signal) => {
+      if (signal.aborted) throw new Error("Special-task recovery queue was cancelled.");
+      const recovered = await captureSpecialTask(input.browser, input.profile, task);
+      if (!recovered) return false;
+
+      const marked = markRecoveredSpecialTaskDiagnostics(manifest.diagnostics, task.key);
+      if (marked < 1) {
+        throw new Error(`Recovered special task ${task.key} has no retained failure diagnostic.`);
+      }
+      manifest.diagnostics.push({
+        timestamp: now(),
+        type: "coverage",
+        route: task.route,
+        message: `Special task ${task.key} recovered during its single serial media retry; ${marked} original failure diagnostic(s) remain retained as expected recovery provenance.`,
+        expected: true
+      });
+      await persistManifest();
+      return true;
+    }
+  });
+  const recoveryTelemetry: StageTelemetryRecord = {
+    stage: `${input.stage}:serial-media-recovery`,
+    startedAt: recoveryStartedAt,
+    completedAt: now(),
+    seconds: Number(((performance.now() - recoveryStarted) / 1_000).toFixed(3)),
+    units: recovery.metrics.completed,
+    workers: recovery.metrics.workerCount
+  };
+  stageTelemetry.push(recoveryTelemetry);
+  console.log(`CAPTURE_STAGE=${JSON.stringify({
+    phase: recoveryTelemetry.stage,
+    tasks: recovery.metrics.submitted,
+    workers: recovery.metrics.workerCount,
+    maxInFlight: recovery.metrics.maxInFlight,
+    seconds: recoveryTelemetry.seconds,
+    recovered: recovery.results.filter(Boolean).length,
     shardIndex: config.taskShardIndex,
     shardCount: config.taskShardCount
   })}`);
