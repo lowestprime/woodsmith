@@ -88,10 +88,11 @@ import {
   reusableBaselineObservation,
   type CompatibleBaseline
 } from "./evidence-reuse.js";
-import { executeInteractionSuite } from "./interaction-suite.js";
+import { executeInteractionSuite, formatInteractionError } from "./interaction-suite.js";
 import {
   isNavigationInterruption,
   waitForNavigationSettle,
+  waitForStableReadyDocument,
   type NavigationSample
 } from "./navigation-settle.js";
 import { buildNoOverlapReport, findMediaOverlaps } from "./media-overlap.js";
@@ -269,6 +270,23 @@ async function waitForUiFrames(page: Page) {
   await page.evaluate(() => new Promise<void>((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
   }));
+}
+
+async function waitForStableDocument(page: Page): Promise<NavigationSample> {
+  return waitForNavigationSettle({
+    intervalMs: 75,
+    quietSamples: 5,
+    timeoutMs: 10_000,
+    sleep: async (milliseconds) => {
+      await page.waitForTimeout(milliseconds);
+      await waitForUiFrames(page);
+    },
+    sample: () => page.evaluate(() => ({
+      bodyPresent: Boolean(document.body),
+      readyState: document.readyState,
+      url: window.location.href
+    }))
+  });
 }
 
 function deepCount(total: number, smokeLimit: number) {
@@ -786,6 +804,18 @@ async function waitForCaptureRequestDrain(
   const quietMs = Math.max(25, (options.intervalMs ?? 50) * (options.quietSamples ?? 3));
   const timeoutMs = options.timeoutMs ?? 15_000;
   const deadline = Date.now() + timeoutMs;
+  let observedRelevantRequests = false;
+  const sampleRelevantRequests = async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        return await relevantPendingVisualRequests(page, pendingRequests, options.locator);
+      } catch (error) {
+        if (!isNavigationInterruption(error) || attempt === 2) throw error;
+        await waitForStableDocument(page);
+      }
+    }
+    throw new Error("Visual request sampling did not survive client navigation.");
+  };
   const waitForEventOrTimeout = (milliseconds: number) => new Promise<"event" | "timeout">((resolve) => {
     let settled = false;
     const finish = (value: "event" | "timeout") => {
@@ -804,48 +834,46 @@ async function waitForCaptureRequestDrain(
     page.once("requestfailed", onEvent);
   });
   while (Date.now() < deadline) {
-    const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests, options.locator);
+    const relevantRequests = await sampleRelevantRequests();
+    if (relevantRequests.length > 0) observedRelevantRequests = true;
     if (relevantRequests.length === 0) {
       const result = await waitForEventOrTimeout(Math.max(1, Math.min(quietMs, deadline - Date.now())));
-      if (result === "timeout" && (await relevantPendingVisualRequests(page, pendingRequests, options.locator)).length === 0) break;
+      if (result === "timeout" && (await sampleRelevantRequests()).length === 0) break;
     } else {
       await waitForEventOrTimeout(Math.max(1, Math.min(1_000, deadline - Date.now())));
     }
   }
-  const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests, options.locator);
+  const relevantRequests = await sampleRelevantRequests();
+  if (relevantRequests.length > 0) observedRelevantRequests = true;
   if (relevantRequests.length > 0) {
     throw new Error(`Visual requests did not drain within ${timeoutMs}ms (${relevantRequests.length} relevant request(s) still pending).`);
   }
 
-  await page.evaluate(async () => {
-    await Promise.all(Array.from(document.images).map(image =>
-      image.complete && image.naturalWidth > 0
-        ? image.decode().catch(() => undefined)
-        : Promise.resolve()
-    ));
-  });
-}
-
-async function waitForSettledVisualReady(page: Page, includeOffscreen = false): Promise<NavigationSample> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    const settled = await waitForNavigationSettle({
-      sleep: () => waitForUiFrames(page),
-      sample: () => page.evaluate(() => ({
-        bodyPresent: Boolean(document.body),
-        readyState: document.readyState,
-        url: window.location.href
-      }))
-    });
-
     try {
-      await waitForVisualReady(page, includeOffscreen);
-      return settled;
+      await page.evaluate(async () => {
+        await Promise.all(Array.from(document.images).map(image =>
+          image.complete && image.naturalWidth > 0
+            ? image.decode().catch(() => undefined)
+            : Promise.resolve()
+        ));
+      });
+      return observedRelevantRequests;
     } catch (error) {
       if (!isNavigationInterruption(error) || attempt === 2) throw error;
+      await waitForStableDocument(page);
     }
   }
 
-  throw new Error("Visual readiness did not survive client navigation.");
+  throw new Error("Visual image decoding did not survive client navigation.");
+}
+
+async function waitForSettledVisualReady(page: Page, includeOffscreen = false): Promise<NavigationSample> {
+  return waitForStableReadyDocument({
+    settle: () => waitForStableDocument(page),
+    ready: () => waitForVisualReady(page, includeOffscreen),
+    attempts: 3
+  });
 }
 
 async function authenticateAdmin(
@@ -1983,6 +2011,7 @@ async function saveCapture(input: {
   fullPage?: boolean;
   locator?: Locator;
   drainLocator?: Locator;
+  drainTimeoutMs?: number;
   sensitive?: boolean;
   coverageTier?: CoverageTier;
   forceMaterialization?: boolean;
@@ -2083,14 +2112,21 @@ async function saveCapture(input: {
         reusedFrom = { runId: compatibleBaseline.runId, key: baselineObservation.key };
         decision.reasons.push("compatible-baseline-reuse");
       } else {
-        const produced = input.locator
-          ? await captureElement(input.page, input.locator, outputDirectory, baseName)
-          : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
         const drainLocator = input.drainLocator ?? input.locator;
-        await waitForCaptureRequestDrain(
-          input.page,
-          drainLocator ? { locator: drainLocator } : {}
-        );
+        const drainOptions = {
+          ...(drainLocator ? { locator: drainLocator } : {}),
+          ...(input.drainTimeoutMs === undefined ? {} : { timeoutMs: input.drainTimeoutMs })
+        };
+        const captureSurface = () => input.locator
+          ? captureElement(input.page, input.locator, outputDirectory, baseName)
+          : capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
+        await waitForCaptureRequestDrain(input.page, drainOptions);
+        let produced = await captureSurface();
+        const loadedAfterCapture = await waitForCaptureRequestDrain(input.page, drainOptions);
+        if (loadedAfterCapture) {
+          produced = await captureSurface();
+          await waitForCaptureRequestDrain(input.page, drainOptions);
+        }
         const tileIo = await captureTileIo(outputDirectory, baseName);
         artifactIo.rawTileCount += tileIo.rawTileCount;
         artifactIo.rawTileBytesProduced += tileIo.rawTileBytes;
@@ -2206,6 +2242,28 @@ async function captureSkipLinkStates(input: {
   await waitForUiFrames(input.page);
   await input.page.keyboard.press("Tab");
 
+  const skipLinkHandle = await skipLink.elementHandle();
+  if (!skipLinkHandle) throw new Error("The skip link detached before focus evidence could be collected.");
+  try {
+    await input.page.waitForFunction((element) => {
+      if (!(element instanceof HTMLElement)) return false;
+      const rect = element.getBoundingClientRect();
+      const style = window.getComputedStyle(element);
+      return document.activeElement === element &&
+        style.display !== "none" &&
+        style.visibility !== "hidden" &&
+        Number.parseFloat(style.opacity || "1") > 0 &&
+        rect.width > 0 &&
+        rect.height > 0 &&
+        rect.right > 0 &&
+        rect.bottom > 0 &&
+        rect.left < window.innerWidth &&
+        rect.top < window.innerHeight;
+    }, skipLinkHandle, { timeout: 5_000, polling: 50 });
+  } finally {
+    await skipLinkHandle.dispose();
+  }
+
   const focusEvidence = await skipLink.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const style = window.getComputedStyle(element);
@@ -2257,6 +2315,7 @@ async function captureHeaderStates(input: {
   profile: ViewportProfile;
   status: number | null;
 }) {
+  await waitForStableDocument(input.page);
   const header =
     input.page.locator("header").first();
 
@@ -2432,6 +2491,16 @@ async function interactionSuiteBaseline(page: Page): Promise<InteractionSuiteBas
 }
 
 async function restoreInteractionSuiteBaseline(page: Page, baseline: InteractionSuiteBaseline, group: string) {
+  const urlDialog = page.locator('.inline-url-dialog[role="dialog"]').last();
+  if (await urlDialog.isVisible().catch(() => false)) {
+    await urlDialog.getByRole("button", { name: "Cancel" }).click({ timeout: 5_000 });
+    await urlDialog.waitFor({ state: "hidden", timeout: 5_000 });
+  }
+  const inlineAssistant = page.locator(".inline-edit-hint").last();
+  if (await inlineAssistant.isVisible().catch(() => false)) {
+    await inlineAssistant.getByRole("button", { name: "Cancel" }).click({ timeout: 5_000 });
+    await inlineAssistant.waitFor({ state: "hidden", timeout: 5_000 });
+  }
   await page.mouse.move(0, 0);
   await page.evaluate(({ scrollX, scrollY, headerHidden }) => {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
@@ -2479,7 +2548,7 @@ async function captureLightboxes(input: {
     });
 
     await waitForVisualIdle(input.page, dialog);
-    await waitForCaptureRequestDrain(input.page, { locator: dialog });
+    await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 60_000 });
 
     await saveCapture({
       ...input,
@@ -2487,7 +2556,8 @@ async function captureLightboxes(input: {
         `lightbox-${String(index + 1)
           .padStart(4, "0")}-100-percent`,
       fullPage: false,
-      drainLocator: dialog
+      drainLocator: dialog,
+      drainTimeoutMs: 60_000
     });
 
     if (index === 0) {
@@ -2495,9 +2565,9 @@ async function captureLightboxes(input: {
       const next = dialog.getByRole("button", { name: "Next image" });
       if (await previous.isVisible().catch(() => false) && await next.isVisible().catch(() => false)) {
         await previous.click();
-        await saveCapture({ ...input, state: "lightbox-previous-boundary", fullPage: false, drainLocator: dialog });
+        await saveCapture({ ...input, state: "lightbox-previous-boundary", fullPage: false, drainLocator: dialog, drainTimeoutMs: 60_000 });
         await next.click();
-        await saveCapture({ ...input, state: "lightbox-next-boundary", fullPage: false, drainLocator: dialog });
+        await saveCapture({ ...input, state: "lightbox-next-boundary", fullPage: false, drainLocator: dialog, drainTimeoutMs: 60_000 });
       }
     }
 
@@ -2520,7 +2590,8 @@ async function captureLightboxes(input: {
           `lightbox-${String(index + 1)
             .padStart(4, "0")}-200-percent`,
         fullPage: false,
-        drainLocator: dialog
+        drainLocator: dialog,
+        drainTimeoutMs: 60_000
       });
 
       for (let click = 0; click < 8; click += 1) {
@@ -2533,7 +2604,8 @@ async function captureLightboxes(input: {
           `lightbox-${String(index + 1)
             .padStart(4, "0")}-400-percent`,
         fullPage: false,
-        drainLocator: dialog
+        drainLocator: dialog,
+        drainTimeoutMs: 60_000
       });
 
       const stage = dialog.locator(".lightbox-stage");
@@ -2549,7 +2621,8 @@ async function captureLightboxes(input: {
           ...input,
           state: `lightbox-${String(index + 1).padStart(4, "0")}-pan-boundary`,
           fullPage: false,
-          drainLocator: dialog
+          drainLocator: dialog,
+          drainTimeoutMs: 60_000
         });
       }
     }
@@ -2669,6 +2742,13 @@ async function captureInlineEditing(input: {
       timeout: 10_000
     });
 
+    const activeSection = input.page.locator('section[data-inline-editing="true"]');
+    await activeSection.waitFor({ state: "visible", timeout: 10_000 });
+    await activeSection.evaluate((element) => {
+      element.scrollIntoView({ block: "center", inline: "nearest", behavior: "instant" });
+    });
+    await waitForUiFrames(input.page);
+
     await saveCapture({
       ...input,
       state:
@@ -2677,7 +2757,6 @@ async function captureInlineEditing(input: {
       fullPage: false
     });
 
-    const activeSection = input.page.locator('section[data-inline-editing="true"]');
     const fieldIdentities = await activeSection
       .locator("[data-inline-edit-resource][data-inline-edit-field]")
       .evaluateAll((elements) => {
@@ -2711,6 +2790,8 @@ async function captureInlineEditing(input: {
       const identity = fieldIdentities[fieldIndex]!;
       const field = activeSection.locator(inlineFieldSelector(identity)).nth(identity.occurrence);
 
+      await field.scrollIntoViewIfNeeded();
+      await waitForUiFrames(input.page);
       if (!await field.isVisible().catch(() => false)) {
         continue;
       }
@@ -2990,7 +3071,7 @@ async function captureMediaPageItems(input: {
         state: "visible"
       });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
+      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 60_000 });
 
       await saveCapture({
         ...input,
@@ -2998,7 +3079,8 @@ async function captureMediaPageItems(input: {
           `media-inspector-${String(index + 1)
             .padStart(4, "0")}-lightbox`,
         fullPage: false,
-        drainLocator: dialog
+        drainLocator: dialog,
+        drainTimeoutMs: 60_000
       });
 
       const closeButton = dialog
@@ -3490,7 +3572,7 @@ async function captureMediaPickers(input: {
         timeout: 10_000
       });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
+      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 60_000 });
 
       await saveCapture({
         ...input,
@@ -3498,7 +3580,8 @@ async function captureMediaPickers(input: {
           `media-picker-${String(index + 1)
             .padStart(3, "0")}-default`,
         fullPage: false,
-        drainLocator: dialog
+        drainLocator: dialog,
+        drainTimeoutMs: 60_000
       });
 
       const filter = dialog.getByLabel("Search");
@@ -3514,7 +3597,7 @@ async function captureMediaPickers(input: {
         await dialog.getByRole("button", { name: "Search" }).click();
         await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => waitForUiFrames(input.page));
         await waitForVisualIdle(input.page, dialog);
-        await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
+        await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 60_000 });
 
         await saveCapture({
           ...input,
@@ -3522,7 +3605,8 @@ async function captureMediaPickers(input: {
             `media-picker-${String(index + 1)
               .padStart(3, "0")}-empty-filter`,
           fullPage: false,
-          drainLocator: dialog
+          drainLocator: dialog,
+          drainTimeoutMs: 60_000
         });
       }
     } finally {
@@ -3802,6 +3886,7 @@ async function captureSpecialTask(browser: Browser, profile: ViewportProfile, ta
       case "element-atlas": await captureElementAtlas(base, range); break;
     }
     pageCapturePhases.set(page, `special:${task.group}:final-settle`);
+    await waitForStableDocument(page);
     await waitForVisualIdle(page);
     await waitForCaptureRequestDrain(page, { intervalMs: 75, quietSamples: 2, timeoutMs: 5_000 });
     await recordSpecialTask({
@@ -3813,7 +3898,7 @@ async function captureSpecialTask(browser: Browser, profile: ViewportProfile, ta
       errorDigest: null
     });
   } catch (error) {
-    const message = error instanceof Error ? error.stack || error.message : String(error);
+    const message = formatInteractionError(error);
     manifest.diagnostics.push({ timestamp: now(), type: "pageerror", route: task.route, message: `Special task ${task.key} (${task.group}) failed: ${message}` });
     await recordSpecialTask({
       ...task,

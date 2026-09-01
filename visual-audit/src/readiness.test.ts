@@ -27,9 +27,20 @@ test("media inspector readiness scopes layout stability to the active surface", 
   assert.match(runner, /relevantPendingVisualRequests\(page, pendingRequests, options\.locator\)/);
   assert.match(runner, /options\.locator/);
   assert.match(runner, /const drainLocator = input\.drainLocator \?\? input\.locator/);
+  assert.match(runner, /const loadedAfterCapture = await waitForCaptureRequestDrain/);
+  assert.match(runner, /if \(loadedAfterCapture\)[\s\S]*produced = await captureSurface\(\)[\s\S]*waitForCaptureRequestDrain/);
+  assert.match(runner, /drainTimeoutMs\?: number/);
   assert.match(readiness, /includeOffscreen \? 45_000 : 15_000/);
   assert.match(runner, /relevantRequests\.length > 0/);
+  assert.match(runner, /return observedRelevantRequests/);
+  assert.match(runner, /waitForStableReadyDocument\([\s\S]*settle: \(\) => waitForStableDocument\(page\)/);
+  assert.match(runner, /sleep: async \(milliseconds\)[\s\S]*page\.waitForTimeout\(milliseconds\)[\s\S]*waitForUiFrames\(page\)/);
+  assert.match(runner, /waitForFunction\(\(element\)[\s\S]*document\.activeElement === element[\s\S]*intersectsViewport|waitForFunction\(\(element\)[\s\S]*rect\.bottom > 0/);
   assert.match(runner, /\.site-header"\)\?\.classList\.remove\("is-hidden"\)/);
+  assert.match(runner, /inline-url-dialog[\s\S]*getByRole\("button", \{ name: "Cancel" \}\)[\s\S]*inline-edit-hint/);
+  assert.match(runner, /scrollIntoView\(\{ block: "center", inline: "nearest", behavior: "instant" \}\)/);
+  assert.match(runner, /field\.scrollIntoViewIfNeeded\(\)/);
+  assert.match(runner, /drainLocator: dialog,[\s\S]*drainTimeoutMs: 60_000/);
   assert.match(
     runner,
     /keyboard\.press\("Enter"\);[\s\S]*waitForVisualIdle\(input\.page, collection\);[\s\S]*quietSamples: 6[\s\S]*last-selected/,

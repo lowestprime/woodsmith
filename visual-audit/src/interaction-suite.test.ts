@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { executeInteractionSuite } from "./interaction-suite.js";
+import { executeInteractionSuite, formatInteractionError } from "./interaction-suite.js";
 
 test("interaction suites execute every group in order from a restored baseline", async () => {
   const groups = ["details", "lightboxes", "form-validation"] as const;
@@ -40,4 +40,24 @@ test("interaction suites restore the baseline before propagating a group failure
     /group failure/
   );
   assert.equal(restored, true);
+});
+
+test("interaction suite diagnostics retain every nested failure cause", () => {
+  const error = new AggregateError(
+    [
+      new Error("inline execution failed"),
+      new AggregateError(
+        [new Error("dialog cancel failed"), new Error("baseline drifted")],
+        "restore failed"
+      )
+    ],
+    "interaction and restore failed"
+  );
+  const formatted = formatInteractionError(error);
+
+  assert.match(formatted, /interaction and restore failed/);
+  assert.match(formatted, /inline execution failed/);
+  assert.match(formatted, /restore failed/);
+  assert.match(formatted, /dialog cancel failed/);
+  assert.match(formatted, /baseline drifted/);
 });
