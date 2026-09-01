@@ -1,8 +1,11 @@
+export const WOODSHOP_TIME_ZONE = "America/Los_Angeles";
+
 export function formatDate(value: string | Date) {
   return new Intl.DateTimeFormat("en-US", {
     month: "long",
     day: "numeric",
-    year: "numeric"
+    year: "numeric",
+    timeZone: WOODSHOP_TIME_ZONE
   }).format(new Date(value));
 }
 
@@ -12,7 +15,8 @@ export function formatDateTime(value: string | Date) {
     day: "numeric",
     year: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: WOODSHOP_TIME_ZONE
   }).format(new Date(value));
 }
 
@@ -50,7 +54,9 @@ export function cn(...values: Array<string | false | null | undefined>) {
 }
 
 export function toMediaUrl(assetPath: string) {
-  return `/media/${assetPath
+  const normalized = assetPath.replace(/\\/g, "/").replace(/^\/+/, "");
+
+  return `/media/${normalized
     .split("/")
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;

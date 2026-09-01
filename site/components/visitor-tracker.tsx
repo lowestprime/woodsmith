@@ -3,6 +3,8 @@
 import { useEffect } from "react";
 import { usePathname } from "next/navigation";
 
+import { browserOperationId } from "@/lib/browser-id";
+
 const SESSION_STORAGE_KEY = "woodmat-visit-session";
 const PAGE_MARKER_PREFIX = "woodmat-visit-page:";
 
@@ -12,7 +14,7 @@ function ensureSessionToken() {
     return existing;
   }
 
-  const next = crypto.randomUUID();
+  const next = browserOperationId();
   window.sessionStorage.setItem(SESSION_STORAGE_KEY, next);
   return next;
 }

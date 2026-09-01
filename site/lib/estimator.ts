@@ -1,13 +1,19 @@
-export type VisualizerKind =
-  | "dining-room-table"
-  | "end-table"
-  | "scientists-desk"
-  | "footstool"
-  | "spice-rack"
-  | "pantry-cabinets"
-  | "pastry-table"
-  | "hallway-bench"
-  | "other-custom-work";
+export type VisualizerKind = string;
+
+export type VisualizerTemplate =
+  | "table"
+  | "bench"
+  | "stool"
+  | "cabinet"
+  | "shelf"
+  | "chair"
+  | "door"
+  | "bed"
+  | "frame"
+  | "board"
+  | "easel"
+  | "clock"
+  | "object";
 
 export type VisualizerState = {
   kind: VisualizerKind;
@@ -51,7 +57,7 @@ const MATERIAL_RATES: Record<string, number> = {
   default: 1850
 };
 
-const BASE_HOURS: Record<VisualizerKind, number> = {
+const BASE_HOURS: Record<string, number> = {
   "dining-room-table": 72,
   "end-table": 24,
   "scientists-desk": 48,
@@ -63,7 +69,7 @@ const BASE_HOURS: Record<VisualizerKind, number> = {
   "other-custom-work": 36
 };
 
-const BASE_MARKUP: Record<VisualizerKind, number> = {
+const BASE_MARKUP: Record<string, number> = {
   "dining-room-table": 0.22,
   "end-table": 0.18,
   "scientists-desk": 0.22,
@@ -84,26 +90,68 @@ const JOINERY_MULTIPLIER: Record<string, number> = {
   default: 1
 };
 
+export const VISUALIZER_LIMITS = {
+  width: { min: 4, max: 240 },
+  depth: { min: 2, max: 120 },
+  height: { min: 2, max: 144 },
+  drawers: { min: 0, max: 24 },
+  shelves: { min: 0, max: 24 }
+} as const;
+
 export function clampNumber(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
+  const finiteValue = Number.isFinite(value) ? value : min;
+  return Math.max(min, Math.min(max, finiteValue));
+}
+
+export function normalizeVisualizerState(input: VisualizerState): VisualizerState {
+  return {
+    ...input,
+    width: clampNumber(input.width, VISUALIZER_LIMITS.width.min, VISUALIZER_LIMITS.width.max),
+    depth: clampNumber(input.depth, VISUALIZER_LIMITS.depth.min, VISUALIZER_LIMITS.depth.max),
+    height: clampNumber(input.height, VISUALIZER_LIMITS.height.min, VISUALIZER_LIMITS.height.max),
+    drawers: Math.round(clampNumber(input.drawers, VISUALIZER_LIMITS.drawers.min, VISUALIZER_LIMITS.drawers.max)),
+    shelves: Math.round(clampNumber(input.shelves, VISUALIZER_LIMITS.shelves.min, VISUALIZER_LIMITS.shelves.max))
+  };
+}
+
+export function resolveVisualizerTemplate(kind: VisualizerKind): VisualizerTemplate {
+  const value = kind.trim().toLowerCase();
+  if (/cabinet|pantry|cupboard|wardrobe|credenza/.test(value)) return "cabinet";
+  if (/shelf|rack|bookcase/.test(value)) return "shelf";
+  if (/chair|seat/.test(value)) return "chair";
+  if (/stool|step/.test(value)) return "stool";
+  if (/bench|settle/.test(value)) return "bench";
+  if (/door|gate|screen/.test(value)) return "door";
+  if (/bed|platform/.test(value)) return "bed";
+  if (/frame|mirror/.test(value)) return "frame";
+  if (/board|tray|platter/.test(value)) return "board";
+  if (/easel|stand/.test(value)) return "easel";
+  if (/clock/.test(value)) return "clock";
+  if (/table|desk|console|island/.test(value)) return "table";
+  return "object";
 }
 
 export function calculateBoardFeet(width: number, depth: number, height: number, kind: VisualizerKind) {
-  const volumeFactor = kind === "pantry-cabinets" ? 1.8 : kind === "spice-rack" ? 0.35 : 1;
-  return Number((((width * depth * Math.max(height, 1)) / 144) * volumeFactor * 0.14).toFixed(2));
+  const safeWidth = clampNumber(width, VISUALIZER_LIMITS.width.min, VISUALIZER_LIMITS.width.max);
+  const safeDepth = clampNumber(depth, VISUALIZER_LIMITS.depth.min, VISUALIZER_LIMITS.depth.max);
+  const safeHeight = clampNumber(height, VISUALIZER_LIMITS.height.min, VISUALIZER_LIMITS.height.max);
+  const template = resolveVisualizerTemplate(kind);
+  const volumeFactor = template === "cabinet" ? 1.8 : template === "shelf" ? 0.35 : 1;
+  return Number((((safeWidth * safeDepth * safeHeight) / 144) * volumeFactor * 0.14).toFixed(2));
 }
 
 export function calculateEstimate(input: VisualizerState, activeQueueCount = 6, currentLeadTimeDays = 84): EstimateBreakdown {
-  const boardFeet = calculateBoardFeet(input.width, input.depth, input.height, input.kind);
-  const rate = MATERIAL_RATES[input.material] ?? MATERIAL_RATES.default;
-  const materialCostCents = Math.round(boardFeet * rate + input.drawers * 8500 + input.shelves * 3200);
-  const baseHours = BASE_HOURS[input.kind] ?? BASE_HOURS["other-custom-work"];
-  const joineryFactor = JOINERY_MULTIPLIER[input.joinery] ?? JOINERY_MULTIPLIER.default;
-  const sizeFactor = Math.max(0.7, (input.width * input.depth) / (48 * 24));
-  const laborHours = Number((baseHours * joineryFactor * sizeFactor + input.drawers * 4 + input.shelves * 1.5).toFixed(1));
+  const normalized = normalizeVisualizerState(input);
+  const boardFeet = calculateBoardFeet(normalized.width, normalized.depth, normalized.height, normalized.kind);
+  const rate = MATERIAL_RATES[normalized.material] ?? MATERIAL_RATES.default;
+  const materialCostCents = Math.round(boardFeet * rate + normalized.drawers * 8500 + normalized.shelves * 3200);
+  const baseHours = BASE_HOURS[normalized.kind] ?? BASE_HOURS["other-custom-work"];
+  const joineryFactor = JOINERY_MULTIPLIER[normalized.joinery] ?? JOINERY_MULTIPLIER.default;
+  const sizeFactor = Math.max(0.7, (normalized.width * normalized.depth) / (48 * 24));
+  const laborHours = Number((baseHours * joineryFactor * sizeFactor + normalized.drawers * 4 + normalized.shelves * 1.5).toFixed(1));
   const laborCostCents = Math.round(laborHours * 7500);
   const overheadCostCents = Math.round((materialCostCents + laborCostCents) * 0.11);
-  const markupRate = BASE_MARKUP[input.kind] ?? BASE_MARKUP["other-custom-work"];
+  const markupRate = BASE_MARKUP[normalized.kind] ?? BASE_MARKUP["other-custom-work"];
   const markupCostCents = Math.round((materialCostCents + laborCostCents + overheadCostCents) * markupRate);
   const totalCents = materialCostCents + laborCostCents + overheadCostCents + markupCostCents;
   const queueContribution = activeQueueCount * 5;
@@ -126,7 +174,7 @@ export function calculateEstimate(input: VisualizerState, activeQueueCount = 6, 
 }
 
 export function defaultVisualizerState(kind: VisualizerKind = "hallway-bench"): VisualizerState {
-  const dimensions: Record<VisualizerKind, [number, number, number]> = {
+  const dimensions: Record<string, [number, number, number]> = {
     "dining-room-table": [84, 40, 30],
     "end-table": [22, 22, 24],
     "scientists-desk": [48, 24, 30],
@@ -138,7 +186,7 @@ export function defaultVisualizerState(kind: VisualizerKind = "hallway-bench"): 
     "other-custom-work": [48, 20, 30]
   };
 
-  const materials: Record<VisualizerKind, string> = {
+  const materials: Record<string, string> = {
     "dining-room-table": "White Oak",
     "end-table": "Walnut",
     "scientists-desk": "Phenolic resin top",
@@ -150,11 +198,11 @@ export function defaultVisualizerState(kind: VisualizerKind = "hallway-bench"): 
     "other-custom-work": "White Oak"
   };
 
-  const [width, depth, height] = dimensions[kind];
+  const [width, depth, height] = dimensions[kind] ?? dimensions["other-custom-work"];
 
   return {
     kind,
-    material: materials[kind],
+    material: materials[kind] ?? materials["other-custom-work"],
     joinery: kind === "pantry-cabinets" ? "Pinned frame" : "Mortise and tenon",
     width,
     depth,

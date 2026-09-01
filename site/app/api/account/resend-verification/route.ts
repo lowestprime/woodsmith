@@ -24,16 +24,30 @@ export async function POST(request: Request) {
   const verifyUrl = `${resolveBaseUrl()}/account/verify?token=${encodeURIComponent(verificationToken)}`;
 
   const result = await sendNotificationEmail({
-    category: "signup",
+    category: "account_verification",
     to: user.email,
     subject: "Confirm your Beaman Woodworks email",
     text: `Confirm your email address:\n${verifyUrl}\n\nThis link expires in 48 hours.`,
-    html: `<p>Confirm your email address:</p><p><a href="${verifyUrl}">${verifyUrl}</a></p><p>This link expires in 48 hours.</p>`
+    html: `<p>Confirm your email address:</p><p>${verifyUrl}</p><p>This link expires in 48 hours.</p>`,
+    variables: {
+      recipientName: user.displayName,
+      actionUrl: verifyUrl,
+      expiresIn: "48 hours"
+    },
+    idempotencyKey: `account-verification:${user.email}:${verificationToken}`
   });
 
   if (!result.sent) {
-    return NextResponse.json({ ok: false, error: summarizeEmailFailure(result.reason), notificationId: result.notification.id }, { status: 503 });
+    return NextResponse.json({
+      ok: false,
+      error: summarizeEmailFailure(result.reason),
+      deliveryId: result.delivery.id
+    }, { status: 503 });
   }
 
-  return NextResponse.json({ ok: true, message: `SMTP accepted the verification email for ${user.email}.`, notificationId: result.notification.id });
+  return NextResponse.json({
+    ok: true,
+    message: `SMTP accepted the verification email for ${user.email}.`,
+    deliveryId: result.delivery.id
+  });
 }

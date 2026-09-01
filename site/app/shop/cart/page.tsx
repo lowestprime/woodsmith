@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Image from "next/image";
 import { removeCartItemAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { getDisplayMediaPaths, getFulfillmentSummary } from "@/lib/catalog";
@@ -17,7 +18,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
     if (!piece || piece.priceCents == null) return [];
-    return [{ item, piece }];
+    return [{ item, piece, firstImage: getDisplayMediaPaths(piece)[0] ?? null }];
   });
   const totals = calculateCheckoutTotals({
     lines: lines.map(({ item, piece }) => ({ slug: piece.slug, title: piece.title, quantity: item.quantity, unitAmountCents: piece.priceCents!, description: piece.subtitle })),
@@ -35,10 +36,10 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         {checkout === "local-review" && order ? <div className="notice-panel" role="status"><p>Local pickup/drop-off review was created for order <strong>{order}</strong>.</p>{summary ? <p className="muted-copy">{summary}</p> : null}</div> : null}
         <div className="cart-layout">
-          <div className="cart-items">
-            {lines.length > 0 ? lines.map(({ item, piece }) => (
-              <article className="cart-line" key={item.id}>
-                {getDisplayMediaPaths(piece)[0] ? <img alt={piece.title} src={toMediaUrl(getDisplayMediaPaths(piece)[0])} /> : <div className="piece-card-placeholder">No image</div>}
+          <div aria-label="Cart items" className="cart-items" data-media-collection="cart-items" data-media-collection-variant="editorial-grid" role="region">
+            {lines.length > 0 ? lines.map(({ item, piece, firstImage }, index) => (
+              <article className="cart-line" data-media-id={`cart:${item.id}`} data-media-item="true" data-media-order={index} key={item.id}>
+                {firstImage ? <Image alt={piece.title} height={240} quality={86} sizes="(max-width: 720px) 100vw, 10rem" src={toMediaUrl(firstImage)} width={320} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">No image</div>}
                 <div>
                   <h2>{piece.title}</h2>
                   <p>{piece.subtitle}</p>

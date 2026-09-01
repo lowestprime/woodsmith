@@ -10,20 +10,30 @@ import {
   updateProfileAction
 } from "@/lib/actions";
 import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
-import { CustomWorkVisualizer3D } from "@/components/visualizer";
+import { CommissionWorkflow, IdempotencyInput } from "@/components/commission-workflow";
 import { ProfileAvatarFields } from "@/components/profile-avatar-fields";
 
-export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece }: {
+export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece, defaultName, defaultEmail, signedIn }: {
   commissionTypes: CommissionTypeRecord[];
   bandwidthLeadTimeDays: number;
   queueCount: number;
   piece?: PieceRecord | null;
+  defaultName?: string;
+  defaultEmail?: string;
+  signedIn?: boolean;
 }) {
+  if (!piece) {
+    return <CommissionWorkflow bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} defaultEmail={defaultEmail} defaultName={defaultName} queueCount={queueCount} signedIn={signedIn} />;
+  }
+  const pieceType = commissionTypes.find((type) => type.slug === piece.commissionTypeSlug);
+  const materialOptions = pieceType?.materialOptions ?? commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index);
   return (
     <form action={submitContactRequestAction} className="request-form commission-form-shell">
+      <IdempotencyInput />
       <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
       {piece ? <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} /> : null}
       <input name="requestSource" type="hidden" value={piece ? "piece-page" : "custom-work"} />
+      <label aria-hidden="true" className="form-honeypot" hidden><span>Company website</span><input autoComplete="off" name="companyWebsite" tabIndex={-1} type="text" /></label>
       <div className="field-grid two-up compact-grid">
         <label>
           <span>Your name</span>
@@ -48,14 +58,13 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
           <input min="0" name="budgetDollars" placeholder="1200" step="1" type="number" />
         </label>
       </div>
-      {!piece ? <CustomWorkVisualizer3D bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} queueCount={queueCount} /> : null}
       <div className="field-grid two-up compact-grid">
         {piece ? (
           <label>
             <span>Material preference</span>
             <select defaultValue="" name="materialPreference">
               <option value="">Open to recommendation</option>
-              {commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index).map((option) => (
+              {materialOptions.map((option) => (
                 <option key={option} value={option}>{option}</option>
               ))}
             </select>
@@ -186,10 +195,6 @@ export function ProjectReplyForm({ project }: { project: ProjectRecord }) {
   return (
     <form action={submitProjectReplyAction} className="request-form compact-form">
       <input name="reference" type="hidden" value={project.reference} />
-      <label>
-        <span>Email</span>
-        <input defaultValue={project.guestEmail} name="email" required type="email" />
-      </label>
       <label>
         <span>Reply</span>
         <textarea name="body" required rows={4} />

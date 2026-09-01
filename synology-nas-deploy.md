@@ -31,14 +31,14 @@ Deploy Beaman Woodworks from `/volume2/docker_ssd/woodsmith/` so that:
 Create these once on the NAS:
 
 ```bash
-mkdir -p /volume2/docker_ssd/woodsmith/{site/data,cache/next-image,releases,backups}
+mkdir -p /volume2/docker_ssd/woodsmith/{site/data,cache/next-image,releases,backups/runtime,restores}
 ```
 
 Then ensure the container user can write to `site/data`, `cache`, and the real NAS photo library:
 
 ```bash
-chown -R 1026:100 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
-chmod -R u+rwX,g+rwX /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+chown -R 1026:100 /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/restores /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+chmod -R u+rwX,g+rwX /volume2/docker_ssd/woodsmith/site/data /volume2/docker_ssd/woodsmith/cache /volume2/docker_ssd/woodsmith/backups /volume2/docker_ssd/woodsmith/restores /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
 ```
 
 ## `.env`
@@ -83,6 +83,7 @@ AI_EMBEDDING_PROVIDER=local-clip
 AI_FALLBACK_PROVIDER=disabled
 ENABLE_AI_MEDIA_ANALYSIS=true
 ENABLE_EMBEDDING_SEARCH=true
+SEARCH_SEMANTIC_TIMEOUT_MS=2000
 ENABLE_LOCAL_IMAGE_EMBEDDINGS=true
 LOCAL_AI_SIDECAR_URL=http://192.168.1.50:8765
 LOCAL_AI_SIDECAR_TOKEN=
@@ -137,9 +138,15 @@ Run the sidecar against the mapped photo library (`Y:\homes\Cooper\Photos\Dad_Wo
 
 Keep `MEDIA_AI_CACHE` on a local SSD outside the mapped photo tree. It contains the resumable file index, 768px generated review thumbnails, image/text embeddings, analyses, and cluster state. Repeated bounded runs continue uncached work; this cache can be backed up independently and must never be placed in `/app/pics`.
 
+The sidecar host and website use different variable names for the same secret: set `MEDIA_AI_SIDECAR_TOKEN` on the sidecar host and `LOCAL_AI_SIDECAR_TOKEN` in the NAS application environment to one long random value. Never place it in a URL or command log. A non-loopback sidecar bind fails closed without the server token. Start and supervise the Windows process with `tools/media-ai-sidecar/scripts/run-sidecar.ps1` or `run-sidecar-supervised.ps1`, then run `probe-sidecar.ps1`; the probe reports health and verifies wrong-token rejection without printing the token.
+
+`MEDIA_AI_ACCELERATOR=auto|cpu|cuda` is a strict sidecar policy. `auto` selects a usable PyTorch CUDA device or records why CPU was selected; `cpu` never loads CUDA; forced `cuda` fails if unavailable. Bound `MEDIA_AI_EMBED_BATCH_SIZE` and the PyTorch allocator with `MEDIA_AI_GPU_MEMORY_LIMIT_MB`, and point all supervised sidecar processes on that host to the same `MEDIA_AI_GPU_LEASE_FILE`. Health reports the active operation, lease owner, memory, and indexed-cache-only pending counts. It does not recursively scan the NAS share merely to answer health.
+
+The current RTX 3070 Ti Laptop GPU benchmark used twelve disposable library copies and measured about 3.76x lower warm median latency on CUDA with identical label rankings, maximum score drift 0.000105856, and 670 MiB peak reserved VRAM. The visual archive remains CPU/SwiftShader because its tested GPU paths did not preserve canonical output with a material benefit. Keep archive and sidecar work on those separate backends; if a future audit stage qualifies for CUDA, schedule it outside sidecar training and require one shared host lease before allowing overlap.
+
 ### B. Separate GPU host
 
-Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. CUDA is used automatically when the installed PyTorch build supports it; CPU remains a valid fallback.
+Mount the same Synology library read-only or read-write as operationally required, run the sidecar with its cache on local SSD, and configure the NAS container with the host URL/token. Automatic CUDA selection requires a usable PyTorch CUDA runtime; CPU remains the safe fallback. Keep the cache, model files, and GPU lease outside the mounted photo tree.
 
 ### C. Manual workflow only
 
@@ -151,10 +158,18 @@ ChatGPT Plus is not an API backend. Gemini and OpenAI require their own API cred
 
 ```bash
 cd /mnt/woodsmith
-docker buildx build --platform linux/amd64 -t woodsmith:prod --load .
+docker buildx build \
+  --platform linux/amd64 \
+  --build-arg WOODSMITH_BUILD_SHA="$(git rev-parse HEAD)" \
+  -t woodsmith:prod \
+  --load .
 ```
 
 Optional local container smoke test:
+
+For local app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. Both local modes run without production mounts or credentials. A dirty pre-commit app must retain the Dockerfile's `WOODSMITH_BUILD_SHA=unknown`; only `-TargetMode live-readonly -Scope smoke` accepts that unstamped identity, and it never counts as exact release evidence. Snapshot-lab runs, full archives, and remote/release evidence require an app image stamped with the exact commit SHA. After committing, rebuild with that exact SHA before accepting snapshot-lab, Tier 1, Tier 2, or release evidence. The `-TargetMode snapshot-lab` variant proves the inventory-derived v19 mutation round trips against separate online-cloned SQLite and copied synthetic-media volumes. It expects ten successful clone-only writes with no projects or twelve with at least one project, rejects every unrelated successful write, restores ordinary edited values, removes its draft, and verifies source fingerprints. Both modes remove their temporary app, data, media, output, and secret resources after validation.
+
+Media synchronization performs bounded source-signature inspection and records an unavailable-preview status for empty, unreadable, invalid-signature, or detectably truncated images. It does not alter originals. Public piece galleries omit known-unavailable images, and authenticated media tools render a labeled fallback without requesting the broken source. Replace or repair an original only through a separately approved media-maintenance workflow, then refresh the Media library so the status is recomputed. The signature guard catches the observed missing JPEG end marker and common malformed files but does not replace full decoder validation or human photo review.
 
 ```bash
 docker run --rm -p 3002:3002 \
@@ -182,7 +197,9 @@ cd /volume2/docker_ssd/woodsmith
 docker compose -f docker-compose.synology.yml up -d
 ```
 
-The startup path includes seed migration v5. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process seed wording.
+The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
+
+The independent SQLite schema ledger currently applies through version 13. Versions 1-8 persist normalized piece/media truth, commerce policies, edit and rename history, account drafts, idempotency keys, expiring project-access grants, render/submission quotas, media-operation snapshots, and source-folder assignment rules. Versions 9-11 add typed notification policies/templates/deliveries/attempts, SMTP verification history, project lifecycle/dependency-deletion ledgers, and the disabled-by-default visitor-session notification policy. Version 12 adds minimized visitor pageviews and policy data, indexed redacted audit queries, and a one-time scrub of legacy raw visitor and sensitive audit fields. Version 13 creates and rebuilds the synchronized FTS5 site-search index. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
 
 ## Reverse proxy
 
@@ -204,7 +221,11 @@ If you want the dashboard visitor map to show country and city data, enable Clou
 - `CF-IPCountry` carries the two-letter visitor country code
 - the visitor-location transform can add city, region, latitude, and longitude headers
 
-Without those headers, the app still records visitor sessions, paths, and hosts, but the map/list will show unknown location data.
+Without those headers, the app still records minimized visitor sessions, paths, and hosts, but the map/list will show unknown location data. New records never persist the incoming raw IP address, full user-agent string, complete referrer URL, Cloudflare ray ID, or precise latitude/longitude.
+
+Generate `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, set a descriptive `VISITOR_HMAC_KEY_ID`, and rotate both together when starting a new deliberately unlinkable analytics cohort. The application can fall back to `SESSION_SECRET`, but that is a compatibility path rather than the preferred production configuration. Leave `VISITOR_TRACK_INTERNAL=false` unless there is a documented reason to count private-network requests. In **Notifications → Visitors**, verify the collection/city/referrer-host policy and retention period before release; purge is bounded by that policy and is audited.
+
+Visitor recording does not automatically send email. The `visitor_session` notification policy is disabled by default and must remain disabled unless an administrator intentionally enables it and verifies the recipient/retention policy. SMTP credentials remain environment-only and must never be copied into browser evidence or deployment logs.
 
 ## Verification after deploy
 
@@ -225,16 +246,23 @@ docker compose -f docker-compose.synology.yml exec woodsmith sh -lc 'test -w /ap
 
 ```bash
 curl -I http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+etag=$(curl -sS -D - -o /dev/null http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG | awk 'BEGIN{IGNORECASE=1} /^etag:/{sub(/\r$/, "", $2); print $2; exit}')
+curl -sS -o /dev/null -w '%{http_code}\n' -H "If-None-Match: $etag" http://127.0.0.1:3002/media/Furniture/DSC_0051.JPG
+curl -sS -D - -o /dev/null -H 'Range: bytes=0-1023' http://127.0.0.1:3002/media/Furniture/scientists-desk/scientists-desk_video_1.mp4
 ```
 
-Missing or removed files must return **404** (not a broken stream). Stale `media_items` rows pointing at deleted paths used to trigger `failed to pipe response` in logs when the dashboard rendered hundreds of thumbnails at once.
+An unchanged conditional request must return **304**. The byte-range request must return **206**, `Accept-Ranges: bytes`, `Content-Range: bytes 0-1023/<full-size>`, and `Content-Length: 1024`; an interval beginning beyond the file must return **416** with `Content-Range: bytes */<full-size>`. Media responses include ETag and Last-Modified validators with immediate revalidation, so browser and Next image-cache entries can avoid retransferring unchanged originals without hiding same-path updates. Bounded range delivery lets browser video metadata and seek requests complete without transferring an entire original MP4. Missing or removed files must return **404** (not a broken stream). Stale `media_items` rows pointing at deleted paths used to trigger `failed to pipe response` in logs when the dashboard rendered hundreds of thumbnails at once.
+
+Portfolio, shop, cart, and carousel thumbnails use the mounted writable Next image cache at `/app/site/.next/cache`; the full-screen lightbox still requests the original `/media/...` source. Keep that cache mount writable and retain the configured Next image qualities during upgrades.
 
 ### Woodshop dashboard (`/studio`) and large libraries
 
 - The dashboard pages the complete indexed library at 24, 48, 72, or 96 records per view. Whole-library search, assignment/review filters, media-type filters, and paging run in place through authenticated server actions and persist in the URL.
 - Media automation now centers on **Train selected**, **Improve page**, and **Continue library**. These guided actions run the bounded scan/analyze/embed/cluster/rank sequence for selected, current-page, or next-library-batch scopes while preserving persistent model/hash/cluster metadata and explicit evidence. Suggested matches cannot publish or assign without a reviewed human action.
 - The compact trainer status card should show the active local provider, cache totals, indexed media, accepted/rejected training labels, analyzed files, vectors, and clusters. Raw provider cards and individual scan/analyze/embed/cluster actions are intentionally tucked under Advanced actions for diagnostics.
-- Routine media metadata saves, assignments, uploads, renames, and deletes do not refresh `/studio`. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
+- Media metadata and existing source-folder-rule fields autosave through durable serialized queues without refreshing `/studio`; switching records flushes pending metadata first. Assignments, uploads, rule application, renames, batches, AI operations, rollback, and confirmed deletion remain explicit. **Refresh library** is the explicit filesystem rescan and requires the `/app/pics:rw` mount to be present.
+- **Organize selected** applies at most 96 collision-checked folder/name/tag/quality/assignment/role/stage/visibility changes with filesystem compensation and one SQLite reference transaction. Recent completed batches can be rolled back only while their current snapshots still match; later edits are never overwritten.
+- Optional background cleanup writes an unreviewed derivative under `/app/pics/derivatives/background-cleanup/`, records its source path/size/time/provider and manual-publication gate, and never modifies the original file.
 - The verification queue proposes only one sufficiently separated best-piece match per unassigned image. It never assigns on preview; use the explicit **Assign** control after visual verification.
 - Confirm `/studio?panel=categories` can add, rename, reassign, and delete portfolio categories, and `/studio?panel=media` shows one active inspector rather than a long editor stack.
 - After upgrading the app image, use **Refresh library** once so the scanner skips Synology **`@eaDir`** folders and **`SYNOFILE_THUMB*`** files; those paths are also excluded from SQL media lists.
@@ -248,8 +276,11 @@ curl -I http://127.0.0.1:3002/portfolio
 curl -I http://127.0.0.1:3002/shop
 curl -I http://127.0.0.1:3002/process
 curl -I http://127.0.0.1:3002/commissions
+curl -I http://127.0.0.1:3002/commissions/status
 curl -I http://127.0.0.1:3002/studio/login
 ```
+
+Use a disposable buyer request during candidate validation and confirm that the resulting `/requests/BW-CM-*` URL contains no email query parameter. Project lookup must POST the reference and buyer email at `/commissions/status`, set an `HttpOnly` access cookie, and keep access after a reload. Also verify that `/app/pics/commission-staging` contains no abandoned files after successful or rejected submissions.
 
 `/journal` and `/journal/[slug]` should redirect to the Process routes.
 
@@ -259,22 +290,181 @@ curl -I http://127.0.0.1:3002/studio/login
 docker compose -f docker-compose.synology.yml logs --tail=200 woodsmith
 ```
 
-## Backup guidance
+## Post-deployment visual archive
 
-Because the dashboard can mutate the shared media library, back up these paths together:
+After the candidate passes the normal database, mount, route, and log checks, run the deterministic live-readonly smoke before the full archive on Laptop Docker Desktop. The NAS is the production, snapshot-export, immutable-storage, and rollback control plane; it must not run Playwright, report generation, validation, checksumming, or a multi-hour visual archive over SSH.
 
-- `site/data/`
-- `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025`
-- `.env`
+```bash
+# Run from the native WSL checkout connected to Laptop Docker Desktop.
+cd /home/cbeaman/src/woodsmith
+visual-audit/scripts/prepare-live-secrets.sh
 
-A SQLite backup without the matching media tree is no longer sufficient for full recovery.
+export TARGET_COMMIT_SHA="$(git rev-parse HEAD)"
+export AUDIT_RUN_ID="smoke-$(date -u '+%Y%m%dT%H%M%SZ')-$(printf '%s' "$TARGET_COMMIT_SHA" | cut -c1-8)"
+export AUDIT_SCOPE=smoke
 
-The Docker build excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. Runtime state is never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
+visual-audit/scripts/run-live-audit.sh
+```
+
+The same run ID is used by capture, baseline comparison, report generation, and validation. Canonical routes retain the full viewport/theme/deep matrix; discovered link variants use recorded desktop/tablet/mobile theme representatives plus archival desktop. The restricted PNG tree and searchable HTML remain complete. `report/selection.json` records the bounded per-route set used by the A3 bookmarked PDFs and redacted edition. Chromium uses the Compose `ipc: host` shared-memory path, and the audit runner receives a 512 MiB `/tmp` scratch ceiling. Do not use `docker compose config --environment`; the Synology Compose build does not support it. The secret preparation script is noninteractive and zsh-safe, reads the active Studio password without displaying it, and writes ignored mode-600 files.
+
+Production Compose reports `WOODSMITH_MEDIA_PROVENANCE=production-live`, and the live runner fixes `AUDIT_EVIDENCE_TIER=tier-3-live-production`. `live-media.json` must reconcile all protected public references with mounted files and anonymous rendered-media hashes; `placeholder-report.json` must contain no unapproved visible placeholder. The reports expose counts and SHA-256 fingerprints, never source paths. A mismatched or unverified provenance, missing public file, synthetic marker, or absent anonymous mounted-media observation fails validation.
+
+Worker settings default to `auto`: capture uses at most 2 workers, while validation and report generation use at most 6. Explicit ranges are 1-6 for capture and 1-8 for validation/report. Snapshot-lab capture drains independent read-only routes through the configured pool before running mutation-bearing route/profile tasks in a one-worker phase and FIFO serial handler; completion requires the logged mutation-handler `maxInFlight` to remain one. A disposable 1/2/4/6 capture matrix selected two as the conservative automatic cap. Laptop production-clone runs may explicitly use six only after a short 4-versus-6 equivalence check. Live-production capture must benchmark two versus four against server load and request stability and must not use six without separate evidence. Validation may use eight and reporting six after their equivalence gate. Full-page evidence always uses viewport tiles and validated stitches rather than Playwright's resize-based full-page screenshot. The NAS has no visual-audit worker setting because it runs no visual compute. Commands and measurements are in [`docs/visual-archive.md`](docs/visual-archive.md).
+
+`VISUAL_AUDIT_ACCELERATOR=auto` is independent of the worker settings. It records a bounded CUDA capability probe and actual Chromium CDP renderer, then uses CUDA only for stages explicitly enabled by a deterministic representative benchmark. The current allowlist is empty: RTX/Docker tests found no GPU PNG decoder and no hardware Chromium backend, so `auto` correctly retains the portable pipeline. Do not add a NAS GPU reservation or force `cuda` merely because `nvidia-smi` works. Forced `cuda` intentionally fails until a qualifying stage exists. Exact evidence and rerun commands are in [`docs/visual-archive.md`](docs/visual-archive.md).
+
+Mutation-dependent success/error states use a fresh paired NAS snapshot transferred to the laptop, verified against its manifest, and imported into run-scoped Docker volumes before the local `snapshot-lab` harness starts. The app and audit containers then use only the verified database/media clones, run markers, an internal Docker network, disabled external integrations, and fixed Tier 2 production-clone provenance. Inventory schema 3 supplies the stable v19 Studio view and mutation ledger; the validator derives required states and exact successful-write counts from the clone's project count. It never mounts production data or media read-write. The retained Linux preparation scripts are recovery utilities, not permission to run Tier 2 visual compute on the NAS.
+
+The laptop harness defaults to preloaded `woodsmith:candidate-<short-sha>` and `woodsmith-visual-audit:candidate-<short-sha>` images. It fails unless both are `linux/amd64` and the app image reports the exact full commit. Set image overrides only for equivalent prevalidated tags. Passwords and tokens stay in restricted ignored files or tmpfs mounts; the harness never rebuilds or retags images during evidence capture.
+
+Archive runners create the mode-700 `visual-audits/` root before startup and use dedicated `woodsmith-visual-audit-lab` or `woodsmith-visual-audit-live` Compose project names. Never run them in the production Compose namespace.
+
+Full commands, artifacts, permissions, retention, and acceptance criteria are in [`docs/visual-archive.md`](docs/visual-archive.md).
+
+## Paired backup and recovery
+
+Because Studio can update both SQLite references and the shared media library, recoverable state consists of all three of these surfaces:
+
+- `site/data/woodsmith.sqlite`, captured online with SQLite `VACUUM INTO`
+- `/volume1/homes/Cooper/Photos/Dad_Woodworking_09262025`, copied byte-for-byte with per-file SHA-256 evidence
+- `.env`, copied into the restricted backup without printing its contents
+
+The candidate image includes `/app/site/ops/runtime-state.mjs`. The tool refuses overlapping source/output paths, symlinks, special files, changing source media, existing destinations, path traversal, missing or extra backup files, failed hashes, and failed SQLite `quick_check`. It writes through a hidden partial directory and promotes the backup only after verification.
+
+### Create and verify a paired backup
+
+Build the exact candidate first; building does not touch mounted production state. Then set only nonsecret shell values and run the tool with networking disabled. Keep the data mount writable so SQLite can coordinate safely with the live WAL; the tool itself opens the source database read-only and writes only to the backup mount.
+
+```bash
+cd /volume2/docker_ssd/woodsmith
+
+export PUID=1026
+export PGID=100
+export RUN_ID="$(date -u '+%Y%m%dT%H%M%SZ')"
+export CANDIDATE_IMAGE="woodsmith:candidate-$(git rev-parse --short=8 HEAD)"
+
+mkdir -p backups/runtime restores
+chmod 700 backups backups/runtime restores
+chown -R "${PUID}:${PGID}" backups restores
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777 \
+  -v /volume2/docker_ssd/woodsmith/site/data:/state/data:rw \
+  -v /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025:/state/media:ro \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:rw \
+  -v /volume2/docker_ssd/woodsmith/.env:/state/config/runtime.env:ro \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs backup \
+  --data-root /state/data \
+  --media-root /state/media \
+  --backup-root /state/backups \
+  --environment-file /state/config/runtime.env \
+  --run-id "$RUN_ID"
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:ro \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs verify \
+  --backup "/state/backups/woodsmith-runtime-${RUN_ID}"
+```
+
+Record the emitted manifest SHA-256, media count, byte count, and `quickCheck=ok`. The backup directory and environment copy are mode-restricted and must never be added to Git, a public archive, or CI artifacts.
+
+### Prove a staging restore
+
+Before promotion, restore the backup into new paths on the same volumes as the eventual live paths. This validates recovery without overwriting or mounting production state:
+
+```bash
+export DATA_STAGE="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-data"
+export MEDIA_STAGE="/volume1/homes/Cooper/Photos/.woodsmith-restore-${RUN_ID}"
+export ENV_STAGE="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}.env"
+
+test ! -e "$DATA_STAGE"
+test ! -e "$MEDIA_STAGE"
+test ! -e "$ENV_STAGE"
+
+docker run --rm \
+  --network none \
+  --read-only \
+  --user "${PUID}:${PGID}" \
+  --cap-drop ALL \
+  --security-opt no-new-privileges:true \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1777 \
+  -v /volume2/docker_ssd/woodsmith/backups/runtime:/state/backups:ro \
+  -v /volume2/docker_ssd/woodsmith/restores:/state/restores:rw \
+  -v /volume1/homes/Cooper/Photos:/state/photos:rw \
+  --entrypoint node \
+  "$CANDIDATE_IMAGE" \
+  --experimental-sqlite \
+  /app/site/ops/runtime-state.mjs restore \
+  --backup "/state/backups/woodsmith-runtime-${RUN_ID}" \
+  --data-destination "/state/restores/${RUN_ID}-data" \
+  --media-destination "/state/photos/.woodsmith-restore-${RUN_ID}" \
+  --environment-destination "/state/restores/${RUN_ID}.env"
+```
+
+The restore command rechecks the complete backup before writing, validates the restored database and every copied file, and compensates its own newly created outputs if promotion fails. Do not swap these paths during an ordinary pre-deployment proof; keep them as verified rollback inputs until the candidate passes.
+
+### Stopped-service recovery or rollback
+
+Only when recovery is actually required, stop the app and move the verified staging paths into place. Keep the previous state under unique hold names on the same filesystems; never delete it during the release window.
+
+```bash
+export DATA_HOLD="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-previous-data"
+export MEDIA_HOLD="/volume1/homes/Cooper/Photos/.woodsmith-previous-${RUN_ID}"
+export ENV_HOLD="/volume2/docker_ssd/woodsmith/restores/${RUN_ID}-previous.env"
+
+test ! -e "$DATA_HOLD"
+test ! -e "$MEDIA_HOLD"
+test ! -e "$ENV_HOLD"
+
+docker compose --env-file .env -f docker-compose.synology.yml stop woodsmith
+
+mv site/data "$DATA_HOLD"
+mv "$DATA_STAGE" site/data
+mv /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025 "$MEDIA_HOLD"
+mv "$MEDIA_STAGE" /volume1/homes/Cooper/Photos/Dad_Woodworking_09262025
+mv .env "$ENV_HOLD"
+mv "$ENV_STAGE" .env
+
+docker compose --env-file .env -f docker-compose.synology.yml up -d --force-recreate woodsmith
+```
+
+If candidate validation fails, retag the recorded rollback image, stop the service, move the failed candidate state aside, move the three hold paths back, and recreate the service. Run SQLite `quick_check`, mounted-media checks, internal/public routes, logs, and persistence/recreation checks again before declaring rollback complete.
+
+Create the paired backup before deployment and before a large media reorganization. The database operation ledger can reverse application-managed changes, but it is not a substitute for a verified filesystem copy when storage fails or files change outside the application.
+
+The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, backup, or test/spec source file. Runtime state and build-only tests are never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
+
+## Validated v19 deployment
+
+The current production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
+
+Release `0067488-20260831T050142Z` passed deterministic package hashing, production-clone Tier 2, paired backup/staged restore, immutable deployment, post-deploy database/routes/search/SMTP/sidecar checks, forced recreation, rollback/return-to-candidate, and final Tier 3. The paired backup manifest is `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`. Exact artifact paths, hashes, and retained rollback inputs are in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).
 
 ## Current deployment caveats
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
+- The application dependency is Next.js 16.3.0; the release candidate passed the recorded dependency, build, image, and deployment gates. A future source change requires a new exact candidate and invalidates this release evidence for that changed boundary.
+- `Strict-Transport-Security` remains absent at the Cloudflare edge. Canonical HTTPS, `www`/HTTP redirects, and the retired-host 410 passed, but HSTS must be enabled in Cloudflare to close this residual.
+- After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
+- In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.

@@ -19,6 +19,7 @@ ai = [
 
 [project.scripts]
 beaman-media-ai = "media_ai_sidecar.__main__:main"
+beaman-media-ai-benchmark = "media_ai_sidecar.benchmark:main"
 
 [tool.setuptools.packages.find]
 where = ["."]

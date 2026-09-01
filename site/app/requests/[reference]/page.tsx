@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ProjectReplyForm } from "@/components/forms";
+import { CommissionDraftCleanup } from "@/components/commission-draft-cleanup";
 import { getCurrentUser } from "@/lib/auth";
+import { lookupProjectStatusAction } from "@/lib/actions";
+import { userCanAccessProject } from "@/lib/commission-security";
 import { PageSection, Shell } from "@/components/site-chrome";
 import { getProject, listProjectUpdates } from "@/lib/db";
 import { formatDateTime, formatLeadTime, formatMoney, sanitizeHtml, toMediaUrl } from "@/lib/format";
 
-export default async function RequestPage({ params, searchParams }: { params: Promise<{ reference: string }>; searchParams: Promise<{ created?: string; updated?: string; error?: string; email?: string }> }) {
+export default async function RequestPage({ params, searchParams }: { params: Promise<{ reference: string }>; searchParams: Promise<{ created?: string; updated?: string; error?: string }> }) {
   const { reference } = await params;
   const flags = await searchParams;
   const project = getProject(reference);
@@ -15,13 +18,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
   }
 
   const user = await getCurrentUser();
-  const lookupEmail = (flags.email ?? "").trim().toLowerCase();
-  const signedInEmail = user?.email?.toLowerCase() ?? "";
-  const canView = Boolean(
-    user?.role === "admin"
-    || (signedInEmail && [project.userEmail, project.guestEmail].filter(Boolean).some((value) => String(value).toLowerCase() === signedInEmail))
-    || (lookupEmail && lookupEmail === project.guestEmail.toLowerCase())
-  );
+  const canView = await userCanAccessProject(project, user);
 
   if (!canView) {
     return (
@@ -34,12 +31,12 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
               <p className="lede">Enter the same email used during the custom work request or checkout to open this project tracker.</p>
             </div>
           </div>
-          {flags.created ? <p className="notice-panel">The project was created successfully. Enter the buyer email used on the form to open the tracker.</p> : null}
-          {flags.error ? <p className="notice-panel danger">The reference and email did not match a live project record.</p> : null}
-          <form action={`/requests/${project.reference}`} className="request-form compact-form">
+          {flags.error ? <p className="notice-panel danger">Private access is missing or expired. Confirm the buyer email to renew access on this browser.</p> : null}
+          <form action={lookupProjectStatusAction} className="request-form compact-form">
+            <input name="reference" type="hidden" value={project.reference} />
             <label>
               <span>Email</span>
-              <input defaultValue={flags.email ?? ""} name="email" required type="email" />
+              <input name="email" required type="email" />
             </label>
             <button className="button-primary" type="submit">Open project</button>
           </form>
@@ -54,6 +51,7 @@ export default async function RequestPage({ params, searchParams }: { params: Pr
 
   return (
     <Shell>
+      {flags.created ? <CommissionDraftCleanup /> : null}
       <PageSection editHref={`/studio?panel=projects&project=${encodeURIComponent(project.reference)}#project-${project.reference}`}>
         <div className="request-summary-head">
           <div>

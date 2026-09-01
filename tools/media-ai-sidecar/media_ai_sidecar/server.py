@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import argparse
+import hmac
+import ipaddress
 import json
 import os
 import platform
 import sys
 import threading
 import time
+from contextlib import nullcontext
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
 from . import __version__
+from .accelerator import GpuLeaseBusyError, resolve_accelerator
 from .cache import SidecarCache
 from .cluster import cluster_items
 from .embeddings import cosine, embed_paths, embed_texts, model_key, runtime_status
@@ -45,7 +49,44 @@ class MediaAiService:
         self.cache = SidecarCache(cache_path)
         self.model_name = model_name
         self.max_batch = max(1, min(100, max_batch))
+        self.accelerator = resolve_accelerator(cache_path)
         self.work_lock = threading.Lock()
+        self.status_lock = threading.RLock()
+        self.active_action: str | None = None
+        self.active_since: str | None = None
+        self.last_action: str | None = None
+        self.last_completed_at: str | None = None
+        self.last_duration_ms: int | None = None
+        self.last_outcome: str | None = None
+
+    def _work_status(self) -> dict[str, Any]:
+        with self.status_lock:
+            return {
+                "busy": self.active_action is not None,
+                "activeAction": self.active_action,
+                "activeSince": self.active_since,
+                "lastAction": self.last_action,
+                "lastCompletedAt": self.last_completed_at,
+                "lastDurationMs": self.last_duration_ms,
+                "lastOutcome": self.last_outcome,
+                "restartBehavior": "Active work stops on process exit; cached file, embedding, analysis, and cluster records make the next bounded request resumable.",
+            }
+
+    def _begin_work(self, action: str) -> float:
+        started = time.monotonic()
+        with self.status_lock:
+            self.active_action = action
+            self.active_since = now_iso()
+        return started
+
+    def _finish_work(self, action: str, started: float, outcome: str) -> None:
+        with self.status_lock:
+            self.active_action = None
+            self.active_since = None
+            self.last_action = action
+            self.last_completed_at = now_iso()
+            self.last_duration_ms = round((time.monotonic() - started) * 1000)
+            self.last_outcome = outcome
 
     def _all_relative_paths(self) -> list[str]:
         return [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)]
@@ -75,7 +116,7 @@ class MediaAiService:
         return pending
 
     def health(self) -> dict[str, Any]:
-        embedding = runtime_status(self.model_name)
+        embedding = runtime_status(self.model_name, self.accelerator)
         return {
             "ok": True,
             "service": "beaman-media-ai-sidecar",
@@ -88,6 +129,8 @@ class MediaAiService:
             "ollama": ollama_health(),
             "geminiFallbackConfigured": gemini_configured(),
             "cache": self.cache.summary(),
+            "queue": self.cache.queue_summary(self.model_name, model_key(self.model_name)),
+            "work": self._work_status(),
             "maxBatch": self.max_batch,
         }
 
@@ -103,19 +146,37 @@ class MediaAiService:
         dry_run = _truthy(body.get("dryRun"))
         response: dict[str, Any] = {"ok": True, "action": "embed", "provider": "local-sidecar", "model": self.model_name, "version": "1", "dryRun": dry_run}
         if texts:
-            response["embeddings"] = embed_texts(texts[:limit], self.model_name)
+            response["embeddings"] = embed_texts(texts[:limit], self.model_name, self.accelerator)
         if selected:
-            response["items"] = embed_paths(self.media_root, self.cache, selected[:limit], self.model_name, dry_run)
+            response["items"] = embed_paths(
+                self.media_root,
+                self.cache,
+                selected[:limit],
+                self.model_name,
+                dry_run,
+                self.accelerator,
+            )
         response["durationMs"] = round((time.monotonic() - started) * 1000)
         return response
 
     def _local_analysis(self, relative_path: str, pieces: list[dict[str, str]], dry_run: bool) -> dict[str, Any]:
         path = safe_media_path(self.media_root, relative_path)
         facts = index_file(self.media_root, path, self.cache, dry_run)
-        item_embedding = embed_paths(self.media_root, self.cache, [relative_path], self.model_name, dry_run)[0]
+        item_embedding = embed_paths(
+            self.media_root,
+            self.cache,
+            [relative_path],
+            self.model_name,
+            dry_run,
+            self.accelerator,
+        )[0]
         if not item_embedding.get("embedding"):
             raise RuntimeError(item_embedding.get("error") or "Local image embedding unavailable.")
-        label_vectors = embed_texts([f"a photograph of a {label} made from wood" for label in FURNITURE_LABELS], self.model_name)
+        label_vectors = embed_texts(
+            [f"a photograph of a {label} made from wood" for label in FURNITURE_LABELS],
+            self.model_name,
+            self.accelerator,
+        )
         ranked_labels = sorted(
             [(label, max(0.0, cosine(item_embedding["embedding"], vector))) for label, vector in zip(FURNITURE_LABELS, label_vectors, strict=True)],
             key=lambda pair: pair[1], reverse=True,
@@ -124,7 +185,11 @@ class MediaAiService:
         runner_score = ranked_labels[1][1] if len(ranked_labels) > 1 else 0.0
         piece_candidates = []
         if pieces:
-            piece_vectors = embed_texts([f"a photograph of {piece.get('title')}. {piece.get('description')}" for piece in pieces], self.model_name)
+            piece_vectors = embed_texts(
+                [f"a photograph of {piece.get('title')}. {piece.get('description')}" for piece in pieces],
+                self.model_name,
+                self.accelerator,
+            )
             for piece, vector in sorted(zip(pieces, piece_vectors, strict=True), key=lambda pair: cosine(item_embedding["embedding"], pair[1]), reverse=True)[:5]:
                 similarity = max(0.0, cosine(item_embedding["embedding"], vector))
                 if similarity >= 0.18:
@@ -205,7 +270,14 @@ class MediaAiService:
         selected = [str(item) for item in body.get("selectedPaths", [])] if isinstance(body.get("selectedPaths"), list) else [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)]
         selected = selected[:_bounded_limit(body, self.max_batch)]
         dry_run = _truthy(body.get("dryRun"))
-        embedded = embed_paths(self.media_root, self.cache, selected, self.model_name, dry_run)
+        embedded = embed_paths(
+            self.media_root,
+            self.cache,
+            selected,
+            self.model_name,
+            dry_run,
+            self.accelerator,
+        )
         enriched = []
         for item in embedded:
             if not item.get("embedding"):
@@ -223,8 +295,19 @@ class MediaAiService:
         selected = [str(item) for item in body.get("selectedPaths", [])] if isinstance(body.get("selectedPaths"), list) else [path.relative_to(self.media_root).as_posix() for path in iter_media(self.media_root)]
         selected = selected[:_bounded_limit(body, self.max_batch)]
         dry_run = _truthy(body.get("dryRun"))
-        media_items = embed_paths(self.media_root, self.cache, selected, self.model_name, dry_run)
-        piece_vectors = embed_texts([f"a photograph of {piece.get('title')}. {piece.get('description')}" for piece in pieces], self.model_name) if pieces else []
+        media_items = embed_paths(
+            self.media_root,
+            self.cache,
+            selected,
+            self.model_name,
+            dry_run,
+            self.accelerator,
+        )
+        piece_vectors = embed_texts(
+            [f"a photograph of {piece.get('title')}. {piece.get('description')}" for piece in pieces],
+            self.model_name,
+            self.accelerator,
+        ) if pieces else []
         matches = []
         for media in media_items:
             if not media.get("embedding"):
@@ -246,17 +329,68 @@ class MediaAiService:
         return result
 
     def dispatch(self, action: str, body: dict[str, Any]) -> dict[str, Any]:
-        if action == "cancel": return {"ok": True, "action": "cancel", "cancelled": False, "reason": "Runs are synchronous and no background job is active."}
+        if action == "cancel":
+            work = self._work_status()
+            return {
+                "ok": True,
+                "action": "cancel",
+                "cancelled": False,
+                "reason": "Runs are synchronous; the active bounded request cannot be interrupted safely.",
+                "work": work,
+            }
         actions = {"scan": self.scan, "embed": self.embed, "analyze": self.analyze, "cluster": self.cluster, "rank": self.rank, "full": self.full}
         handler = actions.get(action)
         if handler is None:
             raise ValueError(f"Unsupported action: {action}")
         if not self.work_lock.acquire(blocking=False):
-            return {"ok": False, "action": action, "busy": True, "error": "Another media AI batch is already running."}
+            return {
+                "ok": False,
+                "action": action,
+                "busy": True,
+                "error": "Another media AI batch is already running.",
+                "work": self._work_status(),
+            }
+        started = self._begin_work(action)
         try:
-            return handler(body)
+            lease = self.accelerator.lease(action) if action != "scan" else nullcontext()
+            with lease:
+                response = handler(body)
+            response["accelerator"] = self.accelerator.operation_status()
+            self._finish_work(action, started, "completed")
+            return response
+        except GpuLeaseBusyError:
+            self._finish_work(action, started, "gpu-busy")
+            return {
+                "ok": False,
+                "action": action,
+                "busy": True,
+                "error": "The shared GPU workload lease is already held.",
+                "accelerator": self.accelerator.operation_status(),
+                "work": self._work_status(),
+            }
+        except Exception:
+            self._finish_work(action, started, "failed")
+            raise
         finally:
             self.work_lock.release()
+
+
+def token_matches(expected: str | None, authorization: str | None) -> bool:
+    if not expected:
+        return True
+    prefix = "Bearer "
+    if not authorization or not authorization.startswith(prefix):
+        return False
+    return hmac.compare_digest(expected.encode("utf-8"), authorization[len(prefix):].encode("utf-8"))
+
+
+def loopback_host(host: str) -> bool:
+    if host.strip().lower() == "localhost":
+        return True
+    try:
+        return ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        return False
 
 
 def make_handler(service: MediaAiService, token: str | None):
@@ -273,9 +407,7 @@ def make_handler(service: MediaAiService, token: str | None):
             self.wfile.write(encoded)
 
         def _authorized(self) -> bool:
-            if not token:
-                return True
-            return self.headers.get("Authorization") == f"Bearer {token}"
+            return token_matches(token, self.headers.get("Authorization"))
 
         def do_GET(self) -> None:  # noqa: N802
             if self.path.rstrip("/") != "/health":
@@ -292,7 +424,7 @@ def make_handler(service: MediaAiService, token: str | None):
                 return
             action = self.path.strip("/")
             try:
-                length = min(int(self.headers.get("Content-Length", "0")), 2_000_000)
+                length = max(0, min(int(self.headers.get("Content-Length", "0")), 2_000_000))
                 body = json.loads(self.rfile.read(length) or b"{}")
                 if not isinstance(body, dict):
                     raise ValueError("Request JSON must be an object.")
@@ -309,6 +441,8 @@ def make_handler(service: MediaAiService, token: str | None):
 
 
 def serve(host: str, port: int, media_root: Path, cache_path: Path, model_name: str, max_batch: int, token: str | None) -> None:
+    if not token and not loopback_host(host):
+        raise SystemExit("MEDIA_AI_SIDECAR_TOKEN is required when binding beyond loopback.")
     if not media_root.is_dir():
         raise SystemExit(f"Media root does not exist or is not a directory: {media_root}")
     service = MediaAiService(media_root, cache_path, model_name, max_batch)

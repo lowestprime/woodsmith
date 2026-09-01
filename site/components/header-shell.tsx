@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
+import { shouldFreezeHeaderForVisualCapture } from "@/lib/ui-behavior";
 
 export function HeaderShell({ children }: { children: ReactNode }) {
   const ref = useRef<HTMLElement>(null);
@@ -20,11 +21,33 @@ export function HeaderShell({ children }: { children: ReactNode }) {
       current.dataset.headerState = "revealed";
     }
 
+    function onFocusIn(event: FocusEvent) {
+      reveal();
+      const current = ref.current;
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!current || !target || current.contains(target)) return;
+      window.requestAnimationFrame(() => {
+        const targetTop = target.getBoundingClientRect().top;
+        const clearance = current.offsetHeight + 8;
+        if (targetTop < clearance) window.scrollBy({ top: targetTop - clearance, behavior: "auto" });
+      });
+    }
+
     function update() {
       const el = ref.current;
       if (!el) return;
       const y = Math.max(0, window.scrollY);
       const delta = y - lastY;
+
+      if (shouldFreezeHeaderForVisualCapture(document.documentElement.dataset)) {
+        el.classList.remove("is-compact", "is-hidden");
+        el.dataset.headerState = "audit-capture";
+        lastY = y;
+        direction = null;
+        directionStartY = y;
+        ticking = false;
+        return;
+      }
 
       if (y > 18) {
         el.classList.add("is-compact");
@@ -71,13 +94,13 @@ export function HeaderShell({ children }: { children: ReactNode }) {
     }
 
     window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("focusin", reveal);
+    window.addEventListener("focusin", onFocusIn);
     window.addEventListener("pageshow", reveal);
     el.addEventListener("pointerenter", reveal);
     update();
     return () => {
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("focusin", reveal);
+      window.removeEventListener("focusin", onFocusIn);
       window.removeEventListener("pageshow", reveal);
       el.removeEventListener("pointerenter", reveal);
     };

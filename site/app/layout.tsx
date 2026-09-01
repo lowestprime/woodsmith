@@ -83,14 +83,15 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const theme = cookieStore.get("beaman-theme")?.value === "light" ? "light" : "dark";
 
   return (
-    <html className={mackintosh.variable} data-theme={theme} lang="en" suppressHydrationWarning>
+    <html className={mackintosh.variable} data-scroll-behavior="smooth" data-theme={theme} lang="en" suppressHydrationWarning>
       <body>
         <div className="site-backdrop" />
+        <a className="skip-link" href="#main-content">Skip to main content</a>
         <VisitorTracker />
         <SiteHeader />
         <InlineEditAssistant />
         <StudioMediaHotkeys />
-        <main>{children}</main>
+        <main id="main-content" tabIndex={-1}>{children}</main>
         <SiteFooter />
       </body>
     </html>

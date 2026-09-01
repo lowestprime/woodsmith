@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
+import { secureCookieRequired } from "@/lib/cookie-policy";
 import { createSessionRecord, deleteSessionRecord, getSessionRecord, getUserByEmail, type UserRecord } from "@/lib/db";
 
 const COOKIE_NAME = "beaman_session";
@@ -75,7 +76,7 @@ export async function createSession(user: UserRecord) {
   cookieStore.set(COOKIE_NAME, token, {
     httpOnly: true,
     sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
+    secure: secureCookieRequired(),
     expires: new Date(expiresAt),
     path: "/"
   });

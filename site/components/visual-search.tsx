@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 function describeColor(red: number, green: number, blue: number) {
   const brightness = (red + green + blue) / 3;
@@ -110,6 +110,10 @@ export function VisualSearchAssist({ initialQuery = "", isAdmin = false }: { ini
   const [query, setQuery] = useState(initialQuery);
   const [labels, setLabels] = useState<string[]>([]);
   const [analysisNote, setAnalysisNote] = useState("");
+
+  useEffect(() => {
+    setQuery(initialQuery);
+  }, [initialQuery]);
 
   async function analyzeFile(file: File | undefined) {
     if (!file) {

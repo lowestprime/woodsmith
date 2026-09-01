@@ -1,6 +1,5 @@
-import type { ElementType, HTMLAttributes, ReactNode } from "react";
-
-export type InlineEditResource = "settings" | "homeSection" | "page" | "piece" | "post" | "user";
+import { createElement, type ElementType, type HTMLAttributes, type ReactNode } from "react";
+import type { InlineEditResource } from "@/lib/inline-edit-registry";
 
 export type InlineEditTarget = {
   resource: InlineEditResource;
@@ -33,5 +32,5 @@ export function EditableText({
   target?: InlineEditTarget;
 }) {
   const props = inlineEditAttrs(target);
-  return <Component className={className} {...props}>{children}</Component>;
+  return createElement(Component, { ...props, className }, children);
 }

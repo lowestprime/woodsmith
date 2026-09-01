@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { PageIntro, PageSection, PostCard, Shell } from "@/components/site-chrome";
+import { PageIntro, PageSection, PostCard, SectionHeading, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPosts } from "@/lib/db";
 
@@ -22,11 +22,12 @@ export default async function ProcessPage() {
       <PageSection editHref="/studio?panel=process">
         <PageIntro eyebrow="Process" title={page?.title ?? "Process"} copy={page?.intro ?? "Behind-the-scenes notes, material observations, and selected outside references."} targets={{ title: { resource: "page", id: "process", field: "title" }, copy: { resource: "page", id: "process", field: "intro" } }} />
         {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "process", field: "body" })}>{page.body}</p> : null}
+        <h2 className="visually-hidden">Process notes</h2>
         <div className="journal-listing">{notes.map((post) => <PostCard key={post.slug} post={post} />)}</div>
       </PageSection>
       {highlights.length > 0 ? (
         <PageSection editHref="/studio?panel=process">
-          <PageIntro eyebrow="References" title="Outside material worth keeping close to the bench" copy="A smaller set of books, essays, and references that help frame the work." />
+          <SectionHeading eyebrow="References" title="Outside material worth keeping close to the bench" copy="A smaller set of books, essays, and references that help frame the work." />
           <div className="journal-listing">{highlights.map((post) => <PostCard key={post.slug} post={post} />)}</div>
         </PageSection>
       ) : null}
