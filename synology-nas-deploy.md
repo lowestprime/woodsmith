@@ -451,11 +451,18 @@ Create the paired backup before deployment and before a large media reorganizati
 
 The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-AI caches. In addition, `site/scripts/safe-build.mjs` forces every Next build to use disposable temporary data/media roots and rejects standalone output containing a database, WAL/SHM, backup, or test/spec source file. Runtime state and build-only tests are never copied into an image layer; the image creates an empty `/app/site/data` directory that is populated only by the writable production bind mount. Seed upgrades are non-destructive for existing Studio-edited records, so rebuilds should preserve page/settings edits when the same mounted database is active.
 
+## Validated v19 deployment
+
+The current production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
+
+Release `0067488-20260831T050142Z` passed deterministic package hashing, production-clone Tier 2, paired backup/staged restore, immutable deployment, post-deploy database/routes/search/SMTP/sidecar checks, forced recreation, rollback/return-to-candidate, and final Tier 3. The paired backup manifest is `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`. Exact artifact paths, hashes, and retained rollback inputs are in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).
+
 ## Current deployment caveats
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- The application dependency is Next.js 16.3.0; the current local WP06 dependency audit reports zero known vulnerabilities at the configured high threshold, but release deployment still requires a fresh candidate audit and image build.
+- The application dependency is Next.js 16.3.0; the release candidate passed the recorded dependency, build, image, and deployment gates. A future source change requires a new exact candidate and invalidates this release evidence for that changed boundary.
+- `Strict-Transport-Security` remains absent at the Cloudflare edge. Canonical HTTPS, `www`/HTTP redirects, and the retired-host 410 passed, but HSTS must be enabled in Cloudflare to close this residual.
 - After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
 - In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.

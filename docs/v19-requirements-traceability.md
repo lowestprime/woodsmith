@@ -1,10 +1,23 @@
 # v19 requirements traceability
 
-Updated: 2026-08-30
+Updated: 2026-09-01
 
-This ledger maps the authoritative v19 requirements to implementation and evidence. A source implementation is not a release proof. `DONE / LOCAL GREEN` means the code and local checks exist; the requirement remains open at the release level until the final exact commit passes the applicable Tier 1, Tier 2, deployment, rollback, and Tier 3 gates.
+This ledger maps the authoritative v19 requirements to implementation and evidence. Source implementation alone is not release proof. The final release evidence is indexed in [`v19-release-evidence-ledger-20260901.md`](v19-release-evidence-ledger-20260901.md).
 
-## Current evidence boundary
+## Final release boundary
+
+- Deployed application: `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image ID `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`.
+- Final audit runner: `686a69c0cc5011394f35add750c29663626990f8`, image ID `sha256:af331cd8e2cde82cf4923f659370b7e6e7fe17d9fdbc2079bc45bfbc14aec6e9`.
+- The application `site` tree is identical at both commits (`60afd107a3b4d6c805497f79dc7cc01aaaeb38c2`); all later paths are audit-only, so the deployed application remains the validated candidate.
+- Exact Tier 1 snapshot-lab and full live-readonly passed. Production-clone Tier 2 `tier2-local-full-20260831T042104Z-0067488` passed migration, restart idempotence, full logical/media evidence, checksums, safety, and cleanup.
+- Paired backup/staged restore, immutable deployment, route/database/search/SMTP/sidecar checks, forced-recreation persistence, legacy-host retirement, rollback, and return-to-candidate passed.
+- Final live-production smoke `tier3-live-smoke-20260901T042509Z-0067488-686a69c-6ef843ed` passed.
+- Final full live-production run `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1` passed capture, diff, report, validation, uniqueness, security, checksums, and cleanup across 1,784 routes, 22,347 observations, and 5,948 captures.
+- Runtime release gates are complete. PR #7 then PR #6 are ready for ordered, non-rewriting integration; merge and tag identities are recorded in the final restricted handoff.
+
+## Superseded evidence history
+
+The following chronology is retained to explain earlier failed or superseded runs. Its pending statements describe their historical point in time and do not override the final release boundary above.
 
 - The most recent exact evidence identity is `0f4df092b3d91a352c989a06982fe9fdd7ef19ba`. Its exact `linux/amd64` app and audit images passed identity and forbidden-content inspection, exact snapshot-lab, and exact Tier 1. The current repair changes source bytes, so that identity remains authoritative diagnostic evidence but cannot qualify the next release candidate.
 - Current repaired-source checks: 188/188 application tests, 132/132 visual-archive tests, TypeScript, lint with zero errors and eight established raw-image advisories, a real cloned-video browser probe, and the safe Next.js 16.3.0 standalone build passed.
@@ -17,11 +30,29 @@ This ledger maps the authoritative v19 requirements to implementation and eviden
 - Exact Tier 1 `local-readonly-full-20260831T002200Z-0f4df092-ea96bc078f` passed with 5,080 captures, 183 validated routes, 4,329 checksums, zero validation failures, zero unexpected diagnostics, zero cross-origin requests, zero successful unsafe writes, and complete cleanup with one deliberately retained output volume.
 - Exact Tier 2 `tier2-local-full-20260831T024206Z-0f4df092` completed capture, comparison, and reporting against the verified 3,191-file production clone, then failed closed on six audit-runner validation findings: three concurrent tile-manifest partial reads, the resulting three materialization invariants, missing disclosure-contained upload-form validation, and 109 unexpected diagnostics dominated by audit-restarted metadata video requests. It retained 6,767 captures, 1,863 route records, 23,472 logical observations, and 6,069 checksums. Exactly twelve clone-only writes and zero cross-origin requests were recorded; source manifest/database hashes stayed unchanged; migration/restart was idempotent; cleanup passed and retained the output volume. This run is diagnostic only.
 - The repair scopes atomic tile-manifest rewrites to the owning capture, preserves deferred-video policy without calling `load()`, uses metadata-only lightbox previews, and opens/restores enclosing disclosures for validation capture. A real 64,187,254-byte cloned MP4 probe observed zero deferred requests, stable metadata request counts over two readiness passes, ready state 4, and zero unexpected failures under the strict completed-`206` classifier.
-- Fresh exact images, exact snapshot-lab/Tier 1/Tier 2 for the repair commit, paired backup/staged restore, candidate deployment, persistence, rollback, Cloudflare differential, and Tier 3 live-production remain pending.
+- At that historical boundary, fresh exact images, snapshot-lab/Tier 1/Tier 2, paired backup/staged restore, deployment, persistence, rollback, Cloudflare differential, and Tier 3 remained pending. The final release boundary above records their later completion.
 - Exact Tier 2 attempt `lab-20260814T071432Z-05428be8` was deliberately stopped and retained after the strict ledger found ten unexpected clone-only `POST /studio` requests from read-only media-picker pagination and search. The repair routes those operations through an authenticated private GET and preserves media selection as a typed autosave mutation. A disposable rendered-browser regression recorded two successful media-library GETs, no picker-originated Studio POST, no console warnings/errors, and identical before/after fingerprints for all 47 SQLite tables.
-- Exact Tier 2 run `tier2-local-full-20260828T141236Z-3663066b` later completed capture and reporting but correctly failed validation on two truncated source JPEGs. It retained 83,005 captures, 3,871 routes, and 125,880 checksums; expected isolated writes remained twelve, cross-origin requests remained zero, source hashes stayed stable, migrations/restart were idempotent, and cleanup passed. The repair records bounded image-integrity status without changing originals and replaces unavailable previews with explicit audited fallbacks. Because source changed, prior exact images and Tier evidence are diagnostic only and must be regenerated.
+- Exact Tier 2 run `tier2-local-full-20260828T141236Z-3663066b` later completed capture and reporting but correctly failed validation on two truncated source JPEGs. It retained 83,005 captures, 3,871 routes, and 125,880 checksums; expected isolated writes remained twelve, cross-origin requests remained zero, source hashes stayed stable, migrations/restart were idempotent, and cleanup passed. The repair records bounded image-integrity status without changing originals and replaces unavailable previews with explicit audited fallbacks. The run remains diagnostic only and was superseded by the passing final Tier 2 and Tier 3 evidence.
 
-## Requirement ledger
+## Final requirement status
+
+| ID | Final status | Release evidence |
+|---|---|---|
+| R1 | DONE / RELEASE PROVEN | Notification policies, templates, delivery, SMTP state, redaction, and live authenticated rendering passed exact release and post-deploy evidence. |
+| R2 | DONE / RELEASE PROVEN | Project lifecycle, dependency-safe operations, autosave, clone-only mutation evidence, and live read-only rendering passed. |
+| R3 | DONE / RELEASE PROVEN | Privacy-preserving Visitors/Audit workspaces, Cloudflare-derived location handling, redaction, and retention controls passed. |
+| R4 | DONE / RELEASE PROVEN | Piece selection, media, labels, route state, Back/Forward behavior, and exact live rendering passed. |
+| R5 | DONE / RELEASE PROVEN | Source-folder rules and production-media dry-run/read-only evidence passed without publishing unverified assignments. |
+| R6 | DONE / RELEASE PROVEN | Reviewed/public assignment synchronization passed transactional clone evidence and deployed public rendering. |
+| R7 | DONE / RELEASE PROVEN | Exact browser archives proved ordinary edits retain document, URL, viewport, focus, and responsive layout behavior. |
+| R8 | DONE / RELEASE PROVEN | Typed durable autosave and explicit consequential/destructive operation boundaries passed exact mutation and audit-ledger evidence. |
+| R9 | DONE / RELEASE PROVEN | FTS5 integrity, 473/473 deployed index parity, search routes, and post-recreation persistence passed. |
+| R10 | DONE / RELEASE PROVEN | Application, security, media, accessibility, accelerator, build, recovery, and archive regressions are green at the recorded split provenance. |
+| R11 | READY FOR ORDERED MERGE | PR #7 is clean and mergeable into the feature branch; PR #6 is clean and mergeable into `master`. This documentation commit precedes their ordered merge. |
+| R12 | DONE / RELEASE PROVEN | Laptop-local evidence compute, NAS state/control-plane operations, exact transfer, bounded workers, sidecar, and rollback passed. |
+| R13 | READY FOR FINAL HANDOFF | Exact release artifacts and run records are durable; the post-merge handoff records merge commits, tag, live/source reconciliation, and retained rollback assets. |
+
+## Pre-release implementation detail
 
 | ID | Requirement | Current status | Implementation and evidence | Remaining release gate |
 |---|---|---|---|---|

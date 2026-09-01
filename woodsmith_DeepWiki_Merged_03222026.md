@@ -233,3 +233,9 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 - `site/app/media/[...slug]/route.ts`: file-backed media serving route
 - `docker-compose.synology.yml`: Synology deployment configuration
 - `synology-nas-deploy.md`: deployment operations manual
+
+## 2026-09-01 v19 release state
+
+The validated production application is `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner repairs through `686a69c0cc5011394f35add750c29663626990f8` modify only `visual-audit/src`; the application `site` tree remains `60afd107a3b4d6c805497f79dc7cc01aaaeb38c2` at both identities.
+
+Exact Tier 1, production-clone Tier 2, deterministic release packaging, paired backup/staged restore, deployment, route/database/search/SMTP/sidecar checks, forced-recreation persistence, legacy-host retirement, rollback/return-to-candidate, and final live-production Tier 3 passed. The authoritative full Tier-3 run is `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1`. See [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md) for exact run IDs, evidence paths, hashes, image IDs, retained diagnostic history, and classified caveats.

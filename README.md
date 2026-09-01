@@ -201,3 +201,10 @@ Use these docs together:
 - `admin.md`
 - `woodsmith_DeepWiki_Merged_03222026.md`
 - `docs/visual-archive.md`
+- `docs/v19-release-evidence-ledger-20260901.md`
+
+## Current production release
+
+The validated production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner-only repairs culminate at `686a69c0cc5011394f35add750c29663626990f8`; the application `site` tree is identical at both commits, so no application redeploy was required.
+
+Exact Tier 1, production-clone Tier 2, paired backup/staged restore, deployment, forced-recreation persistence, rollback/return-to-candidate, and final Tier 3 passed. The full live-production run `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1` validated 1,784 routes, 22,347 observations, and 5,948 captures with zero validation failures, unexpected diagnostics, unapproved cross-origin requests, or successful unsafe requests. See the release evidence ledger for exact paths, hashes, image IDs, and classified caveats.
