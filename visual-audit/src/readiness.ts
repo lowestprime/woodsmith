@@ -112,7 +112,7 @@ async function settleMedia(page: Page, locator?: Locator, includeOffscreen = fal
 
     await Promise.all(images.map(async (image) => {
       if (!image.complete) {
-        await waitForMediaEvent(image, ["load", "error"], 15_000);
+        await waitForMediaEvent(image, ["load", "error"], includeOffscreen ? 45_000 : 15_000);
       }
       if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
     }));
@@ -127,7 +127,7 @@ async function settleMedia(page: Page, locator?: Locator, includeOffscreen = fal
 
     await Promise.all(videosToAwait.map((video) => {
       if (video.readyState >= 1 || video.error) return Promise.resolve();
-      return waitForMediaEvent(video, ["loadedmetadata", "error"], 15_000);
+      return waitForMediaEvent(video, ["loadedmetadata", "error"], includeOffscreen ? 45_000 : 15_000);
     }));
 
     return {

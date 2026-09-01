@@ -703,8 +703,16 @@ function attachDiagnostics(
   });
 }
 
-async function relevantPendingVisualRequests(page: Page, pendingRequests: ReadonlySet<Request>) {
-  const active = await page.evaluate(() => {
+async function relevantPendingVisualRequests(
+  page: Page,
+  pendingRequests: ReadonlySet<Request>,
+  locator?: Locator
+) {
+  const target = locator ? await locator.elementHandle() : null;
+  if (locator && !target) {
+    throw new Error("The visual request-drain target detached before request sampling.");
+  }
+  const active = await page.evaluate((element: Element | null) => {
     const intersectsViewport = (element: HTMLElement) => {
       const rect = element.getBoundingClientRect();
       const style = getComputedStyle(element);
@@ -724,13 +732,22 @@ async function relevantPendingVisualRequests(page: Page, pendingRequests: Readon
         return value;
       }
     };
+    const root: Element | Document = element ?? document;
+    const images = [
+      ...(element instanceof HTMLImageElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLImageElement>("img"))
+    ];
+    const videos = [
+      ...(element instanceof HTMLVideoElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLVideoElement>("video"))
+    ];
     return {
       fontsLoading: document.fonts.status !== "loaded",
-      images: Array.from(document.images)
+      images: images
         .filter((image) => intersectsViewport(image) && !image.complete)
         .map((image) => absolute(image.currentSrc || image.src))
         .filter(Boolean),
-      media: Array.from(document.querySelectorAll<HTMLVideoElement>("video"))
+      media: videos
         .filter((video) => intersectsViewport(video) && video.preload !== "none" && video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error)
         .flatMap((video) => [
           video.currentSrc || video.getAttribute("src") || "",
@@ -739,6 +756,8 @@ async function relevantPendingVisualRequests(page: Page, pendingRequests: Readon
         .filter(Boolean)
         .map(absolute)
     };
+  }, target).finally(async () => {
+    await target?.dispose();
   });
   const imageUrls = new Set(active.images);
   const mediaUrls = new Set(active.media);
@@ -756,6 +775,7 @@ async function waitForCaptureRequestDrain(
     intervalMs?: number;
     quietSamples?: number;
     timeoutMs?: number;
+    locator?: Locator;
   } = {}
 ) {
   const pendingRequests = pendingVisualRequests.get(page);
@@ -784,15 +804,15 @@ async function waitForCaptureRequestDrain(
     page.once("requestfailed", onEvent);
   });
   while (Date.now() < deadline) {
-    const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
+    const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests, options.locator);
     if (relevantRequests.length === 0) {
       const result = await waitForEventOrTimeout(Math.max(1, Math.min(quietMs, deadline - Date.now())));
-      if (result === "timeout" && (await relevantPendingVisualRequests(page, pendingRequests)).length === 0) break;
+      if (result === "timeout" && (await relevantPendingVisualRequests(page, pendingRequests, options.locator)).length === 0) break;
     } else {
       await waitForEventOrTimeout(Math.max(1, Math.min(1_000, deadline - Date.now())));
     }
   }
-  const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests);
+  const relevantRequests = await relevantPendingVisualRequests(page, pendingRequests, options.locator);
   if (relevantRequests.length > 0) {
     throw new Error(`Visual requests did not drain within ${timeoutMs}ms (${relevantRequests.length} relevant request(s) still pending).`);
   }
@@ -1962,6 +1982,7 @@ async function saveCapture(input: {
   status: number | null;
   fullPage?: boolean;
   locator?: Locator;
+  drainLocator?: Locator;
   sensitive?: boolean;
   coverageTier?: CoverageTier;
   forceMaterialization?: boolean;
@@ -2065,7 +2086,11 @@ async function saveCapture(input: {
         const produced = input.locator
           ? await captureElement(input.page, input.locator, outputDirectory, baseName)
           : await capturePageSurface(input.page, outputDirectory, baseName, input.fullPage ?? true);
-        await waitForCaptureRequestDrain(input.page);
+        const drainLocator = input.drainLocator ?? input.locator;
+        await waitForCaptureRequestDrain(
+          input.page,
+          drainLocator ? { locator: drainLocator } : {}
+        );
         const tileIo = await captureTileIo(outputDirectory, baseName);
         artifactIo.rawTileCount += tileIo.rawTileCount;
         artifactIo.rawTileBytesProduced += tileIo.rawTileBytes;
@@ -2453,15 +2478,16 @@ async function captureLightboxes(input: {
       timeout: 10_000
     });
 
-    await waitForVisualIdle(input.page);
-    await waitForCaptureRequestDrain(input.page);
+    await waitForVisualIdle(input.page, dialog);
+    await waitForCaptureRequestDrain(input.page, { locator: dialog });
 
     await saveCapture({
       ...input,
       state:
         `lightbox-${String(index + 1)
           .padStart(4, "0")}-100-percent`,
-      fullPage: false
+      fullPage: false,
+      drainLocator: dialog
     });
 
     if (index === 0) {
@@ -2469,9 +2495,9 @@ async function captureLightboxes(input: {
       const next = dialog.getByRole("button", { name: "Next image" });
       if (await previous.isVisible().catch(() => false) && await next.isVisible().catch(() => false)) {
         await previous.click();
-        await saveCapture({ ...input, state: "lightbox-previous-boundary", fullPage: false });
+        await saveCapture({ ...input, state: "lightbox-previous-boundary", fullPage: false, drainLocator: dialog });
         await next.click();
-        await saveCapture({ ...input, state: "lightbox-next-boundary", fullPage: false });
+        await saveCapture({ ...input, state: "lightbox-next-boundary", fullPage: false, drainLocator: dialog });
       }
     }
 
@@ -2493,7 +2519,8 @@ async function captureLightboxes(input: {
         state:
           `lightbox-${String(index + 1)
             .padStart(4, "0")}-200-percent`,
-        fullPage: false
+        fullPage: false,
+        drainLocator: dialog
       });
 
       for (let click = 0; click < 8; click += 1) {
@@ -2505,7 +2532,8 @@ async function captureLightboxes(input: {
         state:
           `lightbox-${String(index + 1)
             .padStart(4, "0")}-400-percent`,
-        fullPage: false
+        fullPage: false,
+        drainLocator: dialog
       });
 
       const stage = dialog.locator(".lightbox-stage");
@@ -2517,7 +2545,12 @@ async function captureLightboxes(input: {
         await input.page.mouse.down();
         await input.page.mouse.move(centerX + box.width * 0.28, centerY + box.height * 0.28, { steps: 8 });
         await input.page.mouse.up();
-        await saveCapture({ ...input, state: `lightbox-${String(index + 1).padStart(4, "0")}-pan-boundary`, fullPage: false });
+        await saveCapture({
+          ...input,
+          state: `lightbox-${String(index + 1).padStart(4, "0")}-pan-boundary`,
+          fullPage: false,
+          drainLocator: dialog
+        });
       }
     }
 
@@ -2564,6 +2597,7 @@ async function captureMediaCollections(input: {
       await input.page.keyboard.press("Enter");
       await waitForVisualIdle(input.page, collection);
       await waitForCaptureRequestDrain(input.page, {
+        locator: collection,
         intervalMs: 100,
         quietSamples: 6,
         timeoutMs: 15_000
@@ -2573,6 +2607,7 @@ async function captureMediaCollections(input: {
       await thumbnails.nth(originalIndex).click();
       await waitForVisualIdle(input.page, collection);
       await waitForCaptureRequestDrain(input.page, {
+        locator: collection,
         intervalMs: 100,
         quietSamples: 6,
         timeoutMs: 15_000
@@ -2906,7 +2941,7 @@ async function captureMediaPageItems(input: {
         inspectorPaths.some((field) => field.value === expectedPath);
     }, relativePath, { timeout: 10_000 });
     await waitForVisualIdle(input.page, inspector);
-    await waitForCaptureRequestDrain(input.page);
+    await waitForCaptureRequestDrain(input.page, { locator: inspector });
 
     await saveCapture({
       ...input,
@@ -2955,14 +2990,15 @@ async function captureMediaPageItems(input: {
         state: "visible"
       });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
+      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
 
       await saveCapture({
         ...input,
         state:
           `media-inspector-${String(index + 1)
             .padStart(4, "0")}-lightbox`,
-        fullPage: false
+        fullPage: false,
+        drainLocator: dialog
       });
 
       const closeButton = dialog
@@ -3454,14 +3490,15 @@ async function captureMediaPickers(input: {
         timeout: 10_000
       });
       await waitForVisualIdle(input.page, dialog);
-      await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
+      await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
 
       await saveCapture({
         ...input,
         state:
           `media-picker-${String(index + 1)
             .padStart(3, "0")}-default`,
-        fullPage: false
+        fullPage: false,
+        drainLocator: dialog
       });
 
       const filter = dialog.getByLabel("Search");
@@ -3477,14 +3514,15 @@ async function captureMediaPickers(input: {
         await dialog.getByRole("button", { name: "Search" }).click();
         await dialog.locator('[aria-busy="false"]').waitFor({ state: "attached", timeout: 10_000 }).catch(() => waitForUiFrames(input.page));
         await waitForVisualIdle(input.page, dialog);
-        await waitForCaptureRequestDrain(input.page, { timeoutMs: 30_000 });
+        await waitForCaptureRequestDrain(input.page, { locator: dialog, timeoutMs: 30_000 });
 
         await saveCapture({
           ...input,
           state:
             `media-picker-${String(index + 1)
               .padStart(3, "0")}-empty-filter`,
-          fullPage: false
+          fullPage: false,
+          drainLocator: dialog
         });
       }
     } finally {

@@ -91,6 +91,9 @@ test("browser-managed visual aborts remain narrowly scoped to proven same-origin
   };
   assert.equal(isExpectedBrowserManagedVisualAbort(input), true);
   assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/icon-light" }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/profiles/william-beaman.svg" }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/profiles/william-beaman.png" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/media/william-beaman.svg" }), false);
   assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://other.example/icon.svg" }), false);
   assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/media/piece.jpg" }), false);
   assert.equal(isExpectedBrowserManagedVisualAbort({

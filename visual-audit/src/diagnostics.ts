@@ -73,7 +73,10 @@ export function isExpectedBrowserManagedVisualAbort(input: RequestFailureEvidenc
   const requestUrl = new URL(input.url);
   if (
     input.resourceType === "image" &&
-    ["/icon.svg", "/icon-light"].includes(requestUrl.pathname)
+    (
+      ["/icon.svg", "/icon-light"].includes(requestUrl.pathname) ||
+      /^\/profiles\/[a-z0-9-]+\.svg$/.test(requestUrl.pathname)
+    )
   ) {
     return true;
   }

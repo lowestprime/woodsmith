@@ -24,7 +24,10 @@ test("media inspector readiness scopes layout stability to the active surface", 
   assert.match(runner, /!loaded && !intentionallyDeferred/);
   assert.match(runner, /waitForVisualIdle\(input\.page, inspector\)/);
   assert.match(runner, /waitForVisualIdle\(input\.page, dialog\)/);
-  assert.match(runner, /relevantPendingVisualRequests\(page, pendingRequests\)/);
+  assert.match(runner, /relevantPendingVisualRequests\(page, pendingRequests, options\.locator\)/);
+  assert.match(runner, /options\.locator/);
+  assert.match(runner, /const drainLocator = input\.drainLocator \?\? input\.locator/);
+  assert.match(readiness, /includeOffscreen \? 45_000 : 15_000/);
   assert.match(runner, /relevantRequests\.length > 0/);
   assert.match(runner, /\.site-header"\)\?\.classList\.remove\("is-hidden"\)/);
   assert.match(
