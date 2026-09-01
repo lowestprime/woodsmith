@@ -2,13 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  isExpectedBrowserManagedVisualAbort,
   isExpectedCaptureTeardownAbort,
+  isExpectedCompletedMediaRangeAbort,
+  isExpectedCompletedSnapshotMutationAbort,
   isExpectedNextPrefetchAbort,
   isExpectedAuditBlockedConsole,
+  isExpectedAuditCrossOriginBlock,
   isExpectedAuditMutationBlock,
   isKnownExpectedDiagnostic,
+  isValidPartialMediaResponse,
+  markRecoveredSpecialTaskDiagnostics,
   requestBlockKey
 } from "./diagnostics.js";
+import type { DiagnosticRecord } from "./types.js";
 
 const baseFailure = {
   method: "GET",
@@ -46,6 +53,89 @@ test("only safe same-origin visual requests canceled during deliberate teardown 
   assert.equal(isExpectedCaptureTeardownAbort({ ...imageFailure, failure: "net::ERR_CONNECTION_RESET" }, true), false);
 });
 
+test("only completed direct-media byte ranges may end in an expected browser cancellation", () => {
+  const response = {
+    status: 206,
+    headers: {
+      "accept-ranges": "bytes",
+      "content-range": "bytes 0-1023/4096",
+      "content-length": "1024"
+    }
+  };
+  assert.equal(isValidPartialMediaResponse(response), true);
+  assert.equal(isValidPartialMediaResponse({ ...response, status: 200 }), false);
+  assert.equal(isValidPartialMediaResponse({ ...response, headers: { ...response.headers, "content-range": "bytes */4096" } }), false);
+  assert.equal(isValidPartialMediaResponse({ ...response, headers: { ...response.headers, "content-length": "1023" } }), false);
+
+  const input = {
+    ...baseFailure,
+    url: "https://woodmat.ch/media/Furniture/work-video.mp4",
+    resourceType: "media",
+    headers: { range: "bytes=0-" },
+    validPartialResponseObserved: true
+  };
+  assert.equal(isExpectedCompletedMediaRangeAbort(input), true);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, validPartialResponseObserved: false }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, url: "https://other.example/work-video.mp4" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, url: "https://woodmat.ch/api/video" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, resourceType: "fetch" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, method: "POST" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedCompletedMediaRangeAbort({ ...input, headers: {} }), false);
+});
+
+test("browser-managed visual aborts remain narrowly scoped to proven same-origin lifecycles", () => {
+  const input = {
+    ...baseFailure,
+    url: "https://woodmat.ch/icon.svg",
+    resourceType: "image",
+    phase: "initial-readiness"
+  };
+  assert.equal(isExpectedBrowserManagedVisualAbort(input), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/icon-light" }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/profiles/william-beaman.svg" }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/profiles/william-beaman.png" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/media/william-beaman.svg" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://other.example/icon.svg" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...input, url: "https://woodmat.ch/media/piece.jpg" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({
+    ...input,
+    url: "https://woodmat.ch/media/piece.jpg",
+    phase: "capture:lightbox-next-boundary"
+  }), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({
+    ...input,
+    url: "https://woodmat.ch/media/piece.jpg",
+    phase: "capture:lightbox-200-percent"
+  }), false);
+
+  const mediaInput = {
+    ...input,
+    url: "https://woodmat.ch/media/piece.mp4",
+    resourceType: "media",
+    headers: { range: "bytes=0-" }
+  };
+  assert.equal(isExpectedBrowserManagedVisualAbort(mediaInput), true);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, headers: {} }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, url: "https://other.example/piece.mp4" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedBrowserManagedVisualAbort({ ...mediaInput, method: "POST" }), false);
+});
+
+test("only a clone mutation with an observed successful response may end in an expected abort", () => {
+  const input = {
+    targetMode: "snapshot-lab",
+    method: "POST",
+    failure: "net::ERR_ABORTED",
+    successfulResponseObserved: true
+  };
+  assert.equal(isExpectedCompletedSnapshotMutationAbort(input), true);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, targetMode: "live-readonly" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, method: "GET" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedCompletedSnapshotMutationAbort({ ...input, successfulResponseObserved: false }), false);
+});
+
 test("read-only blocked failures require an unsafe request and an exact policy record", () => {
   const url = "https://woodmat.ch/api/contact";
   const blockedRequests = new Set([requestBlockKey("POST", url)]);
@@ -54,6 +144,7 @@ test("read-only blocked failures require an unsafe request and an exact policy r
     method: "POST",
     url,
     baseUrl: "https://woodmat.ch",
+    resourceType: "script",
     failure: "net::ERR_BLOCKED_BY_CLIENT",
     blockedRequests
   };
@@ -71,6 +162,25 @@ test("read-only blocked failures require an unsafe request and an exact policy r
     url: visitUrl,
     blockedRequests: new Set([requestBlockKey("POST", visitUrl)])
   }), true);
+});
+
+test("cross-origin traffic is expected only when the exact request was blocked before continuation", () => {
+  const url = "https://static.cloudflareinsights.com/beacon.min.js";
+  const input = {
+    method: "GET",
+    url,
+    baseUrl: "https://woodmat.ch",
+    resourceType: "script",
+    failure: "net::ERR_BLOCKED_BY_CLIENT",
+    blockedRequests: new Set([requestBlockKey("GET", url)])
+  };
+
+  assert.equal(isExpectedAuditCrossOriginBlock(input), true);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, url: "https://woodmat.ch/beacon.min.js" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, url: "https://example.com/beacon.min.js" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, resourceType: "fetch" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, failure: "net::ERR_CONNECTION_RESET" }), false);
+  assert.equal(isExpectedAuditCrossOriginBlock({ ...input, blockedRequests: new Set() }), false);
 });
 
 test("blocked console noise is expected only after a route-local read-only policy decision", () => {
@@ -106,4 +216,32 @@ test("validator exceptions remain narrow and never hide arbitrary API failures",
     type: "console",
     route: "/portfolio/pastry-table"
   }), false);
+});
+
+test("serial special-task recovery marks only the exact retained failure", () => {
+  const diagnostics: DiagnosticRecord[] = [
+    {
+      timestamp: "2026-09-01T00:00:00.000Z",
+      type: "pageerror" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-recovered (media-inspectors) failed: transient image stall"
+    },
+    {
+      timestamp: "2026-09-01T00:00:01.000Z",
+      type: "pageerror" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-other (media-inspectors) failed: persistent image stall"
+    },
+    {
+      timestamp: "2026-09-01T00:00:02.000Z",
+      type: "security" as const,
+      route: "/studio?panel=media",
+      message: "Special task special-recovered (media-inspectors) failed: unapproved request"
+    }
+  ];
+
+  assert.equal(markRecoveredSpecialTaskDiagnostics(diagnostics, "special-recovered"), 1);
+  assert.equal(diagnostics[0]!.expected, true);
+  assert.equal(diagnostics[1]!.expected, undefined);
+  assert.equal(diagnostics[2]!.expected, undefined);
 });

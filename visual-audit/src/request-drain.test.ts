@@ -8,7 +8,7 @@ test("request drain requires consecutive quiet samples", async () => {
   let index = -1;
   let sleeps = 0;
 
-  await waitForRequestDrain({
+  const observedPending = await waitForRequestDrain({
     intervalMs: 1,
     quietSamples: 3,
     timeoutMs: 10,
@@ -20,6 +20,7 @@ test("request drain requires consecutive quiet samples", async () => {
   });
 
   assert.equal(sleeps, samples.length);
+  assert.equal(observedPending, true);
 });
 
 test("request drain resets an extended teardown quiet window for late media", async () => {
@@ -50,4 +51,16 @@ test("request drain fails closed when visual requests never finish", async () =>
     }),
     /did not drain within 3ms \(1 still pending\)/
   );
+});
+
+test("request drain reports when the entire quiet window was already idle", async () => {
+  const observedPending = await waitForRequestDrain({
+    intervalMs: 1,
+    quietSamples: 2,
+    timeoutMs: 4,
+    pendingCount: () => 0,
+    sleep: async () => undefined
+  });
+
+  assert.equal(observedPending, false);
 });

@@ -2,7 +2,9 @@ import fs from "node:fs";
 import path from "node:path";
 
 import type { AuditScope, EvidenceTier, TargetMode, ViewportProfile } from "./types.js";
+import type { VisualMaterializationMode } from "./evidence-contract.js";
 import { parseAcceleratorMode } from "./accelerator.js";
+import { parseExecutionPhase } from "./execution-phase.js";
 import { parseWorkerCount } from "./worker-count.js";
 
 function required(name: string) {
@@ -14,6 +16,21 @@ function required(name: string) {
 function positiveInteger(name: string, fallback: number) {
   const value = Number.parseInt(process.env[name] ?? "", 10);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function nonNegativeInteger(name: string, fallback: number) {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isSafeInteger(value) && value >= 0 ? value : fallback;
+}
+
+function positiveNumber(name: string, fallback: number) {
+  const value = Number.parseFloat(process.env[name] ?? "");
+  return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function nonNegativeNumber(name: string, fallback: number) {
+  const value = Number.parseFloat(process.env[name] ?? "");
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 function booleanValue(name: string, fallback: boolean) {
@@ -82,9 +99,17 @@ const reportWorkers = parseWorkerCount({
 const captureWorkers = parseWorkerCount({
   name: "VISUAL_AUDIT_CAPTURE_WORKERS",
   raw: process.env.VISUAL_AUDIT_CAPTURE_WORKERS,
-  automaticCap: 2,
-  maximum: 6
+  automaticCap: 8,
+  maximum: 12
 });
+const visualMaterialization = (process.env.AUDIT_VISUAL_MATERIALIZATION?.trim() || "selective") as VisualMaterializationMode;
+if (!["selective", "all", "diagnostic-only"].includes(visualMaterialization)) {
+  throw new Error("AUDIT_VISUAL_MATERIALIZATION must be selective, all, or diagnostic-only.");
+}
+const taskShardCount = positiveInteger("AUDIT_TASK_SHARD_COUNT", 1);
+const taskShardIndex = nonNegativeInteger("AUDIT_TASK_SHARD_INDEX", 0);
+if (taskShardIndex >= taskShardCount) throw new Error("AUDIT_TASK_SHARD_INDEX must be lower than AUDIT_TASK_SHARD_COUNT.");
+const executionPhase = parseExecutionPhase(process.env.AUDIT_EXECUTION_PHASE);
 
 export const config = {
   targetMode,
@@ -92,6 +117,7 @@ export const config = {
   evidenceTier,
   baseUrl: baseUrl.toString().replace(/\/$/, ""),
   expectedCommit: required("TARGET_COMMIT_SHA"),
+  auditCommit: required("WOODSMITH_BUILD_SHA"),
   runId,
   outputRoot,
   runRoot: path.join(outputRoot, runId),
@@ -110,7 +136,28 @@ export const config = {
   accelerator: parseAcceleratorMode(process.env.VISUAL_AUDIT_ACCELERATOR),
   validationWorkers,
   reportWorkers,
-  captureWorkers
+  captureWorkers,
+  visualMaterialization,
+  retainRawTiles: booleanValue("AUDIT_RETAIN_RAW_TILES", false),
+  targetRuntimeMinutes: positiveNumber("AUDIT_TARGET_RUNTIME_MINUTES", 30),
+  hardRuntimeMinutes: positiveNumber("AUDIT_HARD_RUNTIME_MINUTES", 45),
+  routeTaskSeconds: positiveNumber("AUDIT_ROUTE_TASK_SECONDS", 2.4),
+  specialTaskSeconds: positiveNumber("AUDIT_SPECIAL_TASK_SECONDS", 3.2),
+  mutationTaskSeconds: positiveNumber("AUDIT_MUTATION_TASK_SECONDS", 8),
+  materializationSeconds: positiveNumber("AUDIT_MATERIALIZATION_SECONDS", 0.8),
+  reportRuntimeSeconds: positiveNumber("AUDIT_REPORT_RUNTIME_SECONDS", 60),
+  validationRuntimeSeconds: positiveNumber("AUDIT_VALIDATION_RUNTIME_SECONDS", 60),
+  fixedRuntimeSeconds: positiveNumber("AUDIT_FIXED_RUNTIME_SECONDS", 60),
+  persistentBytesPerMaterialization: positiveNumber("AUDIT_PERSISTENT_BYTES_PER_MATERIALIZATION", 4_194_304),
+  temporaryBytesPerMaterialization: positiveNumber("AUDIT_TEMP_BYTES_PER_MATERIALIZATION", 2_097_152),
+  reportArtifactMultiplier: nonNegativeNumber("AUDIT_REPORT_ARTIFACT_MULTIPLIER", 1),
+  projectedWriteAmplificationRatio: positiveNumber("AUDIT_PROJECTED_WRITE_AMPLIFICATION_RATIO", 1.25),
+  mediaInspectorBatchSize: positiveInteger("AUDIT_MEDIA_INSPECTOR_BATCH_SIZE", 8),
+  elementAtlasBatchSize: positiveInteger("AUDIT_ELEMENT_ATLAS_BATCH_SIZE", 12),
+  taskShardCount,
+  taskShardIndex,
+  executionPhase,
+  benchmarkTaskLimit: positiveInteger("AUDIT_BENCHMARK_TASK_LIMIT", 24)
 } as const;
 
 export const viewports: ViewportProfile[] = [

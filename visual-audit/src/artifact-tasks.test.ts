@@ -99,19 +99,21 @@ async function writeTileFixture(root: string, corruptSeam: boolean) {
     await fs.rename(`${second}.next`, second);
   }
   const manifest: TileManifest = {
+    schemaVersion: 2,
     kind: "scroll-container",
     createdAt: "2026-07-15T00:00:00.000Z",
     sourceWidth: width,
     sourceHeight: height,
     deviceScaleFactor: 1,
+    rawTilePolicy: "retain-all",
     segments: [{
       file: "source.png",
       startY: 0,
       width,
       height,
       tiles: [
-        { file: "tile-1.png", x: 0, y: 0, width, height: 120 },
-        { file: "tile-2.png", x: 0, y: 100, width, height: 100 }
+        { file: "tile-1.png", sha256: createHash("sha256").update(await fs.readFile(first)).digest("hex"), retained: true, x: 0, y: 0, width, height: 120 },
+        { file: "tile-2.png", sha256: createHash("sha256").update(await fs.readFile(second)).digest("hex"), retained: true, x: 0, y: 100, width, height: 100 }
       ]
     }]
   };
@@ -161,6 +163,35 @@ test("malformed and corrupt tile inputs fail closed", async (t) => {
     relativePath: "fixture__tiles.json"
   }) as ValidateTileManifestResult;
   assert.ok(corruptResult.findings.some((entry) => entry.message.includes("could not be decoded")));
+});
+
+test("ephemeral raw tiles retain deterministic geometry and digest validation", async (t) => {
+  const root = await temporaryDirectory(t);
+  const output = path.join(root, "stitched.png");
+  await sharp({ create: { width: 120, height: 200, channels: 3, background: "#836f58" } }).png().toFile(output);
+  const manifestFile = path.join(root, "ephemeral__tiles.json");
+  const manifest: TileManifest = {
+    schemaVersion: 2,
+    kind: "page",
+    createdAt: "2026-08-29T00:00:00.000Z",
+    sourceWidth: 120,
+    sourceHeight: 200,
+    deviceScaleFactor: 1,
+    rawTilePolicy: "failure-only",
+    segments: [{
+      file: "stitched.png",
+      startY: 0,
+      width: 120,
+      height: 200,
+      tiles: [
+        { sha256: "a".repeat(64), retained: false, x: 0, y: 0, width: 120, height: 120 },
+        { sha256: "b".repeat(64), retained: false, x: 0, y: 100, width: 120, height: 100 }
+      ]
+    }]
+  };
+  await fs.writeFile(manifestFile, JSON.stringify(manifest));
+  const result = await processArtifactTask({ kind: "validate-tile-manifest", runRoot: root, manifestFile, relativePath: "ephemeral__tiles.json" }) as ValidateTileManifestResult;
+  assert.deepEqual(result.findings, []);
 });
 
 test("parallel print-slice preparation is byte-identical and bounded by slice height", async (t) => {

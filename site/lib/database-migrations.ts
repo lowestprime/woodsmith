@@ -8,6 +8,19 @@ import {
   normalizePriceMode,
   normalizeReviewsMode
 } from "./piece-model.ts";
+import {
+  backfillLegacyMediaAssignmentTruthInDatabase,
+  bootstrapMediaSourceFolderRulesInDatabase
+} from "./media-folder-rules.ts";
+import {
+  DEFAULT_NOTIFICATION_TYPES
+} from "./notification-policy.ts";
+import {
+  redactAuditPayload
+} from "./audit-redaction.ts";
+import {
+  installSearchIndexInDatabase
+} from "./search-index.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -22,6 +35,10 @@ export type SchemaMigrationResult = {
   applied: Array<{ version: number; name: string; report: MigrationReport }>;
   quickCheckBefore: string;
   quickCheckAfter: string;
+};
+
+export type SchemaMigrationOptions = {
+  throughVersion?: number;
 };
 
 function nowIso() {
@@ -360,10 +377,649 @@ const migrations: Migration[] = [
       `);
       return { tables: ["media_operation_batches", "media_operation_items"] };
     }
+  },
+  {
+    version: 7,
+    name: "durable-studio-mutation-operations",
+    checksum: "2026-07-studio-mutation-operations-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS studio_mutation_operations (
+          operation_id TEXT PRIMARY KEY,
+          actor_email TEXT,
+          mutation_scope TEXT NOT NULL,
+          request_hash TEXT NOT NULL,
+          response_json TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_studio_mutation_operations_created
+          ON studio_mutation_operations(created_at DESC);
+      `);
+
+      return {
+        tables: ["studio_mutation_operations"]
+      };
+    }
+  },
+  {
+    version: 8,
+    name: "media-folder-rules-and-assignment-provenance",
+    checksum: "2026-07-media-folder-rules-provenance-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS media_source_folder_rules (
+          id TEXT PRIMARY KEY,
+          normalized_folder TEXT NOT NULL UNIQUE,
+          piece_slug TEXT NOT NULL,
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          priority INTEGER NOT NULL DEFAULT 100,
+          default_role TEXT NOT NULL DEFAULT 'gallery',
+          default_public INTEGER NOT NULL DEFAULT 1 CHECK (default_public IN (0, 1)),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT NOT NULL,
+          FOREIGN KEY (piece_slug) REFERENCES pieces(slug) ON UPDATE CASCADE ON DELETE RESTRICT
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_media_source_folder_rules_piece
+          ON media_source_folder_rules(piece_slug);
+        CREATE INDEX IF NOT EXISTS idx_media_source_folder_rules_enabled
+          ON media_source_folder_rules(enabled, priority, normalized_folder);
+      `);
+
+      const addedColumns: string[] = [];
+      const add = (column: string, definition: string) => {
+        if (addColumn(db, "media_items", column, definition)) addedColumns.push(column);
+      };
+
+      add(
+        "assignment_source",
+        "TEXT CHECK (assignment_source IN ('manual-piece-editor', 'manual-media-panel', 'folder-rule', 'AI-suggestion', 'legacy'))"
+      );
+      add(
+        "assignment_rule_id",
+        "TEXT REFERENCES media_source_folder_rules(id) ON UPDATE CASCADE ON DELETE SET NULL"
+      );
+      add("assigned_at", "TEXT");
+      add("assigned_by", "TEXT");
+      add(
+        "manual_override",
+        "INTEGER NOT NULL DEFAULT 0 CHECK (manual_override IN (0, 1))"
+      );
+
+      db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_media_assignment_source
+          ON media_items(assignment_source);
+        CREATE INDEX IF NOT EXISTS idx_media_assignment_rule
+          ON media_items(assignment_rule_id);
+        CREATE INDEX IF NOT EXISTS idx_media_manual_override
+          ON media_items(manual_override);
+      `);
+
+      const legacy =
+        backfillLegacyMediaAssignmentTruthInDatabase(db);
+      const rules =
+        bootstrapMediaSourceFolderRulesInDatabase(db);
+
+      return {
+        table: "media_source_folder_rules",
+        addedColumns,
+        legacy,
+        rules
+      };
+    }
+  },
+  {
+    version: 9,
+    name: "notification-policy-template-delivery",
+    checksum: "2026-08-notification-policy-delivery-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS notification_policies (
+          category TEXT PRIMARY KEY,
+          label TEXT NOT NULL,
+          description TEXT NOT NULL DEFAULT '',
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          recipient_mode TEXT NOT NULL DEFAULT 'request' CHECK (recipient_mode IN ('request', 'configured', 'request-and-configured')),
+          recipients_json TEXT NOT NULL DEFAULT '[]',
+          forward_recipients_json TEXT NOT NULL DEFAULT '[]',
+          retention_days INTEGER NOT NULL DEFAULT 90 CHECK (retention_days BETWEEN 1 AND 3650),
+          max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts BETWEEN 1 AND 10),
+          retry_base_seconds INTEGER NOT NULL DEFAULT 300 CHECK (retry_base_seconds BETWEEN 30 AND 86400),
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS notification_templates (
+          category TEXT PRIMARY KEY,
+          subject_template TEXT NOT NULL,
+          text_template TEXT NOT NULL,
+          html_template TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          updated_by TEXT,
+          FOREIGN KEY (category) REFERENCES notification_policies(category) ON UPDATE CASCADE ON DELETE CASCADE
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS notification_deliveries (
+          id TEXT PRIMARY KEY,
+          legacy_notification_id TEXT UNIQUE,
+          category TEXT NOT NULL,
+          project_reference TEXT,
+          primary_recipients_json TEXT NOT NULL DEFAULT '[]',
+          cc_recipients_json TEXT NOT NULL DEFAULT '[]',
+          bcc_recipients_json TEXT NOT NULL DEFAULT '[]',
+          subject TEXT NOT NULL,
+          text_body TEXT NOT NULL DEFAULT '',
+          html_body TEXT NOT NULL DEFAULT '',
+          status TEXT NOT NULL CHECK (status IN ('queued', 'sending', 'retry_scheduled', 'sent', 'failed', 'pending_configuration', 'suppressed')),
+          attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+          max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts BETWEEN 1 AND 10),
+          next_attempt_at TEXT,
+          last_attempt_at TEXT,
+          sent_at TEXT,
+          provider_message_id TEXT,
+          error_code TEXT,
+          error_summary TEXT,
+          idempotency_hash TEXT UNIQUE,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (legacy_notification_id) REFERENCES notifications(id) ON DELETE SET NULL
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS notification_delivery_attempts (
+          id TEXT PRIMARY KEY,
+          delivery_id TEXT NOT NULL,
+          attempt_number INTEGER NOT NULL CHECK (attempt_number >= 1),
+          status TEXT NOT NULL CHECK (status IN ('sending', 'sent', 'failed', 'pending_configuration')),
+          provider_message_id TEXT,
+          error_code TEXT,
+          error_summary TEXT,
+          started_at TEXT NOT NULL,
+          completed_at TEXT,
+          FOREIGN KEY (delivery_id) REFERENCES notification_deliveries(id) ON DELETE CASCADE,
+          UNIQUE (delivery_id, attempt_number)
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS smtp_verification_checks (
+          id TEXT PRIMARY KEY,
+          status TEXT NOT NULL CHECK (status IN ('configured', 'verified', 'failed', 'not-configured')),
+          host TEXT,
+          port INTEGER,
+          secure INTEGER NOT NULL DEFAULT 1 CHECK (secure IN (0, 1)),
+          from_address TEXT,
+          error_code TEXT,
+          error_summary TEXT,
+          checked_by TEXT,
+          checked_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_notification_deliveries_status
+          ON notification_deliveries(status, next_attempt_at, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notification_deliveries_category
+          ON notification_deliveries(category, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notification_deliveries_project
+          ON notification_deliveries(project_reference, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_notification_attempts_delivery
+          ON notification_delivery_attempts(delivery_id, attempt_number DESC);
+        CREATE INDEX IF NOT EXISTS idx_smtp_checks_created
+          ON smtp_verification_checks(checked_at DESC);
+      `);
+
+      const timestamp = nowIso();
+      const insertPolicy = db.prepare(`
+        INSERT OR IGNORE INTO notification_policies (
+          category, label, description, enabled, recipient_mode,
+          recipients_json, forward_recipients_json, retention_days,
+          max_attempts, retry_base_seconds, created_at, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, 'migration-v9')
+      `);
+      const insertTemplate = db.prepare(`
+        INSERT OR IGNORE INTO notification_templates (
+          category, subject_template, text_template, html_template,
+          created_at, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, 'migration-v9')
+      `);
+
+      let seededPolicies = 0;
+      let seededTemplates = 0;
+      // Migration 9 shipped with the original nine categories. Keep its
+      // historical behavior stable; later categories have their own ledger row.
+      for (const definition of DEFAULT_NOTIFICATION_TYPES.filter(
+        (item) => item.key !== "visitor_session"
+      )) {
+        seededPolicies += Number(insertPolicy.run(
+          definition.key,
+          definition.label,
+          definition.description,
+          definition.enabled ? 1 : 0,
+          definition.recipientMode,
+          definition.retentionDays,
+          definition.maxAttempts,
+          definition.retryBaseSeconds,
+          timestamp,
+          timestamp
+        ).changes ?? 0);
+        seededTemplates += Number(insertTemplate.run(
+          definition.key,
+          definition.subjectTemplate,
+          definition.textTemplate,
+          definition.htmlTemplate,
+          timestamp,
+          timestamp
+        ).changes ?? 0);
+      }
+
+      const legacyRows = db.prepare(`
+        SELECT id, category, recipient, subject, body, status, error,
+               created_at AS createdAt, sent_at AS sentAt
+        FROM notifications
+      `).all() as Array<Record<string, unknown>>;
+      const insertLegacy = db.prepare(`
+        INSERT OR IGNORE INTO notification_deliveries (
+          id, legacy_notification_id, category, project_reference,
+          primary_recipients_json, cc_recipients_json, bcc_recipients_json,
+          subject, text_body, html_body, status, attempt_count, max_attempts,
+          next_attempt_at, last_attempt_at, sent_at, provider_message_id,
+          error_code, error_summary, idempotency_hash, created_at, updated_at
+        ) VALUES (?, ?, ?, NULL, ?, '[]', '[]', ?, ?, '', ?, ?, 1,
+                  NULL, ?, ?, NULL, NULL, ?, NULL, ?, ?)
+      `);
+      let backfilledDeliveries = 0;
+      for (const row of legacyRows) {
+        const legacyStatus = String(row.status ?? "queued");
+        const status = [
+          "queued",
+          "sent",
+          "failed",
+          "pending_configuration"
+        ].includes(legacyStatus)
+          ? legacyStatus
+          : "queued";
+        const attempted = status === "sent" || status === "failed";
+        const createdAt = String(row.createdAt ?? timestamp);
+        const sentAt = row.sentAt ? String(row.sentAt) : null;
+        backfilledDeliveries += Number(insertLegacy.run(
+          `legacy:${String(row.id)}`,
+          String(row.id),
+          String(row.category ?? "legacy"),
+          JSON.stringify([String(row.recipient ?? "")].filter(Boolean)),
+          String(row.subject ?? ""),
+          String(row.body ?? ""),
+          status,
+          attempted ? 1 : 0,
+          attempted ? sentAt ?? createdAt : null,
+          sentAt,
+          row.error ? String(row.error) : null,
+          createdAt,
+          sentAt ?? createdAt
+        ).changes ?? 0);
+      }
+
+      return {
+        tables: [
+          "notification_policies",
+          "notification_templates",
+          "notification_deliveries",
+          "notification_delivery_attempts",
+          "smtp_verification_checks"
+        ],
+        seededPolicies,
+        seededTemplates,
+        legacyRows: legacyRows.length,
+        backfilledDeliveries
+      };
+    }
+  },
+  {
+    version: 10,
+    name: "project-lifecycle-and-dependency-ledger",
+    checksum: "2026-08-project-lifecycle-deletion-v1",
+    apply(db) {
+      const addedColumns: string[] = [];
+      const add = (column: string, definition: string) => {
+        if (addColumn(db, "projects", column, definition)) {
+          addedColumns.push(column);
+        }
+      };
+
+      add(
+        "lifecycle_state",
+        "TEXT NOT NULL DEFAULT 'active' CHECK (lifecycle_state IN ('active', 'archived', 'cancelled'))"
+      );
+      add("assignee_email", "TEXT");
+      add("target_start_at", "TEXT");
+      add("target_completion_at", "TEXT");
+      add("completed_at", "TEXT");
+      add("archived_at", "TEXT");
+      add("cancelled_at", "TEXT");
+      add("cancel_reason", "TEXT NOT NULL DEFAULT ''");
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS project_lifecycle_events (
+          id TEXT PRIMARY KEY,
+          project_reference TEXT NOT NULL,
+          event TEXT NOT NULL CHECK (event IN ('update', 'archive', 'cancel', 'reopen', 'delete-refused', 'delete')),
+          actor_email TEXT,
+          before_json TEXT NOT NULL DEFAULT 'null',
+          after_json TEXT NOT NULL DEFAULT 'null',
+          reason TEXT NOT NULL DEFAULT '',
+          request_id TEXT,
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS project_deletion_ledger (
+          id TEXT PRIMARY KEY,
+          project_reference TEXT NOT NULL,
+          actor_email TEXT,
+          decision TEXT NOT NULL CHECK (decision IN ('preview', 'refused', 'deleted')),
+          snapshot_hash TEXT NOT NULL,
+          dependencies_json TEXT NOT NULL DEFAULT '{}',
+          quarantined_paths_json TEXT NOT NULL DEFAULT '[]',
+          reason TEXT NOT NULL DEFAULT '',
+          created_at TEXT NOT NULL
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_projects_lifecycle
+          ON projects(lifecycle_state, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_projects_assignee
+          ON projects(assignee_email, lifecycle_state, updated_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_project_lifecycle_events_reference
+          ON project_lifecycle_events(project_reference, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_project_deletion_ledger_reference
+          ON project_deletion_ledger(project_reference, created_at DESC);
+      `);
+
+      const backfill = db.prepare(`
+        UPDATE projects
+        SET lifecycle_state = CASE
+              WHEN lower(status) IN ('cancelled', 'canceled') THEN 'cancelled'
+              WHEN lower(status) IN ('archived', 'closed', 'delivered') THEN 'archived'
+              ELSE 'active'
+            END,
+            archived_at = CASE
+              WHEN lower(status) IN ('archived', 'closed', 'delivered') THEN COALESCE(archived_at, updated_at)
+              ELSE archived_at
+            END,
+            cancelled_at = CASE
+              WHEN lower(status) IN ('cancelled', 'canceled') THEN COALESCE(cancelled_at, updated_at)
+              ELSE cancelled_at
+            END
+      `).run();
+
+      return {
+        tables: [
+          "project_lifecycle_events",
+          "project_deletion_ledger"
+        ],
+        addedColumns,
+        backfilledProjects: Number(
+          backfill.changes ?? 0
+        )
+      };
+    }
+  },
+  {
+    version: 11,
+    name: "visitor-session-notification-policy",
+    checksum: "2026-08-visitor-session-policy-v1",
+    apply(db) {
+      const definition =
+        DEFAULT_NOTIFICATION_TYPES.find(
+          (item) =>
+            item.key === "visitor_session"
+        );
+      if (!definition) {
+        throw new Error(
+          "Visitor-session notification definition is missing."
+        );
+      }
+      const timestamp = nowIso();
+      const policy = db.prepare(`
+        INSERT OR IGNORE INTO notification_policies (
+          category, label, description, enabled, recipient_mode,
+          recipients_json, forward_recipients_json, retention_days,
+          max_attempts, retry_base_seconds, created_at, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, 'migration-v11')
+      `).run(
+        definition.key,
+        definition.label,
+        definition.description,
+        definition.enabled ? 1 : 0,
+        definition.recipientMode,
+        definition.retentionDays,
+        definition.maxAttempts,
+        definition.retryBaseSeconds,
+        timestamp,
+        timestamp
+      );
+      const template = db.prepare(`
+        INSERT OR IGNORE INTO notification_templates (
+          category, subject_template, text_template, html_template,
+          created_at, updated_at, updated_by
+        ) VALUES (?, ?, ?, ?, ?, ?, 'migration-v11')
+      `).run(
+        definition.key,
+        definition.subjectTemplate,
+        definition.textTemplate,
+        definition.htmlTemplate,
+        timestamp,
+        timestamp
+      );
+      return {
+        category: definition.key,
+        defaultEnabled: definition.enabled,
+        seededPolicy: Number(
+          policy.changes ?? 0
+        ),
+        seededTemplate: Number(
+          template.changes ?? 0
+        )
+      };
+    }
+  },
+  {
+    version: 12,
+    name: "privacy-preserving-visitor-analytics",
+    checksum: "2026-08-visitor-analytics-privacy-v1",
+    apply(db) {
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS visitor_sessions (
+          id TEXT PRIMARY KEY,
+          session_token TEXT NOT NULL UNIQUE,
+          first_path TEXT NOT NULL,
+          last_path TEXT NOT NULL,
+          referrer TEXT,
+          host TEXT,
+          country_code TEXT,
+          city TEXT,
+          region TEXT,
+          latitude REAL,
+          longitude REAL,
+          ip_hash TEXT,
+          cf_ray TEXT,
+          user_agent TEXT,
+          visit_count INTEGER NOT NULL DEFAULT 1,
+          first_seen_at TEXT NOT NULL,
+          last_seen_at TEXT NOT NULL
+        ) STRICT;
+      `);
+
+      const addedColumns: string[] = [];
+      const add = (column: string, definition: string) => {
+        if (addColumn(db, "visitor_sessions", column, definition)) {
+          addedColumns.push(column);
+        }
+      };
+      add("visitor_pseudonym", "TEXT");
+      add("session_pseudonym", "TEXT");
+      add("pseudonym_key_id", "TEXT NOT NULL DEFAULT 'legacy'");
+      add("referrer_host", "TEXT");
+      add(
+        "device_class",
+        "TEXT NOT NULL DEFAULT 'unknown' CHECK (device_class IN ('desktop', 'mobile', 'tablet', 'other', 'unknown'))"
+      );
+
+      db.exec(`
+        CREATE TABLE IF NOT EXISTS visitor_pageviews (
+          id TEXT PRIMARY KEY,
+          session_id TEXT NOT NULL,
+          visitor_pseudonym TEXT NOT NULL,
+          pseudonym_key_id TEXT NOT NULL,
+          path TEXT NOT NULL,
+          referrer_host TEXT,
+          country_code TEXT,
+          city TEXT,
+          region TEXT,
+          device_class TEXT NOT NULL DEFAULT 'unknown' CHECK (device_class IN ('desktop', 'mobile', 'tablet', 'other', 'unknown')),
+          occurred_at TEXT NOT NULL,
+          FOREIGN KEY (session_id) REFERENCES visitor_sessions(id) ON DELETE CASCADE,
+          UNIQUE (session_id, path)
+        ) STRICT;
+
+        CREATE TABLE IF NOT EXISTS visitor_analytics_policy (
+          id TEXT PRIMARY KEY CHECK (id = 'default'),
+          enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+          retention_days INTEGER NOT NULL DEFAULT 90 CHECK (retention_days BETWEEN 1 AND 730),
+          store_city INTEGER NOT NULL DEFAULT 1 CHECK (store_city IN (0, 1)),
+          store_referrer INTEGER NOT NULL DEFAULT 1 CHECK (store_referrer IN (0, 1)),
+          updated_at TEXT NOT NULL,
+          updated_by TEXT
+        ) STRICT;
+
+        CREATE INDEX IF NOT EXISTS idx_visitor_sessions_last_seen
+          ON visitor_sessions(last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_sessions_pseudonym
+          ON visitor_sessions(pseudonym_key_id, visitor_pseudonym, last_seen_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_occurred
+          ON visitor_pageviews(occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_visitor
+          ON visitor_pageviews(pseudonym_key_id, visitor_pseudonym, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_visitor_pageviews_country
+          ON visitor_pageviews(country_code, occurred_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_created
+          ON admin_edit_audit(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_operation
+          ON admin_edit_audit(operation, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_admin_edit_audit_entity
+          ON admin_edit_audit(entity_type, created_at DESC);
+      `);
+
+      const timestamp = nowIso();
+      db.prepare(`
+        INSERT OR IGNORE INTO visitor_analytics_policy (
+          id, enabled, retention_days, store_city,
+          store_referrer, updated_at, updated_by
+        ) VALUES ('default', 1, 90, 1, 1, ?, 'migration-v12')
+      `).run(timestamp);
+
+      const legacySensitive = db.prepare(`
+        SELECT
+          SUM(CASE WHEN ip_hash IS NOT NULL THEN 1 ELSE 0 END) AS ipHashes,
+          SUM(CASE WHEN user_agent IS NOT NULL THEN 1 ELSE 0 END) AS userAgents,
+          SUM(CASE WHEN referrer IS NOT NULL THEN 1 ELSE 0 END) AS referrers,
+          COUNT(*) AS sessions
+        FROM visitor_sessions
+      `).get() as Record<string, unknown>;
+
+      db.exec(`
+        UPDATE visitor_sessions
+        SET session_token = 'legacy:' || id,
+            session_pseudonym = COALESCE(NULLIF(session_pseudonym, ''), 'legacy:' || id),
+            visitor_pseudonym = COALESCE(NULLIF(visitor_pseudonym, ''), 'legacy:' || id),
+            pseudonym_key_id = COALESCE(NULLIF(pseudonym_key_id, ''), 'legacy'),
+            referrer = NULL,
+            referrer_host = NULL,
+            latitude = NULL,
+            longitude = NULL,
+            ip_hash = NULL,
+            cf_ray = NULL,
+            user_agent = NULL,
+            device_class = COALESCE(NULLIF(device_class, ''), 'unknown');
+      `);
+
+      const auditRows = db.prepare(`
+        SELECT id, before_json AS beforeJson, after_json AS afterJson
+        FROM admin_edit_audit
+      `).all() as Array<Record<string, unknown>>;
+      const updateAudit = db.prepare(`
+        UPDATE admin_edit_audit
+        SET before_json = ?, after_json = ?
+        WHERE id = ?
+      `);
+      let redactedAudits = 0;
+      for (const row of auditRows) {
+        const before = readJson<unknown>(row.beforeJson, null);
+        const after = readJson<unknown>(row.afterJson, null);
+        const redactedBefore = redactAuditPayload(before);
+        const redactedAfter = redactAuditPayload(after);
+        const beforeJson = JSON.stringify(redactedBefore);
+        const afterJson = JSON.stringify(redactedAfter);
+        if (
+          beforeJson !== String(row.beforeJson) ||
+          afterJson !== String(row.afterJson)
+        ) {
+          updateAudit.run(beforeJson, afterJson, String(row.id));
+          redactedAudits += 1;
+        }
+      }
+
+      return {
+        tables: [
+          "visitor_sessions",
+          "visitor_pageviews",
+          "visitor_analytics_policy"
+        ],
+        addedColumns,
+        legacySessions: Number(legacySensitive.sessions ?? 0),
+        scrubbedIpHashes: Number(legacySensitive.ipHashes ?? 0),
+        scrubbedUserAgents: Number(legacySensitive.userAgents ?? 0),
+        scrubbedReferrers: Number(legacySensitive.referrers ?? 0),
+        redactedAudits
+      };
+    }
+  },
+  {
+    version: 13,
+    name: "site-search-fts5-v1",
+    checksum: "2026-08-site-search-fts5-v1",
+    apply(db) {
+      const status = installSearchIndexInDatabase(db);
+      return {
+        table: "site_search_fts",
+        stateTable: "site_search_index_state",
+        schemaVersion: status.schemaVersion,
+        triggerVersion: status.triggerVersion,
+        indexedDocuments: status.indexedDocuments,
+        expectedDocuments: status.expectedDocuments,
+        synchronized: status.synchronized,
+        integrityStatus: status.integrityStatus
+      };
+    }
   }
 ];
 
-export function applySchemaMigrations(db: DatabaseSync): SchemaMigrationResult {
+export function applySchemaMigrations(
+  db: DatabaseSync,
+  options: SchemaMigrationOptions = {}
+): SchemaMigrationResult {
+  const throughVersion =
+    options.throughVersion ??
+    Number.POSITIVE_INFINITY;
+  if (
+    throughVersion !==
+      Number.POSITIVE_INFINITY &&
+    (
+      !Number.isInteger(throughVersion) ||
+      throughVersion < 1
+    )
+  ) {
+    throw new Error(
+      "Migration throughVersion must be a positive integer."
+    );
+  }
   db.exec(`
     CREATE TABLE IF NOT EXISTS schema_migrations (
       version INTEGER PRIMARY KEY,
@@ -382,6 +1038,11 @@ export function applySchemaMigrations(db: DatabaseSync): SchemaMigrationResult {
   const byVersion = new Map(current.map((row) => [Number(row.version), row]));
 
   for (const migration of migrations) {
+    if (
+      migration.version > throughVersion
+    ) {
+      continue;
+    }
     const existing = byVersion.get(migration.version);
     if (existing) {
       if (String(existing.name) !== migration.name || String(existing.checksum) !== migration.checksum) {

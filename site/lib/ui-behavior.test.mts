@@ -1,8 +1,19 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { browserOperationId } from "./browser-id.ts";
 import { secureCookieRequired } from "./cookie-policy.ts";
-import { clampLightboxZoom, clampPanOffset, isNavigationCurrent } from "./ui-behavior.ts";
+import {
+  formatDate,
+  formatDateTime,
+  WOODSHOP_TIME_ZONE
+} from "./format.ts";
+import {
+  clampLightboxZoom,
+  clampPanOffset,
+  isNavigationCurrent,
+  shouldFreezeHeaderForVisualCapture
+} from "./ui-behavior.ts";
 
 test("production cookies stay secure outside an explicitly isolated HTTP audit", () => {
   assert.equal(secureCookieRequired({ NODE_ENV: "production" }), true);
@@ -45,6 +56,12 @@ test("navigation current state matches exact roots and nested routes", () => {
   assert.equal(isNavigationCurrent("/about", "//example.com"), false);
 });
 
+test("header motion freezes only for an explicit visual capture", () => {
+  assert.equal(shouldFreezeHeaderForVisualCapture({}), false);
+  assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "false" }), false);
+  assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "true" }), true);
+});
+
 test("lightbox zoom and pan stay within visible bounds", () => {
   assert.equal(clampLightboxZoom(0.4), 1);
   assert.equal(clampLightboxZoom(2.12), 2);
@@ -52,4 +69,50 @@ test("lightbox zoom and pan stay within visible bounds", () => {
   assert.deepEqual(clampPanOffset({ x: 80, y: -60 }, 1, { width: 400, height: 300 }), { x: 0, y: 0 });
   assert.deepEqual(clampPanOffset({ x: 999, y: -999 }, 2, { width: 400, height: 300 }), { x: 200, y: -150 });
   assert.deepEqual(clampPanOffset({ x: Number.NaN, y: Number.POSITIVE_INFINITY }, 2, { width: 400, height: 300 }), { x: 0, y: 0 });
+});
+
+test("woodshop dates are stable across server host timezones", () => {
+  const originalTimezone = process.env.TZ;
+  const outputs = new Set<string>();
+
+  try {
+    for (const timezone of ["UTC", "Pacific/Honolulu", "Asia/Tokyo"]) {
+      process.env.TZ = timezone;
+      outputs.add(formatDateTime("2026-08-22T06:30:00.000Z"));
+    }
+  } finally {
+    if (originalTimezone === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTimezone;
+    }
+  }
+
+  assert.equal(WOODSHOP_TIME_ZONE, "America/Los_Angeles");
+  assert.deepEqual([...outputs], ["Aug 21, 2026, 11:30 PM"]);
+  assert.equal(formatDate("2026-08-22T06:30:00.000Z"), "August 21, 2026");
+});
+
+test("search result cards cannot expand the document for unbroken metadata", async () => {
+  const [styles, page] = await Promise.all([
+    readFile(new URL("../app/ui-repair.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/search/page.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(page, /className="search-results"/);
+  assert.match(page, /className="studio-panel"/);
+  assert.match(styles, /\.search-results > \.studio-panel\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.search-results :where\(h2, a, p\)\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(styles, /\.search-result-status\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+});
+
+test("Studio persistence diagnostics cannot expand cards or the document", async () => {
+  const [styles, page] = await Promise.all([
+    readFile(new URL("../app/globals.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/studio/page.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(page, /persistence-status-card/);
+  assert.match(styles, /\.studio-panel,\s*\.request-panel\s*\{[^}]*min-width:\s*0/s);
+  assert.match(styles, /\.estimate-list dd,\s*\.detail-list dd\s*\{[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere/s);
 });

@@ -10,6 +10,9 @@ export const SCROLL_CAPTURE_STABILITY_CSS = `
     content-visibility: visible !important;
     contain-intrinsic-size: none !important;
   }
+  html[data-audit-scroll-container-capture="true"] [data-audit-original-position="fixed"] {
+    visibility: hidden !important;
+  }
 `;
 
 export function changedScrollSurfaceDimensions(

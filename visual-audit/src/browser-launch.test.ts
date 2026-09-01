@@ -12,6 +12,7 @@ test("Chromium uses container shared memory for long archive runs", () => {
     false
   );
   assert.equal(options.args?.includes("--enable-gpu"), false);
+  assert.equal(options.args?.includes("--disable-quic"), true);
 });
 
 test("an explicitly selected browser channel is preserved", () => {
@@ -22,14 +23,14 @@ test("an explicitly selected browser channel is preserved", () => {
 test("benchmark GPU candidates use explicit auditable backend flags", () => {
   assert.deepEqual(
     chromiumLaunchOptions(undefined, "swiftshader").args,
-    ["--hide-scrollbars=false", "--enable-gpu", "--use-gl=angle", "--use-angle=swiftshader"]
+    ["--hide-scrollbars=false", "--disable-quic", "--enable-gpu", "--use-gl=angle", "--use-angle=swiftshader"]
   );
   assert.deepEqual(
     chromiumLaunchOptions(undefined, "cuda-vulkan").args,
-    ["--hide-scrollbars=false", "--enable-gpu", "--use-angle=vulkan", "--enable-features=Vulkan", "--disable-vulkan-surface", "--ignore-gpu-blocklist"]
+    ["--hide-scrollbars=false", "--disable-quic", "--enable-gpu", "--use-angle=vulkan", "--enable-features=Vulkan", "--disable-vulkan-surface", "--ignore-gpu-blocklist"]
   );
   assert.deepEqual(
     chromiumLaunchOptions(undefined, "cuda-gl").args,
-    ["--hide-scrollbars=false", "--enable-gpu", "--use-gl=angle", "--use-angle=gl", "--ignore-gpu-blocklist"]
+    ["--hide-scrollbars=false", "--disable-quic", "--enable-gpu", "--use-gl=angle", "--use-angle=gl", "--ignore-gpu-blocklist"]
   );
 });

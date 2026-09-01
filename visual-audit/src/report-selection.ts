@@ -1,9 +1,9 @@
 import type { CaptureRecord } from "./types.js";
 
 export const REPORT_SELECTION_POLICY = {
-  version: 1,
+  version: 2,
   maxCapturesPerRoute: 16,
-  description: "The restricted raw PNG archive and searchable HTML retain every capture. Print/PDF and shareable editions select deterministic route, theme, viewport, accessibility, and deep-state representatives.",
+  description: "The manifest retains every logical and behavioral observation. Durable PNGs are deterministic visual sentinels, and print/PDF and shareable editions select bounded route, theme, viewport, accessibility, and deep-state representatives from that materialized set.",
   viewportStates: [
     "desktop-1440:dark",
     "desktop-1440:light",

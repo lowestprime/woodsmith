@@ -10,15 +10,22 @@ import {
   type ValidateTileManifestResult,
   type ValidationFinding
 } from "./artifact-tasks.js";
+import { artifactIoFailures, type ArtifactIoSummary } from "./artifact-io.js";
 import { config, viewports } from "./config.js";
 import {
   canonicalCoverageMatrix,
+  concreteRouteCoverageMatrix,
   discoveredCoverageMatrix
 } from "./coverage-matrix.js";
 import { isKnownExpectedDiagnostic } from "./diagnostics.js";
+import { EVIDENCE_CONTRACT_VERSION, routeFamilyKey } from "./evidence-contract.js";
+import type { DependencyLedger } from "./dependency-ledger.js";
 import { buildNoOverlapReport, type NoOverlapReport } from "./media-overlap.js";
 import { buildMediaEvidenceReports } from "./media-evidence.js";
+import { logicalLedgerFailures } from "./logical-ledger.js";
+import { inspectPdfStructure } from "./pdf-validation.js";
 import { snapshotLabEvidenceFailures } from "./snapshot-lab-evidence.js";
+import type { RuntimeBudget } from "./runtime-budget.js";
 import type { RunManifest } from "./types.js";
 import { exists, listFiles, relativeTo, writeJsonAtomic } from "./util.js";
 
@@ -41,13 +48,12 @@ async function validatePdf(file: string, failures: string[]) {
     failures.push(`Compiled PDF is missing: ${relativeTo(config.runRoot, file)}`);
     return 0;
   }
-  const data = await fs.readFile(file);
-  if (!data.subarray(0, 5).equals(Buffer.from("%PDF-"))) failures.push(`Invalid PDF header: ${relativeTo(config.runRoot, file)}`);
-  const text = data.toString("latin1");
-  const pageCount = (text.match(/\/Type\s*\/Page\b/g) ?? []).length;
-  if (pageCount < 1) failures.push(`PDF contains no detectable pages: ${relativeTo(config.runRoot, file)}`);
-  if (!/\/Outlines\b/.test(text)) failures.push(`PDF does not contain an outline/bookmark tree: ${relativeTo(config.runRoot, file)}`);
-  return pageCount;
+  const inspection = await inspectPdfStructure(file);
+  if (!inspection.validHeader) failures.push(`Invalid PDF header: ${relativeTo(config.runRoot, file)}`);
+  if (!inspection.hasEof) failures.push(`PDF does not contain a near-tail EOF marker: ${relativeTo(config.runRoot, file)}`);
+  if (inspection.pageCount < 1) failures.push(`PDF contains no detectable pages: ${relativeTo(config.runRoot, file)}`);
+  if (!inspection.hasOutlines) failures.push(`PDF does not contain an outline/bookmark tree: ${relativeTo(config.runRoot, file)}`);
+  return inspection.pageCount;
 }
 
 function appendCanonicalFindings(failures: string[], findings: ValidationFinding[]) {
@@ -163,29 +169,87 @@ async function main() {
   const manifest = JSON.parse(await fs.readFile(manifestFile, "utf8")) as RunManifest;
   const failures: string[] = [];
 
-  if (manifest.schemaVersion !== 5) failures.push("Manifest schema version is not the current evidence-tier version.");
+  if (manifest.schemaVersion !== 6) failures.push("Manifest schema version is not the current evidence-contract version.");
   if (!manifest.completedAt) failures.push("Manifest does not contain completedAt.");
   if (manifest.runId !== config.runId) failures.push("Manifest run ID does not match AUDIT_RUN_ID.");
   if (manifest.mode !== config.targetMode) failures.push("Manifest mode does not match TARGET_MODE.");
   if (manifest.evidenceTier !== config.evidenceTier) failures.push("Manifest evidence tier does not match AUDIT_EVIDENCE_TIER.");
   if (manifest.deployedCommit !== "unknown" && manifest.deployedCommit !== manifest.expectedCommit) failures.push(`Commit mismatch: expected ${manifest.expectedCommit}, deployed ${manifest.deployedCommit}.`);
-  if (manifest.inventory.schemaVersion !== 2 || !manifest.inventory.mediaEvidence) failures.push("Manifest inventory is not the required schema-v2 media-aware inventory.");
+  if (manifest.inventory.schemaVersion !== 3 || !manifest.inventory.mediaEvidence || !manifest.inventory.studioViews) failures.push("Manifest inventory is not the required schema-v3 media and Studio-state inventory.");
   if (manifest.inventory.limits.truncatedCollections.length > 0) failures.push(`Inventory collections were truncated: ${manifest.inventory.limits.truncatedCollections.join(", ")}.`);
+  const observations = manifest.observations ?? [];
+  if (observations.length === 0) failures.push("Manifest contains no logical state observations.");
   if (manifest.captures.length === 0) failures.push("Manifest contains no captures.");
+  failures.push(...logicalLedgerFailures({
+    observations,
+    captures: manifest.captures,
+    completedKeys: manifest.completedKeys
+  }));
+  if (!manifest.evidenceContract || manifest.evidenceContract.logicalCoverage !== "full" || manifest.evidenceContract.behavioralValidation !== "full") {
+    failures.push("Manifest does not declare the full logical and behavioral evidence contract.");
+  }
+  if (manifest.evidenceContract?.version !== EVIDENCE_CONTRACT_VERSION) failures.push("Manifest evidence-contract version is not current.");
+  const dependencyLedgerFile = path.join(config.runRoot, manifest.evidenceContract?.dependencyLedgerFile ?? "dependency-ledger.json");
+  const dependencyLedger = await fs.readFile(dependencyLedgerFile, "utf8")
+    .then((text) => JSON.parse(text) as DependencyLedger)
+    .catch(() => null);
+  if (!dependencyLedger) failures.push("Dependency ledger is missing or invalid.");
+  const runtimeBudgetFile = path.join(config.runRoot, manifest.evidenceContract?.runtimeBudgetFile ?? "runtime-budget.json");
+  const runtimeBudget = await fs.readFile(runtimeBudgetFile, "utf8")
+    .then((text) => (JSON.parse(text) as { budget?: RuntimeBudget }).budget ?? null)
+    .catch(() => null);
+  if (!runtimeBudget) failures.push("Runtime budget is missing or invalid.");
+  else if (!runtimeBudget.withinHardLimit) failures.push("Runtime budget exceeded its hard diagnostic bound before capture.");
+  if (manifest.completedAt) {
+    const elapsedMinutes = (Date.parse(manifest.completedAt) - Date.parse(manifest.startedAt)) / 60_000;
+    if (runtimeBudget && elapsedMinutes > runtimeBudget.hardLimitMinutes) {
+      failures.push(`Actual capture runtime ${elapsedMinutes.toFixed(2)} minutes exceeded the ${runtimeBudget.hardLimitMinutes}-minute hard bound.`);
+    }
+  }
+  const artifactIo = await fs.readFile(path.join(config.runRoot, "artifact-io.json"), "utf8")
+    .then((text) => JSON.parse(text) as ArtifactIoSummary)
+    .catch(() => null);
+  if (!artifactIo) failures.push("Artifact I/O accounting is missing or invalid.");
+  else failures.push(...artifactIoFailures({
+    summary: artifactIo,
+    selectedObservationCount: observations.filter((observation) => observation.materializationReasons.length > 0).length,
+    materializedFileCount: manifest.captures.reduce((total, capture) => total + capture.files.length, 0)
+  }));
   validateAcceleration(manifest, failures);
   await validateNoOverlapReport(manifest, failures);
   await validateMediaEvidenceReports(manifest, failures);
   failures.push(...snapshotLabEvidenceFailures({
     targetMode: config.targetMode,
-    captureStates: manifest.captures.map((capture) => capture.state),
-    successfulUnsafeRequests: manifest.security.successfulUnsafeRequests
+    captureStates: observations.map((observation) => observation.state),
+    successfulUnsafeRequests: manifest.security.successfulUnsafeRequests,
+    projectCount: manifest.inventory.counts.projects
   }));
 
-  const captureKeys = new Set<string>();
+  const observationKeys = new Set<string>();
+  const observationsByRouteState = new Map<string, typeof observations>();
+  const observationMatrixKeys = new Set<string>();
+  for (const observation of observations) {
+    observationKeys.add(observation.key);
+    const key = `${observation.auth}::${observation.route}::${observation.theme}::${observation.viewport}`;
+    observationsByRouteState.set(key, [...(observationsByRouteState.get(key) ?? []), observation]);
+    observationMatrixKeys.add(key);
+    if (!observation.evidenceIdentity || observation.evidenceIdentity.digest.length !== 64) failures.push(`Observation has no valid evidence identity: ${observation.key}`);
+    if (dependencyLedger && (
+      observation.evidenceIdentity.appCommit !== dependencyLedger.appCommit ||
+      observation.evidenceIdentity.auditCommit !== dependencyLedger.auditCommit ||
+      observation.evidenceIdentity.cssThemeHash !== dependencyLedger.cssThemeHash ||
+      observation.evidenceIdentity.dataHash !== dependencyLedger.dataHash ||
+      observation.evidenceIdentity.mediaHash !== dependencyLedger.mediaHash ||
+      observation.evidenceIdentity.browserIdentity !== dependencyLedger.browserIdentity ||
+      observation.evidenceIdentity.routeDependencyHash !== (dependencyLedger.routeFamilies[routeFamilyKey(observation.route)] ?? dependencyLedger.sharedSourceHash)
+    )) failures.push(`Observation dependency identity does not match the run ledger: ${observation.key}`);
+    if (!observation.passed) failures.push(`Behavioral invariant failed for ${observation.key}: ${observation.findings.join(", ") || "unspecified"}.`);
+  }
+
   for (const capture of manifest.captures) {
-    if (captureKeys.has(capture.key)) failures.push(`Duplicate capture key: ${capture.key}`);
-    captureKeys.add(capture.key);
     if (capture.files.length === 0) failures.push(`Capture has no files: ${capture.key}`);
+    if (!capture.files.every((file) => file.startsWith("artifacts/sha256/"))) failures.push(`Capture does not use content-addressed storage: ${capture.key}`);
+    if ((capture.artifactSha256?.length ?? 0) !== capture.files.length) failures.push(`Capture artifact digest count is inconsistent: ${capture.key}`);
     for (const relativeFile of capture.files) {
       const absolute = path.join(config.runRoot, relativeFile);
       if (!await exists(absolute)) {
@@ -195,27 +259,26 @@ async function main() {
   }
 
   const capturesByRouteState = new Map<string, typeof manifest.captures>();
-  const captureMatrixKeys = new Set<string>();
   for (const capture of manifest.captures) {
     const key = `${capture.auth}::${capture.route}::${capture.theme}::${capture.viewport}`;
     capturesByRouteState.set(key, [...(capturesByRouteState.get(key) ?? []), capture]);
-    captureMatrixKeys.add(key);
   }
 
   for (const route of manifest.routes) {
     const missingRoute = route.route.includes("__visual-audit-route-not-found__");
     if (route.status == null) failures.push(`Route did not return a response: ${route.auth} ${route.route}`);
     else if (route.status >= 400 && !(missingRoute && route.status === 404)) failures.push(`Unexpected HTTP ${route.status}: ${route.auth} ${route.route}`);
-    const routeCaptures = capturesByRouteState.get(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`) ?? [];
-    if (routeCaptures.length === 0) failures.push(`Route has no successful capture: ${route.auth} ${route.route}`);
+    const routeObservations = observationsByRouteState.get(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`) ?? [];
+    if (routeObservations.length === 0) failures.push(`Route has no logical observation: ${route.auth} ${route.route}`);
     for (const state of ["skip-link-focused", "skip-link-activated-main-focus"]) {
-      if (!routeCaptures.some((capture) => capture.state === state)) {
+      if (!routeObservations.some((observation) => observation.state === state)) {
         failures.push(`Route is missing ${state} accessibility evidence: ${route.auth} ${route.route} ${route.theme}/${route.viewport}`);
       }
     }
   }
 
   const matrixRoutes = new Map<string, typeof manifest.routes>();
+  const familySentinels = new Set(manifest.evidenceContract?.routeFamilySentinels ?? []);
   for (const route of manifest.routes.filter((item) => !item.route.includes("auditState="))) {
     const key = `${route.auth}::${route.route}`;
     matrixRoutes.set(key, [...(matrixRoutes.get(key) ?? []), route]);
@@ -229,16 +292,20 @@ async function main() {
         : "special";
     if (tier === "special") continue;
     const expectedMatrix = tier === "canonical"
-      ? canonicalCoverageMatrix(config.scope, viewports)
-      : discoveredCoverageMatrix(config.scope, viewports);
+      ? familySentinels.has(key)
+        ? canonicalCoverageMatrix(config.scope, viewports)
+        : concreteRouteCoverageMatrix(config.scope, viewports)
+      : familySentinels.has(key)
+        ? discoveredCoverageMatrix(config.scope, viewports)
+        : concreteRouteCoverageMatrix(config.scope, viewports);
 
     for (const entry of expectedMatrix) {
       const profile = entry.profile.name;
       const theme = entry.theme;
       const routeResult = results.find((item) => item.viewport === profile && item.theme === theme);
       if (!routeResult) failures.push(`${tier} coverage matrix is missing ${profile}/${theme} for ${key}.`);
-      else if (!captureMatrixKeys.has(`${routeResult.auth}::${routeResult.route}::${theme}::${profile}`)) {
-        failures.push(`${tier} coverage matrix has no successful capture for ${profile}/${theme} ${key}.`);
+      else if (!observationMatrixKeys.has(`${routeResult.auth}::${routeResult.route}::${theme}::${profile}`)) {
+        failures.push(`${tier} coverage matrix has no successful logical observation for ${profile}/${theme} ${key}.`);
       }
     }
   }
@@ -250,25 +317,61 @@ async function main() {
     }
   }
 
-  for (const route of manifest.routes.filter((item) => item.deep && item.surfaces)) {
-    const captures = capturesByRouteState.get(`${route.auth}::${route.route}::${route.theme}::${route.viewport}`) ?? [];
-    const hasState = (prefix: string) => captures.some((capture) => capture.state.startsWith(prefix));
+  const observationsByFamily = new Map<string, typeof observations>();
+  for (const observation of observations) {
+    const key = `${observation.auth}::${routeFamilyKey(observation.route)}`;
+    observationsByFamily.set(key, [...(observationsByFamily.get(key) ?? []), observation]);
+  }
+  for (const route of manifest.routes.filter((item) => item.deep && item.surfaces && familySentinels.has(`${item.auth}::${item.route}`))) {
+    const routeObservations = observationsByFamily.get(`${route.auth}::${routeFamilyKey(route.route)}`) ?? [];
+    const hasState = (prefix: string) => routeObservations.some((observation) => observation.state.startsWith(prefix));
     if (route.surfaces!.details > 0 && !hasState("all-details-open")) failures.push(`Deep coverage missed disclosures for ${route.auth} ${route.route}.`);
     if (route.surfaces!.lightboxOpeners > 0 && !hasState("lightbox-")) failures.push(`Deep coverage missed lightboxes for ${route.auth} ${route.route}.`);
     if (route.surfaces!.mediaPickerOpeners > 0 && !hasState("media-picker-")) failures.push(`Deep coverage missed media pickers for ${route.auth} ${route.route}.`);
     if (route.auth === "admin" && route.surfaces!.inlineEditLinks > 0 && !hasState("inline-section-")) failures.push(`Deep coverage missed inline-edit states for ${route.route}.`);
     if (route.auth === "admin" && route.surfaces!.studioCards > 0 && !hasState("studio-editor-")) failures.push(`Deep coverage missed Studio record editors for ${route.route}.`);
-    if (config.targetMode === "snapshot-lab" && route.surfaces!.validationForms > 0 && !hasState("form-")) failures.push(`Snapshot-lab deep coverage missed form validation for ${route.route}.`);
+    if (config.targetMode === "snapshot-lab" && route.surfaces!.validationForms > 0 && !hasState("form-")) {
+      failures.push(`Snapshot-lab deep coverage missed form validation for ${route.auth} ${route.route} (${route.theme}/${route.viewport}).`);
+    }
     if (route.surfaces!.visualizer && !hasState("visualizer-")) failures.push(`Deep coverage missed commission visualizer states for ${route.route}.`);
     if (route.surfaces!.interactiveElements > 0 && !hasState("element-")) failures.push(`Deep coverage missed the element atlas for ${route.auth} ${route.route}.`);
-    if (route.surfaces!.scrollContainers > 0 && !captures.some((capture) => capture.files.some((file) => file.includes("__scroll-")))) {
-      failures.push(`Deep coverage missed nested scroll surfaces for ${route.auth} ${route.route}.`);
+    if (route.surfaces!.scrollContainers > 0 && !hasState("full-page-default")) {
+      failures.push(`Deep coverage missed nested-scroll logical evidence for ${route.auth} ${route.route}.`);
     }
   }
 
   const expectedProfiles = config.scope === "smoke" ? ["desktop-1440"] : viewports.map((viewport) => viewport.name);
   for (const profile of expectedProfiles) {
-    if (!manifest.captures.some((capture) => capture.viewport === profile)) failures.push(`Required viewport has no captures: ${profile}`);
+    if (!observations.some((observation) => observation.viewport === profile)) failures.push(`Required viewport has no logical observations: ${profile}`);
+  }
+
+  for (const sentinel of manifest.evidenceContract?.routeFamilySentinels ?? []) {
+    const [auth, ...routeParts] = sentinel.split("::");
+    const route = routeParts.join("::");
+    if (!manifest.captures.some((capture) => capture.auth === auth && capture.route === route)) {
+      failures.push(`Route-family sentinel has no durable visual materialization: ${sentinel}`);
+    }
+  }
+
+  const latestSpecialTasks = new Map<string, NonNullable<RunManifest["specialTasks"]>[number]>();
+  for (const task of manifest.specialTasks ?? []) latestSpecialTasks.set(task.key, task);
+  const coveragePlanFile = path.join(config.runRoot, "coverage-plan.json");
+  const specialTaskPlan = await fs.readFile(coveragePlanFile, "utf8")
+    .then((text) => (JSON.parse(text) as { specialTaskPlan?: { count?: number; keys?: string[]; shardCount?: number } }).specialTaskPlan ?? null)
+    .catch(() => null);
+  if (!specialTaskPlan || !Array.isArray(specialTaskPlan.keys)) failures.push("Coverage plan has no deterministic special-task plan.");
+  else {
+    if (specialTaskPlan.shardCount !== 1) failures.push("A final run requires an authoritative merged special-task envelope, not an individual shard.");
+    if (specialTaskPlan.count !== specialTaskPlan.keys.length || new Set(specialTaskPlan.keys).size !== specialTaskPlan.keys.length) {
+      failures.push("Special-task plan count or uniqueness is invalid.");
+    }
+    for (const key of specialTaskPlan.keys) {
+      const task = latestSpecialTasks.get(key);
+      if (!task || task.status !== "completed") failures.push(`Special task did not complete: ${key} (${task?.status ?? "missing"}).`);
+    }
+    for (const key of latestSpecialTasks.keys()) {
+      if (!specialTaskPlan.keys.includes(key)) failures.push(`Special-task ledger contains an unplanned key: ${key}.`);
+    }
   }
 
   const unexpectedDiagnostics = manifest.diagnostics.filter((record) =>
@@ -277,6 +380,9 @@ async function main() {
   );
   if (config.strictDiagnostics && unexpectedDiagnostics.length > 0) {
     failures.push(`${unexpectedDiagnostics.length} unexpected browser/network diagnostic(s) were recorded.`);
+  }
+  if (manifest.security.crossOriginRequests > 0) {
+    failures.push(`${manifest.security.crossOriginRequests} unapproved cross-origin request(s) were blocked.`);
   }
   if (config.targetMode === "live-readonly" && manifest.security.successfulUnsafeRequests > 0) failures.push("Live read-only capture recorded a successful unsafe request.");
   if (config.targetMode === "live-readonly" && manifest.diagnostics.some((record) => record.type === "security" && !record.expected)) failures.push("Live read-only capture recorded an unsafe security diagnostic.");
@@ -331,8 +437,9 @@ async function main() {
   const reportIndexFile = path.join(config.runRoot, "report", "report-index.json");
   if (!await exists(reportIndexFile)) failures.push("Report index is missing.");
   const reportIndex = await exists(reportIndexFile)
-    ? JSON.parse(await fs.readFile(reportIndexFile, "utf8")) as {
+      ? JSON.parse(await fs.readFile(reportIndexFile, "utf8")) as {
         sourceCaptureCount?: number;
+        sourceObservationCount?: number;
         captureCount?: number;
         shareableSourceCaptureCount?: number;
         shareableCaptureCount?: number;
@@ -345,6 +452,7 @@ async function main() {
   if (await exists(selectionFile)) {
     const selection = JSON.parse(await fs.readFile(selectionFile, "utf8")) as {
       sourceCaptureCount?: number;
+      sourceObservationCount?: number;
       selectedCaptureCount?: number;
       selectedKeys?: string[];
       missingRoutes?: string[];
@@ -357,12 +465,16 @@ async function main() {
     const sourceRoutes = new Set(manifest.captures.map((capture) => `${capture.auth}::${capture.route}`));
 
     if (selection.sourceCaptureCount !== manifest.captures.length) failures.push("Report selection source count does not match the manifest.");
+    if (selection.sourceObservationCount !== (manifest.observations?.length ?? 0)) failures.push("Report selection logical observation count does not match the manifest.");
     if (selection.selectedCaptureCount !== selectedKeys.size || selectedKeys.size === 0) failures.push("Report selection count is empty or inconsistent.");
     if ([...selectedKeys].some((key) => !manifestKeys.has(key))) failures.push("Report selection references an unknown capture key.");
     if ([...sourceRoutes].some((route) => !selectedRoutes.has(route))) failures.push("Report selection omitted one or more source routes.");
     if ((selection.missingRoutes ?? []).length > 0) failures.push("Report selection recorded missing routes.");
     if (reportIndex.sourceCaptureCount !== manifest.captures.length || reportIndex.captureCount !== selectedKeys.size) {
       failures.push("Report index capture counts do not match the representative selection.");
+    }
+    if (reportIndex.sourceObservationCount !== (manifest.observations?.length ?? 0)) {
+      failures.push("Report index logical observation count does not match the manifest.");
     }
   }
   await Promise.all([

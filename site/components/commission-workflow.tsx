@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
 import { submitContactRequestAction } from "@/lib/actions";
 import { browserOperationId } from "@/lib/browser-id";
+import { firstInvalidCommissionControl } from "@/lib/commission-validation";
 import type { CommissionTypeRecord } from "@/lib/db";
 import { CustomWorkVisualizer3D } from "@/components/visualizer";
 
@@ -230,6 +231,30 @@ export function CommissionWorkflow({
     return true;
   }
 
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const controls = Array.from(event.currentTarget.elements).filter(
+      (field): field is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
+        field instanceof HTMLInputElement || field instanceof HTMLSelectElement || field instanceof HTMLTextAreaElement
+    );
+    const invalidField = firstInvalidCommissionControl(controls);
+    if (!invalidField) return;
+
+    event.preventDefault();
+    const section = invalidField.closest<HTMLElement>("[data-commission-step]");
+    const invalidStep = Number(section?.dataset.commissionStep);
+    if (!Number.isInteger(invalidStep) || invalidStep < 1 || invalidStep > STEPS.length) return;
+
+    setCurrentStep(invalidStep);
+    setFurthestStep((current) => Math.max(current, invalidStep));
+    setSaveStatus(`Complete ${STEPS[invalidStep - 1]} before submitting.`);
+    void persistDraft(invalidStep);
+    requestAnimationFrame(() => {
+      invalidField.scrollIntoView({ block: "center", behavior: "auto" });
+      invalidField.focus({ preventScroll: true });
+      invalidField.reportValidity();
+    });
+  }
+
   function moveTo(step: number) {
     const next = Math.max(1, Math.min(10, step));
     if (next > currentStep && !validateStep(currentStep)) return;
@@ -259,7 +284,7 @@ export function CommissionWorkflow({
   void revision;
 
   return (
-    <form action={submitContactRequestAction} className="request-form commission-workflow" onChange={scheduleAutosave} onInput={scheduleAutosave} ref={formRef}>
+    <form action={submitContactRequestAction} className="request-form commission-workflow" noValidate onChange={scheduleAutosave} onInput={scheduleAutosave} onSubmit={handleSubmit} ref={formRef}>
       <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
       <input name="draftId" type="hidden" value={draftId} />
       <input name="requestSource" type="hidden" value="commissions-workflow" />

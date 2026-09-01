@@ -1,4 +1,5 @@
-import { isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
+import { classifyCrossOriginRequest, isSameOrigin, isSyntheticVisitTelemetry, isUnsafeMethod } from "./policy.js";
+import type { DiagnosticRecord } from "./types.js";
 
 export type RequestFailureEvidence = {
   method: string;
@@ -8,6 +9,118 @@ export type RequestFailureEvidence = {
   headers: Record<string, string>;
   baseUrl: string;
 };
+
+export function markRecoveredSpecialTaskDiagnostics(
+  diagnostics: DiagnosticRecord[],
+  taskKey: string
+) {
+  const prefix = `Special task ${taskKey} (`;
+  let recovered = 0;
+  for (const diagnostic of diagnostics) {
+    if (
+      diagnostic.expected !== true &&
+      diagnostic.type === "pageerror" &&
+      diagnostic.message.startsWith(prefix)
+    ) {
+      diagnostic.expected = true;
+      recovered += 1;
+    }
+  }
+  return recovered;
+}
+
+export function isValidPartialMediaResponse(input: {
+  status: number;
+  headers: Record<string, string>;
+}) {
+  if (input.status !== 206) return false;
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.trim().toLowerCase()])
+  );
+  if (headers["accept-ranges"] !== "bytes") return false;
+
+  const match = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(headers["content-range"] ?? "");
+  if (!match) return false;
+
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  const total = Number(match[3]);
+  const length = Number(headers["content-length"]);
+  return [start, end, total, length].every(Number.isSafeInteger) &&
+    start >= 0 &&
+    end >= start &&
+    total > end &&
+    length === end - start + 1;
+}
+
+export function isExpectedCompletedMediaRangeAbort(input: RequestFailureEvidence & {
+  validPartialResponseObserved: boolean;
+}) {
+  if (!input.validPartialResponseObserved) return false;
+
+  const method = input.method.toUpperCase();
+  if (
+    !input.failure.includes("ERR_ABORTED") ||
+    !["GET", "HEAD"].includes(method) ||
+    input.resourceType !== "media" ||
+    !isSameOrigin(input.url, input.baseUrl)
+  ) {
+    return false;
+  }
+
+  const requestUrl = new URL(input.url);
+  if (!requestUrl.pathname.startsWith("/media/")) return false;
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.toLowerCase()])
+  );
+  return /^bytes=\d*-\d*$/.test(headers.range ?? "");
+}
+
+export function isExpectedBrowserManagedVisualAbort(input: RequestFailureEvidence & {
+  phase: string;
+}) {
+  const method = input.method.toUpperCase();
+  if (
+    !input.failure.includes("ERR_ABORTED") ||
+    !["GET", "HEAD"].includes(method) ||
+    !isSameOrigin(input.url, input.baseUrl)
+  ) {
+    return false;
+  }
+
+  const requestUrl = new URL(input.url);
+  if (
+    input.resourceType === "image" &&
+    (
+      ["/icon.svg", "/icon-light"].includes(requestUrl.pathname) ||
+      /^\/profiles\/[a-z0-9-]+\.svg$/.test(requestUrl.pathname)
+    )
+  ) {
+    return true;
+  }
+
+  if (
+    input.resourceType === "image" &&
+    requestUrl.pathname.startsWith("/media/") &&
+    /^capture:lightbox-(previous|next)-boundary$/.test(input.phase)
+  ) {
+    return true;
+  }
+
+  if (
+    input.resourceType !== "media" ||
+    !requestUrl.pathname.startsWith("/media/")
+  ) {
+    return false;
+  }
+
+  const headers = Object.fromEntries(
+    Object.entries(input.headers).map(([name, value]) => [name.toLowerCase(), value.toLowerCase()])
+  );
+  return /^bytes=\d*-\d*$/.test(headers.range ?? "");
+}
 
 export function requestBlockKey(method: string, url: string) {
   return `${method.toUpperCase()} ${url}`;
@@ -51,6 +164,18 @@ export function isExpectedCaptureTeardownAbort(
     isSameOrigin(evidence.url, evidence.baseUrl);
 }
 
+export function isExpectedCompletedSnapshotMutationAbort(input: {
+  targetMode: string;
+  method: string;
+  failure: string;
+  successfulResponseObserved: boolean;
+}) {
+  return input.targetMode === "snapshot-lab" &&
+    input.successfulResponseObserved &&
+    isUnsafeMethod(input.method) &&
+    input.failure.includes("ERR_ABORTED");
+}
+
 export function isExpectedAuditMutationBlock(input: {
   targetMode: string;
   method: string;
@@ -70,6 +195,24 @@ export function isExpectedAuditMutationBlock(input: {
   return input.targetMode === "live-readonly" ||
     input.targetMode === "snapshot-lab" &&
       isSyntheticVisitTelemetry(input.method, input.url, input.baseUrl);
+}
+
+export function isExpectedAuditCrossOriginBlock(input: {
+  method: string;
+  url: string;
+  baseUrl: string;
+  resourceType: string;
+  failure: string;
+  blockedRequests: ReadonlySet<string>;
+}) {
+  return input.failure.includes("ERR_BLOCKED_BY_CLIENT") &&
+    classifyCrossOriginRequest({
+      method: input.method,
+      requestUrl: input.url,
+      baseUrl: input.baseUrl,
+      resourceType: input.resourceType
+    }) === "approved-cloudflare-insights" &&
+    input.blockedRequests.has(requestBlockKey(input.method, input.url));
 }
 
 export function isExpectedAuditBlockedConsole(input: {

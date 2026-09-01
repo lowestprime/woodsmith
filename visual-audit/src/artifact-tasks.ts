@@ -274,6 +274,12 @@ async function validateTileAxis(input: {
         findings.push(finding(seamKey, `Tile seam has a ${input.axis} coverage gap in ${input.segmentFile}.`));
         continue;
       }
+      if (!previous.file || !current.file) {
+        if (!/^[a-f0-9]{64}$/.test(previous.sha256 ?? "") || !/^[a-f0-9]{64}$/.test(current.sha256 ?? "")) {
+          findings.push(finding(seamKey, `Ephemeral tile evidence is missing a valid content digest in ${input.segmentFile}.`));
+        }
+        continue;
+      }
       try {
         const difference = await overlapDifference({
           previousFile: resolveInside(input.runRoot, previous.file),
@@ -319,7 +325,7 @@ async function validateTileManifest(task: ValidateTileManifestTask): Promise<Val
     const segment = manifest.segments[segmentIndex]!;
     const sortPrefix = `${task.relativePath}|segment|${String(segmentIndex).padStart(6, "0")}`;
     if (!Array.isArray(segment.tiles) || segment.tiles.length === 0) {
-      findings.push(finding(`${sortPrefix}|tiles-empty`, `Stitched segment has no raw tiles: ${segment.file}`));
+      findings.push(finding(`${sortPrefix}|tiles-empty`, `Stitched segment has no tile geometry: ${segment.file}`));
       continue;
     }
     let output: string;
@@ -343,6 +349,15 @@ async function validateTileManifest(task: ValidateTileManifestTask): Promise<Val
     }
     for (let tileIndex = 0; tileIndex < segment.tiles.length; tileIndex += 1) {
       const tile = segment.tiles[tileIndex]!;
+      if (!/^[a-f0-9]{64}$/.test(tile.sha256 ?? "")) {
+        findings.push(finding(`${sortPrefix}|tile-digest|${String(tileIndex).padStart(6, "0")}`, `Tile evidence is missing a valid SHA-256 digest: ${segment.file}.`));
+      }
+      if (!tile.file) {
+        if (tile.retained === true || manifest.rawTilePolicy === "retain-all") {
+          findings.push(finding(`${sortPrefix}|tile-reference|${String(tileIndex).padStart(6, "0")}`, `Retained tile evidence has no file reference: ${segment.file}.`));
+        }
+        continue;
+      }
       try {
         if (!await pathExists(resolveInside(task.runRoot, tile.file))) {
           findings.push(finding(`${sortPrefix}|tile-missing|${String(tileIndex).padStart(6, "0")}`, `Raw tile is missing: ${tile.file}`));

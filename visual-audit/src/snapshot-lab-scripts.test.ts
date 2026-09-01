@@ -57,6 +57,46 @@ test(
 );
 
 test(
+  "snapshot-lab preparation creates a private writable backup parent and cleans partial state",
+  async () => {
+    const source = await readScript(
+      "prepare-snapshot-lab.sh",
+    );
+
+    assert.match(
+      source,
+      /LAB_RUN_ID.*\^\[A-Za-z0-9\]/,
+    );
+    assert.match(
+      source,
+      /BACKUP_HOST_DIR="\$\{ROOT\}\/site\/data\/\.visual-audit-backup-\$\{LAB_RUN_ID\}"/,
+    );
+    assert.match(
+      source,
+      /cleanup\(\) \{[\s\S]*rm -f -- "\$BACKUP_HOST_PATH"[\s\S]*rmdir -- "\$BACKUP_HOST_DIR"/,
+    );
+    assert.match(
+      source,
+      /status.*-ne 0[\s\S]*rm -rf -- "\$LAB_ROOT"[\s\S]*rm -rf -- "\$LAB_MEDIA_ROOT"/,
+    );
+
+    const trap = source.indexOf("trap cleanup EXIT");
+    const createBackup = source.indexOf(
+      'mkdir -m 700 -- "$BACKUP_HOST_DIR"',
+    );
+    const ownBackup = source.indexOf(
+      'chown "${runtime_uid}:${runtime_gid}" "$BACKUP_HOST_DIR"',
+    );
+    const vacuum = source.indexOf("docker_cmd exec -i -e BACKUP_PATH=");
+
+    assert.ok(trap >= 0);
+    assert.ok(createBackup > trap);
+    assert.ok(ownBackup > createBackup);
+    assert.ok(vacuum > ownBackup);
+  },
+);
+
+test(
   "snapshot-lab failure evidence is captured before disposable resources are removed",
   async () => {
     const source = await readScript(
@@ -131,5 +171,181 @@ test(
         /"\$\{compose\[@\]\}" run --rm/,
       );
     }
+  },
+);
+
+test(
+  "snapshot-lab parallelizes routes while serializing mutation handlers",
+  async () => {
+    const source = await readFile(
+      new URL("../src/run.ts", import.meta.url),
+      "utf8",
+    );
+    const scheduler = await readFile(
+      new URL("../src/capture-scheduler.ts", import.meta.url),
+      "utf8",
+    );
+
+    assert.match(source, /runMutabilityAwareCaptureTasks/);
+    assert.match(source, /workerCount: config\.captureWorkers/);
+    assert.match(
+      source,
+      /task\.kind === "route"[\s\S]*\? "read-only-independent"[\s\S]*: "ordered-mutation"/,
+    );
+    assert.match(source, /captureSnapshotLabMutationRoute/);
+    assert.doesNotMatch(
+      source,
+      /config\.targetMode === "snapshot-lab" \? 1 : config\.captureWorkers/,
+    );
+    assert.match(source, /runSerializedSnapshotLabMutation/);
+    assert.match(scheduler, /phase === "ordered-mutation" \? 1 : options\.workerCount/);
+    assert.match(source, /snapshotLabMutationMaxInFlight > 1/);
+    assert.match(source, /SNAPSHOT_LAB_MUTATION_STAGE=/);
+  },
+);
+
+test(
+  "local snapshot-lab smoke requires all v19 round trips and exact unsafe-request accounting",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /snapshotLabMutationStates !== expectedMutationStates/,
+    );
+    assert.match(
+      source,
+      /expectedUnsafeSuccessful = result\.targetMode === "snapshot-lab"[\s\S]*hasProjects \? 12 : 10/,
+    );
+  },
+);
+
+test(
+  "unknown app identity is accepted only for a live-readonly smoke",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /\$appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and\s+\$TargetMode -eq "live-readonly" -and\s+\$Scope -eq "smoke"/,
+    );
+    assert.match(
+      source,
+      /Only an unstamped live-readonly loopback smoke is permitted before commit/,
+    );
+  },
+);
+
+test(
+  "local full archives apply the measured concurrency and fail-fast budget",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(
+      source,
+      /\[ValidateRange\(1, 12\)\]\s+\[int\]\$CaptureWorkers/,
+    );
+    assert.match(source, /AUDIT_VISUAL_MATERIALIZATION=selective/);
+    assert.match(source, /AUDIT_RETAIN_RAW_TILES=false/);
+
+    for (const environmentName of [
+      "AUDIT_ROUTE_TASK_SECONDS",
+      "AUDIT_SPECIAL_TASK_SECONDS",
+      "AUDIT_MUTATION_TASK_SECONDS",
+      "AUDIT_MATERIALIZATION_SECONDS",
+      "AUDIT_REPORT_RUNTIME_SECONDS",
+      "AUDIT_VALIDATION_RUNTIME_SECONDS",
+      "AUDIT_FIXED_RUNTIME_SECONDS",
+      "AUDIT_PERSISTENT_BYTES_PER_MATERIALIZATION",
+      "AUDIT_TEMP_BYTES_PER_MATERIALIZATION",
+      "AUDIT_REPORT_ARTIFACT_MULTIPLIER",
+      "AUDIT_PROJECTED_WRITE_AMPLIFICATION_RATIO",
+      "AUDIT_TARGET_RUNTIME_MINUTES",
+      "AUDIT_HARD_RUNTIME_MINUTES",
+    ]) {
+      assert.match(
+        source,
+        new RegExp(`${environmentName}=.{0,160}\\$`),
+        `${environmentName} must be passed into every audit stage`,
+      );
+    }
+
+    assert.match(
+      source,
+      /HardRuntimeMinutes must be greater than or equal to TargetRuntimeMinutes/,
+    );
+  },
+);
+
+test(
+  "local full archives can retain only their validated output volume",
+  async () => {
+    const source = await readScript(
+      "run-local-disposable-smoke.ps1",
+    );
+
+    assert.match(source, /\[switch\]\$PreserveOutput/);
+    assert.match(
+      source,
+      /if \(\$resumeExistingRun -and \$PreserveOutput\)[\s\S]*resumed output is already retained/,
+    );
+    assert.match(
+      source,
+      /if \(\$PreserveOutput -and \$volume -eq \$outputVolume\)[\s\S]*continue/,
+    );
+    assert.match(source, /PRESERVED_OUTPUT_VOLUME=/);
+    assert.match(source, /PRESERVED_OUTPUT_VOLUMES=/);
+    assert.match(
+      source,
+      /-not \$PreserveOutput -or \$_ -ne \$outputVolume/,
+    );
+  },
+);
+
+test(
+  "validation-state capture reports only the visible required control",
+  async () => {
+    const source = await readFile(
+      new URL("../src/run.ts", import.meta.url),
+      "utf8",
+    );
+    const start = source.indexOf(
+      "async function captureFormValidationStates",
+    );
+    const end = source.indexOf(
+      "function snapshotMutationCompleted",
+      start,
+    );
+
+    assert.ok(start >= 0);
+    assert.ok(end > start);
+
+    const validationCapture = source.slice(start, end);
+    assert.match(
+      validationCapture,
+      /input\[required\]:visible/,
+    );
+    assert.match(
+      validationCapture,
+      /input\.page\.locator\("form"\)/,
+    );
+    assert.match(
+      validationCapture,
+      /has: input\.page\.locator\(requiredControlCandidateSelector\)/,
+    );
+    assert.match(validationCapture, /current instanceof HTMLDetailsElement/);
+    assert.match(validationCapture, /current\.open = true/);
+    assert.match(validationCapture, /current\.open = Boolean\(states\[stateIndex\]\)/);
+    assert.match(validationCapture, /field\.reportValidity\(\)/);
+    assert.doesNotMatch(
+      validationCapture,
+      /field\.form\.reportValidity\(\)/,
+    );
   },
 );

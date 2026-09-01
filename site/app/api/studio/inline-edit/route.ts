@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 
@@ -13,8 +13,10 @@ import {
   getPost,
   getProject,
   getSiteSettings,
+  getStudioMutationOperation,
   getUserByEmail,
   recordAdminEditAudit,
+  recordStudioMutationOperation,
   saveCommissionType,
   savePage,
   savePiece,
@@ -64,10 +66,70 @@ type AppliedPatch = {
   revertPatches: RevertPatch[];
 };
 
+type InlineEditSuccessResponse = {
+  ok: true;
+  requestId: string;
+  operationId: string;
+  replayed: boolean;
+  updatedAt: string;
+  auditId: string;
+  applied: AppliedPatch[];
+  revertPatches: RevertPatch[];
+};
+
+type InlineEditRequestEnvelope = {
+  operationId?: unknown;
+  patches?: InlineEditPatchInput[];
+};
+
+const INLINE_EDIT_MUTATION_SCOPE = "inline-edit";
+
 class InlineEditError extends Error {
   constructor(message: string, readonly status: number, readonly details?: unknown) {
     super(message);
   }
+}
+
+function normalizeOperationId(value: unknown) {
+  if (value == null || value === "") {
+    return randomUUID();
+  }
+
+  if (typeof value !== "string") {
+    throw new InlineEditError(
+      "Inline edit operation ID must be a string.",
+      400
+    );
+  }
+
+  const operationId = value.trim();
+  if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{15,199}$/.test(operationId)) {
+    throw new InlineEditError(
+      "Inline edit operation ID is invalid.",
+      400
+    );
+  }
+
+  return operationId;
+}
+
+function inlineEditRequestHash(
+  patches: readonly ValidatedInlineEditPatch[]
+) {
+  const canonicalPatches = patches.map((patch) => ({
+    resource: patch.resource,
+    id: patch.id,
+    field: patch.field,
+    index: patch.index,
+    toIndex: patch.toIndex,
+    value: patch.value,
+    expectedValue: patch.expectedValue ?? null,
+    mode: patch.mode
+  }));
+
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalPatches))
+    .digest("hex");
 }
 
 function responseError(message: string, status = 400, details?: unknown) {
@@ -457,45 +519,206 @@ function refresh(resource: string, id: string) {
 export async function POST(request: Request) {
   try {
     assertTrustedMutationOrigin(request);
-    const admin = await getCurrentUser();
-    if (!admin || admin.role !== "admin") return responseError("Admin authentication is required.", 401);
-    const body = await request.json().catch(() => null) as { patches?: InlineEditPatchInput[] } | InlineEditPatchInput | null;
-    const inputs = Array.isArray((body as { patches?: InlineEditPatchInput[] } | null)?.patches)
-      ? (body as { patches: InlineEditPatchInput[] }).patches
-      : body ? [body as InlineEditPatchInput] : [];
-    if (inputs.length === 0) return responseError("No inline edit patches were provided.");
-    if (inputs.length > 80) return responseError("Too many inline edit patches in one request.");
 
-    const errors: Array<{ index: number; resource: string; id: string; field: string; message: string }> = [];
+    const admin = await getCurrentUser();
+    if (!admin || admin.role !== "admin") {
+      return responseError(
+        "Admin authentication is required.",
+        401
+      );
+    }
+
+    const body = await request
+      .json()
+      .catch(() => null) as
+        | InlineEditRequestEnvelope
+        | InlineEditPatchInput
+        | null;
+
+    const envelope =
+      body &&
+      typeof body === "object" &&
+      !Array.isArray(body) &&
+      "patches" in body
+        ? body as InlineEditRequestEnvelope
+        : null;
+
+    const operationId = normalizeOperationId(
+      envelope?.operationId
+    );
+
+    const inputs = Array.isArray(envelope?.patches)
+      ? envelope.patches
+      : body
+        ? [body as InlineEditPatchInput]
+        : [];
+
+    if (inputs.length === 0) {
+      return responseError(
+        "No inline edit patches were provided."
+      );
+    }
+
+    if (inputs.length > 80) {
+      return responseError(
+        "Too many inline edit patches in one request."
+      );
+    }
+
+    const errors: Array<{
+      index: number;
+      resource: string;
+      id: string;
+      field: string;
+      message: string;
+    }> = [];
+
     const patches = inputs.flatMap((input, index) => {
-      try { return [validateInlineEditPatch(input)]; }
-      catch (error) {
-        errors.push({ index, resource: String(input.resource ?? ""), id: String(input.id ?? ""), field: String(input.field ?? ""), message: error instanceof Error ? error.message : "Patch validation failed." });
+      try {
+        return [validateInlineEditPatch(input)];
+      } catch (error) {
+        errors.push({
+          index,
+          resource: String(input.resource ?? ""),
+          id: String(input.id ?? ""),
+          field: String(input.field ?? ""),
+          message:
+            error instanceof Error
+              ? error.message
+              : "Patch validation failed."
+        });
+
         return [];
       }
     });
-    if (errors.length) return responseError("Inline edit validation failed.", 400, errors);
-    const identities = patches.map(patchIdentity);
-    if (new Set(identities).size !== identities.length) return responseError("A field may be patched only once per atomic request.");
 
-    const requestId = randomUUID();
-    const applied = withDatabaseTransaction(() => patches.map((patch) => {
-      try {
-        return applyPatch(patch, admin.email, requestId);
-      } catch (error) {
-        if (error instanceof InlineEditError) throw error;
-        throw new InlineEditError(
-          error instanceof Error ? error.message : "Inline edit field could not be applied.",
-          400,
-          { resource: patch.resource, id: patch.id, field: patch.field }
-        );
-      }
-    }));
-    for (const result of applied) refresh(result.resource, result.id);
-    return NextResponse.json({ ok: true, requestId, applied, revertPatches: applied.flatMap((result) => result.revertPatches).reverse() });
+    if (errors.length) {
+      return responseError(
+        "Inline edit validation failed.",
+        400,
+        errors
+      );
+    }
+
+    const identities = patches.map(patchIdentity);
+    if (new Set(identities).size !== identities.length) {
+      return responseError(
+        "A field may be patched only once per atomic request."
+      );
+    }
+
+    const requestHash =
+      inlineEditRequestHash(patches);
+
+    const response =
+      withDatabaseTransaction(() => {
+        const completed =
+          getStudioMutationOperation<InlineEditSuccessResponse>(
+            operationId
+          );
+
+        if (completed) {
+          const sameActor =
+            completed.actorEmail ===
+            admin.email.toLowerCase();
+
+          if (
+            completed.mutationScope !==
+              INLINE_EDIT_MUTATION_SCOPE ||
+            completed.requestHash !== requestHash ||
+            !sameActor
+          ) {
+            throw new InlineEditError(
+              "This inline edit operation ID has already been used for a different request.",
+              409
+            );
+          }
+
+          return {
+            ...completed.response,
+            replayed: true
+          };
+        }
+
+        const applied = patches.map((patch) => {
+          try {
+            return applyPatch(
+              patch,
+              admin.email,
+              operationId
+            );
+          } catch (error) {
+            if (error instanceof InlineEditError) {
+              throw error;
+            }
+
+            throw new InlineEditError(
+              error instanceof Error
+                ? error.message
+                : "Inline edit field could not be applied.",
+              400,
+              {
+                resource: patch.resource,
+                id: patch.id,
+                field: patch.field
+              }
+            );
+          }
+        });
+
+        const result: InlineEditSuccessResponse = {
+          ok: true,
+          requestId: operationId,
+          operationId,
+          replayed: false,
+          updatedAt: new Date().toISOString(),
+          auditId: applied.at(-1)?.auditId ?? "",
+          applied,
+          revertPatches: applied
+            .flatMap((item) => item.revertPatches)
+            .reverse()
+        };
+
+        recordStudioMutationOperation({
+          operationId,
+          actorEmail: admin.email,
+          mutationScope: INLINE_EDIT_MUTATION_SCOPE,
+          requestHash,
+          response: result
+        });
+
+        return result;
+      });
+
+    for (const result of response.applied) {
+      refresh(
+        result.resource,
+        result.id
+      );
+    }
+
+    return NextResponse.json(response);
   } catch (error) {
-    if (error instanceof UntrustedMutationOriginError) return responseError(error.message, error.status);
-    if (error instanceof InlineEditError) return responseError(error.message, error.status, error.details);
-    return responseError(error instanceof Error ? error.message : "Inline edit save failed.", 500);
+    if (error instanceof UntrustedMutationOriginError) {
+      return responseError(
+        error.message,
+        error.status
+      );
+    }
+
+    if (error instanceof InlineEditError) {
+      return responseError(
+        error.message,
+        error.status,
+        error.details
+      );
+    }
+
+    return responseError(
+      error instanceof Error
+        ? error.message
+        : "Inline edit save failed.",
+      500
+    );
   }
 }

@@ -1,4 +1,4 @@
-import type { Page } from "playwright";
+import type { Locator, Page } from "playwright";
 
 const READINESS_CSS = `
   *, *::before, *::after {
@@ -11,6 +11,10 @@ const READINESS_CSS = `
     caret-color: transparent !important;
   }
   html { scroll-behavior: auto !important; }
+  .media-run-summary > span:last-child {
+    color: transparent !important;
+    inline-size: 5rem !important;
+  }
 `;
 
 async function triggerLazyContent(page: Page) {
@@ -55,57 +59,157 @@ async function triggerLazyContent(page: Page) {
   });
 }
 
-async function settleMedia(page: Page) {
-  await page.evaluate(async () => {
+async function settleMedia(page: Page, locator?: Locator, includeOffscreen = false) {
+  const target = locator ? await locator.elementHandle() : null;
+  if (locator && !target) {
+    throw new Error("The visual-readiness media target detached before media sampling.");
+  }
+
+  const pending = await page.evaluate(async ({ element, includeOffscreen }: {
+    element: Element | null;
+    includeOffscreen: boolean;
+  }) => {
     await document.fonts.ready;
 
-    await Promise.all(Array.from(document.images).map(async (image) => {
+    const visible = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return rect.width > 1 &&
+        rect.height > 1 &&
+        (includeOffscreen || (
+          rect.right > 0 &&
+          rect.bottom > 0 &&
+          rect.left < window.innerWidth &&
+          rect.top < window.innerHeight
+        )) &&
+        style.display !== "none" &&
+        style.visibility !== "hidden";
+    };
+    const waitForMediaEvent = (target: EventTarget, events: string[], timeoutMs: number) => new Promise<void>((resolve) => {
+      let settled = false;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timer);
+        events.forEach((event) => target.removeEventListener(event, done));
+        resolve();
+      };
+      const timer = window.setTimeout(done, timeoutMs);
+      events.forEach((event) => target.addEventListener(event, done, { once: true }));
+    });
+
+    const root: Element | Document = element ?? document;
+    const images = [
+      ...(element instanceof HTMLImageElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLImageElement>("img"))
+    ].filter((image) => (
+      visible(image) && Boolean(image.currentSrc || image.getAttribute("src") || image.getAttribute("srcset"))
+    ));
+    for (const image of images) {
+      image.loading = "eager";
+      image.setAttribute("fetchpriority", "high");
+    }
+
+    await Promise.all(images.map(async (image) => {
       if (!image.complete) {
-        await new Promise<void>((resolve) => {
-          const done = () => resolve();
-          image.addEventListener("load", done, { once: true });
-          image.addEventListener("error", done, { once: true });
-          window.setTimeout(done, 10_000);
-        });
+        await waitForMediaEvent(image, ["load", "error"], includeOffscreen ? 45_000 : 15_000);
       }
       if (image.complete && image.naturalWidth > 0) await image.decode().catch(() => undefined);
     }));
 
-    await Promise.all(Array.from(document.querySelectorAll<HTMLVideoElement>("video")).map((video) => {
+    const videos = [
+      ...(element instanceof HTMLVideoElement ? [element] : []),
+      ...Array.from(root.querySelectorAll<HTMLVideoElement>("video"))
+    ].filter((video) => (
+      visible(video) && Boolean(video.currentSrc || video.getAttribute("src") || video.querySelector("source[src]"))
+    ));
+    const videosToAwait = videos.filter((video) => video.preload !== "none");
+
+    await Promise.all(videosToAwait.map((video) => {
       if (video.readyState >= 1 || video.error) return Promise.resolve();
-      return new Promise<void>((resolve) => {
-        const done = () => resolve();
-        video.addEventListener("loadedmetadata", done, { once: true });
-        video.addEventListener("error", done, { once: true });
-        window.setTimeout(done, 5_000);
-      });
+      return waitForMediaEvent(video, ["loadedmetadata", "error"], includeOffscreen ? 45_000 : 15_000);
     }));
+
+    return {
+      images: images.filter((image) => !image.complete).length,
+      videos: videosToAwait.filter((video) => video.readyState < HTMLMediaElement.HAVE_METADATA && !video.error).length
+    };
+  }, { element: target, includeOffscreen }).finally(async () => {
+    await target?.dispose();
   });
+
+  if (pending.images > 0 || pending.videos > 0) {
+    throw new Error(
+      `Visual media readiness timed out with ${pending.images} image(s) and ${pending.videos} video(s) still pending.`
+    );
+  }
 }
 
-async function waitForStableLayout(page: Page) {
-  let previous = "";
-  let stableSamples = 0;
-
-  for (let attempt = 0; attempt < 24; attempt += 1) {
-    const current = await page.evaluate(() => JSON.stringify({
-      width: Math.max(document.documentElement.scrollWidth, document.body.scrollWidth),
-      height: Math.max(document.documentElement.scrollHeight, document.body.scrollHeight),
-      images: Array.from(document.images).filter((image) => image.complete).length,
-      dialogs: document.querySelectorAll('[role="dialog"],dialog[open]').length
-    }));
-
-    if (current === previous) stableSamples += 1;
-    else {
-      previous = current;
-      stableSamples = 0;
-    }
-
-    if (stableSamples >= 2) return;
-    await page.waitForTimeout(125);
+async function waitForStableLayout(page: Page, locator?: Locator, trackDocumentExtent = true) {
+  const target = locator ? await locator.elementHandle() : null;
+  if (locator && !target) {
+    throw new Error("The visual-readiness target detached before layout sampling.");
   }
 
-  throw new Error("Visual readiness did not reach three consecutive stable layout samples.");
+  const result = await page.evaluate(({ element, trackDocumentExtent }: {
+    element: Element | null;
+    trackDocumentExtent: boolean;
+  }) => new Promise<{
+    stable: boolean;
+    changedFields: string[];
+  }>((resolve) => {
+    const deadline = performance.now() + 5_000;
+    let previous = "";
+    let previousSample: Record<string, boolean | number> | null = null;
+    let stableSamples = 0;
+    const sample = () => {
+      const rect = element?.getBoundingClientRect() ?? null;
+      const root: Element | Document = element ?? document;
+      const currentSample: Record<string, boolean | number> = {
+        connected: element?.isConnected ?? true,
+        width: rect
+          ? Math.round(rect.width)
+          : trackDocumentExtent
+            ? Math.max(document.documentElement.scrollWidth, document.body.scrollWidth)
+            : window.innerWidth,
+        height: rect
+          ? Math.round(rect.height)
+          : trackDocumentExtent
+            ? Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)
+            : window.innerHeight,
+        scrollWidth: element instanceof HTMLElement
+          ? element.scrollWidth
+          : trackDocumentExtent
+            ? document.documentElement.scrollWidth
+            : window.innerWidth,
+        scrollHeight: element instanceof HTMLElement
+          ? element.scrollHeight
+          : trackDocumentExtent
+            ? document.documentElement.scrollHeight
+            : window.innerHeight,
+        images: Array.from(root.querySelectorAll<HTMLImageElement>("img")).filter((image) => image.complete).length,
+        dialogs: root.querySelectorAll('[role="dialog"],dialog[open]').length +
+          (element?.matches('[role="dialog"],dialog[open]') ? 1 : 0)
+      };
+      const current = JSON.stringify(currentSample);
+      const changedFields = previousSample
+        ? Object.keys(currentSample).filter((key) => currentSample[key] !== previousSample?.[key])
+        : Object.keys(currentSample);
+      stableSamples = current === previous ? stableSamples + 1 : 0;
+      previous = current;
+      previousSample = currentSample;
+      if (stableSamples >= 2) resolve({ stable: true, changedFields: [] });
+      else if (performance.now() >= deadline) resolve({ stable: false, changedFields });
+      else requestAnimationFrame(sample);
+    };
+    requestAnimationFrame(sample);
+  }), { element: target, trackDocumentExtent }).finally(async () => {
+    await target?.dispose();
+  });
+  if (!result.stable) {
+    const fields = result.changedFields.length > 0 ? result.changedFields.join(", ") : "unknown";
+    throw new Error(`Visual readiness did not reach three consecutive stable layout frames. Unstable fields: ${fields}.`);
+  }
 }
 
 async function waitForBusySurfaces(page: Page) {
@@ -119,21 +223,20 @@ async function waitForBusySurfaces(page: Page) {
   }, { timeout: 15_000 });
 }
 
-export async function waitForVisualIdle(page: Page) {
-  await page.waitForTimeout(100);
-  await settleMedia(page);
-  await waitForStableLayout(page);
+export async function waitForVisualIdle(page: Page, locator?: Locator, includeOffscreen = false) {
+  await settleMedia(page, locator, includeOffscreen);
+  await waitForStableLayout(page, locator, includeOffscreen);
   await waitForBusySurfaces(page);
 }
 
-export async function waitForVisualReady(page: Page) {
+export async function waitForVisualReady(page: Page, includeOffscreen = false) {
   await page.locator("body").waitFor({ state: "visible", timeout: 30_000 });
   await page.locator("main").first().waitFor({ state: "attached", timeout: 30_000 }).catch(() => undefined);
   await page.addStyleTag({ content: READINESS_CSS });
 
-  await triggerLazyContent(page);
-  await settleMedia(page);
-  await waitForStableLayout(page);
+  if (includeOffscreen) await triggerLazyContent(page);
+  await settleMedia(page, undefined, includeOffscreen);
+  await waitForStableLayout(page, undefined, true);
   await waitForBusySurfaces(page);
 
   await page.evaluate(() => {
@@ -152,5 +255,5 @@ export async function waitForVisualReady(page: Page) {
   // Restoring the canonical scroll position can select new responsive image
   // candidates. Settle those requests before screenshots begin so context
   // teardown never manufactures client-aborted image diagnostics.
-  await waitForVisualIdle(page);
+  await waitForVisualIdle(page, undefined, includeOffscreen);
 }

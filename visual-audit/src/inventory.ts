@@ -5,6 +5,9 @@ import {
   type Browser
 } from "playwright";
 
+import {
+  VISUAL_AUDIT_NO_RESULTS_ROUTE
+} from "./audit-sentinels.js";
 import { config } from "./config.js";
 import { inventoryRequestEligible } from "./policy.js";
 import type { Inventory } from "./types.js";
@@ -179,7 +182,7 @@ export function buildRoutes(
 
   const emptyAndErrorRoutes = [
     "/__visual-audit-route-not-found__",
-    "/search?q=__visual_audit_no_results__",
+    VISUAL_AUDIT_NO_RESULTS_ROUTE,
     "/shop/cart",
     "/commissions/status",
     "/account/verify"
@@ -223,6 +226,10 @@ export function buildRoutes(
       )}${allRecords ? "&audit=all" : ""}`;
     }
   );
+
+  const studioViewRoutes = (inventory.studioViews ?? [])
+    .filter((view) => view.modes.includes(config.targetMode))
+    .map((view) => view.route);
 
   const privateProjectRoutes =
     inventory.projects.flatMap(project => [
@@ -281,6 +288,7 @@ export function buildRoutes(
       ...publicRoutes,
       ...source.staticRoutes.filter((route) => !isSnapshotLabFixtureRoute(route)),
       ...studioRoutes,
+      ...studioViewRoutes,
       ...privateProjectRoutes,
       ...snapshotLabRoutes,
       ...inventory.pages.map(page => `/${encodeURIComponent(page.slug)}`),

@@ -1,11 +1,32 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 
 import type { ProjectInput } from "./db.ts";
+import { firstInvalidCommissionControl } from "./commission-validation.ts";
+
+test("commission submit validation ignores disabled controls and returns the first invalid field", () => {
+  const controls = [
+    { id: "disabled-invalid", disabled: true, checkValidity: () => false },
+    { id: "valid", disabled: false, checkValidity: () => true },
+    { id: "first-invalid", disabled: false, checkValidity: () => false },
+    { id: "later-invalid", disabled: false, checkValidity: () => false }
+  ];
+  assert.equal(firstInvalidCommissionControl(controls)?.id, "first-invalid");
+  assert.equal(firstInvalidCommissionControl(controls.slice(0, 2)), null);
+});
+
+test("commission workflow reveals an invalid step before reporting validity", () => {
+  const source = readFileSync(new URL("../components/commission-workflow.tsx", import.meta.url), "utf8");
+  assert.match(source, /<form[^>]+noValidate[^>]+onSubmit=\{handleSubmit\}/);
+  assert.match(
+    source,
+    /setCurrentStep\(invalidStep\);[\s\S]+requestAnimationFrame\(\(\) => \{[\s\S]+invalidField\.reportValidity\(\);/
+  );
+});
 
 test("commission drafts, idempotency, capabilities, and render ownership persist safely", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "woodsmith-commission-"));

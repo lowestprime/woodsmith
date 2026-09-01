@@ -75,6 +75,20 @@ export function classifyMediaAccess(
   return { kind: "public-library", relativePath };
 }
 
+export function mediaDirectPublicEligible(
+  requestedPath: string,
+  associations:
+    MediaAccessAssociations = {}
+) {
+  return (
+    classifyMediaAccess(
+      requestedPath,
+      associations
+    ).kind ===
+    "public-library"
+  );
+}
+
 export function mediaAccessAllowed(
   classification: MediaAccessClassification,
   viewer: {

@@ -1,5 +1,46 @@
+import {
+  mediaDirectPublicEligible,
+  type MediaAccessAssociations
+} from "./media-access.ts";
+
 export const EDITABLE_PIECE_MEDIA_ROLES = ["hero", "gallery", "detail", "context", "process", "drawing", "plan", "installation", "source"] as const;
 export type EditablePieceMediaRole = (typeof EDITABLE_PIECE_MEDIA_ROLES)[number];
+
+export const PUBLIC_BY_DEFAULT_PIECE_MEDIA_ROLES:
+  readonly EditablePieceMediaRole[] = [
+    "hero",
+    "gallery",
+    "detail",
+    "context",
+    "process",
+    "drawing",
+    "plan",
+    "installation"
+  ];
+
+export function pieceMediaRoleDefaultsPublic(
+  role: EditablePieceMediaRole
+) {
+  return (
+    PUBLIC_BY_DEFAULT_PIECE_MEDIA_ROLES as
+      readonly string[]
+  ).includes(role);
+}
+
+export function pieceMediaDefaultPublic(
+  role: EditablePieceMediaRole,
+  relativePath: string,
+  associations:
+    MediaAccessAssociations = {}
+) {
+  return (
+    pieceMediaRoleDefaultsPublic(role) &&
+    mediaDirectPublicEligible(
+      relativePath,
+      associations
+    )
+  );
+}
 
 export type NormalizedPieceMediaLink = {
   relativePath: string;
@@ -12,6 +53,19 @@ export type NormalizedPieceMediaLink = {
   altOverride: string | null;
   displayOrder: number;
   public: boolean;
+};
+
+export type PieceMediaEditorLinkInput = {
+  relativePath: string;
+  role: EditablePieceMediaRole | "private-project";
+  stage?: string | null;
+  occurredAt?: string | null;
+  title?: string;
+  caption?: string;
+  technicalNote?: string;
+  altOverride?: string | null;
+  displayOrder?: number;
+  public?: boolean;
 };
 
 function optionalText(value: unknown, maxLength: number) {
@@ -68,4 +122,59 @@ export function normalizePieceMediaLinks(value: unknown): NormalizedPieceMediaLi
   });
   if (heroCount > 1) throw new Error("A piece can have only one hero image.");
   return links.sort((left, right) => left.displayOrder - right.displayOrder);
+}
+
+export function buildInitialPieceMediaLinks(
+  initialLinks: readonly PieceMediaEditorLinkInput[],
+  legacyPaths: readonly string[]
+): NormalizedPieceMediaLink[] {
+  const normalizedInitialLinks = normalizePieceMediaLinks(
+    initialLinks.map((link) => ({
+      relativePath: link.relativePath,
+      role: link.role === "private-project" ? "source" : link.role,
+      stage: link.stage ?? null,
+      occurredAt: link.occurredAt ?? null,
+      title: link.title ?? "",
+      caption: link.caption ?? "",
+      technicalNote: link.technicalNote ?? "",
+      altOverride: link.altOverride ?? null,
+      displayOrder: link.displayOrder,
+      public: link.public === true
+    }))
+  );
+
+  const initialDisplayPaths = new Set(
+    normalizedInitialLinks
+      .filter((link) => ["hero", "gallery", "detail", "context"].includes(link.role))
+      .map((link) => link.relativePath)
+  );
+
+  const legacyLinks = legacyPaths
+    .map((path) => String(path).trim())
+    .filter((path) => path && !initialDisplayPaths.has(path))
+    .map((path, index): NormalizedPieceMediaLink => ({
+      relativePath: path,
+      role: initialDisplayPaths.size === 0 && index === 0 ? "hero" : "gallery",
+      stage: null,
+      occurredAt: null,
+      title: "",
+      caption: "",
+      technicalNote: "",
+      altOverride: null,
+      displayOrder: normalizedInitialLinks.length + index,
+      public: true
+    }));
+
+  const normalizedLegacyLinks =
+    normalizePieceMediaLinks(
+      legacyLinks
+    );
+
+  return [
+    ...normalizedInitialLinks,
+    ...normalizedLegacyLinks
+  ].map((link, index) => ({
+    ...link,
+    displayOrder: index
+  }));
 }

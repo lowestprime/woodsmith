@@ -13,9 +13,15 @@ This guide covers the private Woodshop dashboard at `/studio`.
 
 The dashboard opens on an overview workspace and lets you move between focused panels instead of loading every editor at once. Public pages also show admin-only pencil controls while you are signed in. Mapped text and links edit in place; use `Ctrl+S` to save, `Esc` to exit, **Reset unsaved** to restore the value shown when editing opened, or **Undo last save** to reverse the most recent inline batch. **Full editor** opens the matching visual dashboard workspace for structural changes. Inline batches are validated from a typed field registry, saved in one SQLite transaction, checked for concurrent changes, and recorded in the admin edit audit. The site header is intentionally compact and hides while scrolling down; scroll up, focus a header control, or move the pointer over the header area to reveal it again. When focus returns to page content, the header reveals without covering the focused control. The inline URL editor and media browser keep keyboard focus inside their modal surfaces and restore it when closed.
 
+### Site search
+
+The Overview workspace reports the FTS5 site-search index version, indexed/expected document counts, mismatch counts, and latest integrity check. Page, piece, Process, media-metadata, and project changes update the index in the same SQLite transaction as the source record. **Check index** runs SQLite's FTS integrity check and compares every indexed key with its source. **Rebuild index** recreates only the derived search rows, verifies them, and records the operation in the redacted admin audit. Both actions update in place without a document reload or jump to the top.
+
+Public search returns published pages, pieces, and Process notes. Signed-in administrators can additionally find draft/archived content, indexed media metadata, and private project records. Normal results are Unicode-aware BM25 lexical matches with prefixes and snippets. Optional semantic enrichment is limited to the first 24 lexical candidates, reads only precomputed candidate vectors, and never replaces or delays the lexical fallback beyond the configured timeout.
+
 ### Settings
 
-The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Changes save to SQLite and revalidate the live site.
+The settings editor controls brand copy, homepage wording, contact email addresses, repository URL, tax/shipping defaults, coupon definitions, payment settings, social links, and the revenue model text. Brand, homepage, footer, and service-card edits share one serialized autosave queue, save to SQLite without navigation or viewport jumps, and revalidate the affected public routes. Structural service/footer add, remove, and reorder controls save immediately; **Save settings now** remains an explicit flush fallback.
 
 ### Pages
 
@@ -27,7 +33,7 @@ Changes save into the mounted SQLite data store, revalidate the matching public 
 
 The Pieces section can add drafts, update titles and descriptions, set category tabs, revise materials and tags, select and order media visually by role, control publication status, manage inventory count, set asking-price data for shop items, and mark whether media has been verified. Raw path entry is not the normal workflow.
 
-The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Categories can be renamed safely; deletion requires that assigned pieces are either absent or reassigned to another category.
+The Categories section manages the public portfolio filters. Each category has a stable key, public label, matching terms, and icon style. Existing categories share one serialized autosave queue so sequential edits cannot overwrite one another. Key or label changes update affected pieces in the same transaction. Deletion opens a Cancel-first confirmation; assigned pieces must either be absent or be consolidated into the selected replacement category before the delete commits.
 
 Do not guess piece-to-photo identity. If a piece is not verified, leave media unassigned or keep it marked for review. Scientist Desk media must stay withheld until the correct black phenolic resin top, birds-eye maple rails, and white maple legs photos are verified.
 
@@ -74,7 +80,9 @@ The media section operates against the NAS photo library mounted directly to `/a
 - copy an AI alt-text draft or merge AI tags into the editable fields without auto-approving them
 - reject a wrong piece suggestion so it becomes a negative training label for future rankings
 
-The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Routine saves, assignments, renames, uploads, and deletes update in place without reloading the Studio route. `J`/`K` move between visible records, `F` focuses whole-library search, `P` focuses piece assignment, `U` clears the assignment, `R` toggles review state, `I` analyzes, `E` embeds, `C` inspects the current cluster, `S` saves, `Shift+S` saves and advances, and `A` approves and advances. Assignment changes update both media metadata and the affected piece galleries; unreviewed media stays private until approved. Reviewed assignments, reviewer rejections, verified cluster neighbors, and same-folder review history are saved as training evidence and weighted into later candidate rankings.
+The desk keeps one active inspector beside the thumbnail browser on desktop; phones use a fixed-height Tools / Library / Inspector switcher to avoid stacking three long panes. Media metadata, crop/focal values, assignment, review state, tags, credit, quality, and existing source-folder rules autosave through serialized typed queues without reloading the Studio route. Text fields debounce and flush on blur; selects, checkboxes, and range controls save immediately. Selecting another media record first flushes pending metadata and remains on the current record if validation or transport fails. **Next** flushes before advancing; **Approve & next** sets the reviewed state, validates accurate alt text, flushes, and then advances. Assignment changes update both media metadata and the affected piece galleries in one transaction; unreviewed media stays private until approved. Reviewed assignments, reviewer rejections, verified cluster neighbors, and same-folder review history are saved as training evidence and weighted into later candidate rankings.
+
+Uploads, filesystem refreshes, folder-rule application, assignment recommendations, rename, batch organization, AI analysis/cleanup, rollback, and file deletion remain explicit operations. Deletion uses a Cancel-first modal, closes with `Esc`, restores focus to its trigger, and removes the file plus saved references only after confirmation. Editing a source-folder rule recalculates the dry-run preview but never applies the rule automatically.
 
 The **Organize selected** panel uses `{name}`, `{index}`, and `{folder}` rename tokens. Every batch is preflighted for collisions, limited to 96 records, recorded in `media_operation_batches` / `media_operation_items`, and applied with one SQLite reference transaction after the filesystem moves succeed. If a move or database update fails, completed moves are reversed. Rollback performs the same checks in reverse and stops rather than overwriting a media record or normalized link changed after the original batch. Back up `site/data/` and the mounted photo tree together before large production reorganizations.
 
@@ -91,7 +99,7 @@ Advanced actions expose **Rescan files**, **Analyze page**, **Analyze selected**
 - Gemini 3.1 Flash-Lite and Gemini Embedding 2 are optional fallback/cloud-quality paths. Google quotas, pricing, and data terms apply and can change by project.
 - OpenAI remains backwards compatible only when explicitly selected and configured. ChatGPT Plus is a separate product and cannot authenticate this API.
 
-Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only manually reviewed labels provide the strongest propagation prior. Reviewer-rejected candidates and contradicted same-folder examples suppress later suggestions. The public gate still requires `reviewed=true`, accurate alt text, and an explicit save/assign action.
+Every cache record includes provider, model, version, source hash, and timestamp. Changing embedding model/provider creates a separate vector space and requires re-embedding. The local cache also holds generated 768px review thumbnails outside the source photo library. Cluster IDs and membership are persisted to media metadata, and partial cluster runs update only their selected paths instead of deleting unrelated cluster state. A cluster can inform ranking, but only manually reviewed labels provide the strongest propagation prior. Reviewer-rejected candidates and contradicted same-folder examples suppress later suggestions. The public gate still requires `reviewed=true`, accurate alt text, and a manually selected piece/public relationship; autosave never accepts an AI suggestion or applies a folder rule by itself.
 
 The authenticated sidecar health response reports whether work is active, the last action/outcome, actual CPU or CUDA selection, bounded PyTorch allocator memory, the cross-process GPU lease owner, and pending embedding/analysis/cluster counts. Those queue counts are intentionally `indexed-cache-only`; use **Continue library** to discover and advance uncached files rather than interpreting health as a recursive count of the complete NAS tree. The cache makes completed batches resumable after a process restart, but an active synchronous request stops with the process.
 
@@ -103,16 +111,29 @@ Public piece and shop cards request responsive optimized thumbnails rather than 
 
 ### Visitor map
 
-The overview workspace now shows recent visitor sessions on a world map and in a recent-session list. The map is sourced from session records stored in SQLite.
+Open **Notifications → Visitors** for privacy-preserving aggregate analytics. The workspace shows unique visitors, sessions, and pageviews; a paginated trend; an accessible country map and equivalent text list; recent minimized sessions; and the active pseudonym-key cohorts. The map is responsive in both themes and never replaces the text alternative.
 
-- a new visitor session queues an email when SMTP is configured
+- visitor-session email is represented by a dedicated notification policy and is disabled by default; session recording alone does not send mail
+- enabling that policy is an explicit administrative action and still requires a working SMTP configuration and recipient policy
 - country detail uses Cloudflare's `CF-IPCountry` header when available
 - city, region, latitude, and longitude require Cloudflare visitor-location headers to be enabled
-- if Cloudflare location headers are not present, the dashboard still records the session and host/path but shows unknown location data
+- precise coordinates are parsed only transiently from trusted Cloudflare headers and discarded before persistence; the map uses the retained country code
+- new records do not store raw IP addresses, full user-agent strings, complete referrer URLs, Cloudflare ray IDs, or precise coordinates
+- visitor and session identities are separate keyed HMAC pseudonyms; set `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, label it with `VISITOR_HMAC_KEY_ID`, and rotate both together to start a new unlinkable cohort
+- `VISITOR_TRACK_INTERNAL=false` excludes local/private traffic, and common automated clients are ignored
+- if Cloudflare location headers are not present, the dashboard still records the minimized host/path/session data but shows unknown location data
+
+Use the policy form to enable or pause recording, retain or omit city and referrer-host fields, and choose a retention period from 1 to 730 days. The retained **Save** button is an explicit flush for the same in-place autosave queue; saving must not navigate, reset scroll, or create a duplicate audit entry. **Purge expired records** removes only sessions/pageviews older than the configured cutoff and records the administrative action.
+
+### Audit log
+
+Open **Notifications → Audit** to inspect administrative changes without exposing private values. Filter by operation, entity type, or search text; page through bounded summaries; open details only when needed; and export a maximum of 500 matching records as redacted JSON. Secrets, passwords, tokens, cookies, authorization values, raw visitor identifiers, private contact fields, and equivalent nested values remain redacted both on screen and in exports. Opening or exporting the log is itself auditable.
 
 ### Projects
 
-Projects can be updated with status, stage, public notes, internal notes, lead time, and timeline entries. Buyer access to `/requests/[reference]` requires either an admin session, a matching signed-in account, or the buyer email used for the project.
+Projects use a compact master-detail workspace. Status, stage, public notes, internal notes, lead time, assignee, and target dates autosave in place; the retained **Save** control is a manual flush for operators who prefer an explicit checkpoint. Timeline entries are separate buyer-visible records, and sending a project-status email is an explicit action rather than a side effect of an ordinary edit.
+
+Archive, cancel, and reopen preserve the project and record actor/time/reason in the lifecycle ledger. Hard deletion is a separate guarded workflow: first inspect the dependency preview, then supply the displayed confirmation and reason. Referenced private media is quarantined rather than silently destroyed, unsafe dependencies cause refusal, and every preview/refusal/deletion decision is recorded. Buyer access to `/requests/[reference]` still requires an administrator session, a matching signed-in account, or the buyer email used for the project.
 
 ### Orders
 
@@ -124,7 +145,11 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-Password resets, verification links, project updates, contact requests, and commerce emails queue notification records. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures are shown accurately instead of being reported as sent.
+The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Visitors**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
+
+Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
+
+Delivery rows are summary-only until opened; message bodies and attempt details are loaded on demand. SMTP verification reports host/port/sender and categorized failures but never returns or renders `SMTP_PASSWORD`. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures remain explicit instead of being reported as sent.
 
 ## Buyer-facing workflow
 
@@ -138,7 +163,7 @@ The preview uses a dynamically loaded React Three Fiber scene with perspective/o
 
 ## Private visual archive
 
-The visual archive is an operational QA tool, not a Studio content panel. It inventories public and authenticated routes, captures the final rendered interfaces, verifies keyboard skip navigation, and produces restricted PNG/HTML/PDF evidence. Schema-v5 runs are explicitly Tier 1 synthetic, Tier 2 production clone, or Tier 3 live production. The protected inventory returns only media counts and hashes; `live-media.json` and `placeholder-report.json` prove mounted public media and account for intentional or unexpected placeholders without recording filenames. Canonical routes retain the complete responsive/theme matrix and deep states; rendered link variants use desktop/tablet/mobile theme representatives plus archival desktop. Every raw restricted capture remains available in the searchable HTML, while the PDF and redacted edition use a recorded per-route representative selection so derived reports remain reviewable. Production capture is read-only at both browser and server layers. Save, upload, rename, delete, invoice, shipping, email, and model actions are captured only against an isolated SQLite/media clone. Read-only mutation failures are accepted only when they match an exact client policy record; aborted resources are accepted only when they carry same-origin Next.js RSC/prefetch evidence.
+The visual archive is an operational QA tool, not a Studio content panel. It inventories public and authenticated routes, captures the final rendered interfaces, verifies keyboard skip navigation, and produces restricted PNG/HTML/PDF evidence. Schema-v5 runs are explicitly Tier 1 synthetic, Tier 2 production clone, or Tier 3 live production. The protected inventory returns only media counts and hashes; `live-media.json` and `placeholder-report.json` prove mounted public media and account for intentional or unexpected placeholders without recording filenames. Inventory schema 3 adds stable routes for the search index, Projects editor, and all seven Notifications workspaces. Canonical routes retain the complete responsive/theme matrix and deep states; rendered link variants use desktop/tablet/mobile theme representatives plus archival desktop. Every raw restricted capture remains available in the searchable HTML, while the PDF and redacted edition use a recorded per-route representative selection so derived reports remain reviewable. Production capture is read-only at both browser and server layers. Save, upload, rename, delete, invoice, shipping, email, and model actions are captured only against an isolated SQLite/media clone. Media-picker browse, pagination, and search use a private administrator-only GET and do not enter the mutation ledger; selecting media remains a typed autosave mutation. The lab proves commission-draft cleanup, three policy/template autosave restore cycles, both search-index actions, and a Project autosave restore cycle when a project exists. Expected state and successful-write counts come from protected inventory, so an extra write fails validation. Read-only mutation failures are accepted only when they match an exact client policy record; aborted resources are accepted only when they carry same-origin Next.js RSC/prefetch evidence or follow an already-observed successful clone-only response for that exact request.
 
 Set `VISUAL_AUDIT_ACCELERATOR=auto` for normal operation. The runner records actual CUDA visibility and Chromium CDP renderer details, but enables a CUDA stage only after its representative benchmark is allowlisted in the build. `cpu` explicitly chooses the portable pipeline. `cuda` is a strict diagnostic mode and fails if the device or a verified deterministic CUDA stage is unavailable; it never silently falls back while reporting CUDA. Current RTX/Docker evidence retains CPU/SwiftShader because NVIDIA's tested codec exposed no GPU PNG decoder and headless Chromium remained on SwiftShader. See [docs/visual-archive.md](docs/visual-archive.md) for the complete phase matrix and rerun commands.
 
@@ -179,7 +204,7 @@ These features require server configuration before they work live:
 
 ### The site sent no email
 
-Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, and `SMTP_FROM_ADDRESS`, then review the Notifications section for queued or failed records. Buyer email verification and visitor-session alerts use the same outbound email transport.
+Check `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASSWORD`, `SMTP_FROM_NAME`, and `SMTP_FROM_ADDRESS`, then open Notifications → SMTP for the redacted configuration check and Notifications → Delivery for queued, failed, pending-configuration, or suppressed records. Buyer verification and any deliberately enabled visitor notice use the same outbound transport; visitor notices remain disabled by default.
 
 ### Checkout did not open Stripe
 
@@ -206,3 +231,9 @@ Open Media → Guided media trainer and click **Refresh status**. For the defaul
 Open Studio overview and check the Persistence card first. It should show a configured, writable `/app/site/data`, `quick_check=ok`, WAL journal mode, and the expected seed version. If it shows a different path or a warning, verify `DATA_ROOT=/app/site/data`, the Compose mount `/volume2/docker_ssd/woodsmith/site/data:/app/site/data`, and write access for the configured `PUID:PGID`. The application rejects a relative `DATA_ROOT` so a changed working directory cannot silently create a second SQLite database, and seed upgrades no longer overwrite browser-edited pages or settings.
 
 Do not copy a live WAL database file by itself. Follow the paired runtime-state procedure in `synology-nas-deploy.md`; it uses SQLite `VACUUM INTO`, copies the matching media tree and protected environment file, records SHA-256 evidence, verifies `quick_check`, and restores only into new staging paths. Keep the pre-deploy data, media, environment, and rollback image until the replacement survives recreation and public validation.
+
+## Current release operations
+
+Production is validated at application source `0067488abb058829f3b94584c02ea666e552c9a8` and NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The final audit runner is `686a69c0cc5011394f35add750c29663626990f8`; all post-application changes are confined to `visual-audit/src`, and the application `site` tree is unchanged.
+
+The paired backup manifest `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`, staged restore, deployment, forced-recreation persistence, sidecar/SMTP/search checks, rollback/return-to-candidate, and final Tier-3 archive all passed. Keep the rollback image, paired backup, staged restore evidence, and rollback-used state through the operational stability window. Exact records are indexed in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).

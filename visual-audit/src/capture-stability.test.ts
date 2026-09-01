@@ -7,9 +7,13 @@ import {
   SCROLL_CAPTURE_STABILITY_CSS
 } from "./capture-stability.js";
 
-test("capture-only CSS materializes content-visibility placeholders", () => {
+test("capture-only CSS stabilizes lazy surfaces and nested fixed overlays", () => {
   assert.match(SCROLL_CAPTURE_STABILITY_CSS, /content-visibility:\s*visible\s*!important/);
   assert.match(SCROLL_CAPTURE_STABILITY_CSS, /contain-intrinsic-size:\s*none\s*!important/);
+  assert.match(
+    SCROLL_CAPTURE_STABILITY_CSS,
+    /data-audit-scroll-container-capture="true"[^}]*data-audit-original-position="fixed"[^}]*visibility:\s*hidden\s*!important/s
+  );
 });
 
 test("scroll-surface drift includes every geometry dimension", () => {

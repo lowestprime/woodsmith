@@ -1,8 +1,10 @@
 # Media surface ledger
 
-Updated: 2026-07-17
+Updated: 2026-09-01
 
 This ledger records every visible grouped-media surface in Beaman Woodworks and the non-overlapping replacement selected for it. It is the acceptance source for the shared media collection work and the visual archive's rendered no-overlap gate.
+
+The final v19 release completed the exact media gates. Production-clone Tier 2 `tier2-local-full-20260831T042104Z-0067488` passed 1,863 route records, 23,493 observations, 5,961 captures, mounted-media and placeholder validation, checksums, migration/restart idempotence, and source immutability. Full live-production Tier 3 `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1` passed 1,784 routes, 22,347 observations, and 5,948 captures with zero validation failures, duplicate logical/capture identities, unexpected diagnostics, unapproved cross-origin requests, or successful unsafe requests. Exact hashes and paths are in [`v19-release-evidence-ledger-20260901.md`](v19-release-evidence-ledger-20260901.md).
 
 ## Current implementation evidence
 
@@ -14,7 +16,7 @@ The shared normal-flow architecture is integrated in this implementation slice. 
 - A rendered Edge/Playwright gate with 16 snapshot-lab viewport/theme states and 8 real Pastry Table viewport/theme states. Each snapshot-lab state exposed eight collections and 53 distinct media boxes. The fresh canonical Pastry Table seed exposed its one verified detail collection, while the isolated fixture exercised the process-sequence variant. The gate found zero intersections above the 0.75 px subpixel tolerance, zero broken media, zero document overflow, and zero browser diagnostics.
 - Passing keyboard Enter/Space selection, modal focus trap/restoration, zoom, pan, Escape, close button, backdrop click, touch selection, video controls, and reduced-motion behavior.
 
-This is pre-deployment acceptance evidence, not the final exact-image or post-deployment live-production archive. Those later release gates remain required.
+The earlier acceptance remains the focused component proof; exact Tier 1, production-clone Tier 2, deployed Tier 3, recreation persistence, and rollback now provide the release-level proof.
 
 ## Rejected baseline
 
@@ -260,4 +262,4 @@ The selected mixed architecture follows the client's rejection of all overlappin
 - Unit and structural gate: implemented and passing for item normalization, variant semantics, one/many behavior, metadata association, snapshot-lab isolation, and preload policy.
 - Rendered no-overlap gate: implemented as `npm run test:media-browser`; it compares every visible `[data-media-item]` rectangle with every peer in its nearest `[data-media-collection]`, permits only a documented 0.75 px subpixel tolerance, and fails any positive-area intersection.
 - Matrix gate: passing for one, two, three, six, and twelve items; mixed and extreme ratios; image/video; process metadata; 320/375/390/430 mobile, desktop, tablet, archival/ultrawide; light/dark; reduced motion; keyboard; pointer; and touch interaction.
-- Archive artifact gate: implemented. Route evidence records collection identity, variant, item count, viewport, theme, and exact findings; capture emits `no-overlap.json`; validation rejects missing, stale, inconsistent, or non-passing reports. Final exact-image and live-production execution remain later release gates.
+- Archive artifact gate: implemented and release-proven. Route evidence records collection identity, variant, item count, viewport, theme, and exact findings; capture emits `no-overlap.json`; validation rejects missing, stale, inconsistent, or non-passing reports. Exact Tier 1, production-clone Tier 2, and live-production Tier 3 passed.

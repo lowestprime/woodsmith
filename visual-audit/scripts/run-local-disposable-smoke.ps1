@@ -7,14 +7,41 @@ param(
   [string]$TargetMode = "live-readonly",
   [ValidateSet("smoke", "full")]
   [string]$Scope = "smoke",
-  [ValidateRange(1, 6)]
+  [ValidateRange(1, 12)]
   [int]$CaptureWorkers = 2,
   [ValidateRange(1, 8)]
   [int]$ValidationWorkers = 6,
   [ValidateRange(1, 8)]
   [int]$ReportWorkers = 6,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$RouteTaskSeconds = 2.4,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$SpecialTaskSeconds = 14.212,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$MutationTaskSeconds = 8,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$MaterializationSeconds = 0.8,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$ReportRuntimeSeconds = 60,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$ValidationRuntimeSeconds = 60,
+  [ValidateRange(0.001, 3600.0)]
+  [double]$FixedRuntimeSeconds = 60,
+  [ValidateRange(1, 1099511627776)]
+  [long]$PersistentBytesPerMaterialization = 3247552,
+  [ValidateRange(1, 1099511627776)]
+  [long]$TemporaryBytesPerMaterialization = 1497427,
+  [ValidateRange(0.0, 100.0)]
+  [double]$ReportArtifactMultiplier = 1,
+  [ValidateRange(0.001, 100.0)]
+  [double]$ProjectedWriteAmplificationRatio = 1.186,
+  [ValidateRange(0.001, 1440.0)]
+  [double]$TargetRuntimeMinutes = 30,
+  [ValidateRange(0.001, 1440.0)]
+  [double]$HardRuntimeMinutes = 45,
   [string]$ResumeRunId = "",
-  [string]$ResumeOutputVolume = ""
+  [string]$ResumeOutputVolume = "",
+  [switch]$PreserveOutput
 )
 
 $ErrorActionPreference = "Stop"
@@ -42,6 +69,9 @@ if ([string]::IsNullOrWhiteSpace($CommitSha)) {
 if ($CommitSha -notmatch "^[0-9a-f]{40}$") {
   throw "CommitSha must be a full 40-character lowercase Git SHA."
 }
+if ($HardRuntimeMinutes -lt $TargetRuntimeMinutes) {
+  throw "HardRuntimeMinutes must be greater than or equal to TargetRuntimeMinutes."
+}
 
 $hasResumeRunId = -not [string]::IsNullOrWhiteSpace($ResumeRunId)
 $hasResumeOutputVolume = -not [string]::IsNullOrWhiteSpace($ResumeOutputVolume)
@@ -49,6 +79,9 @@ if ($hasResumeRunId -ne $hasResumeOutputVolume) {
   throw "ResumeRunId and ResumeOutputVolume must be supplied together."
 }
 $resumeExistingRun = $hasResumeRunId -and $hasResumeOutputVolume
+if ($resumeExistingRun -and $PreserveOutput) {
+  throw "PreserveOutput is only valid for a new run; resumed output is already retained."
+}
 if ($resumeExistingRun) {
   if ($ResumeRunId -notmatch "^[A-Za-z0-9][A-Za-z0-9._-]{0,191}$") {
     throw "ResumeRunId contains unsupported characters."
@@ -75,11 +108,12 @@ $appBuildIdentity = if ($appBuildSha -eq $expectedBuildSha) {
   "exact"
 } elseif (
   $appBuildSha -eq "WOODSMITH_BUILD_SHA=unknown" -and
+  $TargetMode -eq "live-readonly" -and
   $Scope -eq "smoke"
 ) {
   "unknown-loopback-smoke"
 } else {
-  throw "The app image build identity does not match CommitSha. Only an unstamped loopback disposable smoke is permitted before commit."
+  throw "The app image build identity does not match CommitSha. Only an unstamped live-readonly loopback smoke is permitted before commit."
 }
 
 $shortSha = $CommitSha.Substring(0, 8)
@@ -485,9 +519,24 @@ console.log("SNAPSHOT_CLONE_QUICK_CHECK=ok");
     "-e", "ADMIN_PASSWORD_FILE=/run/secrets/admin_password",
     "-e", "AUDIT_TOKEN_FILE=/run/secrets/audit_token",
     "-e", "AUDIT_STRICT_DIAGNOSTICS=true",
+    "-e", "AUDIT_VISUAL_MATERIALIZATION=selective",
+    "-e", "AUDIT_RETAIN_RAW_TILES=false",
     "-e", ("VISUAL_AUDIT_CAPTURE_WORKERS=" + $CaptureWorkers),
     "-e", ("VISUAL_AUDIT_VALIDATION_WORKERS=" + $ValidationWorkers),
-    "-e", ("VISUAL_AUDIT_REPORT_WORKERS=" + $ReportWorkers)
+    "-e", ("VISUAL_AUDIT_REPORT_WORKERS=" + $ReportWorkers),
+    "-e", ("AUDIT_ROUTE_TASK_SECONDS=" + $RouteTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_SPECIAL_TASK_SECONDS=" + $SpecialTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_MUTATION_TASK_SECONDS=" + $MutationTaskSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_MATERIALIZATION_SECONDS=" + $MaterializationSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_REPORT_RUNTIME_SECONDS=" + $ReportRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_VALIDATION_RUNTIME_SECONDS=" + $ValidationRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_FIXED_RUNTIME_SECONDS=" + $FixedRuntimeSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_PERSISTENT_BYTES_PER_MATERIALIZATION=" + $PersistentBytesPerMaterialization),
+    "-e", ("AUDIT_TEMP_BYTES_PER_MATERIALIZATION=" + $TemporaryBytesPerMaterialization),
+    "-e", ("AUDIT_REPORT_ARTIFACT_MULTIPLIER=" + $ReportArtifactMultiplier.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_PROJECTED_WRITE_AMPLIFICATION_RATIO=" + $ProjectedWriteAmplificationRatio.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_TARGET_RUNTIME_MINUTES=" + $TargetRuntimeMinutes.ToString([Globalization.CultureInfo]::InvariantCulture)),
+    "-e", ("AUDIT_HARD_RUNTIME_MINUTES=" + $HardRuntimeMinutes.ToString([Globalization.CultureInfo]::InvariantCulture))
   )
 
   Write-Output "CAPTURE_START"
@@ -563,6 +612,11 @@ const result = {
   snapshotLabSaved: manifest.captures.filter(
     (item) => item.state === "snapshot-lab-commission-draft-saved"
   ).length,
+  snapshotLabMutationStates: new Set(
+    manifest.captures
+      .filter((item) => item.state.startsWith("snapshot-lab-"))
+      .map((item) => item.state)
+  ).size,
   unsafeSuccessful: manifest.security.successfulUnsafeRequests,
   unsafeBlocked: manifest.security.sameOriginUnsafeRequestsBlocked,
   tokenEligible: manifest.security.tokenEligibleRequests,
@@ -580,9 +634,11 @@ const result = {
 };
 console.log(JSON.stringify(result, null, 2));
 
-const expectedUnsafeSuccessful = Number(
-  process.env.EXPECTED_UNSAFE_SUCCESSFUL
-);
+const hasProjects = manifest.inventory.counts.projects > 0;
+const expectedUnsafeSuccessful = result.targetMode === "snapshot-lab"
+  ? hasProjects ? 12 : 10
+  : 0;
+const expectedMutationStates = hasProjects ? 7 : 6;
 
 if (
   !result.passed ||
@@ -595,6 +651,7 @@ if (
   result.unsafeSuccessful !== expectedUnsafeSuccessful ||
   (result.targetMode === "live-readonly" && result.unsafeBlocked < 1) ||
   (result.targetMode === "snapshot-lab" && result.snapshotLabSaved !== 1) ||
+  (result.targetMode === "snapshot-lab" && result.snapshotLabMutationStates !== expectedMutationStates) ||
   result.tokenEligible < 1 ||
   result.crossOrigin !== 0 ||
   result.reportSourceCaptures !== result.captures ||
@@ -617,7 +674,6 @@ if (
     "-v", ($outputVolume + ":/output:ro"),
     "-e", ("AUDIT_RUN_ID=" + $runId),
     "-e", ("TARGET_MODE=" + $TargetMode),
-    "-e", ("EXPECTED_UNSAFE_SUCCESSFUL=" + $(if ($TargetMode -eq "snapshot-lab") { "2" } else { "0" })),
     "--entrypoint", "node", $AuditImage, "-e", $summaryScript
   )
   Invoke-Docker @summaryArguments
@@ -677,6 +733,9 @@ console.log(JSON.stringify({
 
   $failed = $false
   Write-Output "LOCAL_DISPOSABLE_AUDIT_OK=1"
+  if ($PreserveOutput) {
+    Write-Output ("PRESERVED_OUTPUT_VOLUME=" + $outputVolume)
+  }
 }
 finally {
   $existingApp = @(
@@ -727,6 +786,9 @@ console.log(`LOCAL_AUDIT_FAILURE_SUMMARY=${JSON.stringify({
 
   & docker rm -f $appContainer 2>$null | Out-Null
   foreach ($volume in $managedVolumes) {
+    if ($PreserveOutput -and $volume -eq $outputVolume) {
+      continue
+    }
     & docker volume rm -f $volume 2>$null | Out-Null
   }
 
@@ -736,8 +798,23 @@ console.log(`LOCAL_AUDIT_FAILURE_SUMMARY=${JSON.stringify({
   )
   $remainingVolumes = @(
     & docker volume ls --format "{{.Name}}" |
-      Where-Object { $_ -like ("*" + $suffix + "*") }
+      Where-Object {
+        $_ -like ("*" + $suffix + "*") -and
+        (-not $PreserveOutput -or $_ -ne $outputVolume)
+      }
   )
+  $preservedOutputVolumes = @()
+  if ($PreserveOutput) {
+    $preservedOutputVolumes = @(
+      & docker volume ls --format "{{.Name}}" |
+        Where-Object { $_ -eq $outputVolume }
+    )
+  }
   Write-Output ("CLEANUP_CONTAINERS=" + $remainingContainers.Count)
   Write-Output ("CLEANUP_VOLUMES=" + $remainingVolumes.Count)
+  Write-Output ("PRESERVED_OUTPUT_VOLUMES=" + $preservedOutputVolumes.Count)
+
+  if (-not $failed -and $PreserveOutput -and $preservedOutputVolumes.Count -ne 1) {
+    throw "The validated output volume was not preserved."
+  }
 }

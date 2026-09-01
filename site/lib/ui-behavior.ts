@@ -1,6 +1,12 @@
 export type PanOffset = { x: number; y: number };
 export type PanViewport = { width: number; height: number };
 
+export function shouldFreezeHeaderForVisualCapture(
+  dataset: Readonly<Record<string, string | undefined>>
+) {
+  return dataset.auditScrollCapture === "true";
+}
+
 export function isNavigationCurrent(pathname: string, href: string) {
   const target = href.split(/[?#]/u, 1)[0]?.replace(/\/+$/u, "") || "/";
   if (!target.startsWith("/") || target.startsWith("//")) return false;

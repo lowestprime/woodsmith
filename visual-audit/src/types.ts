@@ -25,6 +25,12 @@ export type Inventory = {
   staticRoutes: string[];
   legacyRoutes: string[];
   studioPanels: string[];
+  studioViews?: Array<{
+    id: string;
+    route: string;
+    modes: TargetMode[];
+    snapshotMutationStates: string[];
+  }>;
   dynamicPatterns: string[];
   pages: Array<{ slug: string; title: string; status: string }>;
   pieces: Array<{ slug: string; title: string; publicationStatus: string; status: string }>;
@@ -140,6 +146,7 @@ export type DiagnosticType =
   | "requestfailed"
   | "http-error"
   | "mutation-blocked"
+  | "cross-origin-blocked"
   | "broken-media"
   | "horizontal-overflow"
   | "media-overlap"
@@ -198,10 +205,91 @@ export type CaptureRecord = {
   state: string;
   status: number | null;
   files: string[];
+  artifactSha256?: string[];
+  materializationReasons?: string[];
+  reusedFrom?: { runId: string; key: string };
   width: number;
   height: number;
   deviceScaleFactor: number;
   sensitive: boolean;
+};
+
+export type StateObservation = {
+  key: string;
+  observedAt: string;
+  auth: AuthState;
+  route: string;
+  finalUrl: string;
+  theme: ThemeMode;
+  viewport: string;
+  state: string;
+  status: number | null;
+  coverageTier: CoverageTier;
+  passed: boolean;
+  findings: string[];
+  geometry: {
+    documentWidth: number;
+    documentHeight: number;
+    viewportWidth: number;
+    viewportHeight: number;
+    horizontalOverflow: boolean;
+    targetVisible: boolean | null;
+    targetBox: { x: number; y: number; width: number; height: number } | null;
+  };
+  accessibility: {
+    visibleInteractiveElements: number;
+    unnamedInteractiveElements: number;
+  };
+  media: {
+    visible: number;
+    brokenVisible: number;
+  };
+  materialized: boolean;
+  materializationReasons: string[];
+  files: string[];
+  artifactSha256: string[];
+  reusedFrom?: { runId: string; key: string };
+  evidenceIdentity: {
+    contractVersion: number;
+    appCommit: string;
+    auditCommit: string;
+    routeDependencyHash: string;
+    cssThemeHash: string;
+    dataHash: string;
+    mediaHash: string;
+    browserIdentity: string;
+    auth: AuthState;
+    route: string;
+    routeFamily: string;
+    viewport: string;
+    theme: ThemeMode;
+    state: string;
+    digest: string;
+  };
+};
+
+export type SpecialTaskRecord = {
+  key: string;
+  route: string;
+  theme: ThemeMode;
+  viewport: string;
+  group: string;
+  rangeStart: number | null;
+  rangeEnd: number | null;
+  status: "running" | "completed" | "failed";
+  startedAt: string;
+  completedAt: string | null;
+  observationCount: number;
+  errorDigest: string | null;
+};
+
+export type StageTelemetryRecord = {
+  stage: string;
+  startedAt: string;
+  completedAt: string;
+  seconds: number;
+  units: number;
+  workers: number;
 };
 
 export type SecuritySummary = {
@@ -230,7 +318,20 @@ export type RunManifest = {
   browserVersion: string;
   acceleration: AccelerationProvenance;
   inventory: Inventory;
+  evidenceContract?: {
+    version: number;
+    logicalCoverage: "full";
+    behavioralValidation: "full";
+    visualMaterialization: "selective" | "all" | "diagnostic-only";
+    rawTilePolicy: "failure-only" | "retain-all";
+    routeFamilySentinels: string[];
+    dependencyLedgerFile: string;
+    runtimeBudgetFile: string;
+  };
+  observations?: StateObservation[];
   captures: CaptureRecord[];
+  specialTasks?: SpecialTaskRecord[];
+  stageTelemetry?: StageTelemetryRecord[];
   routes: RouteResult[];
   diagnostics: DiagnosticRecord[];
   completedKeys: string[];
@@ -247,7 +348,10 @@ export type RouteCollection = {
 };
 
 export type TileRecord = {
-  file: string;
+  file?: string;
+  sha256?: string;
+  retained?: boolean;
+  bytes?: number;
   x: number;
   y: number;
   width: number;
@@ -263,10 +367,12 @@ export type SegmentRecord = {
 };
 
 export type TileManifest = {
+  schemaVersion?: number;
   kind: "page" | "scroll-container";
   createdAt: string;
   sourceWidth: number;
   sourceHeight: number;
   deviceScaleFactor: number;
+  rawTilePolicy?: "failure-only" | "retain-all";
   segments: SegmentRecord[];
 };

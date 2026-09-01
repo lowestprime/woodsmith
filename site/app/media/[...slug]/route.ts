@@ -6,7 +6,13 @@ import { commissionOwnerKey, userCanAccessProject } from "@/lib/commission-secur
 import { commissionRenderAssetOwnedBy, getMediaAccessAssociations, getProject } from "@/lib/db";
 import { detectMediaKind, resolveMediaPath } from "@/lib/media";
 import { classifyMediaAccess, mediaAccessAllowed, mediaCacheHeaders, normalizeMediaRequestPath } from "@/lib/media-access";
-import { mediaEntityTag, mediaLastModified, mediaRequestIsFresh } from "@/lib/media-http";
+import {
+  mediaEntityTag,
+  mediaIfRangeMatches,
+  mediaLastModified,
+  mediaRequestIsFresh,
+  resolveMediaByteRange
+} from "@/lib/media-http";
 
 const MIME_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -90,7 +96,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
   const publicMedia = access.kind === "public-library";
   const responseHeaders = {
     "Content-Type": MIME_TYPES[extension] || (kind === "video" ? "application/octet-stream" : "image/jpeg"),
-    "Content-Length": String(stat.size),
+    "Accept-Ranges": "bytes",
     ...mediaCacheHeaders(publicMedia ? "public" : "private"),
     ...(publicMedia ? {
       ETag: mediaEntityTag(stat),
@@ -103,8 +109,39 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
     return new NextResponse(null, { status: 304, headers: responseHeaders });
   }
 
+  const requestedRange = mediaIfRangeMatches(request.headers, stat)
+    ? resolveMediaByteRange(request.headers.get("range"), stat.size)
+    : { kind: "none" as const };
+
+  if (requestedRange.kind === "unsatisfiable") {
+    return new NextResponse(null, {
+      status: 416,
+      headers: {
+        ...responseHeaders,
+        "Content-Length": "0",
+        "Content-Range": `bytes */${stat.size}`
+      }
+    });
+  }
+
+  if (requestedRange.kind === "range") {
+    const { start, end, length } = requestedRange.range;
+    const stream = Readable.toWeb(createReadStream(absolutePath, { start, end })) as ReadableStream<Uint8Array>;
+    return new NextResponse(stream, {
+      status: 206,
+      headers: {
+        ...responseHeaders,
+        "Content-Length": String(length),
+        "Content-Range": `bytes ${start}-${end}/${stat.size}`
+      }
+    });
+  }
+
   const stream = Readable.toWeb(createReadStream(absolutePath)) as ReadableStream<Uint8Array>;
   return new NextResponse(stream, {
-    headers: responseHeaders
+    headers: {
+      ...responseHeaders,
+      "Content-Length": String(stat.size)
+    }
   });
 }

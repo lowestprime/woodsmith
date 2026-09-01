@@ -10,6 +10,10 @@ export type CoverageMatrixEntry = {
   deep: boolean;
 };
 
+function matrixEntryKey(entry: CoverageMatrixEntry) {
+  return `${entry.profile.name}:${entry.theme}`;
+}
+
 function profileByName(
   viewports: ViewportProfile[],
   name: string
@@ -38,6 +42,38 @@ export function canonicalCoverageMatrix(
       deep: profile.name === "desktop-archival" && theme === "dark"
     }))
   );
+}
+
+export function concreteRouteCoverageMatrix(
+  scope: AuditScope,
+  viewports: ViewportProfile[]
+): CoverageMatrixEntry[] {
+  if (scope === "smoke") return canonicalCoverageMatrix(scope, viewports);
+  return [{
+    profile: profileByName(viewports, "desktop-1440"),
+    theme: "dark",
+    deep: false
+  }];
+}
+
+export function nonCartesianRouteCoveragePlan(input: {
+  scope: AuditScope;
+  viewports: ViewportProfile[];
+  routes: readonly string[];
+  familySentinels: ReadonlySet<string>;
+  expandedMatrix?: CoverageMatrixEntry[];
+}) {
+  const concreteRoutes = [...new Set(input.routes)].sort();
+  const familyRoutes = concreteRoutes.filter((route) => input.familySentinels.has(route));
+  const concreteMatrix = concreteRouteCoverageMatrix(input.scope, input.viewports);
+  const concreteKeys = new Set(concreteMatrix.map(matrixEntryKey));
+  const expandedMatrix = input.expandedMatrix ?? canonicalCoverageMatrix(input.scope, input.viewports);
+  return {
+    concreteRoutes,
+    familyRoutes,
+    concreteMatrix,
+    familyMatrix: expandedMatrix.filter((entry) => !concreteKeys.has(matrixEntryKey(entry)))
+  };
 }
 
 export function discoveredCoverageMatrix(

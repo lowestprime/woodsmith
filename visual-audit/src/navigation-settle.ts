@@ -24,7 +24,14 @@ export async function waitForNavigationSettle(input: {
   let consecutiveStableSamples = 0;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    await input.sleep(intervalMs);
+    try {
+      await input.sleep(intervalMs);
+    } catch (error) {
+      if (!isNavigationInterruption(error)) throw error;
+      previousUrl = "";
+      consecutiveStableSamples = 0;
+      continue;
+    }
 
     let current: NavigationSample;
     try {
@@ -53,4 +60,25 @@ export async function waitForNavigationSettle(input: {
   }
 
   throw new Error(`Document navigation did not settle within ${timeoutMs}ms.`);
+}
+
+export async function waitForStableReadyDocument(input: {
+  settle: () => Promise<NavigationSample>;
+  ready: () => Promise<void>;
+  attempts?: number;
+}) {
+  const attempts = input.attempts ?? 3;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const before = await input.settle();
+      await input.ready();
+      const after = await input.settle();
+      if (before.url === after.url) return after;
+    } catch (error) {
+      if (!isNavigationInterruption(error) || attempt === attempts - 1) throw error;
+    }
+  }
+
+  throw new Error("Visual readiness did not reach a stable document URL.");
 }

@@ -224,38 +224,191 @@ export function InlineEditAssistant() {
     return root;
   }
 
-  async function sendPatches(patches: EditablePatch[], successMessage: string, options: { reload?: boolean; rollbackOnFailure?: boolean } = {}) {
-    if (patches.length === 0) { setMessage("No changes to save."); return false; }
+  async function sendPatches(
+    patches: EditablePatch[],
+    successMessage: string,
+    options: {
+      reload?: boolean;
+      rollbackOnFailure?: boolean;
+    } = {}
+  ) {
+    if (patches.length === 0) {
+      setMessage("No changes to save.");
+      return false;
+    }
+
+    const operationId =
+      globalThis.crypto.randomUUID();
+
     setSaving(true);
     setMessage("Saving mapped inline edits...");
+
     try {
-      const response = await fetch("/api/studio/inline-edit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ patches }) });
-      const payload = await response.json().catch(() => null) as { ok?: boolean; message?: string; details?: Array<{ message?: string }>; revertPatches?: EditablePatch[] } | null;
+      type InlineEditResponse = {
+        ok?: boolean;
+        message?: string;
+        details?: Array<{ message?: string }>;
+        revertPatches?: EditablePatch[];
+        operationId?: string;
+        replayed?: boolean;
+      };
+
+      let response: Response | null = null;
+      let payload: InlineEditResponse | null = null;
+      let lastTransportError: unknown = null;
+
+      for (
+        let attempt = 0;
+        attempt < 3;
+        attempt += 1
+      ) {
+        response = null;
+        payload = null;
+
+        try {
+          response = await fetch(
+            "/api/studio/inline-edit",
+            {
+              method: "POST",
+              headers: {
+                "content-type": "application/json"
+              },
+              body: JSON.stringify({
+                operationId,
+                patches
+              })
+            }
+          );
+
+          payload = await response
+            .json()
+            .catch(() => null) as
+              | InlineEditResponse
+              | null;
+
+          const retryableStatus =
+            response.status === 408 ||
+            response.status === 425 ||
+            response.status === 429 ||
+            response.status >= 500;
+
+          if (
+            response.ok ||
+            !retryableStatus ||
+            attempt === 2
+          ) {
+            break;
+          }
+        } catch (error) {
+          lastTransportError = error;
+
+          if (attempt === 2) {
+            throw error;
+          }
+        }
+
+        setMessage(
+          `Saving mapped inline edits... retrying (${attempt + 2}/3).`
+        );
+
+        await new Promise<void>((resolve) => {
+          window.setTimeout(
+            resolve,
+            attempt === 0 ? 250 : 750
+          );
+        });
+      }
+
+      if (!response) {
+        throw lastTransportError instanceof Error
+          ? lastTransportError
+          : new Error("Inline save did not receive a response.");
+      }
+
       if (!response.ok || !payload?.ok) {
-        if (options.rollbackOnFailure) restoreOriginalText();
-        const detail = Array.isArray(payload?.details) ? payload.details.map((entry) => entry.message).filter(Boolean).join(" ") : "";
-        setMessage(`${payload?.message || `Inline save failed with HTTP ${response.status}.`}${detail ? ` ${detail}` : ""}${options.rollbackOnFailure ? " Unsaved text was restored." : ""}`);
+        if (options.rollbackOnFailure) {
+          restoreOriginalText();
+        }
+
+        const detail = Array.isArray(payload?.details)
+          ? payload.details
+              .map((entry) => entry.message)
+              .filter(Boolean)
+              .join(" ")
+          : "";
+
+        setMessage(
+          `${
+            payload?.message ||
+            `Inline save failed with HTTP ${response.status}.`
+          }${
+            detail ? ` ${detail}` : ""
+          }${
+            options.rollbackOnFailure
+              ? " Unsaved text was restored."
+              : ""
+          }`
+        );
+
         return false;
       }
+
       setMessage(successMessage);
-      setLastRevertPatches(payload.revertPatches ?? []);
-      const root = editingSection ?? document.querySelector<HTMLElement>("section[data-inline-editing='true']");
-      if (root) { setEditableState(root, false); delete root.dataset.inlineEditing; }
-      if (options.reload) window.setTimeout(() => window.location.reload(), 350);
-      else {
+      setLastRevertPatches(
+        payload.revertPatches ?? []
+      );
+
+      const root =
+        editingSection ??
+        document.querySelector<HTMLElement>(
+          "section[data-inline-editing='true']"
+        );
+
+      if (root) {
+        setEditableState(root, false);
+        delete root.dataset.inlineEditing;
+      }
+
+      if (options.reload) {
+        window.setTimeout(
+          () => window.location.reload(),
+          350
+        );
+      } else {
         if (root) {
           root.dataset.inlineEditing = "true";
           setEditableState(root, true);
         }
+
         setSelectedElement(null);
-        window.setTimeout(() => root?.querySelector<HTMLElement>(".inline-editable-active")?.focus(), 0);
+
+        window.setTimeout(
+          () =>
+            root
+              ?.querySelector<HTMLElement>(
+                ".inline-editable-active"
+              )
+              ?.focus(),
+          0
+        );
       }
+
       return true;
     } catch (error) {
-      if (options.rollbackOnFailure) restoreOriginalText();
-      setMessage(error instanceof Error ? error.message : "Inline save failed.");
+      if (options.rollbackOnFailure) {
+        restoreOriginalText();
+      }
+
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Inline save failed."
+      );
+
       return false;
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveInlineEdits() {

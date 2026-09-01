@@ -43,6 +43,7 @@ function captureCard(capture: CaptureRecord, imageSources: string[], redacted: b
       <dt>Theme</dt><dd>${escapeHtml(capture.theme)}</dd>
       <dt>Viewport</dt><dd>${escapeHtml(capture.viewport)}</dd>
       <dt>Status</dt><dd>${escapeHtml(capture.status ?? "unknown")}</dd>
+      <dt>Selection</dt><dd>${escapeHtml((capture.materializationReasons ?? []).join(", ") || "legacy capture")}</dd>
     </dl>
     ${fileFigures}
   </article>`;
@@ -128,6 +129,7 @@ function htmlDocument(input: {
       <div><dt>Commit</dt><dd>${escapeHtml(input.manifest.deployedCommit)}</dd></div>
       <div><dt>Accelerator</dt><dd>${escapeHtml(input.manifest.acceleration.selected)}</dd></div>
       <div><dt>Browser backend</dt><dd>${escapeHtml(input.manifest.acceleration.browser.backend)}</dd></div>
+      <div><dt>Logical observations</dt><dd>${input.manifest.observations?.length ?? 0}</dd></div>
       <div><dt>Captures</dt><dd>${input.captures.length}</dd></div>
       <div><dt>Routes</dt><dd>${new Set(input.captures.map((capture) => `${capture.auth}:${capture.route}`)).size}</dd></div>
       <div><dt>Mounted public media</dt><dd>${input.manifest.inventory.mediaEvidence.publicPresent} / ${input.manifest.inventory.mediaEvidence.publicReferenced}</dd></div>
@@ -135,8 +137,8 @@ function htmlDocument(input: {
       <div><dt>Visible placeholders</dt><dd>${input.manifest.mediaEvidence?.placeholders.visible ?? 0}</dd></div>
       <div><dt>Unexpected diagnostics</dt><dd>${diagnostics.length}</dd></div>
     </section>
-    ${input.redacted ? '<p class="notice">Private routes, authenticated captures, account details, and customer references are excluded from this edition. This edition uses the deterministic representative selection recorded in its manifest; the restricted raw archive remains complete.</p>' : ""}
-    ${input.print && !input.redacted ? '<p class="notice">This printable atlas contains deterministic route, viewport, theme, accessibility, and deep-state representatives. The restricted searchable HTML and PNG tree retain every capture.</p>' : ""}
+    ${input.redacted ? '<p class="notice">Private routes, authenticated evidence, account details, and customer references are excluded from this edition. The restricted manifest retains the complete logical observation ledger and deterministic visual-selection provenance.</p>' : ""}
+    ${input.print && !input.redacted ? '<p class="notice">This printable atlas contains deterministic route, viewport, theme, accessibility, and deep-state visual sentinels. The restricted manifest retains every logical and behavioral observation, including states intentionally not materialized as PNGs.</p>' : ""}
     ${input.print ? "" : '<label>Search captures<input id="capture-search" type="search" placeholder="Route, viewport, theme, or state"></label>'}
   </header>
   <main>
@@ -375,6 +377,7 @@ async function main() {
     shareablePrintHtml: "shareable/print.html",
     shareablePdf: "shareable/woodmat-visual-atlas-redacted.pdf",
     sourceCaptureCount: manifest.captures.length,
+    sourceObservationCount: manifest.observations?.length ?? 0,
     captureCount: printCaptures.length,
     shareableCaptureCount: shareableCaptures.length,
     shareableSourceCaptureCount: shareableSourceCaptures.length,
@@ -385,6 +388,7 @@ async function main() {
   await writeJsonAtomic(path.join(reportRoot, "selection.json"), {
     selectionPolicy: REPORT_SELECTION_POLICY,
     sourceCaptureCount: manifest.captures.length,
+    sourceObservationCount: manifest.observations?.length ?? 0,
     selectedCaptureCount: printCaptures.length,
     selectedKeys: printCaptures.map((capture) => capture.key),
     missingRoutes: missingRestrictedRoutes

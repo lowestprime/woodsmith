@@ -10,6 +10,7 @@ export async function waitForRequestDrain(input: {
   const timeoutMs = input.timeoutMs ?? 15_000;
   const attempts = Math.max(quietSamples, Math.ceil(timeoutMs / intervalMs));
   let consecutiveQuietSamples = 0;
+  let observedPending = false;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     await input.sleep(intervalMs);
@@ -19,9 +20,12 @@ export async function waitForRequestDrain(input: {
     }
 
     if (pending === 0) consecutiveQuietSamples += 1;
-    else consecutiveQuietSamples = 0;
+    else {
+      observedPending = true;
+      consecutiveQuietSamples = 0;
+    }
 
-    if (consecutiveQuietSamples >= quietSamples) return;
+    if (consecutiveQuietSamples >= quietSamples) return observedPending;
   }
 
   throw new Error(

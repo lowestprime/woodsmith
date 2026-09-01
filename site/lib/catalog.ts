@@ -1,4 +1,4 @@
-import { listPieceMediaLinks, type PieceRecord } from "@/lib/db";
+import { getMedia, listPieceMediaLinks, type PieceRecord } from "@/lib/db";
 import {
   getPieceInquiryMode,
   getPiecePriceMode,
@@ -28,7 +28,9 @@ export function getDisplayMediaPaths(piece: Pick<PieceRecord, "slug" | "mediaPat
   const safeLimit = Number.isFinite(preferredLimit) ? Math.max(1, Math.min(12, Math.round(preferredLimit))) : 4;
   const links = listPieceMediaLinks(piece.slug, { publicOnly: true, roles: ["hero", "gallery", "detail", "context"] });
   const normalized = [...new Set(links.map((link) => link.relativePath))];
-  return (normalized.length > 0 ? normalized : piece.mediaPaths).slice(0, safeLimit);
+  return (normalized.length > 0 ? normalized : piece.mediaPaths)
+    .filter((relativePath) => getMedia(relativePath)?.metadata.mediaPreviewStatus !== "unavailable")
+    .slice(0, safeLimit);
 }
 
 export function getPieceProcessMediaLinks(piece: Pick<PieceRecord, "slug">) {

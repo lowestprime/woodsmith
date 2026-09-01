@@ -650,6 +650,7 @@ h3 {
 .studio-panel,
 .request-panel {
   align-content: start;
+  min-width: 0;
 }
 
 .service-card {
@@ -1145,6 +1146,14 @@ img.cleanup-subject-isolate {
   display: flex;
   justify-content: space-between;
   gap: 1rem;
+  min-width: 0;
+}
+
+.estimate-list dd,
+.detail-list dd {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: end;
 }
 
 .checkbox-row {

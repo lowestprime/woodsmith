@@ -27,6 +27,11 @@ function sum(routes: RouteResult[], field: keyof NonNullable<RouteResult["mediaE
   }, 0);
 }
 
+function isProductionMediaEvidenceRoute(route: string) {
+  const pathname = new URL(route, "https://audit.invalid").pathname;
+  return !pathname.startsWith("/snapshot-lab/");
+}
+
 export function expectedMediaProvenance(tier: EvidenceTier) {
   return EXPECTED_PROVENANCE[tier];
 }
@@ -39,7 +44,11 @@ export function buildMediaEvidenceReports(input: {
   inventory: InventoryMediaEvidence;
   routes: RouteResult[];
 }): RunMediaEvidence {
-  const observedRoutes = input.routes.filter((route) => route.expected && route.mediaEvidence);
+  const observedRoutes = input.routes.filter((route) => (
+    route.expected &&
+    route.mediaEvidence &&
+    (input.evidenceTier === "tier-1-synthetic" || isProductionMediaEvidenceRoute(route.route))
+  ));
   const anonymousRoutes = observedRoutes.filter((route) => route.auth === "anonymous");
   const sourceDigests = unique(observedRoutes.flatMap((route) => route.mediaEvidence?.sourceDigests ?? [])).sort();
   const mountedSourceDigests = unique(observedRoutes.flatMap((route) => route.mediaEvidence?.mountedSourceDigests ?? [])).sort();
