@@ -461,7 +461,7 @@ Release `0067488-20260831T050142Z` passed deterministic package hashing, product
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- The application dependency is Next.js 16.3.0; the release candidate passed the recorded dependency, build, image, and deployment gates. A future source change requires a new exact candidate and invalidates this release evidence for that changed boundary.
+- The post-v19 source dependency is Next.js 16.3.4. The deployed v19 image remains evidence-bound to its original Next.js 16.3.0 build until the post-v19 branch produces and validates a new exact candidate. Any source change requires new dependency, build, image, recovery, and deployment evidence for the changed boundary.
 - `Strict-Transport-Security` remains absent at the Cloudflare edge. Canonical HTTPS, `www`/HTTP redirects, and the retired-host 410 passed, but HSTS must be enabled in Cloudflare to close this residual.
 - After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
 - In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
