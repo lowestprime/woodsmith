@@ -1,5 +1,21 @@
 # PLANS.md
 
+## 2026-09-02 Post-v19 Public Launch
+
+- Status: IN PROGRESS on `codex/woodsmith-post-v19-public-launch-20260902`
+- Baseline: `origin/master` at `57def6436af7c4a514181d7307c112fa157f73c8`
+- Production boundary: v19 application `0067488abb058829f3b94584c02ea666e552c9a8` remains unchanged until a new exact candidate passes recovery, image, runtime, browser, and deployment gates.
+- Audit and scope: [`docs/post-v19-launch-audit-20260902.md`](docs/post-v19-launch-audit-20260902.md)
+
+| Workstream | Status | Required outcome |
+|---|---|---|
+| Framework/security baseline | IN PROGRESS | Pin the latest verified Next.js 16.3.x patch, update the lockfile, and pass dependency/source/build/runtime gates. |
+| Public UX and copy | AUDITED | Image-led home, reduced public metadata clutter, coherent portfolio/shop/contact/process/footer behavior, and exact-match persisted-copy normalization. |
+| Global progress and accessibility | PLANNED | Shared progressive route scroll rail, focus-safe navigation, responsive dark/light parity, and WCAG 2.2 AA browser evidence. |
+| Studio modernization | AUDITED | Preserve dense operator workflows while improving context, responsive behavior, mutation status, and high-use surfaces. |
+| Storage and branch consolidation | RECONCILING | Keep-set ledger, mount-identity proof, safe retention cleanup, old-branch retirement, and final master-only topology. |
+| Candidate/recovery/deployment | NOT STARTED | Exact clean linux/amd64 candidate, fresh paired recovery point, immutable deployment, rollback proof, live validation, and documentation closure. |
+
 ## 2026-08-08 Woodsmith v19 Admin Completion
 
 - Status: RELEASE GATES COMPLETE; DEPLOYED; ORDERED PR INTEGRATION READY

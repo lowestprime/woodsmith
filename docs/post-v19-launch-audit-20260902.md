@@ -1,0 +1,79 @@
+# Post-v19 Public Launch Audit
+
+Date: 2026-09-02
+
+Baseline: `origin/master` at `57def6436af7c4a514181d7307c112fa157f73c8`
+
+Goal branch: `codex/woodsmith-post-v19-public-launch-20260902`
+
+## Evidence boundary
+
+- The deployed v19 application remains `0067488abb058829f3b94584c02ea666e552c9a8`; the accepted v19 audit runner remains `686a69c0cc5011394f35add750c29663626990f8`.
+- The v19 evidence tag is retained. Production is not modified during this audit.
+- The sole-writer development checkout is `/home/cbeaman/src/woodsmith` on WSL ext4. `X:\\woodsmith` and `/mnt/woodsmith` are NAS/CIFS views and are not development worktrees for this goal.
+- Baseline application gates pass: 188/188 tests, typecheck, lint with eight pre-existing `no-img-element` warnings, and the safe Next.js 16.3.0 production build.
+
+## Research principles
+
+- Next.js must move to the latest verified compatible 16.3.x patch before release. The official 2026-08-25 security release identifies 16.3.3 as the patched Active-LTS release; the npm registry now publishes 16.3.4 in the same line.
+- WCAG 2.2 AA remains the release floor, with particular attention to focus visibility/obscuring, target size, status messages, error focus, reflow, and reduced motion.
+- Core Web Vitals acceptance uses the current web.dev guidance: LCP at or below 2.5 seconds, INP at or below 200 milliseconds, and CLS at or below 0.1 at the 75th percentile where field-like measurement is available.
+- CSS scroll-driven animation is a progressive enhancement, not a sole implementation path. The route progress rail therefore requires a passive, animation-frame-coalesced fallback.
+- Contemporary craft references consistently put finished work and material photography ahead of explanatory interface copy. George Nakashima Woodworkers, Benchmark, Stickley, The Joinery, Facet, and comparable makers use direct collection taxonomy, restrained calls to action, and concise workshop/process narratives. No third-party brand, copy, asset, or distinctive composition will be copied.
+
+## Human-rendered route families
+
+Public: `/`, `/[slug]`, `/about`, `/care-and-warranty`, `/portfolio`, `/portfolio/[slug]`, `/shop`, `/shop/cart`, `/process`, `/process/[slug]`, legacy `/journal` redirects, `/journal/[slug]`, `/search`, `/contact`, `/commissions`, `/commissions/status`, `/requests/[reference]`, not-found, loading, and error states.
+
+Account: `/account/signup`, `/account/login`, `/account/forgot`, `/account/reset`, `/account/verify`, `/account/verify/[token]`, `/account/profile`, and `/account/projects`.
+
+Private operator: `/studio/login`, `/studio` across overview/settings/pages/pieces/custom/people/process/media/projects/orders/reviews/notifications and their dialogs/inspectors/empty/dense states, plus `/studio/request/[reference]`.
+
+Audit-only: `/snapshot-lab/media-collections`; this is not public navigation and remains isolated from live route inventory.
+
+## UX gap matrix
+
+| Priority | Route / surface | Current problem and user impact | Repair | Shared surface | Accessibility / performance | Validation |
+|---|---|---|---|---|---|---|
+| P0 | All human routes | No route-wide progress affordance. Long portfolio, piece, process, account, and Studio pages provide weak spatial orientation. | Add one layout-level progress rail using CSS scroll timelines plus a passive `requestAnimationFrame` fallback; reset on navigation and recalculate after resize/content changes. | Root layout, header shell | Decorative semantics, reduced-motion treatment, no per-frame React state, no layout shift. | Unit tests for 0/mid/100/short/reset/resize; browser checks on public/account/Studio routes and mobile. |
+| P0 | Framework/runtime | Next.js 16.3.0 predates the current same-line security patch. | Pin Next.js and `eslint-config-next` to 16.3.4, regenerate lockfile, audit dependencies, and repair incompatibilities. | Build/runtime | Preserve Server Component defaults and route semantics. | Full tests, typecheck, lint, audit, safe build, image inspection, disposable runtime. |
+| P0 | Public copy/data | Public pages expose implementation language about public/private surfaces, dashboard management, verification workflow, and software operation. Persisted SQLite values can outlive source fixes. | Replace visitor-facing defaults and hard-coded strings; add exact-match, versioned, audited, idempotent content normalization that preserves divergent owner edits. | Seed, migrations, page records, settings | Shorter copy improves comprehension and avoids duplicate announcements. | Migration clone tests, public-copy source/render guards, idempotence and customized-value preservation. |
+| P0 | Home | The first viewport is text-heavy with a large empty gradient and no furniture photograph; competing sections repeat how the site works. | Build an image-led split hero from the verified home hero media, reduce the headline/CTA set, and tighten section rhythm. | Page intro, media image, buttons | Correct LCP priority/sizes, stable aspect ratio, useful alt, no CLS. | Desktop/mobile/light/dark rendered QA and LCP/CLS trace. |
+| P0 | Contact / commissions | `/contact` describes a direct note but immediately duplicates the same ten-step commission workflow as `/commissions`; the route choice is confusing. | Make `/contact` a concise progressively disclosed entry with clear inquiry choices and hand off complex custom work to the resumable commission workflow without duplicating it. | Contact forms, commission workflow | Error-focus movement, labels, status announcements, touch-friendly actions. | Keyboard and mobile form acceptance; submission only against disposable state. |
+| P1 | Portfolio | Repeated provenance labels, zero-count filters, pill-heavy taxonomy, and metadata density compete with photography. | Use a compact category rail with explicit result count, suppress zero-count categories by default, remove redundant verified badges, and strengthen image hierarchy. | Piece card, category filter | Current state, keyboard reachability, 44px practical targets, URL state retained. | Filter/deep-link/empty-state tests and 320-1440px browser matrix. |
+| P1 | Piece detail | Lead/gallery hierarchy is functional but technical media-review language and workflow explanations appear publicly; CTA and related content need stronger state alignment. | Keep truthful availability while moving provenance to a single quiet disclosure; simplify story/details and render state-specific reserve/custom actions. | Media collection, lightbox, piece policy | Preserve focus trap/restore, keyboard/touch pan/zoom, source-resolution viewing. | Representative inventory/commission/unverified pieces in both themes. |
+| P1 | Shop/cart | A single item uses an oversized card and repeats tax/shipping/system policy prose. Buyers scan policy before product. | Use a compact product-led layout, keep price/availability/fulfillment clear, and progressively disclose secondary policy. | Shop card, cart feedback | Maintain accessible totals/errors and mobile purchase flow; optimize image sizing. | Inventory/empty/cart states and narrow mobile checkout path. |
+| P1 | About/footer | The About page explains CMS/share mechanics. Every footer repeats developer email and repository-source links, diluting the commercial experience. | Refocus About on William, the woodshop, selected credit, and contact; remove operational sharing copy and primary-footer developer/source affordances while retaining credit in About and technical docs. | Footer configuration, About page | Simpler landmarks and link purpose; less repeated DOM. | Public-copy guard and footer checks across route families. |
+| P1 | Process/long-form | The live Process index is empty but publicly explains that routes remain available. Empty states provide no useful next action. | Use an honest, concise empty state; improve article reading measure, captions, related work, and previous/next navigation when records exist. | Process list/article, progress rail | Heading order, reading measure, image captions, route titles. | Empty and populated fixtures on mobile/desktop. |
+| P1 | Header/nav/search | The header is functionally compact but remains control-heavy and pill-like; orientation is visually weak on small widths. | Refine one-row desktop and two-row mobile composition, active state, search affordance, target sizing, and focus-safe auto-hide behavior without adding JS state churn. | Header shell, nav link, theme/account/cart controls | Focus never hidden; current-page state; no horizontal document overflow. | Keyboard, zoom, 320px, scroll hide/reveal, orientation change. |
+| P1 | Studio shell | Capable editors are split across dense historical style layers; orientation, saved/error state, responsive workspace behavior, and destructive-action hierarchy vary by panel. | Consolidate shell tokens/styles, add clear persistent section context and compact panel navigation, standardize mutation status and destructive controls, and improve the highest-use Pages/Pieces/Media/Projects/Orders/Notifications surfaces. | Studio shell, mutation queue, panel nav | Responsive tables, named controls, live status, focus return, no card inflation. | Authenticated disposable desktop/tablet/mobile acceptance with dense media fixture. |
+| P1 | Theme/design system | Three large CSS layers redefine header/cards/tokens repeatedly, making parity and regressions difficult to reason about. | Consolidate the active visual contract into intentional tokens and component rules; remove superseded overrides only after rendered equivalence/repair checks. | Global/refinement/repair CSS | Contrast, reduced motion, zoom/reflow, lower style complexity. | CSS regression tests, contrast checks, route-family screenshots. |
+| P1 | Loading/error/empty states | Several route families use generic or sparse states, and route titles are not consistently distinctive. | Standardize concise, action-oriented states and unique metadata/H1s while preserving Next.js route announcements. | Loading/error/not-found, page metadata | Focus and announcement behavior; no blocking client bundle. | Route error/empty fixtures and AX snapshots. |
+| P2 | Motion/transition | Page changes are visually abrupt, but decorative transition systems could harm history/focus. | Add only progressive, reduced-motion-safe transitions after core geometry and navigation are proven. | Shared CSS | No delayed navigation or focus loss. | Browser support/fallback and history checks. |
+
+P0 and P1 items are implementation scope. P2 is admitted only if it remains CSS-only, progressive, and regression-free.
+
+## Branch-retirement manifest
+
+Ahead/behind is shown as `master ahead / branch ahead`, measured against `origin/master` at the baseline above.
+
+| Branch | Tip | Merge base | Ahead / behind | Classification |
+|---|---|---|---|---|
+| `checkpoint/fast-evidence-route-suite-56c39264623e` | `6f20c9b4dfc1d6417f0ccd89fd540ae77a465bff` | `4eec7b5b6558680c57933b28451e3b8b38e91398` | `18 / 1` | Historical fast-evidence WIP checkpoint. Its one checkpoint commit is not an ancestor, but the accepted audit architecture and later repairs are represented by newer master history and the v19 evidence ledger; its older tree must not replace current source. |
+| `checkpoint/fast-evidence-step2-6d08bb7843e9` | `3ad509e75e4afe8def71429eae49b183c9f6aeab` | `4eec7b5b6558680c57933b28451e3b8b38e91398` | `18 / 1` | Historical validated-WIP checkpoint superseded by the accepted audit runner and later master integration. |
+| `checkpoint/sitewide-overhaul-0758c9a-visual-audit-wip` | `5ca4d2921294812bcf0ad5c89af847cc706acf0a` | `0758c9a8d23e2dcf8ae20d6443cc1b474e60fc09` | `78 / 1` | Interrupted two-file visual-audit WIP checkpoint. Current master contains the completed, later audit implementation and accepted release evidence. |
+| `checkpoint/sitewide-overhaul-9940969-validation-repair-wip-20260715` | `61f4cf9c881dddec282be8d8204821cce45858db` | `9940969c0693af125ac9718d5fdae1332eddace4` | `64 / 1` | Historical repair-plan WIP superseded by later validated capture/repair code on master. |
+| `checkpoint/sitewide-overhaul-c30a909-full-archive-wip-20260714` | `5a3f25d53f628d7fffd35fdd9512d82894554333` | `c30a9096ad1d4e3652041d9ca34d455c4b09bdc9` | `72 / 1` | Historical archive WIP superseded by the completed deterministic archive and final v19 evidence. |
+| `codex/sitewide-studio-ux-commission-overhaul-20260711` | `bb1ae2930788d9d1ea6d26c339211b5307106d88` | same as tip | `1 / 0` | Fully represented by master; safe to retire. |
+| `codex/woodsmith-v19-admin-completion-20260721` | `348ad7d4f78f61b7d10347a5de4760f951234c80` | same as tip | `2 / 0` | Fully represented by master; safe to retire after the v19 evidence tag is rechecked. |
+
+The five checkpoint branches intentionally preserve unique historical snapshot commits, not current product work. Their tip identities are recorded above, their useful outcomes are represented by current source and accepted v19 evidence, and retaining branch refs is not required for release provenance. No replacement checkpoint branch or tag will be created.
+
+## Baseline findings retained for implementation
+
+- Scientist Desk public imagery now matches the specified black phenolic top and maple base. No additional piece/media pairing will be guessed.
+- The home page has verified `heroMediaPath` data but does not render it in the hero.
+- Process has no visible records in production and currently exposes implementation-oriented empty copy.
+- Search preserves the FTS5-first architecture; visual search is described as local material-cue matching and must remain honest about that capability.
+- Lightbox, normalized media roles, direct assignment, autosave, typed inline editing, project tracking, and provider-degraded behavior are existing strengths to preserve.
+- Source media is immutable for visual treatment. Any cleanup or crop remains metadata/derivative-only.
