@@ -14,6 +14,10 @@ import {
   isNavigationCurrent,
   shouldFreezeHeaderForVisualCapture
 } from "./ui-behavior.ts";
+import {
+  calculateRouteProgress,
+  routeProgressCssValue
+} from "./route-progress.ts";
 
 test("production cookies stay secure outside an explicitly isolated HTTP audit", () => {
   assert.equal(secureCookieRequired({ NODE_ENV: "production" }), true);
@@ -60,6 +64,59 @@ test("header motion freezes only for an explicit visual capture", () => {
   assert.equal(shouldFreezeHeaderForVisualCapture({}), false);
   assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "false" }), false);
   assert.equal(shouldFreezeHeaderForVisualCapture({ auditScrollCapture: "true" }), true);
+});
+
+test("route progress covers top, middle, bottom, short, and dynamic-height states", () => {
+  assert.deepEqual(
+    calculateRouteProgress({ scrollTop: 0, scrollHeight: 1600, viewportHeight: 600 }),
+    { progress: 0, scrollRange: 1000, visible: true }
+  );
+  assert.deepEqual(
+    calculateRouteProgress({ scrollTop: 500, scrollHeight: 1600, viewportHeight: 600 }),
+    { progress: 0.5, scrollRange: 1000, visible: true }
+  );
+  assert.deepEqual(
+    calculateRouteProgress({ scrollTop: 1400, scrollHeight: 1600, viewportHeight: 600 }),
+    { progress: 1, scrollRange: 1000, visible: true }
+  );
+  assert.deepEqual(
+    calculateRouteProgress({ scrollTop: 0, scrollHeight: 604, viewportHeight: 600 }),
+    { progress: 0, scrollRange: 4, visible: false }
+  );
+
+  const beforeStream = calculateRouteProgress({
+    scrollTop: 500,
+    scrollHeight: 1600,
+    viewportHeight: 600
+  });
+  const afterStream = calculateRouteProgress({
+    scrollTop: 500,
+    scrollHeight: 2600,
+    viewportHeight: 600
+  });
+  assert.equal(beforeStream.progress, 0.5);
+  assert.equal(afterStream.progress, 0.25);
+  assert.equal(routeProgressCssValue(Number.POSITIVE_INFINITY), "0.00000");
+  assert.equal(routeProgressCssValue(2), "1.00000");
+});
+
+test("route progress resets on navigation and uses a progressive passive fallback", async () => {
+  const [component, styles, layout] = await Promise.all([
+    readFile(new URL("../components/route-progress-rail.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/ui-repair.css", import.meta.url), "utf8"),
+    readFile(new URL("../app/layout.tsx", import.meta.url), "utf8")
+  ]);
+
+  assert.match(component, /usePathname\(\)/);
+  assert.match(component, /style\.setProperty\("--route-progress", "0"\)/);
+  assert.match(component, /\}, \[pathname\]\);/);
+  assert.match(component, /new ResizeObserver\(scheduleUpdate\)/);
+  assert.match(component, /requestAnimationFrame\(update\)/);
+  assert.match(component, /addEventListener\("scroll", scheduleUpdate, \{ passive: true \}\)/);
+  assert.doesNotMatch(component, /useState/);
+  assert.match(styles, /animation-timeline:\s*scroll\(root block\)/);
+  assert.match(styles, /prefers-reduced-motion:\s*reduce/);
+  assert.match(layout, /<RouteProgressRail \/>/);
 });
 
 test("lightbox zoom and pan stay within visible bounds", () => {
