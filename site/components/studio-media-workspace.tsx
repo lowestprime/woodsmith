@@ -966,6 +966,7 @@ function MediaInspector({
             kind: item.kind,
             order: 0,
             src: toMediaUrl(item.relativePath),
+            unoptimized: imageNeedsUnoptimized(item),
             zoom: item.zoom
           }]}
           title={item.fileName}
@@ -983,7 +984,7 @@ function MediaInspector({
       )}
       <div className="studio-media-inspector-head">
         <div>
-          <h3>{item.fileName}</h3>
+          <h3 data-media-inspector-title tabIndex={-1}>{item.fileName}</h3>
           <p className="muted-copy">{item.relativePath}</p>
           <p className="muted-copy">{item.reviewed ? "Reviewed for public use" : "Needs review"} · Cluster {item.clusterKey}</p>
           {aiDescription || aiTags.length > 0 ? <p className="muted-copy">AI notes: {aiDescription || aiTags.join(", ")}</p> : null}
@@ -1250,6 +1251,7 @@ export function StudioMediaWorkspace({
   const [isDirty, setIsDirty] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
   const [mobilePane, setMobilePane] = useState<"tools" | "browser" | "inspector">("browser");
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const [isPagePending, startPageTransition] = useTransition();
   const requestSequence = useRef(0);
   const initialRequest = useRef(true);
@@ -1279,6 +1281,16 @@ export function StudioMediaWorkspace({
     ])
   );
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    if (mobilePane !== "inspector") return;
+    const workspace = workspaceRef.current;
+    const tabs = workspace?.querySelector<HTMLElement>(".studio-media-mobile-tabs");
+    if (!tabs || tabs.getClientRects().length === 0) return;
+    // A mobile pane switch hides its originating thumbnail. Keep keyboard focus
+    // on the newly visible record, not a hidden control or the page body.
+    workspace?.querySelector<HTMLElement>("[data-media-inspector-title]")?.focus({ preventScroll: true });
+  }, [mobilePane, selectedPath]);
 
   useEffect(() => {
     const reconcileMediaItems =
@@ -1439,7 +1451,10 @@ export function StudioMediaWorkspace({
   }
 
   async function selectItem(relativePath: string) {
-    if (relativePath === selectedPath) return;
+    if (relativePath === selectedPath) {
+      setMobilePane("inspector");
+      return;
+    }
     try {
       await flushStudioNavigationQueues();
       setIsDirty(false);
@@ -1545,7 +1560,7 @@ export function StudioMediaWorkspace({
   }
 
   return (
-    <div className="studio-media-workspace" data-mobile-pane={mobilePane}>
+    <div className="studio-media-workspace" data-mobile-pane={mobilePane} ref={workspaceRef}>
       <div aria-label="Media workspace section" className="studio-media-mobile-tabs" role="group">
         <button aria-pressed={mobilePane === "tools"} onClick={() => setMobilePane("tools")} type="button">Tools</button>
         <button aria-pressed={mobilePane === "browser"} onClick={() => setMobilePane("browser")} type="button">Library</button>
@@ -1768,7 +1783,16 @@ export function StudioMediaWorkspace({
           </div>
           <span aria-live="polite" className="muted-copy studio-media-result-count">{pageMessage ?? `${items.length} shown · ${total} indexed`} · {selectedPaths.size} selected {selectedPaths.size > 0 ? <button className="text-button" onClick={() => setSelectedPaths(new Set())} type="button">Clear</button> : null}</span>
         </div>
-        <div aria-label="Mounted media library" className="studio-media-browser-grid" data-media-collection="studio-media-library" data-media-collection-variant="picker-grid" role="region">
+        <div aria-label="Mounted media library" className="studio-media-browser-grid" data-media-collection="studio-media-library" data-media-collection-variant="picker-grid" role="region" onKeyDown={(event) => {
+          if (!(event.target instanceof HTMLElement) || !event.target.matches(".studio-media-browser-card")) return;
+          if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".studio-media-browser-card"));
+          const current = cards.indexOf(event.target as HTMLButtonElement);
+          const columns = Math.max(1, getComputedStyle(event.currentTarget).gridTemplateColumns.split(" ").length);
+          const steps: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns };
+          const next = event.key === "Home" ? 0 : event.key === "End" ? cards.length - 1 : event.key in steps ? Math.min(cards.length - 1, Math.max(0, current + steps[event.key])) : null;
+          if (next !== null && current >= 0) { event.preventDefault(); cards[next]?.focus(); }
+        }}>
           {items.map((item, index) => {
             const selectedForAutomation = selectedPaths.has(item.relativePath);
             const analyzed = Boolean(item.metadata.aiAnalyzed);
@@ -1783,7 +1807,6 @@ export function StudioMediaWorkspace({
                 data-media-index={index + 1}
                 data-media-path={item.relativePath}
                 onClick={() => void selectItem(item.relativePath)}
-                tabIndex={item.relativePath === selectedItem?.relativePath || (!selectedItem && index === 0) ? 0 : -1}
                 type="button"
               >
                 <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
@@ -1883,9 +1906,10 @@ export function StudioMediaWorkspace({
                 fileName: result.relativePath.split("/").at(-1) || result.relativePath,
                 updatedAt: new Date().toISOString()
               }));
-              if (selectedPath === result.previousPath) {
-                setSelectedPath(result.relativePath);
-              }
+              // The rename form always belongs to the open inspector. Select
+              // the returned path unconditionally so a page/filter transition
+              // cannot leave selection on the removed pre-rename identity.
+              setSelectedPath(result.relativePath);
               setIsDirty(false);
               void formData;
             }}

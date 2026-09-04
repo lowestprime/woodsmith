@@ -16,6 +16,7 @@ export type MediaCollectionItem = {
   stage?: string | null;
   occurredAt?: string | null;
   role?: string;
+  unoptimized?: boolean;
   order: number;
 };
 
