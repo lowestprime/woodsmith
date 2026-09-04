@@ -19,7 +19,6 @@ import {
   checkSearchIndexIntegrity,
   consumeCommissionRenderAsset,
   consumeCommissionSubmissionQuota,
-  createDraftOrder,
   createMediaOperationBatch,
   createProject,
   createProjectIdempotent,
@@ -174,12 +173,17 @@ import {
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import {
   processDueNotificationRetries,
+  queueNotificationEmail,
+  queueOperatorCorrespondence,
+  createOrderInquiry,
   retryNotificationDelivery,
   sendNotificationEmail,
   sendSmtpTest,
   summarizeEmailFailure,
   verifySmtpConfiguration
 } from "@/lib/notifications";
+import { getNotificationRoutingRecord, saveNotificationForwarding } from "@/lib/db";
+import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "@/lib/notification-routing";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
@@ -802,7 +806,9 @@ export async function startCheckoutAction(formData: FormData) {
   const cartToken = await getCartToken();
   const user = await getCurrentUser();
   const site = getSiteSettings();
-  const buyerEmail = requiredField(formData.get("email"), "Email").toLowerCase();
+  const buyerAddresses = normalizeNotificationAddresses(requiredField(formData.get("email"), "Email"));
+  if (buyerAddresses.length !== 1) throw new Error("Enter one customer email address.");
+  const buyerEmail = buyerAddresses[0];
   const cartItems = listCartItems(cartToken, user?.email ?? null);
   const invalidItems: string[] = [];
   const lines = cartItems.flatMap((item) => {
@@ -820,7 +826,7 @@ export async function startCheckoutAction(formData: FormData) {
     }];
   });
 
-  if (lines.length === 0) {
+  if (lines.length === 0 || invalidItems.length > 0) {
     redirect(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`);
   }
 
@@ -833,7 +839,11 @@ export async function startCheckoutAction(formData: FormData) {
     taxRate: site.localTaxRate
   });
 
-  const orderNumber = createDraftOrder({
+  if (!consumeCommissionSubmissionQuota(`checkout:${await commissionOwnerKey(user?.email)}`, 5).allowed) throw new Error("Too many checkout requests. Please try again later.");
+  const { orderNumber, notice } = createOrderInquiry({
+    kind: "checkout_draft", customerName: optionalField(formData.get("shippingName")) || user?.displayName || "Customer",
+    customerEmail: buyerEmail, lines, studioUrl: `${resolveBaseUrl()}/studio?panel=orders`,
+    order: {
     userEmail: user?.email ?? buyerEmail,
     subtotalCents: totals.subtotalCents,
     shippingCents: totals.shippingCents,
@@ -852,7 +862,9 @@ export async function startCheckoutAction(formData: FormData) {
     billingAddress: {
       email: buyerEmail
     }
+    }
   });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
 
   if (stripeIsConfigured()) {
     const session = await createStripeCheckoutSession({
@@ -1070,10 +1082,16 @@ export async function submitContactRequestAction(formData: FormData) {
       updateProject(reference, { options: { ...project.options, aiPreviewPath: ownedPreviewPath } });
     }
     appendProjectUpdate({ projectReference: reference, authorEmail: guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body: message });
+    const draftId = optionalField(formData.get("draftId"));
+    if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
+  }
+    // Replaying a submission can recover a missing outbox entry without duplicating mail.
+    const persisted = getProject(reference)!;
     const statusUrl = `${resolveBaseUrl()}/commissions/status`;
-    await sendNotificationEmail({
+    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference });
+    const confirmation = queueNotificationEmail({
       category: "commission_submitted",
-      to: [guestEmail, getSiteSettings().builderEmail],
+      to: persisted.guestEmail,
       subject: `Custom work request received: ${reference}`,
       text: `Your Beaman Woodworks project reference is ${reference}. Open ${statusUrl} and enter the reference with your email to view updates.`,
       html: `<p>Your Beaman Woodworks project reference is <strong>${reference}</strong>.</p><p>Open ${statusUrl} and enter the reference with your email to view updates.</p>`,
@@ -1085,9 +1103,8 @@ export async function submitContactRequestAction(formData: FormData) {
         `commission-submitted:${reference}`,
       projectReference: reference
     });
-    const draftId = optionalField(formData.get("draftId"));
-    if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
-  }
+    if (operatorNotice.shouldDeliver) await retryNotificationDelivery(operatorNotice.delivery.id);
+    if (confirmation.shouldDeliver) await retryNotificationDelivery(confirmation.delivery.id);
 
   await grantProjectBrowserAccess(reference);
   revalidatePath("/commissions");
@@ -1114,7 +1131,13 @@ export async function submitProjectReplyAction(formData: FormData) {
   const project = getProject(reference);
   const user = await getCurrentUser();
   if (!project || !await userCanAccessProject(project, user)) redirect(`/requests/${reference}?error=access`);
-  appendProjectUpdate({ projectReference: reference, authorEmail: user?.email ?? project.guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body });
+  if (user?.role !== "admin" && !consumeCommissionSubmissionQuota(`correspondence:${await commissionOwnerKey(user?.email)}`, 20).allowed) throw new Error("Too many messages. Please try again later.");
+  const notice = withDatabaseTransaction(() => {
+    const id = appendProjectUpdate({ projectReference: reference, authorEmail: user?.email ?? project.guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body });
+    if (user?.role === "admin") return null;
+    return queueOperatorCorrespondence({ category: "customer_reply_admin", customerName: user?.displayName || project.guestName, customerEmail: user?.email || project.guestEmail, reference, message: body, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: id, projectReference: reference });
+  });
+  if (notice?.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
   revalidatePath(`/requests/${reference}`);
   redirect(`/requests/${reference}?updated=1`);
 }
@@ -1126,8 +1149,13 @@ export async function submitReviewAction(formData: FormData) {
     redirect(`/portfolio/${encodeURIComponent(pieceSlug)}?error=${encodeURIComponent("Reviews are not open for this piece.")}`);
   }
   const reviewerName = requiredField(formData.get("reviewerName"), "Your name");
+  const reviewer = await getCurrentUser();
+  if (!consumeCommissionSubmissionQuota(`reviews:${await commissionOwnerKey(reviewer?.email)}`, 5).allowed) throw new Error("Too many reviews. Please try again later.");
   const rating = parseInteger(formData.get("rating"), 5);
-  saveReview({
+  const reviewId = crypto.randomUUID();
+  const notice = withDatabaseTransaction(() => {
+    saveReview({
+    id: reviewId,
     pieceSlug,
     userEmail: optionalField(formData.get("email")) || null,
     reviewerName,
@@ -1135,7 +1163,10 @@ export async function submitReviewAction(formData: FormData) {
     title: requiredField(formData.get("title"), "Title"),
     body: requiredField(formData.get("body"), "Review"),
     status: "draft" as const
+    });
+    return queueOperatorCorrespondence({ category: "review_submitted_admin", customerName: reviewerName, customerEmail: optionalField(formData.get("email")) || "Not supplied", reference: pieceSlug, message: `${requiredField(formData.get("title"), "Title")}\n${requiredField(formData.get("body"), "Review")}`, studioUrl: `${resolveBaseUrl()}/studio?panel=reviews`, eventId: reviewId });
   });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
   revalidatePath(`/portfolio/${pieceSlug}`);
   redirect(`/portfolio/${pieceSlug}?review=submitted`);
 }
@@ -1200,9 +1231,11 @@ export async function saveSiteSettingsAction(formData: FormData) {
           fromName: optionalField(formData.get("emailFromName")) || existing.email.fromName,
           fromAddress: optionalField(formData.get("emailFromAddress")) || existing.email.fromAddress,
           replyTo: optionalField(formData.get("emailReplyTo")) || existing.email.replyTo,
-          forwardTo: optionalField(formData.get("emailForwardTo")) || existing.email.forwardTo
+          forwardTo: existing.email.forwardTo
         }
       };
+  // Routing changes require the versioned Notifications autosave, not this legacy full-form path.
+  input.email.forwardTo = existing.email.forwardTo;
   saveSiteSettings(input as SiteSettings);
   revalidatePath("/");
   revalidatePath("/about");
@@ -4579,31 +4612,25 @@ function normalizeEmailList(
       `${label} must be a list.`
     );
   }
-  const result = [
-    ...new Set(
-      value
-        .map((entry) =>
-          String(entry).trim().toLowerCase()
-        )
-        .filter(Boolean)
-    )
-  ];
-  if (result.length > 30) {
-    throw new StudioMutationValidationError(
-      `${label} may contain at most 30 addresses.`
-    );
-  }
-  if (
-    result.some(
-      (email) =>
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    )
-  ) {
-    throw new StudioMutationValidationError(
-      `${label} contains an invalid email address.`
-    );
-  }
-  return result;
+  try { return normalizeNotificationAddresses(value, label); }
+  catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+}
+
+export async function saveNotificationRoutingAutosaveAction(input: StudioServerMutationInput<{ forwardTo: string }>): Promise<StudioMutationResult<NotificationRoutingRecord>> {
+  if (!input.expectedUpdatedAt) return { ok: false, code: "validation", message: "Reload the current routing version before saving." };
+  return executeAdminRecordAutosave(input, {
+    scope: "notification-routing-autosave", entityType: "notification-routing",
+    conflictMessage: "This operation ID was already used for a different routing update.",
+    validate: patch => {
+      try { return { forwardTo: normalizeNotificationAddresses(boundedStudioString(patch.forwardTo, "Global forwarding", 8000), "Global forwarding").join("\n") }; }
+      catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+    },
+    loadCurrent: () => getNotificationRoutingRecord(),
+    save: (_current, patch) => saveNotificationForwarding(patch.forwardTo),
+    loadCanonical: () => getNotificationRoutingRecord(),
+    updatedAt: entity => entity.updatedAt, entityKey: () => "site", operation: () => "update",
+    invalidate: () => revalidatePath("/studio")
+  });
 }
 
 function boundedInteger(

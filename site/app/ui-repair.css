@@ -3707,6 +3707,21 @@ main:focus {
   grid-column: 1 / -1;
 }
 
+.notification-routing,
+.notification-routing-preview {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.notification-routing-roles {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.notification-routing-roles dt { font-weight: 700; }
+.notification-routing-roles dd { margin: 0 0 0.6rem; color: var(--muted); }
+.notification-routing-preview output { display: block; margin-block: 0.6rem; }
+
 @media (max-width: 840px) {
   .home-hero-grid {
     grid-template-columns: 1fr;

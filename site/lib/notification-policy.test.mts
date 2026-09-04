@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { normalizeNotificationAddresses, resolveNotificationRouting } from "./notification-routing.ts";
 
 import {
   DEFAULT_NOTIFICATION_TYPES,
@@ -7,6 +8,28 @@ import {
   renderNotificationTemplate,
   validateNotificationTemplate
 } from "./notification-policy.ts";
+
+test("forwarding normalizes all delimiters, rejects malformed input, and clears", () => {
+  assert.deepEqual(normalizeNotificationAddresses(" A@Example.test; b@example.test\na@example.test, C@example.test\r\n"), ["a@example.test", "b@example.test", "c@example.test"]);
+  assert.deepEqual(normalizeNotificationAddresses(""), []);
+  for (const input of ["valid@example.test;not-an-email", "a@example.test\nBcc:evil@example.test", "A <a@example.test>", "a@-host.test", ".a@example.test", "a..b@example.test", "a. @example.test", "a\u0000b@example.test", `${"a".repeat(65)}@example.test`, `a@${"b".repeat(64)}.test`]) assert.throws(() => normalizeNotificationAddresses(input), /invalid/);
+  assert.deepEqual(normalizeNotificationAddresses("buyer+tag@example.test;hello@xn--bcher-kva.example"), ["buyer+tag@example.test", "hello@xn--bcher-kva.example"]);
+  assert.throws(() => normalizeNotificationAddresses(Array.from({ length: 31 }, (_, index) => `a${index}@example.test`)), /at most 30/);
+});
+
+test("effective routing retains recipient modes and deduplicates To, CC and every BCC source", () => {
+  const input = { category: "project_status", recipientMode: "request-and-configured" as const, requested: "buyer@example.test", configured: "operator@example.test", globalForwarding: "global@example.test;buyer@example.test", categoryForwarding: "category@example.test;global@example.test", cc: "cc@example.test;operator@example.test", bcc: "event@example.test;category@example.test;cc@example.test" };
+  assert.deepEqual(resolveNotificationRouting(input), { recipients: ["buyer@example.test", "operator@example.test"], ccRecipients: ["cc@example.test"], bccRecipients: ["global@example.test", "category@example.test", "event@example.test"] });
+  assert.deepEqual(resolveNotificationRouting({ ...input, recipientMode: "configured" }).recipients, ["operator@example.test"]);
+  assert.deepEqual(resolveNotificationRouting({ ...input, recipientMode: "request" }).recipients, ["buyer@example.test"]);
+});
+
+test("authentication links never inherit configured or forwarding recipients", () => {
+  for (const category of ["account_verification", "password_reset"]) {
+    assert.deepEqual(resolveNotificationRouting({ category, recipientMode: "configured", requested: "buyer@example.test", configured: "operator@example.test", globalForwarding: "copy@example.test", categoryForwarding: "other@example.test", cc: "cc@example.test", bcc: "bcc@example.test" }), { recipients: ["buyer@example.test"], ccRecipients: [], bccRecipients: [] });
+    assert.throws(() => resolveNotificationRouting({ category, recipientMode: "request", requested: ["a@example.test", "b@example.test"] }), /exactly one/);
+  }
+});
 
 test("default notification definitions are unique, complete, and safe", () => {
   assert.equal(
@@ -19,7 +42,7 @@ test("default notification definitions are unique, complete, and safe", () => {
   );
   assert.equal(
     DEFAULT_NOTIFICATION_TYPES.length,
-    10
+    13
   );
   assert.equal(
     DEFAULT_NOTIFICATION_TYPES.find(

@@ -362,3 +362,96 @@ test("notification policies pool SMTP, deduplicate, retry, verify, redact, and p
     );
   }
 });
+
+test("global routing is reversible, private, durable and separate from operator/authentication recipients", async () => {
+  const root = mkdtempSync(path.join(tmpdir(), "woodsmith-routing-"));
+  const envKeys = ["NODE_ENV", "DATA_ROOT", "MEDIA_ROOT", "SMTP_HOST", "SMTP_USER", "SMTP_PASSWORD"];
+  const previous = Object.fromEntries(envKeys.map(key => [key, process.env[key]]));
+  process.env.NODE_ENV = "test";
+  process.env.DATA_ROOT = path.join(root, "data");
+  process.env.MEDIA_ROOT = path.join(root, "media");
+  process.env.SMTP_HOST = "smtp.example.test";
+  process.env.SMTP_USER = "sender@example.test";
+  process.env.SMTP_PASSWORD = "disposable-test-only";
+  const db = await import("./db.ts");
+  const mail = await import("./notifications.ts");
+  const { redactAuditPayload } = await import("./audit-redaction.ts");
+  const sent: Array<Record<string, unknown>> = [];
+  mail.setNotificationTransportFactoryForTests(() => ({ async sendMail(options) { sent.push(options); return { accepted: options.to as string[] }; }, async verify() { return true; } }));
+  try {
+    const initial = db.getSiteSettingsRecord();
+    db.saveSiteSettings({ ...initial.settings, builderEmail: "builder@example.test", notificationForwardEmail: "legacy@example.test", email: { ...initial.settings.email, fromAddress: "sender@example.test", replyTo: "reply@example.test", forwardTo: "" } });
+    const before = db.getNotificationRoutingRecord();
+    const saved = db.saveNotificationForwarding(" Copy@Example.test;second@example.test\ncopy@example.test ");
+    assert.equal(saved.forwardTo, "copy@example.test\nsecond@example.test");
+    assert.ok(saved.updatedAt > before.updatedAt);
+    assert.equal(saved.builderEmail, "builder@example.test");
+    assert.equal(saved.notificationForwardEmail, "legacy@example.test");
+    assert.equal(saved.replyTo, "reply@example.test");
+    assert.throws(() => db.saveNotificationForwarding("bad-email"), /invalid/);
+    assert.deepEqual(db.getNotificationRoutingRecord(), saved);
+    db.closeDatabaseForTests();
+    assert.equal(db.getNotificationRoutingRecord().forwardTo, saved.forwardTo);
+    assert.equal(db.saveNotificationForwarding("").forwardTo, "");
+    assert.equal(db.getSiteSettings().email.forwardTo, "");
+    db.saveNotificationForwarding("copy@example.test;builder@example.test");
+
+    for (const category of ["customer_inquiry_admin", "customer_reply_admin", "review_submitted_admin"] as const) {
+      const policy = db.getNotificationPolicy(category)!;
+      db.saveNotificationPolicy({ ...policy, forwardRecipients: ["category@example.test", "copy@example.test"] });
+      const queued = mail.queueOperatorCorrespondence({ category, customerName: "Buyer <script>", customerEmail: "buyer@example.test", reference: "BW-TEST", message: "<script>bad</script>" + "x".repeat(2200), studioUrl: "https://example.test/studio?panel=projects&project=BW-TEST", eventId: category });
+      const detail = db.getNotificationDeliveryDetail(queued.delivery.id)!;
+      assert.deepEqual(detail.recipients, ["builder@example.test"]);
+      assert.deepEqual(detail.bccRecipients, ["copy@example.test", "category@example.test"]);
+      assert.ok(detail.textBody.includes("buyer@example.test"));
+      assert.ok(detail.htmlBody.includes("&lt;script&gt;"));
+      assert.ok(!detail.htmlBody.includes("<script>"));
+      assert.ok(detail.textBody.length < 2400);
+      assert.equal(mail.queueOperatorCorrespondence({ category, customerName: "Buyer", customerEmail: "buyer@example.test", reference: "BW-TEST", message: "replay", studioUrl: "https://example.test/studio", eventId: category }).delivery.id, detail.id);
+      await mail.retryNotificationDelivery(detail.id);
+    }
+    assert.equal(sent.length, 3);
+    for (const kind of ["local_review", "checkout_draft"] as const) {
+      const inquiry = mail.createOrderInquiry({
+        kind, customerName: "Buyer", customerEmail: "buyer@example.test",
+        lines: [{ title: "Pastry Table", quantity: 1 }], studioUrl: "https://example.test/studio?panel=orders",
+        order: { userEmail: "buyer@example.test", subtotalCents: 10000, shippingCents: 0, taxCents: 0, discountCents: 0, currency: "USD" }
+      });
+      assert.equal(db.getOrder(inquiry.orderNumber)?.status, "Draft");
+      const detail = db.getNotificationDeliveryDetail(inquiry.notice.delivery.id)!;
+      assert.deepEqual(detail.recipients, ["builder@example.test"]);
+      assert.ok(detail.textBody.includes("1 x Pastry Table"));
+      assert.ok(detail.textBody.includes("Payment and fulfillment are not confirmed"));
+    }
+    for (const category of ["account_verification", "password_reset"] as const) {
+      db.saveNotificationPolicy({ ...db.getNotificationPolicy(category)!, recipientMode: "configured", recipients: ["not-the-buyer@example.test"], forwardRecipients: ["category@example.test"] });
+      const result = await mail.sendNotificationEmail({ category, to: "buyer@example.test", cc: "cc@example.test", bcc: "bcc@example.test", subject: "Account link", text: "Synthetic account link" });
+      const delivered = sent.at(-1)!;
+      assert.deepEqual(delivered.to, ["buyer@example.test"]);
+      assert.deepEqual(delivered.bcc, []);
+      assert.deepEqual(delivered.cc, []);
+      assert.equal(db.getAuthenticationRecipient(result.delivery.id), "buyer@example.test");
+    }
+    const legacy = db.createNotificationDelivery({ category: "password_reset", recipients: ["buyer@example.test"], bccRecipients: ["copy@example.test"], subject: "Old link", textBody: "Old synthetic link", status: "queued", maxAttempts: 3 });
+    const count = sent.length;
+    const refused = await mail.retryNotificationDelivery(legacy.delivery.id);
+    assert.equal(refused.sent, false);
+    assert.equal(refused.delivery.errorCode, "AUTH_RECIPIENT_PROVENANCE");
+    assert.equal(sent.length, count);
+    assert.ok(!JSON.stringify(redactAuditPayload({ before, after: saved })).includes("@example.test"));
+    assert.ok(!JSON.stringify(mail.getSmtpPublicConfiguration()).includes(process.env.SMTP_PASSWORD));
+    const check = await mail.verifySmtpConfiguration("operator@example.test");
+    assert.equal(check.status, "verified");
+    const beforeFailure = db.listNotificationDeliveries({ limit: 100 }).length;
+    assert.throws(() => db.withDatabaseTransaction(() => {
+      mail.queueOperatorCorrespondence({ category: "customer_reply_admin", customerName: "Buyer", customerEmail: "buyer@example.test", reference: "BW-TEST", message: "atomic", studioUrl: "https://example.test/studio", eventId: "must-rollback" });
+      throw new Error("abort message save");
+    }), /abort message save/);
+    assert.equal(db.listNotificationDeliveries({ limit: 100 }).length, beforeFailure);
+  } finally {
+    mail.setNotificationTransportFactoryForTests(null);
+    db.closeDatabaseForTests();
+    rmSync(root, { recursive: true, force: true });
+    for (const key of envKeys) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; }
+  }
+});

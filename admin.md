@@ -153,6 +153,10 @@ The compact Notifications workspace has **Overview**, **Types**, **Templates**, 
 
 Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
 
+In the post-v19 source, **Overview -> Global forwarding recipients (BCC)** edits the existing delivery default without changing SMTP credentials or Builder email. Clear the field to remove global copies. Types shows effective global + per-Type + event BCC, excluding primary/CC duplicates. Validation errors provide **Retry save**; concurrent changes provide an explicit option to discard local edits and adopt the latest saved record. [Notification routing](docs/notification-routing.md) documents every address role and customer-message path.
+
+Verification/reset links go only to the requesting account, never to global or per-Type copies. Schema v15 records recipient provenance for new account-link mail; old queued links lacking it must be requested again. New inquiry, customer reply, review, and order-review notices are separate from buyer confirmations. Deployment requires the migration/recovery gates; these source changes are not an assertion that production has already changed.
+
 Delivery rows are summary-only until opened; message bodies and attempt details are loaded on demand. SMTP verification reports host/port/sender and categorized failures but never returns or renders `SMTP_PASSWORD`. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures remain explicit instead of being reported as sent.
 
 ## Buyer-facing workflow

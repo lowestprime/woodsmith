@@ -130,6 +130,28 @@ function fixtureDatabase(options: { omitPriceColumn?: boolean } = {}) {
   return { db, directory };
 }
 
+test("schema 15 adds operator types without changing customized settings or policies and rolls back failures", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 14 });
+    const settings = '{ "email": {"forwardTo":"custom@example.test"}, "ownerField": [1,2,3] }';
+    db.prepare("INSERT INTO settings VALUES ('site',?,'old')").run(settings);
+    db.exec("UPDATE notification_policies SET label = 'Owner custom label', forward_recipients_json = '[\"owner@example.test\"]' WHERE category = 'project_status'");
+    const policy = db.prepare("SELECT * FROM notification_policies WHERE category = 'project_status'").get();
+    db.exec("CREATE TRIGGER reject_operator_policy BEFORE INSERT ON notification_policies WHEN NEW.category = 'customer_reply_admin' BEGIN SELECT RAISE(ABORT, 'test rejection'); END");
+    assert.throws(() => applySchemaMigrations(db), /test rejection/);
+    assert.equal(db.prepare("SELECT version FROM schema_migrations WHERE version = 15").get(), undefined);
+    assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'notification_auth_recipients'").get(), undefined);
+    assert.equal(db.prepare("SELECT category FROM notification_policies WHERE category = 'customer_inquiry_admin'").get(), undefined);
+    db.exec("DROP TRIGGER reject_operator_policy");
+    assert.deepEqual(applySchemaMigrations(db).applied.map(row => row.version), [15]);
+    assert.deepEqual(applySchemaMigrations(db).applied, []);
+    assert.equal((db.prepare("SELECT value FROM settings WHERE key = 'site'").get() as { value: string }).value, settings);
+    assert.deepEqual(db.prepare("SELECT * FROM notification_policies WHERE category = 'project_status'").get(), policy);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM notification_policies").get() as { n: number }).n, 13);
+  } finally { db.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("schema migrations are additive, idempotent, and preserve reconciled normalized-link truth", () => {
   const { db, directory } = fixtureDatabase();
   try {
@@ -189,7 +211,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     const second = applySchemaMigrations(db);
     assert.equal(first.quickCheckBefore, "ok");
     assert.equal(first.quickCheckAfter, "ok");
-    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]);
+    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
     assert.equal(second.applied.length, 0);
 
     const policies = (db.prepare(`SELECT slug, price_mode AS priceMode, price_cents AS priceCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode FROM pieces ORDER BY slug`).all() as Array<Record<string, unknown>>).map((row) => ({ ...row }));
@@ -249,8 +271,8 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     assert.deepEqual(
       { ...notificationCounts },
       {
-        policies: 10,
-        templates: 10,
+        policies: 13,
+        templates: 13,
         deliveries: 1
       }
     );
@@ -279,7 +301,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     ]);
 
     const migrationCount = db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number };
-    assert.equal(migrationCount.n, 14);
+    assert.equal(migrationCount.n, 15);
     const searchStatus = db.prepare(`
       SELECT expected_documents AS expectedDocuments,
              indexed_documents AS indexedDocuments,
@@ -325,13 +347,13 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [7, 8, 9, 10, 11, 12, 13, 14]
+      [7, 8, 9, 10, 11, 12, 13, 14, 15]
     );
     const policyCount = db.prepare(`
         SELECT COUNT(*) AS count
         FROM notification_policies
       `).get() as { count: number };
-    assert.equal(policyCount.count, 10);
+    assert.equal(policyCount.count, 13);
 
     const restart = applySchemaMigrations(db);
     assert.equal(restart.applied.length, 0);
@@ -342,7 +364,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
     `).all() as Array<{ version: number }>;
     assert.deepEqual(
       versions.map((row) => row.version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14]
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
     );
   } finally {
     db.close();
@@ -374,7 +396,7 @@ test("a schema-version-10 fixture adds the disabled visitor-session policy", () 
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [11, 12, 13, 14]
+      [11, 12, 13, 14, 15]
     );
     assert.deepEqual(
       {
@@ -530,7 +552,7 @@ test("schema version 12 scrubs legacy visitor identifiers and audit private data
       applySchemaMigrations(db).applied.map(
         (entry) => entry.version
       ),
-      [13, 14]
+      [13, 14, 15]
     );
     assert.equal(
       applySchemaMigrations(db).applied.length,
@@ -635,7 +657,7 @@ test("schema version 14 normalizes only exact legacy public copy and records bef
       .run(JSON.stringify(legacySettings), stamp);
 
     const upgrade = applySchemaMigrations(db);
-    assert.deepEqual(upgrade.applied.map((entry) => entry.version), [14]);
+    assert.deepEqual(upgrade.applied.map((entry) => entry.version), [14, 15]);
 
     const pages = db.prepare(`
       SELECT slug, intro, body FROM pages ORDER BY slug
@@ -746,7 +768,7 @@ test("schema version 14 rolls back content and ledger when settings audit record
     assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 14`).get().n, 0);
     assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM content_normalization_history`).get().n, 0);
     db.exec('DROP TRIGGER reject_setting_history');
-    assert.deepEqual(applySchemaMigrations(db).applied.map((row) => row.version), [14]);
+    assert.deepEqual(applySchemaMigrations(db).applied.map((row) => row.version), [14, 15]);
     assert.equal(applySchemaMigrations(db).applied.length, 0);
   } finally {
     db.close();

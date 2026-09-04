@@ -13,6 +13,14 @@ Goal branch: `codex/woodsmith-post-v19-public-launch-20260902`
 - The sole-writer development checkout is `/home/cbeaman/src/woodsmith` on WSL ext4. `X:\\woodsmith` and `/mnt/woodsmith` are NAS/CIFS views and are not development worktrees for this goal.
 - Baseline application gates pass: 188/188 tests, typecheck, lint with eight pre-existing `no-img-element` warnings, and the safe Next.js 16.3.0 production build.
 
+## 2026-09-04 Notification Routing Acceptance
+
+The coherent public slice and responsive/media repairs are committed and pushed as `4f2d33e` and `f9d0409`. The subsequent routing slice adds reversible typed global BCC defaults, a shared effective-recipient preview, separate operator inquiry/reply/review notices, transactional order-review notices, authentication-link recipient provenance (schema v15), and explicit shared autosave retry/conflict recovery. Local reservation redirects now remain on the browser's origin instead of the container hostname.
+
+Current source validation: 206/206 application tests, typecheck, lint with eight existing image warnings, and the safe Next.js 16.3.4 build (12 static pages; standalone runtime-data gate). Browser fixture `routing-final` passed 11 checks: eight desktop/430/390/320 light/dark routing combinations, conflict rejection/adoption, Contact + project reply, and local order review. No console/page errors or cross-origin requests were recorded. Database verification proved separate buyer/operator queue entries, a reply notice, an order-review notice, 26 routing audit operations linked to mutation IDs, and `quick_check=ok`. SMTP was deliberately unconfigured, so no external email was sent. A subsequent pure address-validator hardening passed the full source gates and does not change layout, queue scheduling or recipient-source semantics.
+
+Restricted output is retained outside Git under the post-v19 public QA run root. Earlier failed fixture/harness runs are diagnostic evidence, not passes. These checks do not substitute for the production-clone migration, dense-media, final accessibility/performance, recovery, exact-image or deployment gates. The cart-line removal action's missing ownership check was also confirmed during correspondence-path review and remains a required P0 repair before leaving Studio/customer audit work.
+
 ## Research principles
 
 - Next.js must move to the latest verified compatible 16.3.x patch before release. The official 2026-08-25 security release identifies 16.3.3 as the patched Active-LTS release; the npm registry now publishes 16.3.4 in the same line.

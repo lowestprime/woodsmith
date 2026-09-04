@@ -17,7 +17,10 @@ export const NOTIFICATION_TYPE_KEYS = [
   "invoice",
   "shipping",
   "visitor_session",
-  "studio_test"
+  "studio_test",
+  "customer_inquiry_admin",
+  "customer_reply_admin",
+  "review_submitted_admin"
 ] as const;
 
 export type NotificationTypeKey =
@@ -44,8 +47,22 @@ const COMMON_VARIABLES = [
   "recipientName"
 ] as const;
 
+export const OPERATOR_NOTIFICATION_TYPES: readonly NotificationTypeDefinition[] = [
+  ["customer_inquiry_admin", "New customer inquiry", "A new Contact or custom-work submission needs woodshop review."],
+  ["customer_reply_admin", "Customer project reply", "A customer added a reply to an existing project."],
+  ["review_submitted_admin", "Review awaiting approval", "A customer review is awaiting manual publication approval."]
+].map(([key, label, description]) => ({
+  key: key as NotificationTypeKey, label, description, enabled: true,
+  recipientMode: "request-and-configured", retentionDays: 90, maxAttempts: 4, retryBaseSeconds: 300,
+  variables: [...COMMON_VARIABLES, "customerName", "customerEmail", "reference", "messageExcerpt", "studioUrl"],
+  subjectTemplate: `${label}: {{reference}}`,
+  textTemplate: "Customer: {{customerName}}\nEmail: {{customerEmail}}\nReference: {{reference}}\n\n{{messageExcerpt}}\n\nOpen the authenticated woodshop workspace:\n{{studioUrl}}",
+  htmlTemplate: "<p><strong>Customer:</strong> {{customerName}}<br><strong>Email:</strong> {{customerEmail}}<br><strong>Reference:</strong> {{reference}}</p><p>{{messageExcerpt}}</p><p>Open the authenticated woodshop workspace: {{studioUrl}}</p>"
+}));
+
 export const DEFAULT_NOTIFICATION_TYPES:
   readonly NotificationTypeDefinition[] = [
+    ...OPERATOR_NOTIFICATION_TYPES,
     {
       key: "account_verification",
       label: "Email verification",

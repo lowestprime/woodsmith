@@ -1,13 +1,18 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { createDraftOrder, getPiece, getSiteSettings, listCartItems } from "@/lib/db";
+import { consumeCommissionSubmissionQuota, getPiece, getSiteSettings, listCartItems } from "@/lib/db";
 import { getDropoffDriveMinutes, getFulfillmentSummary, getWoodshopZip, pieceShippingEnabled } from "@/lib/catalog";
 import { calculateCheckoutTotals } from "@/lib/payments";
 import { pieceCanEnterCart } from "@/lib/piece-model";
+import { assertTrustedMutationOrigin, UntrustedMutationOriginError } from "@/lib/request-security";
+import { normalizeNotificationAddresses } from "@/lib/notification-routing";
+import { createOrderInquiry, retryNotificationDelivery } from "@/lib/notifications";
+import { commissionOwnerKey } from "@/lib/commission-security";
 
-function redirectTo(path: string, request: Request) {
-  return NextResponse.redirect(new URL(path, request.url));
+function redirectTo(path: string) {
+  // Keep the browser on its public origin rather than Next's container hostname.
+  return new NextResponse(null, { status: 303, headers: { Location: path } });
 }
 
 function readText(formData: FormData, name: string) {
@@ -15,16 +20,24 @@ function readText(formData: FormData, name: string) {
 }
 
 export async function POST(request: Request) {
+  try { assertTrustedMutationOrigin(request); }
+  catch (error) {
+    if (error instanceof UntrustedMutationOriginError) return NextResponse.json({ error: error.message }, { status: 403 });
+    throw error;
+  }
   const formData = await request.formData();
-  const buyerEmail = readText(formData, "email").toLowerCase();
+  let buyerEmail: string;
+  try {
+    const addresses = normalizeNotificationAddresses(readText(formData, "email"));
+    if (addresses.length !== 1) throw new Error("Enter one customer email address.");
+    buyerEmail = addresses[0];
+  } catch {
+    return redirectTo(`/shop/cart?error=${encodeURIComponent("Enter one valid email address for local pickup/delivery review.")}`);
+  }
   const pickupConsent = formData.get("pickupConsent") === "1";
 
-  if (!buyerEmail) {
-    return redirectTo(`/shop/cart?error=${encodeURIComponent("Email is required for local pickup/drop-off review.")}`, request);
-  }
-
   if (!pickupConsent) {
-    return redirectTo(`/shop/cart?error=${encodeURIComponent("Please confirm pickup/drop-off consent before continuing.")}`, request);
+    return redirectTo(`/shop/cart?error=${encodeURIComponent("Please confirm pickup/drop-off consent before continuing.")}`);
   }
 
   const cookieStore = await cookies();
@@ -42,8 +55,8 @@ export async function POST(request: Request) {
     return [{ item, piece }];
   });
 
-  if (pieces.length === 0) {
-    return redirectTo(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`, request);
+  if (pieces.length === 0 || invalidItems.length > 0) {
+    return redirectTo(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`);
   }
 
   const lines = pieces.map(({ item, piece }) => ({
@@ -68,7 +81,14 @@ export async function POST(request: Request) {
   const dropoffDriveMinutes = firstPiece ? getDropoffDriveMinutes(firstPiece.metadata) : 120;
   const anyShippingEnabled = pieces.some(({ piece }) => pieceShippingEnabled(piece));
 
-  const orderNumber = createDraftOrder({
+  if (!consumeCommissionSubmissionQuota(`local-reservation:${await commissionOwnerKey(user?.email)}`, 5).allowed) {
+    return redirectTo(`/shop/cart?error=${encodeURIComponent("Too many requests. Please try again later.")}`);
+  }
+  const { orderNumber, notice } = createOrderInquiry({
+    kind: "local_review", customerName: readText(formData, "shippingName") || user?.displayName || "Customer",
+    customerEmail: buyerEmail, lines,
+    studioUrl: new URL("/studio?panel=orders", process.env.SITE_URL || request.url).href,
+    order: {
     userEmail: user?.email ?? buyerEmail,
     subtotalCents: totals.subtotalCents,
     shippingCents: 0,
@@ -92,8 +112,10 @@ export async function POST(request: Request) {
     billingAddress: {
       email: buyerEmail
     }
+    }
   });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
 
   const summaries = pieces.map(({ piece }) => `${piece.title}: ${getFulfillmentSummary(piece)}`).join(" | ");
-  return redirectTo(`/shop/cart?checkout=local-review&order=${encodeURIComponent(orderNumber)}&summary=${encodeURIComponent(summaries.slice(0, 180))}`, request);
+  return redirectTo(`/shop/cart?checkout=local-review&order=${encodeURIComponent(orderNumber)}&summary=${encodeURIComponent(summaries.slice(0, 180))}`);
 }

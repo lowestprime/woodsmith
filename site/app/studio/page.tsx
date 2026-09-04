@@ -32,6 +32,7 @@ import {
   getMediaAccessAssociations,
   getSearchIndexStatus,
   getSiteSettingsRecord,
+  getNotificationRoutingRecord,
   getStudioDashboardSummary,
   getRuntimePersistenceStatus,
   getLatestSmtpVerification,
@@ -1144,7 +1145,7 @@ export default async function StudioPage({
       ) : null}
 
       {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy, rating, and publication state without leaving the current workspace.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <StudioReviewEditor highlight={Boolean(pieceHighlight && review.pieceSlug === pieceHighlight)} key={review.id} review={review} />)}</div></PageSection> : null}
-      {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
+      {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin initialRouting={getNotificationRoutingRecord()} auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
       </div>
     </Shell>
   );

@@ -17,6 +17,7 @@ import { mergeMediaPreviewMetadata } from "./media-preview.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
+import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "./notification-routing.ts";
 import {
   MEDIA_ASSIGNMENT_SOURCES,
   MEDIA_FOLDER_RULE_ROLES,
@@ -2245,6 +2246,26 @@ export function getSiteSettingsRecord(): SiteSettingsRecord {
 export function saveSiteSettings(input: SiteSettings) {
   const db = getDatabase();
   upsertSetting(db, "site", input);
+}
+
+export function getNotificationRoutingRecord(): NotificationRoutingRecord {
+  const { settings, updatedAt } = getSiteSettingsRecord();
+  return { forwardTo: settings.email.forwardTo, builderEmail: settings.builderEmail, notificationForwardEmail: settings.notificationForwardEmail, replyTo: settings.email.replyTo, updatedAt };
+}
+
+export function saveNotificationForwarding(forwardTo: string) {
+  const normalized = normalizeNotificationAddresses(forwardTo, "Global forwarding").join("\n");
+  const settings = getSiteSettings();
+  saveSiteSettings({ ...settings, email: { ...settings.email, forwardTo: normalized } });
+  return getNotificationRoutingRecord();
+}
+
+export function recordAuthenticationRecipient(deliveryId: string, recipient: string) {
+  getDatabase().prepare("INSERT INTO notification_auth_recipients (delivery_id,recipient) VALUES (?,?)").run(deliveryId, recipient);
+}
+
+export function getAuthenticationRecipient(deliveryId: string) {
+  return (getDatabase().prepare("SELECT recipient FROM notification_auth_recipients WHERE delivery_id = ?").get(deliveryId) as { recipient: string } | undefined)?.recipient ?? null;
 }
 
 
@@ -5176,8 +5197,9 @@ export function appendProjectUpdate(input: {
   }
 
   const timestamp = nowIso();
+  const id = randomUUID();
   db.prepare(`INSERT INTO project_updates (id, project_reference, author_email, author_role, visibility, body, attachments_json, created_at) VALUES (:id, :projectReference, :authorEmail, :authorRole, :visibility, :body, :attachmentsJson, :createdAt)`).run({
-    id: randomUUID(),
+    id,
     projectReference: input.projectReference,
     authorEmail: input.authorEmail ?? null,
     authorRole: input.authorRole,
@@ -5187,6 +5209,7 @@ export function appendProjectUpdate(input: {
     createdAt: timestamp
   });
   db.prepare(`UPDATE projects SET updated_at = ? WHERE reference = ?`).run(timestamp, input.projectReference);
+  return id;
 }
 
 export function listProjectUpdates(projectReference: string, includePrivate = false) {

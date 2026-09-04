@@ -48,6 +48,8 @@ import {
 } from "@/lib/notification-policy";
 
 import { formatDateTime } from "@/lib/format";
+import type { NotificationRoutingRecord } from "@/lib/notification-routing";
+import { GlobalRoutingEditor, RoutingPreview } from "@/components/studio/notification-routing-editor";
 
 import {
   ConfirmDestructiveAction
@@ -81,6 +83,7 @@ type SmtpPublicConfiguration = {
 };
 
 type NotificationsAdminProps = {
+  initialRouting: NotificationRoutingRecord;
   initialPolicies: NotificationPolicyRecord[];
   initialTemplates: NotificationTemplateRecord[];
   initialDeliveries: NotificationDeliverySummary[];
@@ -187,7 +190,8 @@ const SAMPLE_VARIABLES: Record<string, string> = {
   trackingNumber: "Tracking pending",
   invoiceUrl: "https://www.woodmat.ch/account/projects",
   carrier: "Carrier confirmed after booking",
-  sentAt: "Aug 7, 2026, 10:30 AM"
+  sentAt: "Aug 7, 2026, 10:30 AM",
+  customerName: "Alex Morgan", customerEmail: "buyer@example.test", reference: "BW-EXAMPLE", messageExcerpt: "Could we discuss a table for our dining room?", studioUrl: "https://woodmat.ch/studio?panel=projects"
 };
 
 function splitAddresses(value: string) {
@@ -225,13 +229,17 @@ function formInteger(
 
 function PolicyEditor({
   policy,
+  routing,
   onSaved
 }: {
   policy: NotificationPolicyRecord;
+  routing: NotificationRoutingRecord;
   onSaved: (
     policy: NotificationPolicyRecord
   ) => void;
 }) {
+  const [recipientText, setRecipientText] = useState(policy.recipients.join("\n"));
+  const [forwardText, setForwardText] = useState(policy.forwardRecipients.join("\n"));
   const [draft, setDraft] =
     useState<NotificationPolicyAutosavePatch>({
       category: policy.category,
@@ -321,6 +329,8 @@ function PolicyEditor({
         return;
       }
       const next = snapshot.currentEntity;
+      setRecipientText(next.recipients.join("\n"));
+      setForwardText(next.forwardRecipients.join("\n"));
       setDraft({
         category: next.category,
         label: next.label,
@@ -442,38 +452,25 @@ function PolicyEditor({
           <span>Configured recipients</span>
           <textarea
             name="recipients"
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                recipients: splitAddresses(
-                  event.target.value
-                )
-              }));
-            }}
+            onChange={(event) => setRecipientText(event.target.value)}
             placeholder="One address per line"
             rows={3}
-            value={draft.recipients.join("\n")}
+            value={recipientText}
           />
         </label>
         <label>
           <span>Forwarding recipients (BCC)</span>
           <textarea
             name="forwardRecipients"
-            onChange={(event) => {
-              setDraft((current) => ({
-                ...current,
-                forwardRecipients:
-                  splitAddresses(
-                    event.target.value
-                  )
-              }));
-            }}
+            onChange={(event) => setForwardText(event.target.value)}
             placeholder="One address per line"
             rows={3}
-            value={draft.forwardRecipients.join("\n")}
+            value={forwardText}
           />
         </label>
       </div>
+
+      <RoutingPreview policy={{ ...draft, recipients: splitAddresses(recipientText), forwardRecipients: splitAddresses(forwardText) }} routing={routing} />
 
       <div className="field-grid three-up compact-grid">
         <label>
@@ -1176,6 +1173,7 @@ function SmtpWorkspace({
 }
 
 export function StudioNotificationsAdmin({
+  initialRouting,
   initialPolicies,
   initialTemplates,
   initialDeliveries,
@@ -1191,6 +1189,7 @@ export function StudioNotificationsAdmin({
 }: NotificationsAdminProps & {
   initialView?: string;
 }) {
+  const [routing, setRouting] = useState(initialRouting);
   const [tab, setTab] =
     useState<WorkspaceTab>(() => workspaceTab(initialView));
   const [policies, setPolicies] =
@@ -1278,6 +1277,7 @@ export function StudioNotificationsAdmin({
         tabIndex={0}
       >
         {tab === "overview" ? (
+        <><GlobalRoutingEditor record={routing} onSaved={setRouting} />
         <div className="studio-grid notification-summary-grid">
           <article className="studio-panel">
             <strong>{initialSummary.total}</strong>
@@ -1303,7 +1303,7 @@ export function StudioNotificationsAdmin({
             <strong>{initialSummary.suppressed}</strong>
             <span>Suppressed</span>
           </article>
-        </div>
+        </div></>
       ) : null}
 
       {tab === "types" || tab === "templates" ? (
@@ -1342,6 +1342,7 @@ export function StudioNotificationsAdmin({
                 key={selectedPolicy.category}
                 onSaved={replacePolicy}
                 policy={selectedPolicy}
+                routing={routing}
               />
             </article>
           ) : null}

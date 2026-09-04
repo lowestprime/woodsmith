@@ -591,7 +591,7 @@ const migrations: Migration[] = [
       // Migration 9 shipped with the original nine categories. Keep its
       // historical behavior stable; later categories have their own ledger row.
       for (const definition of DEFAULT_NOTIFICATION_TYPES.filter(
-        (item) => item.key !== "visitor_session"
+        (item) => item.key !== "visitor_session" && !["customer_inquiry_admin", "customer_reply_admin", "review_submitted_admin"].includes(item.key)
       )) {
         seededPolicies += Number(insertPolicy.run(
           definition.key,
@@ -1008,6 +1008,28 @@ const migrations: Migration[] = [
     checksum: "2026-09-post-v19-public-copy-v1",
     apply(db) {
       return applyPublicCopyNormalization(db);
+    }
+  },
+  {
+    version: 15,
+    name: "operator-correspondence-and-auth-recipient-provenance",
+    checksum: "2026-09-notification-routing-v1",
+    apply(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS notification_auth_recipients (
+        delivery_id TEXT PRIMARY KEY REFERENCES notification_deliveries(id) ON DELETE CASCADE,
+        recipient TEXT NOT NULL
+      ) STRICT;`);
+      const timestamp = nowIso();
+      let policiesAdded = 0;
+      for (const definition of DEFAULT_NOTIFICATION_TYPES.filter(item => ["customer_inquiry_admin", "customer_reply_admin", "review_submitted_admin"].includes(item.key))) {
+        policiesAdded += Number(db.prepare(`INSERT OR IGNORE INTO notification_policies
+          (category,label,description,enabled,recipient_mode,retention_days,max_attempts,retry_base_seconds,created_at,updated_at,updated_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,'migration-v15')`).run(definition.key, definition.label, definition.description, 1, definition.recipientMode, definition.retentionDays, definition.maxAttempts, definition.retryBaseSeconds, timestamp, timestamp).changes);
+        db.prepare(`INSERT OR IGNORE INTO notification_templates
+          (category,subject_template,text_template,html_template,created_at,updated_at,updated_by)
+          VALUES (?,?,?,?,?,?,'migration-v15')`).run(definition.key, definition.subjectTemplate, definition.textTemplate, definition.htmlTemplate, timestamp, timestamp);
+      }
+      return { policiesAdded, authRecipientProvenance: true, existingSettingsPreserved: true };
     }
   }
 ];

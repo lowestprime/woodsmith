@@ -437,6 +437,22 @@ export function StudioAutosaveForm<
   const busy =
     snapshot.phase === "saving" ||
     snapshot.phase === "retrying";
+  const conflictedEntity = snapshot.currentEntity;
+  const conflictedVersion = conflictedEntity && typeof conflictedEntity === "object" && "updatedAt" in conflictedEntity && typeof conflictedEntity.updatedAt === "string" ? conflictedEntity.updatedAt : null;
+  const recoveryActions = snapshot.phase === "error" ? (
+    <button data-studio-autosave="ignore" type="button" className="button-secondary" onClick={() => {
+      stageCurrent();
+      enqueuePending();
+      void queue.retryUnsaved();
+    }}>Retry save</button>
+  ) : snapshot.phase === "conflict" && conflictedEntity && conflictedVersion ? (
+    <button data-studio-autosave="ignore" type="button" className="button-secondary" onClick={() => {
+      cancelTimer();
+      pendingPayloadRef.current = { hasValue: false };
+      queue.discardUnsaved();
+      queue.adoptCommittedEntity(conflictedEntity, conflictedVersion);
+    }}>Use latest saved version (discard my edits)</button>
+  ) : null;
 
   return (
     <form
@@ -486,7 +502,7 @@ export function StudioAutosaveForm<
 
       {showStatus ? (
         <StudioSaveStatus
-          actions={statusActions}
+          actions={statusActions || recoveryActions ? <>{statusActions}{recoveryActions}</> : undefined}
           className={statusClassName}
           idleLabel={statusIdleLabel}
           snapshot={snapshot}

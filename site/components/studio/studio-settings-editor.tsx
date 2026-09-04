@@ -234,6 +234,7 @@ export function StudioSettingsEditor({
               type="email"
               value={draft.builderEmail}
             />
+            <small>Primary woodshop and customer-correspondence address. Notification copies are configured in Notifications, not here.</small>
           </label>
 
           <label>
