@@ -796,8 +796,10 @@ export async function addToCartAction(formData: FormData) {
 }
 
 export async function removeCartItemAction(formData: FormData) {
+  const cartToken = await getCartToken();
+  const user = await getCurrentUser();
   const id = requiredField(formData.get("id"), "Cart line");
-  removeCartItem(id);
+  if (!removeCartItem(id, cartToken, user?.email ?? null)) redirect(`/shop/cart?error=${encodeURIComponent("This cart item is no longer available.")}`);
   revalidatePath("/shop/cart");
   redirect("/shop/cart?updated=1");
 }

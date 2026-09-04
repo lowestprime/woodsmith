@@ -18,7 +18,7 @@
 
 ### Next ordered boundary
 
-Public slice committed/pushed as `4f2d33e7b3461d5eddc8c1b58a3904bda1c19faa`; responsive/media repairs pushed as `f9d0409`. Notification routing and its migration-v15 account-link provenance are locally validated; see `docs/notification-routing.md`. Commit/push this coherent slice, then finish the remaining documented Studio P0/P1 review, including the newly confirmed cart-line ownership gap. Continue disposable production-clone schema-v14/v15 migration and dense/fidelity proof, storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation. Production recipient settings and media remain untouched.
+Public slice committed/pushed as `4f2d33e7b3461d5eddc8c1b58a3904bda1c19faa`; responsive/media repairs pushed as `f9d0409`; notification routing pushed as `45667996dce78fdc5c0c7381c1eac8ef603af269`. The cart-line ownership defect is repaired with shared read/delete authorization and protected updates; 207 tests and targeted tampered-ID browser acceptance pass. Routing acceptance also passes against the current integrated build. Next: remaining Studio dense/fidelity and P0/P1 checks using a disposable production clone, schema-v14/v15 migration/customization/idempotence proof, then storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation. Production recipient settings and media remain untouched.
 
 ## 2026-08-08 Woodsmith v19 Admin Completion
 

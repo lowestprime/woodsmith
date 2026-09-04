@@ -5939,15 +5939,18 @@ export function deleteProjectPermanently(
   });
 }
 
+const CART_OWNER_PREDICATE = `((:cartToken != '' AND cart_token = :cartToken AND COALESCE(user_email, '') = '') OR (:userEmail != '' AND lower(user_email) = lower(:userEmail)))`;
+
 export function listCartItems(cartToken: string, userEmail?: string | null) {
   const db = getDatabase();
-  const rows = db.prepare(`SELECT id, cart_token AS cartToken, user_email AS userEmail, piece_slug AS pieceSlug, quantity, options_json AS optionsJson, created_at AS createdAt, updated_at AS updatedAt FROM cart_items WHERE cart_token = ? OR (user_email IS NOT NULL AND lower(user_email) = lower(?)) ORDER BY datetime(updated_at) DESC`).all(cartToken, userEmail ?? "") as Record<string, unknown>[];
+  const rows = db.prepare(`SELECT id, cart_token AS cartToken, user_email AS userEmail, piece_slug AS pieceSlug, quantity, options_json AS optionsJson, created_at AS createdAt, updated_at AS updatedAt FROM cart_items WHERE ${CART_OWNER_PREDICATE} ORDER BY datetime(updated_at) DESC`).all({ cartToken: cartToken.trim(), userEmail: userEmail?.trim() || "" }) as Record<string, unknown>[];
   return rows.map(mapCartItem);
 }
 
 export function saveCartItem(input: { cartToken: string; userEmail?: string | null; pieceSlug: string; quantity: number; options?: Record<string, unknown> }) {
+  if (!input.cartToken.trim()) throw new Error("A cart session is required.");
   const db = getDatabase();
-  const existing = db.prepare(`SELECT id FROM cart_items WHERE cart_token = ? AND piece_slug = ? LIMIT 1`).get(input.cartToken, input.pieceSlug) as { id?: string } | undefined;
+  const existing = db.prepare(`SELECT id FROM cart_items WHERE cart_token = :cartToken AND piece_slug = :pieceSlug AND ${CART_OWNER_PREDICATE} LIMIT 1`).get({ cartToken: input.cartToken.trim(), pieceSlug: input.pieceSlug, userEmail: input.userEmail?.trim() || "" }) as { id?: string } | undefined;
   const timestamp = nowIso();
   db.prepare(`
     INSERT INTO cart_items (id, cart_token, user_email, piece_slug, quantity, options_json, created_at, updated_at)
@@ -5955,8 +5958,8 @@ export function saveCartItem(input: { cartToken: string; userEmail?: string | nu
     ON CONFLICT(id) DO UPDATE SET quantity = excluded.quantity, options_json = excluded.options_json, user_email = excluded.user_email, updated_at = excluded.updated_at
   `).run({
     id: existing?.id ?? randomUUID(),
-    cartToken: input.cartToken,
-    userEmail: input.userEmail ?? null,
+    cartToken: input.cartToken.trim(),
+    userEmail: input.userEmail?.trim().toLowerCase() || null,
     pieceSlug: input.pieceSlug,
     quantity: Math.max(1, input.quantity),
     optionsJson: writeJson(input.options ?? {}),
@@ -5965,9 +5968,9 @@ export function saveCartItem(input: { cartToken: string; userEmail?: string | nu
   });
 }
 
-export function removeCartItem(id: string) {
+export function removeCartItem(id: string, cartToken: string, userEmail?: string | null) {
   const db = getDatabase();
-  db.prepare(`DELETE FROM cart_items WHERE id = ?`).run(id);
+  return Number(db.prepare(`DELETE FROM cart_items WHERE id = :id AND ${CART_OWNER_PREDICATE}`).run({ id, cartToken: cartToken.trim(), userEmail: userEmail?.trim() || "" }).changes) === 1;
 }
 
 export function clearCart(cartToken: string) {

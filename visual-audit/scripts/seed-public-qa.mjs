@@ -32,5 +32,7 @@ db.prepare("UPDATE pages SET hero_media_path = ? WHERE slug = 'home'").run(media
 db.prepare("UPDATE pieces SET status = 'inventory', publication_status = 'published', price_mode = 'fixed', price_cents = 10000, inventory_count = 1 WHERE slug = 'pastry-table'").run();
 db.prepare(`INSERT OR REPLACE INTO cart_items (id,cart_token,piece_slug,quantity,options_json,created_at,updated_at)
   VALUES ('routing-qa-cart','disposable-routing-cart','pastry-table',1,'{}',?,?)`).run(now, now);
+db.prepare(`INSERT OR REPLACE INTO cart_items (id,cart_token,piece_slug,quantity,options_json,created_at,updated_at)
+  VALUES ('foreign-routing-cart','foreign-routing-token','pastry-table',1,'{}',?,?)`).run(now, now);
 console.log('DISPOSABLE_PUBLIC_FIXTURE_READY');
 db.close();

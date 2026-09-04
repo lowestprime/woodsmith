@@ -56,6 +56,7 @@ The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an 
 - Visitor identity uses purpose-separated HMAC pseudonyms. Configure an independent `VISITOR_HMAC_SECRET`, label it with `VISITOR_HMAC_KEY_ID`, and rotate both together to begin a deliberately unlinkable cohort. `VISITOR_TRACK_INTERNAL=false` excludes local/private traffic by default; the dashboard policy controls collection, city/referrer-host storage, 1-730 day retention, and manual purge.
 - SMTP passwords remain environment-only. The dashboard reports configuration and verification state without returning or rendering the password, and notification bodies are fetched only when an administrator opens a delivery detail.
 - Notifications Overview exposes reversible global BCC defaults; Types previews their union with per-Type/event copies. Authentication links never receive forwarding copies. New inquiries, buyer replies, reviews and order-review requests have separate operator notices. See [notification routing](docs/notification-routing.md) for address roles, explicit-clear/conflict behavior and migration caveats.
+- Cart reads and removal require the current guest capability or authenticated account. Logout/shared-browser cookies do not expose account-owned cart lines, and submitting another customer's line ID cannot delete it.
 - ChatGPT Plus is not an API backend and does not include OpenAI API usage. The classification workflow is local-first; OpenAI remains an explicitly enabled compatibility option.
 
 ## 🖇️ Repository Architecture

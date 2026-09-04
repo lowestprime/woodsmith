@@ -55,7 +55,7 @@ try {
     await page.reload();
     assert.equal(await global.inputValue(), 'copy@example.test\nsecond@example.test');
     stage = `${width}-${theme}:validation-recovery`;
-    await global.fill('not-an-address');
+    await global.fill('a..b@example.test');
     await global.blur();
     await form.locator('[data-studio-save-phase="error"]').waitFor();
     await saved(form, () => global.fill('copy@example.test'));
