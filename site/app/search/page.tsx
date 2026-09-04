@@ -22,18 +22,11 @@ function SearchResults({
   query: string;
   response: SiteSearchResponse;
 }) {
-  const semanticLabel =
-    response.semanticStatus === "applied"
-      ? " Precomputed semantic signals refined the first results."
-      : response.semanticStatus === "timeout"
-        ? " Semantic enrichment timed out; lexical results remain complete."
-        : response.semanticStatus === "unavailable"
-          ? " Semantic enrichment was unavailable; lexical results remain complete."
-          : "";
+  const semanticLabel = response.semanticStatus === "applied" ? " Related terms were considered." : "";
   return (
     <div aria-live="polite" aria-busy="false">
       <p className="muted-copy search-result-status">
-        FTS5 lexical search found {response.results.length} result{response.results.length === 1 ? "" : "s"} for “{query}” in {Math.max(0.1, response.lexicalMs).toFixed(1)} ms.{semanticLabel}
+        Found {response.results.length} result{response.results.length === 1 ? "" : "s"} for “{query}”.{semanticLabel}
       </p>
       <div className="search-results">
         {response.results.map((result) => (
@@ -103,7 +96,7 @@ export default async function SearchPage({
     <Shell>
       <PageSection editHref="/studio?panel=media">
         <PageIntro
-          copy="Search pieces, shop and process notes, pages, and, when signed into the dashboard, private media metadata and project records."
+          copy={includePrivate ? "Search pieces, process notes, pages, media, and project records." : "Search finished pieces, available work, process notes, and care information."}
           eyebrow="Search"
           title="Search the site"
         />

@@ -25,13 +25,13 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
       <PageSection editHref="/studio?panel=settings">
         <PageIntro
           eyebrow="Contact"
-          title="Ask about a custom piece"
-          copy="Use the intake form below to send a message directly to the woodshop. Every inquiry is read personally — replies come from a real human, usually within a business day."
+          title="Contact the woodshop"
+          copy="Ask about an available piece, a custom build, delivery, care, or repair. William reviews each inquiry directly."
         />
         <p className="muted-copy">
           Prefer email? Reach us at <a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a>. You can also
           {" "}
-          <Link href="/commissions">open the full custom-work form</Link>
+          <Link href="/commissions">plan a detailed custom piece</Link>
           {" "}
           or
           {" "}

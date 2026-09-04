@@ -468,3 +468,6 @@ Release `0067488-20260831T050142Z` passed deterministic package hashing, product
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.
+# Pending post-v19 migration gate
+
+The active launch branch adds schema v14 exact-match public-copy normalization. It runs in the migration transaction, records before/after history, leaves customized values unchanged, and fails the migration if audit recording fails. Validate the new schema against a disposable production clone before deployment, including rerun idempotence and custom-content preservation. A fresh paired database/media backup and staged restore remain mandatory. Local source tests/build do not authorize deployment; v19 rollback assets and evidence remain retained.

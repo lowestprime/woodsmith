@@ -115,6 +115,7 @@ test("route progress resets on navigation and uses a progressive passive fallbac
   assert.match(component, /addEventListener\("scroll", scheduleUpdate, \{ passive: true \}\)/);
   assert.doesNotMatch(component, /useState/);
   assert.match(styles, /animation-timeline:\s*scroll\(root block\)/);
+  assert.match(styles, /animation:\s*route-progress-fill 1ms linear both/);
   assert.match(styles, /prefers-reduced-motion:\s*reduce/);
   assert.match(layout, /<RouteProgressRail \/>/);
 });

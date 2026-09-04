@@ -13,35 +13,36 @@ import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } fro
 import { CommissionWorkflow, IdempotencyInput } from "@/components/commission-workflow";
 import { ProfileAvatarFields } from "@/components/profile-avatar-fields";
 
-export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece, defaultName, defaultEmail, signedIn }: {
+export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece, defaultName, defaultEmail, guided = false, signedIn }: {
   commissionTypes: CommissionTypeRecord[];
   bandwidthLeadTimeDays: number;
   queueCount: number;
   piece?: PieceRecord | null;
   defaultName?: string;
   defaultEmail?: string;
+  guided?: boolean;
   signedIn?: boolean;
 }) {
-  if (!piece) {
+  if (!piece && guided) {
     return <CommissionWorkflow bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} defaultEmail={defaultEmail} defaultName={defaultName} queueCount={queueCount} signedIn={signedIn} />;
   }
-  const pieceType = commissionTypes.find((type) => type.slug === piece.commissionTypeSlug);
+  const pieceType = commissionTypes.find((type) => type.slug === piece?.commissionTypeSlug);
   const materialOptions = pieceType?.materialOptions ?? commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index);
   return (
     <form action={submitContactRequestAction} className="request-form commission-form-shell">
       <IdempotencyInput />
       <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
-      {piece ? <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} /> : null}
-      <input name="requestSource" type="hidden" value={piece ? "piece-page" : "custom-work"} />
+      <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} />
+      <input name="requestSource" type="hidden" value={piece ? "piece-page" : "contact-page"} />
       <label aria-hidden="true" className="form-honeypot" hidden><span>Company website</span><input autoComplete="off" name="companyWebsite" tabIndex={-1} type="text" /></label>
       <div className="field-grid two-up compact-grid">
         <label>
           <span>Your name</span>
-          <input name="customerName" required type="text" />
+          <input autoComplete="name" defaultValue={defaultName} name="customerName" required type="text" />
         </label>
         <label>
           <span>Email</span>
-          <input name="email" required type="email" />
+          <input autoComplete="email" defaultValue={defaultEmail} name="email" required type="email" />
         </label>
       </div>
       <div className="field-grid three-up compact-grid">
@@ -59,7 +60,18 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
         </label>
       </div>
       <div className="field-grid two-up compact-grid">
-        {piece ? (
+        {!piece ? (
+          <label>
+            <span>What can we help with?</span>
+            <select defaultValue="custom-piece" name="intent">
+              <option value="custom-piece">A custom piece</option>
+              <option value="available-piece">An available piece</option>
+              <option value="repair-or-care">Repair or care</option>
+              <option value="general-question">A general question</option>
+            </select>
+          </label>
+        ) : null}
+        {materialOptions.length > 0 ? (
           <label>
             <span>Material preference</span>
             <select defaultValue="" name="materialPreference">
@@ -81,15 +93,15 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
         </label>
       </div>
       <label>
-        <span>What should the piece do, where will it live, and what timing should we know?</span>
+        <span>{piece ? "What should the piece do, where will it live, and what timing should we know?" : "How can the woodshop help?"}</span>
         <textarea name="message" required rows={6} />
       </label>
       <label>
         <span>Reference photos or sketches</span>
-        <input multiple name="attachments" type="file" />
+        <input accept="image/*,.heic,.heif,.avif" multiple name="attachments" type="file" />
       </label>
       <p className="muted-copy">Current lead time is about {Math.max(1, Math.round(bandwidthLeadTimeDays / 7))} weeks with {queueCount} active project{queueCount === 1 ? "" : "s"} in progress.</p>
-      <button className="button-primary full-width" type="submit">{piece ? "Ask about this piece" : "Send custom work request"}</button>
+      <button className="button-primary full-width" type="submit">{piece ? "Ask about this piece" : "Send inquiry"}</button>
     </form>
   );
 }

@@ -106,7 +106,7 @@ export type FooterConfiguration = {
 
 export const siteSettingsSeed = {
   brandName: "Beaman Woodworks",
-  brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop.",
+  brandTagline: "Furniture and cabinetry from the Beaman woodshop.",
   supportEmail: "woodsmithbb@proton.me",
   builderEmail: "woodsmithbb@proton.me",
   builderName: "William Beaman",
@@ -125,12 +125,12 @@ export const siteSettingsSeed = {
     { label: "Workshop", href: "/" },
     { label: "Portfolio", href: "/portfolio" },
     { label: "Shop", href: "/shop" },
-    { label: "About", href: "/about" },
-    { label: "Contact", href: "/contact" }
+    { label: "Custom", href: "/commissions" },
+    { label: "About", href: "/about" }
   ],
   footer: {
     introHeading: "Beaman Woodworks",
-    introBody: "Furniture, cabinetry, and small-batch work made in the Beaman woodshop.",
+    introBody: "Furniture and cabinetry from the Beaman woodshop.",
     groups: [
       {
         id: "woodshop-contact",
@@ -143,23 +143,12 @@ export const siteSettingsSeed = {
         ]
       },
       {
-        id: "website-credit",
-        heading: "Website",
-        visible: true,
-        order: 20,
-        items: [
-          { id: "developer", label: "Design & development", value: "Cooper Beaman", url: "", type: "text", visible: true, newTab: false, order: 10 },
-          { id: "developer-email", label: "Email", value: "cooperbeaman@proton.me", url: "mailto:cooperbeaman@proton.me", type: "email", visible: true, newTab: false, order: 20 }
-        ]
-      },
-      {
         id: "links",
         heading: "Information",
         visible: true,
         order: 30,
         items: [
-          { id: "care", label: "Care & warranty", value: "Care & warranty", url: "/care-and-warranty", type: "internal-link", visible: true, newTab: false, order: 10 },
-          { id: "repository", label: "Website source", value: "GitHub repository", url: "https://x.gd/woodsmith_git", type: "external-link", visible: true, newTab: true, order: 20 }
+          { id: "care", label: "Care & warranty", value: "Care & warranty", url: "/care-and-warranty", type: "internal-link", visible: true, newTab: false, order: 10 }
         ]
       }
     ]
@@ -200,16 +189,16 @@ export const siteSettingsSeed = {
     {
       key: "hero",
       eyebrow: "Beaman Woodworks",
-      title: "Tables, cabinetry, benches, and smaller household pieces made for steady daily use.",
-      copy: "View finished work, current availability, and lead-time guidance from one woodshop website.",
+      title: "Furniture made for daily use, one piece at a time.",
+      copy: "Explore finished work, available pieces, and custom builds from William Beaman's woodshop.",
       primaryCta: { label: "View Portfolio", href: "/portfolio" },
       secondaryCta: { label: "Shop Current Work", href: "/shop" }
     },
     {
       key: "services",
       eyebrow: "What William builds",
-      title: "Cabinetry, work tables, benches, smaller pieces, and room-specific custom work.",
-      copy: "Portfolio pages stay selective, verified, and practical. The shop carries available work, while custom requests begin with a direct contact brief instead of a generic template."
+      title: "Finished pieces, available work, and custom builds",
+      copy: "Browse completed work, see what is available now, or begin a custom piece for a specific room and use."
     },
     {
       key: "bandwidth",
@@ -219,7 +208,7 @@ export const siteSettingsSeed = {
     }
   ],
   homeServices: [
-    { id: "portfolio", title: "Portfolio", body: "Finished pieces with verified photography, materials, dimensions, and build notes.", href: "/portfolio", linkLabel: "Browse finished work", visible: true, order: 10 },
+    { id: "portfolio", title: "Portfolio", body: "Finished pieces with materials, dimensions, and selected build notes.", href: "/portfolio", linkLabel: "Browse finished work", visible: true, order: 10 },
     { id: "shop", title: "Shop", body: "Available pieces with asking prices and clearly stated pickup, delivery, or shipping options.", href: "/shop", linkLabel: "See available pieces", visible: true, order: 20 },
     { id: "custom", title: "Custom work", body: "Send room, use, size, material, and timing details for review before a quote is prepared.", href: "/contact", linkLabel: "Start an inquiry", visible: true, order: 30 },
     { id: "care", title: "Care & warranty", body: "Practical finish care, repair support, and warranty information for completed work.", href: "/care-and-warranty", linkLabel: "Read care guidance", visible: true, order: 40 }
@@ -291,9 +280,9 @@ export const seedPieces: SeedPiece[] = [
     summary: "A writing desk designed around a black phenolic resin top, bird's-eye maple rails, and white maple legs.",
     story: "The design prioritizes a durable work surface, a bright maple base, and a straightforward profile suited to writing, instruments, and compact task work.",
     details: [
-      "Archival media is still being verified before additional photos are published.",
-      "Dimensions, cable handling, and drawer options are set during the commission review.",
-      "The public listing remains available so buyers can reference the build while media review is in progress."
+      "Built around a durable black phenolic resin work surface.",
+      "Bird's-eye maple rails contrast with white maple legs.",
+      "Dimensions, cable handling, and drawer options are set for each commission."
     ],
     tags: ["desk", "writing desk", "phenolic", "maple", "commission"],
     materials: ["Black phenolic resin top", "Bird's-eye maple rails", "White maple legs"],
@@ -605,8 +594,8 @@ export const seedPages: SeedPage[] = [
     title: "Workshop",
     navLabel: "Workshop",
     status: "published",
-    intro: "Finished work, available pieces, current lead time, and a direct path to ask about custom builds.",
-    body: "The home page combines featured pieces, queue status, and the clearest next step for buyers: review the portfolio, shop available work, or send a direct inquiry.",
+    intro: "Tables, benches, cabinetry, and smaller pieces from the Beaman woodshop.",
+    body: "Explore finished work, find an available piece, or begin a conversation about a custom build.",
     layout: "editorial-oled",
     heroMediaPath: furniture("DSC_0051.JPG"),
     sections: []
@@ -616,8 +605,8 @@ export const seedPages: SeedPage[] = [
     title: "Portfolio",
     navLabel: "Portfolio",
     status: "published",
-    intro: "Past pieces grouped by type, with verified photography and practical build notes.",
-    body: "Each public piece page keeps the photography selective and accurate. Portfolio pages describe the work, materials, and availability without turning every piece into a checkout page.",
+    intro: "Tables, benches, cabinetry, stools, and one-off pieces from the Beaman woodshop.",
+    body: "Built for homes, kitchens, workrooms, and everyday use.",
     layout: "gallery",
     sections: []
   },
@@ -627,7 +616,7 @@ export const seedPages: SeedPage[] = [
     navLabel: "Shop",
     status: "published",
     intro: "Available work, asking prices, pickup, delivery, and shipping options from the woodshop.",
-    body: "Inventory counts, asking prices, pickup or shipping options, and order status are managed from the private dashboard and reflected live on the public shop page.",
+    body: "Availability, lead time, and pickup or delivery options are listed with each piece.",
     layout: "ledger",
     sections: []
   },
@@ -636,8 +625,8 @@ export const seedPages: SeedPage[] = [
     title: "Process",
     navLabel: "Process",
     status: "published",
-    intro: "Behind-the-scenes notes, material observations, and selected outside references.",
-    body: "Process writing and outside references remain available at their existing routes.",
+    intro: "Notes from the bench on joinery, materials, repairs, and work in progress.",
+    body: "",
     layout: "process",
     sections: []
   },
@@ -657,7 +646,7 @@ export const seedPages: SeedPage[] = [
     navLabel: "Custom Work",
     status: "published",
     intro: "Describe the piece, room, dimensions, materials, timing, and fulfillment needs in one guided request.",
-    body: "The form saves progress in this browser, shows a proportional planning preview, and creates a private project page for follow-up after submission.",
+    body: "Work through the brief at your own pace. Nothing is submitted until you review the final step.",
     layout: "contact",
     sections: []
   },
@@ -666,8 +655,8 @@ export const seedPages: SeedPage[] = [
     title: "About & Contact",
     navLabel: "About",
     status: "published",
-    intro: "Master builder and developer profiles, business contact information, and the story behind the woodshop.",
-    body: "This page introduces William Beaman and Cooper Beaman, provides business contact information, and surfaces social links plus the public project repository.",
+    intro: "Meet William Beaman, the maker behind the furniture.",
+    body: "Furniture and cabinetry for homes, kitchens, and workrooms. Ask William about a piece, its materials, or a custom build.",
     layout: "profiles",
     sections: []
   },
@@ -689,7 +678,7 @@ export const seedProfiles: SeedProfile[] = [
     displayName: "William Beaman",
     role: "admin",
     headline: "Master Builder",
-    bio: "William Beaman builds furniture, cabinetry, and room-specific woodwork with an emphasis on durable joinery, measured proportions, and daily use. The public site reflects current work, available inventory, and the active build queue from his bench.",
+    bio: "William Beaman builds furniture, cabinetry, and room-specific woodwork with an emphasis on durable joinery, measured proportions, and daily use.",
     publicProfile: true,
     avatarPath: "profiles/william-beaman.svg",
     links: [],
@@ -701,7 +690,7 @@ export const seedProfiles: SeedProfile[] = [
     role: "admin",
     headline: "Website Developer",
     bio: "Cooper Beaman designed and built the Beaman Woodworks platform so the portfolio, media archive, shop, process writing, project tracking, and woodshop operations can all be managed in one deployment.",
-    publicProfile: true,
+    publicProfile: false,
     avatarPath: "profiles/cooper-beaman.svg",
     links: [
       { label: "Email", url: "mailto:cooperbeaman@proton.me" },

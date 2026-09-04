@@ -29,6 +29,7 @@ export default async function CommissionsPage() {
           commissionTypes={listCommissionTypes()}
           defaultEmail={user?.email}
           defaultName={user?.displayName}
+          guided
           queueCount={bandwidth.activeProjects}
           signedIn={Boolean(user && (user.role !== "customer" || user.emailVerified))}
         />

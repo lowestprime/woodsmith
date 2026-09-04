@@ -12,7 +12,7 @@ export default async function AccountProjectsPage({ searchParams }: { searchPara
     <Shell>
       <PageSection editHref="/studio?panel=projects">
         <PageIntro eyebrow="Account" title="Projects & orders" copy="Review the current queue, open project trackers, and move into your account profile when you want to update saved details." />
-        {checkout === "success" ? <p className="notice-panel">Payment was received for order {order ?? ""}. Order and shipping updates will appear in the studio workflow and in email notifications when delivery milestones change.</p> : null}
+        {checkout === "success" ? <p className="notice-panel">Payment was received for order {order ?? ""}. Order and shipping updates will appear here and by email as delivery milestones change.</p> : null}
         {checkout === "cancelled" ? <p className="notice-panel danger">Checkout was cancelled before payment capture. Your cart remains available if you want to try again.</p> : null}
         {user ? (
           <div className="studio-panel">

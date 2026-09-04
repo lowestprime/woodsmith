@@ -119,7 +119,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           {mediaItems.length > 0 ? (
             <MediaCollection collectionId={`${piece.slug}:gallery`} items={mediaItems} preloadFirst title={piece.title} variant="detail-stage" />
           ) : (
-            <div className="piece-card-placeholder tall-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Archival media is being verified for this piece before additional images are shown publicly.</div>
+            <div className="piece-card-placeholder tall-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photography for this piece is still being reviewed.</div>
           )}
         </div>
       </PageSection>
@@ -132,7 +132,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
       {allowInquiry ? <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>
         <div>
           <h2>{piece.status === "inventory" ? "Ask about this piece" : "Use this piece as the starting point for custom work"}</h2>
-          <p>{piece.status === "inventory" ? "Use this contact form if you want to reserve the current build, confirm delivery options, or ask for a related variation. Checkout details stay in the shop." : "Custom work begins with a direct note about the room, intended use, timing, and material preferences. The private project workflow takes over after the initial review."}</p>
+          <p>{piece.status === "inventory" ? "Ask about the current build, confirm delivery options, or discuss a related variation. Checkout details remain in the shop." : "Tell William about the room, intended use, timing, and material preferences. He will review the details before preparing a quote."}</p>
         </div>
         <ContactRequestForm
           bandwidthLeadTimeDays={bandwidth.leadTimeDays}

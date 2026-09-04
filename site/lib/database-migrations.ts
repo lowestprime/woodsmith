@@ -21,6 +21,9 @@ import {
 import {
   installSearchIndexInDatabase
 } from "./search-index.ts";
+import {
+  applyPublicCopyNormalization
+} from "./public-copy-normalization.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -997,6 +1000,14 @@ const migrations: Migration[] = [
         synchronized: status.synchronized,
         integrityStatus: status.integrityStatus
       };
+    }
+  },
+  {
+    version: 14,
+    name: "post-v19-public-copy-normalization",
+    checksum: "2026-09-post-v19-public-copy-v1",
+    apply(db) {
+      return applyPublicCopyNormalization(db);
     }
   }
 ];

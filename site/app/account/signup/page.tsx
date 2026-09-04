@@ -16,7 +16,7 @@ export default async function SignupPage({ searchParams }: { searchParams: Promi
             <p>
               {verify === "sent"
                 ? `A verification link was sent to ${email || "your email address"}. Open it before you log in.`
-                : `The account was created for ${email || "that email"}, but the mail backend did not accept the verification email. Use the resend control below for the current backend summary.`}
+                : `The account was created for ${email || "that email"}, but the verification email could not be sent. Use the resend control below to try again.`}
             </p>
           </div>
         ) : null}

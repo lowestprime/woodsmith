@@ -9,7 +9,7 @@ import { getPage, getSiteSettings, listPieces } from "@/lib/db";
 
 export const metadata: Metadata = {
   title: "Portfolio",
-  description: "Browse handcrafted hardwood benches, tables, cabinets, and more from Beaman Woodworks, with verified photography and build notes.",
+  description: "Browse hardwood benches, tables, cabinets, stools, and one-off pieces made by Beaman Woodworks.",
   openGraph: { title: "Portfolio | Beaman Woodworks", description: "Handcrafted hardwood furniture portfolio." }
 };
 
@@ -18,15 +18,18 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
   const { category } = await searchParams;
   const page = getPage("portfolio");
   const categories = getPortfolioCategories(getSiteSettings().pieceCategories);
-  const portfolioCategories = [{ key: "all", label: "All pieces", icon: "all" as const, iconName: "all" as const, iconType: "builtin" as const, customIconSvg: null, aliases: [], sortOrder: -1, visible: true }, ...categories];
-  const selectedCategory = portfolioCategories.some((item) => item.key === category) ? String(category) : "all";
   const allPieces = listPieces();
-  const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece, categories) === selectedCategory);
-  const counts = new Map<string, number>(portfolioCategories.map((item) => [item.key, item.key === "all" ? allPieces.length : 0]));
+  const allCategory = { key: "all", label: "All pieces", icon: "all" as const, iconName: "all" as const, iconType: "builtin" as const, customIconSvg: null, aliases: [], sortOrder: -1, visible: true };
+  const allPortfolioCategories = [allCategory, ...categories];
+  const selectedCategory = allPortfolioCategories.some((item) => item.key === category) ? String(category) : "all";
+  const counts = new Map<string, number>(allPortfolioCategories.map((item) => [item.key, item.key === "all" ? allPieces.length : 0]));
   for (const piece of allPieces) {
     const key = getPiecePortfolioCategory(piece, categories);
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
+  const portfolioCategories = allPortfolioCategories.filter((item) => item.key === "all" || (counts.get(item.key) ?? 0) > 0 || item.key === selectedCategory);
+  const pieces = allPieces.filter((piece) => selectedCategory === "all" || getPiecePortfolioCategory(piece, categories) === selectedCategory);
+  const selectedLabel = allPortfolioCategories.find((item) => item.key === selectedCategory)?.label ?? "All pieces";
 
   return (
     <>
@@ -35,7 +38,7 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
           <PageIntro
             eyebrow="Portfolio"
             title={page?.title ?? "Portfolio"}
-            copy={page?.intro ?? "Past pieces grouped by type, with verified photography and practical build notes."}
+            copy={page?.intro ?? "Tables, benches, cabinetry, stools, and one-off pieces from the Beaman woodshop."}
             targets={{
               title: { resource: "page", id: "portfolio", field: "title" },
               copy: { resource: "page", id: "portfolio", field: "intro" }
@@ -60,8 +63,9 @@ export default async function PortfolioPage({ searchParams }: { searchParams: Pr
               );
             })}
           </nav>
+          <p className="portfolio-result-summary" aria-live="polite">{pieces.length} piece{pieces.length === 1 ? "" : "s"}{selectedCategory === "all" ? "" : ` in ${selectedLabel}`}</p>
           <h2 className="visually-hidden">Portfolio pieces</h2>
-          <div aria-label="Portfolio pieces" className="piece-grid portfolio-grid" data-media-collection="portfolio-pieces" data-media-collection-variant="editorial-grid" role="region">{pieces.map((piece, index) => <PieceCard categories={categories} key={piece.slug} order={index} piece={piece} />)}</div>
+          {pieces.length > 0 ? <div aria-label="Portfolio pieces" className="piece-grid portfolio-grid" data-media-collection="portfolio-pieces" data-media-collection-variant="editorial-grid" role="region">{pieces.map((piece, index) => <PieceCard categories={categories} key={piece.slug} order={index} piece={piece} />)}</div> : <div className="public-empty-state"><h2>No pieces in this category yet</h2><p>Browse the full portfolio or contact the woodshop about a related build.</p><div className="hero-actions"><Link className="button-secondary" href="/portfolio">View all pieces</Link><Link className="button-primary" href="/contact">Contact the woodshop</Link></div></div>}
         </PageSection>
       </Shell>
     </>

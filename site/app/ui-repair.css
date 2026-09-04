@@ -2498,7 +2498,7 @@ main:focus {
 
 @supports (animation-timeline: scroll()) and (animation-range: 0% 100%) {
   .route-progress-rail[data-mode="timeline"] .route-progress-fill {
-    animation: route-progress-fill linear both;
+    animation: route-progress-fill 1ms linear both;
     animation-timeline: scroll(root block);
     animation-range: 0% 100%;
   }
@@ -3649,5 +3649,72 @@ main:focus {
 
   .site-nav .nav-link-pill[aria-current="page"] {
     border-width: 2px;
+  }
+}
+
+/* Public launch surfaces: image-led entry, concise filtering, and clear empty states. */
+.home-hero-section {
+  padding-block: clamp(1.25rem, 3vw, 3rem);
+}
+
+.home-hero-grid {
+  display: grid;
+  grid-template-columns: minmax(17rem, 0.82fr) minmax(24rem, 1.18fr);
+  align-items: center;
+  gap: clamp(1.25rem, 4vw, 4.5rem);
+}
+
+.home-hero-copy {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.home-hero-media {
+  position: relative;
+  min-height: clamp(22rem, 52vw, 43rem);
+  margin: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: clamp(1.25rem, 3vw, 2.5rem);
+  background: var(--bg-soft);
+  box-shadow: 0 1.5rem 4rem color-mix(in srgb, var(--shadow) 34%, transparent);
+}
+
+.home-hero-image {
+  object-fit: cover;
+}
+
+.portfolio-result-summary {
+  margin: -0.7rem 0 1.15rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.public-empty-state {
+  display: grid;
+  justify-items: start;
+  gap: 0.8rem;
+  width: 100%;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bg-card) 86%, transparent);
+}
+
+.public-empty-state :where(h2, p) {
+  margin: 0;
+}
+
+.shop-grid > .public-empty-state {
+  grid-column: 1 / -1;
+}
+
+@media (max-width: 840px) {
+  .home-hero-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .home-hero-media {
+    min-height: clamp(20rem, 82vw, 34rem);
   }
 }

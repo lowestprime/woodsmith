@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { PageIntro, PageSection, PieceCard, SectionHeading, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
-import { getPage, getSiteSettings, listPieces } from "@/lib/db";
+import { getMedia, getPage, getSiteSettings, listPieces } from "@/lib/db";
 import { getPortfolioCategories } from "@/lib/catalog";
+import { toMediaUrl } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Beaman Woodworks | Handcrafted Hardwood Furniture",
@@ -23,25 +25,45 @@ export default async function HomePage() {
   const services = site.homeSections.find((section) => section.key === "services") as Record<string, unknown> | undefined;
   const homeServices = [...site.homeServices].filter((service) => service.visible).sort((left, right) => left.order - right.order);
   const heroCopy = home?.intro || String(hero?.copy ?? "");
-  const servicesCopy = home?.body || String(services?.copy ?? "The public site handles portfolio, shop, process notes, and buyer communication while the private dashboard manages content, media, project stages, inventory, invoices, and shipping workflows.");
+  const servicesCopy = home?.body || String(services?.copy ?? "Browse completed work, see what is available now, or begin a custom piece for a specific room and use.");
+  const heroMediaPath = home?.heroMediaPath || "";
+  const heroMedia = heroMediaPath ? getMedia(heroMediaPath) : null;
 
   return (
     <>
       <Shell>
-        <PageSection className="hero-section" editHref="/studio?panel=pages&page=home#page-home">
-          <PageIntro
-            eyebrow={String(hero?.eyebrow ?? home?.title ?? site.brandName)}
-            title={String(hero?.title ?? site.brandTagline)}
-            copy={heroCopy}
-            targets={{
-              eyebrow: { resource: "homeSection", id: "hero", field: "eyebrow" },
-              title: { resource: "homeSection", id: "hero", field: "title" },
-              copy: { resource: "page", id: "home", field: "intro" }
-            }}
-          />
-          <div className="hero-actions">
-            <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "primaryCta.label", urlField: "primaryCta.href" })}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
-            <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/shop")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "secondaryCta.label", urlField: "secondaryCta.href" })}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Shop current work")}</Link>
+        <PageSection className="hero-section home-hero-section" editHref="/studio?panel=pages&page=home#page-home">
+          <div className="home-hero-grid">
+            <div className="home-hero-copy">
+              <PageIntro
+                eyebrow={String(hero?.eyebrow ?? home?.title ?? site.brandName)}
+                title={String(hero?.title ?? site.brandTagline)}
+                copy={heroCopy}
+                targets={{
+                  eyebrow: { resource: "homeSection", id: "hero", field: "eyebrow" },
+                  title: { resource: "homeSection", id: "hero", field: "title" },
+                  copy: { resource: "page", id: "home", field: "intro" }
+                }}
+              />
+              <div className="hero-actions">
+                <Link className="button-primary" href={String((hero?.primaryCta as { href?: string } | undefined)?.href ?? "/portfolio")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "primaryCta.label", urlField: "primaryCta.href" })}>{String((hero?.primaryCta as { label?: string } | undefined)?.label ?? "View portfolio")}</Link>
+                <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/shop")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "secondaryCta.label", urlField: "secondaryCta.href" })}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Shop current work")}</Link>
+              </div>
+            </div>
+            {heroMediaPath ? (
+              <figure className="home-hero-media" data-media-id={`page:home:${heroMediaPath}`} data-media-item="true">
+                <Image
+                  alt={heroMedia?.altText || "Featured furniture by Beaman Woodworks"}
+                  className={`home-hero-image cleanup-${String(heroMedia?.metadata.cleanupMode ?? "original")}`}
+                  fill
+                  priority
+                  quality={92}
+                  sizes="(max-width: 840px) calc(100vw - 2rem), 52vw"
+                  src={toMediaUrl(heroMediaPath)}
+                  style={{ objectPosition: `${heroMedia?.focalX ?? 50}% ${heroMedia?.focalY ?? 50}%`, transform: `scale(${heroMedia?.zoom ?? 1})` }}
+                />
+              </figure>
+            ) : null}
           </div>
         </PageSection>
       </Shell>
@@ -51,8 +73,8 @@ export default async function HomePage() {
         <PageSection editHref="/studio?panel=pieces">
           <SectionHeading
             eyebrow="Featured work"
-            title="Current collection and established build patterns"
-            copy="Public piece pages stay selective and accurate. Available work can be reserved from the shop, while custom work starts with a direct contact request."
+            title="Selected furniture and cabinetry"
+            copy="A concise selection of completed pieces, with materials, dimensions, and build notes."
           />
           <div aria-label="Featured work" className="piece-grid" data-media-collection="workshop-featured-pieces" data-media-collection-variant="editorial-grid" role="region">{pieces.map((piece, index) => <PieceCard categories={categories} key={piece.slug} order={index} piece={piece} />)}</div>
         </PageSection>
@@ -93,7 +115,7 @@ export default async function HomePage() {
           </ol>
           <div className="hero-actions">
             <Link className="button-primary" href="/contact">Ask about a custom piece</Link>
-            <Link className="button-secondary" href="/commissions/status">Check a project</Link>
+            <Link className="button-secondary" href="/commissions">Open the project planner</Link>
           </div>
         </PageSection>
       </Shell>

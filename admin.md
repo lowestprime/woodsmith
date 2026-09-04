@@ -2,6 +2,10 @@
 
 This guide covers the private Woodshop dashboard at `/studio`.
 
+## Pending post-v19 content update
+
+Schema v14 replaces only exact legacy default wording in pages, site settings, and seeded biographies, with before/after records in `content_normalization_history`. Divergent owner-written text is not replaced. Only the untouched default developer profile is removed from public display; its account, permissions, and Studio controls remain available. The ordinary public-profile control can restore visibility after migration. No production content has been changed by local validation. `/contact` becomes a compact inquiry form; `/commissions` retains the guided planner. The home page now displays its configured hero media.
+
 ## Login
 
 - Open `/studio/login`.

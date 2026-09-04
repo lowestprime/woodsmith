@@ -3,7 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
 import { addToCartAction } from "@/lib/actions";
-import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, getPiecePublicPriceDisplay, pieceAllowsInquiry, pieceCanEnterCart, pieceShippingEnabled } from "@/lib/catalog";
+import { getDisplayMediaPaths, getFulfillmentOptions, getFulfillmentSummary, getPiecePublicPriceDisplay, pieceAllowsInquiry, pieceCanEnterCart } from "@/lib/catalog";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { inlineEditAttrs } from "@/components/inline-editable";
 import { getPage, listPieces } from "@/lib/db";
@@ -33,12 +33,11 @@ export default async function ShopPage() {
           }}
         />
         {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "shop", field: "body" })}>{page.body}</p> : null}
-        <p className="fulfillment-note">Most pieces default to in-person pickup near the woodshop or local drop-off review. Shipping appears only when explicitly enabled for a piece.</p>
+        <p className="fulfillment-note">Pickup, local delivery, and freight availability are listed separately for each piece.</p>
         <div aria-label="Available pieces" className="shop-grid" data-media-collection="shop-pieces" data-media-collection-variant="editorial-grid" role="region">
           {pieces.map((piece, index) => {
             const firstImage = getDisplayMediaPaths(piece)[0];
             const fulfillment = getFulfillmentOptions(piece);
-            const shippingEnabled = pieceShippingEnabled(piece);
             const canAddToCart = pieceCanEnterCart(piece);
             const priceDisplay = getPiecePublicPriceDisplay(piece);
             const priceLabel = priceDisplay.kind === "fixed"
@@ -59,12 +58,11 @@ export default async function ShopPage() {
                     <div><dt>Asking price</dt><dd>{priceLabel}</dd></div>
                     <div><dt>Lead time</dt><dd>{formatLeadTime(piece.leadTimeDays)}</dd></div>
                     <div><dt>Fulfillment</dt><dd>{fulfillment.join(" / ")}</dd></div>
-                    <div><dt>Shipping</dt><dd>{shippingEnabled ? "Enabled for this piece" : "Disabled by default"}</dd></div>
                     <div><dt>Tax</dt><dd>Calculated at checkout or on invoice</dd></div>
                   </dl>
                   <p className="muted-copy">{getFulfillmentSummary(piece)}</p>
                   <div className="shop-card-price-row">
-                    <span className="muted-copy">Exact pickup/drop-off details stay private until buyer eligibility and consent are confirmed.</span>
+                    <span className="muted-copy">Final timing and handoff details are confirmed before payment.</span>
                     {canAddToCart ? <form action={addToCartAction}>
                       <input name="pieceSlug" type="hidden" value={piece.slug} />
                       <input name="quantity" type="hidden" value="1" />
@@ -75,6 +73,7 @@ export default async function ShopPage() {
               </article>
             );
           })}
+          {pieces.length === 0 ? <div className="public-empty-state"><h2>No pieces are currently listed for sale</h2><p>New work is added in small batches. You can still ask about a custom build.</p><Link className="button-primary" href="/contact">Contact the woodshop</Link></div> : null}
         </div>
       </PageSection>
     </Shell>

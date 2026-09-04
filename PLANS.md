@@ -10,11 +10,15 @@
 | Workstream | Status | Required outcome |
 |---|---|---|
 | Framework/security baseline | IN PROGRESS | Pin the latest verified Next.js 16.3.x patch, update the lockfile, and pass dependency/source/build/runtime gates. |
-| Public UX and copy | AUDITED | Image-led home, reduced public metadata clutter, coherent portfolio/shop/contact/process/footer behavior, and exact-match persisted-copy normalization. |
-| Global progress and accessibility | PLANNED | Shared progressive route scroll rail, focus-safe navigation, responsive dark/light parity, and WCAG 2.2 AA browser evidence. |
+| Public UX and copy | SOURCE VALIDATED; RENDERED QA NEXT | Schema v14 normalizes only exact legacy page/settings/profile copy with transactional before/after history. Image-led home, compact Contact, guided custom work, and quieter cards/footer are implemented. 197 application tests and safe Next.js 16.3.4 build pass locally; production-clone and public-route QA remain required. |
+| Global progress and accessibility | IMPLEMENTED; ROUTE QA NEXT | Shared passive/rAF fallback with ResizeObserver and navigation reset. Actual CSS timeline passed Chromium 149 and Firefox 151 (feature enabled), top/middle/bottom and dynamic height with reduced motion; full route/mobile/fallback acceptance remains pending. |
 | Studio modernization | AUDITED | Preserve dense operator workflows while improving context, responsive behavior, mutation status, and high-use surfaces. |
 | Storage and branch consolidation | RECONCILING | Keep-set ledger, mount-identity proof, safe retention cleanup, old-branch retirement, and final master-only topology. |
 | Candidate/recovery/deployment | NOT STARTED | Exact clean linux/amd64 candidate, fresh paired recovery point, immutable deployment, rollback proof, live validation, and documentation closure. |
+
+### Next ordered boundary
+
+Commit/push the coherent public slice, then complete rendered public QA before Studio P0/P1 work. The added P1 notification-routing requirement includes reversible typed/audited global BCC editing in Notifications Overview, effective per-Type routing, strict address normalization, no auth-token copy regression, distinct operator inquiry/reply notifications, and disposable routing/SMTP/browser tests. Preserve existing Type policies and runtime-only SMTP credentials. Do not mutate production routing for tests. Continue the production-clone, storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation gates afterward; none is waived by source validation.
 
 ## 2026-08-08 Woodsmith v19 Admin Completion
 

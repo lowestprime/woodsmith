@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { connection } from "next/server";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { AvatarBadge } from "@/components/avatar-badge";
@@ -17,11 +18,12 @@ export default async function AboutPage() {
   const page = getPage("about");
   const site = getSiteSettings();
   const profiles = listPublicProfiles();
+  const socialLinks = site.socialLinks.filter((item) => item.url && item.label.toLowerCase() !== "github");
 
   return (
     <Shell>
       <PageSection editHref="/studio?panel=pages&page=about#page-about">
-        <PageIntro eyebrow="About & contact" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet the master builder and the developer behind the platform."} targets={{ title: { resource: "page", id: "about", field: "title" }, copy: { resource: "page", id: "about", field: "intro" } }} />
+        <PageIntro eyebrow="About" title={page?.title ?? "About & Contact"} copy={page?.intro ?? "Meet William Beaman, the maker behind the furniture."} targets={{ title: { resource: "page", id: "about", field: "title" }, copy: { resource: "page", id: "about", field: "intro" } }} />
         {page?.body ? <p className="page-body-copy" {...inlineEditAttrs({ resource: "page", id: "about", field: "body" })}>{page.body}</p> : null}
         <div className="profile-grid">
           {profiles.map((profile) => (
@@ -54,18 +56,15 @@ export default async function AboutPage() {
             <h2>Business contact</h2>
             <p>{site.builderName} · {site.builderHeadline}</p>
             <p><a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a></p>
-            <p className="muted-copy">Custom work starts with a direct note about the piece, room, intended use, and timing.</p>
-            <p>{site.developerName} · {site.developerHeadline}</p>
-            <p><a href={`mailto:${site.developerEmail}`}>{site.developerEmail}</a></p>
+            <p className="muted-copy">For available work, custom builds, delivery, care, or repair.</p>
+            <Link className="button-primary" href="/contact">Send an inquiry</Link>
           </article>
-          <article className="studio-panel">
-            <h2>Social and sharing</h2>
+          {socialLinks.length > 0 ? <article className="studio-panel">
+            <h2>Follow the woodshop</h2>
             <div className="footer-links">
-              {site.socialLinks.filter((item) => item.url).map((item) => <a href={item.url} key={item.label} rel="noreferrer" target="_blank">{item.label}</a>)}
-              <a href={site.repoUrl} rel="noreferrer" target="_blank">GitHub repository</a>
+              {socialLinks.map((item) => <a href={item.url} key={item.label} rel="noreferrer" target="_blank">{item.label}</a>)}
             </div>
-            <p className="muted-copy">Use the share tools on each piece page to send links to buyers, collaborators, or social platforms. Public profile URLs remain editable from the private dashboard.</p>
-          </article>
+          </article> : null}
         </div>
       </PageSection>
     </Shell>

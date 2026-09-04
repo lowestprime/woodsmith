@@ -10,6 +10,10 @@
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
+## Post-v19 launch work (not yet deployed)
+
+The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an image-led home page, a compact `/contact` form, and the separate guided `/commissions` planner. Schema v14 updates exact legacy public copy and records each before/after change; customized content is preserved. Default public copy is location-neutral. Default developer promotion is removed from the commercial pages without deleting the account or technical credits. See [the launch audit](docs/post-v19-launch-audit-20260902.md) for validation and remaining release gates. Production remains on the accepted v19 application until those gates pass.
+
 ## 📃 Description
 
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`

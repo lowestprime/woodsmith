@@ -16,7 +16,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   return (
     <Shell>
       <PageSection editHref="/studio?panel=people">
-        <PageIntro eyebrow="Account" title="Log in" copy="Use your buyer or dashboard account to review projects, edit your profile, or access private tools." />
+        <PageIntro eyebrow="Account" title="Log in" copy="Review your projects and keep your contact details current." />
         {errorMessage ? <div className="notice-panel" role="alert"><p>{errorMessage}</p></div> : null}
         {notice ? (
           <div className="notice-panel">
@@ -25,7 +25,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 ? "A fresh verification email has been sent."
                 : notice === "verified"
                   ? "Your email address is verified. You can log in now."
-                  : "The mail backend did not accept the verification email. Use the resend control for the current backend summary."}
+                  : "The verification email could not be sent. Use the resend control to try again."}
             </p>
           </div>
         ) : null}
