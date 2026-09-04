@@ -180,7 +180,6 @@ footer .shell {
   .site-header .brand-lockup { grid-area: brand; }
   .site-header .site-nav { grid-area: nav; justify-content: flex-start; }
   .site-header .header-actions { grid-area: actions; }
-  .site-header.is-compact .site-nav { display: none; }
 }
 
 @media (max-width: 520px) {
@@ -2384,7 +2383,7 @@ textarea {
 @media (max-width: 1180px) {
   :root {
     --site-header-open: 4.95rem;
-    --site-header-compact: 2.55rem;
+    --site-header-compact: var(--site-header-open);
   }
 
   .site-header .header-inner {
@@ -2396,14 +2395,13 @@ textarea {
   .site-header .brand-lockup { grid-area: brand; }
   .site-header .site-nav { grid-area: nav; justify-content: flex-start !important; }
   .site-header .header-actions { grid-area: actions; }
-  .site-header.is-compact .site-nav { display: none !important; }
 }
 
 @media (max-width: 720px) {
   :root {
     --site-header-open: 4.45rem;
-    --site-header-compact: 2.4rem;
-    --studio-scroll-offset: 2.8rem;
+    --site-header-compact: var(--site-header-open);
+    --studio-scroll-offset: 4.8rem;
   }
 
   .site-header .header-search {

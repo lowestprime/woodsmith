@@ -83,3 +83,15 @@ test("contact stays compact while the custom planner remains guided", async () =
   assert.match(home, /home-hero-media/);
   assert.match(home, /\bpriority\b/);
 });
+
+test("public browsing keeps contact discoverable and suppresses repeated card metadata", async () => {
+  const [chrome, home, catalog, config] = await Promise.all([
+    read('../components/site-chrome.tsx'), read('../app/page.tsx'), read('./catalog.ts'), read('../next.config.ts')
+  ]);
+  assert.match(chrome, /!seedHrefs\.has\("\/contact"\)/);
+  assert.match(chrome, /const showEyebrow = eyebrow\.trim\(\)\.toLowerCase\(\) !== title\.trim\(\)\.toLowerCase\(\)/);
+  assert.doesNotMatch(chrome.slice(chrome.indexOf('export function PieceCard'), chrome.indexOf('export function PostCard')), /Updated|formatDate/);
+  assert.match(home, /heroMedia && heroMedia\.metadata\.mediaPreviewStatus !== "unavailable"/);
+  assert.match(catalog, /Boolean\(media\)/);
+  assert.match(config, /qualities:\s*\[75, 86, 88, 92\]/);
+});

@@ -9,7 +9,7 @@ import { SiteNavLink } from "@/components/site-nav-link";
 import { CategoryIcon as SharedCategoryIcon } from "@/components/category-icon";
 import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
 import { avatarGradientStyle } from "@/lib/avatar";
-import { getDisplayMediaPaths, hasVerifiedMedia } from "@/lib/catalog";
+import { getDisplayMediaPaths } from "@/lib/catalog";
 import { findPieceCategory, pieceCategoryIcon, type PieceCategoryDefinition } from "@/lib/categories";
 import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
@@ -72,6 +72,7 @@ export async function SiteHeader() {
             return href !== "/search" && href !== "/process" && href !== "/shop#process" && label !== "process";
           }).map(({ item, index }) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</SiteNavLink>)}
           {dynamicPages.map((item) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "page", id: item.slug, field: "navLabel" })}>{item.label}</SiteNavLink>)}
+          {!seedHrefs.has("/contact") ? <SiteNavLink className="nav-link-pill" href="/contact">Contact</SiteNavLink> : null}
           <HeaderSearch />
         </nav>
         <div className="header-actions">
@@ -112,17 +113,29 @@ export function SiteFooter() {
 }
 
 export function PageIntro({ eyebrow, title, copy, targets }: { eyebrow: string; title: string; copy: string; targets?: Partial<Record<"eyebrow" | "title" | "copy", InlineEditTarget>> }) {
-  return <div className="page-intro"><p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p><h1 {...inlineEditAttrs(targets?.title)}>{title}</h1><p className="lede" {...inlineEditAttrs(targets?.copy)}>{copy}</p></div>;
+  const showEyebrow = eyebrow.trim().toLowerCase() !== title.trim().toLowerCase();
+  return <div className="page-intro">{showEyebrow ? <p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p> : null}<h1 {...inlineEditAttrs(targets?.title)}>{title}</h1><p className="lede" {...inlineEditAttrs(targets?.copy)}>{copy}</p></div>;
 }
 export function SectionHeading({ eyebrow, title, copy, targets }: { eyebrow: string; title: string; copy: string; targets?: Partial<Record<"eyebrow" | "title" | "copy", InlineEditTarget>> }) {
   return <div className="section-heading"><p className="eyebrow" {...inlineEditAttrs(targets?.eyebrow)}>{eyebrow}</p><h2 {...inlineEditAttrs(targets?.title)}>{title}</h2><p {...inlineEditAttrs(targets?.copy)}>{copy}</p></div>;
 }
 export function PieceCard({ piece, categories, order = 0 }: { piece: PieceRecord; categories?: PieceCategoryDefinition[]; order?: number }) {
   const firstImage = getDisplayMediaPaths(piece)[0];
-  const verified = hasVerifiedMedia(piece);
   const media = firstImage ? getMedia(firstImage) : null;
   const category = findPieceCategory(piece.category, categories);
-  return <article className="piece-card" data-media-id={`piece:${piece.slug}`} data-media-item="true" data-media-order={order}><Link className="piece-card-link" href={`/portfolio/${piece.slug}`} prefetch={false}>{firstImage ? <Image alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} width={1200} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photography in review</div>}<div className="piece-card-body"><div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span>{verified ? null : <span>Photography in review</span>}</div><h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3><p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p><div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span><span>Updated {formatDate(piece.updatedAt)}</span></div></div></Link></article>;
+  return (
+    <article className="piece-card" data-media-id={`piece:${piece.slug}`} data-media-item="true" data-media-order={order}>
+      <Link className="piece-card-link" href={`/portfolio/${piece.slug}`} prefetch={false}>
+        {firstImage ? <Image alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} width={1200} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photography in review</div>}
+        <div className="piece-card-body">
+          <div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span></div>
+          <h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3>
+          <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
+          <div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span></div>
+        </div>
+      </Link>
+    </article>
+  );
 }
 export function PostCard({ post }: { post: PostRecord }) {
   return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p></article>;

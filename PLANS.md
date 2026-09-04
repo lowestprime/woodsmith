@@ -18,7 +18,7 @@
 
 ### Next ordered boundary
 
-Commit/push the coherent public slice, then complete rendered public QA before Studio P0/P1 work. The added P1 notification-routing requirement includes reversible typed/audited global BCC editing in Notifications Overview, effective per-Type routing, strict address normalization, no auth-token copy regression, distinct operator inquiry/reply notifications, and disposable routing/SMTP/browser tests. Preserve existing Type policies and runtime-only SMTP credentials. Do not mutate production routing for tests. Continue the production-clone, storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation gates afterward; none is waived by source validation.
+Public slice committed/pushed as `4f2d33e7b3461d5eddc8c1b58a3904bda1c19faa`. Targeted rendered QA repaired missing-media fallbacks and mobile navigation on upward scroll. Next: Studio P0/P1 notification routing, including reversible typed/audited global BCC editing in Notifications Overview, effective per-Type routing, strict address normalization, no auth-token copy regression, distinct operator inquiry/reply notifications, and disposable routing/SMTP/browser tests. Preserve existing Type policies and runtime-only SMTP credentials. Do not mutate production routing for tests. Continue production-clone fidelity/migration, storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation gates afterward; none is waived by local validation.
 
 ## 2026-08-08 Woodsmith v19 Admin Completion
 

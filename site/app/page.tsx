@@ -50,7 +50,7 @@ export default async function HomePage() {
                 <Link className="button-secondary" href={String((hero?.secondaryCta as { href?: string } | undefined)?.href ?? "/shop")} {...inlineEditAttrs({ resource: "homeSection", id: "hero", field: "secondaryCta.label", urlField: "secondaryCta.href" })}>{String((hero?.secondaryCta as { label?: string } | undefined)?.label ?? "Shop current work")}</Link>
               </div>
             </div>
-            {heroMediaPath ? (
+            {heroMedia && heroMedia.metadata.mediaPreviewStatus !== "unavailable" ? (
               <figure className="home-hero-media" data-media-id={`page:home:${heroMediaPath}`} data-media-item="true">
                 <Image
                   alt={heroMedia?.altText || "Featured furniture by Beaman Woodworks"}
