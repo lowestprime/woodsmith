@@ -37,7 +37,27 @@ A tmpfs-only 150-record library of explicitly labeled synthetic duplicates of th
 
 The audit found and repaired three real Media defects: reselecting the current thumbnail did not reveal the mobile Inspector; only the selected thumbnail was tabbable despite no arrow-key implementation; and the shared inspector collection sent private admin media through Next's unauthenticated image optimizer. The final implementation gives every thumbnail a Tab stop plus deterministic grid arrows/Home/End, transfers focus to the newly visible Inspector heading, keeps renamed selection on its returned identity, and directly serves private Inspector previews through the authenticated browser request. Full tests pass 208/208; typecheck passes; lint has zero errors and the existing eight image warnings; Next.js 16.3.4 safe build passes 12/12 static pages and the standalone runtime-data gate. Restricted report: `dense-studio-pass-authoritative/dense-studio.json`, SHA-256 `8360f4957634c096f130898e183970ad2a9aa504720fe1b7df0d6f4f3ad5a132`. All disposable app/browser/network resources were removed.
 
-## Research principles
+## 2026-09-05 Interrupted Studio WIP closure
+
+The ext4 checkout and all eleven interrupted files were recovered at `fa398f5`; no prior WIP was discarded. The retained disposable database was preserved and copied through an online SQLite snapshot into isolated tmpfs fixtures. Its expired synthetic operator session was renewed without reseeding the records. The original project timeout was reproduced as a harness role mismatch: a datalist-backed Status input is a combobox, not a textbox.
+
+Projects, Orders and Reviews now use searchable 20-record lists with one editor. Record switches flush pending mutations and retain the original editor on error. Focus moves after React commits the selected heading. Server refreshes reconcile commerce collections and adopt newer canonical entities only after local edits settle. Invoice/label operations flush pending order edits. Review deletion removes its list/editor state without a reload. Error feedback occupies a stable mobile list row, and record row heights fit their text rather than clipping metadata.
+
+Final focused rendered acceptance passed 28 Chromium checks, eight Firefox checks and one separate review-deletion check. It covers 1440/430/390/320 pixel layouts, both themes, dense records, pagination/search, long labels, exact selected entity, keyboard focus, switch flushing, invalid-save blocking/retry, external-order refresh and deletion. Every run recorded zero axe violations, browser errors or cross-origin requests. The 27 Chromium and ten Firefox axe incomplete results are color-contrast checks requiring manual assessment in final release accessibility QA; they are not claimed as automated passes. Browser plugin unavailable; repository Playwright acceptance was used. The final desktop and mobile screenshots were inspected, and row-content geometry now has an explicit regression assertion.
+
+Current source gates: `npm run test` 208/208; `npm --prefix visual-audit test` 144/144; `npm run typecheck` pass; `npm run lint` zero errors/eight existing image warnings; `npm run build` pass including the standalone runtime-data gate. Node SQLite retains its experimental warning. The final row-only CSS change was rebuilt and exercised by both browser suites. This dirty-source disposable acceptance is not an exact release image, production-clone acceptance, deployment or rollback proof.
+
+Restricted reports under `C:/Users/Cooper/.codex/run-logs/post-v19-public-20260903/`:
+
+| Report | SHA-256 |
+|---|---|
+| `studio-final-chromium-20260905d/studio-workspaces.json` | `5ab5fed87dbfaecb8368bebf95f3265ca8284297df88a965bc51ced79f1e76bf` |
+| `studio-final-firefox-20260905d/studio-workspaces.json` | `842c5f51152a20b54bbe7f7beedfc01ea007a8cfa964acf1ae3bb0b7f499eeaf` |
+| `studio-final-delete-20260905d/studio-workspaces.json` | `d5a659fc98b155b2f4745cf27417b2a64601959c088d36c647417928e2e165dc` |
+
+Next priority is the independently confirmed JPEG technical-classification defect and crop serialization failure, followed by the remaining expanded goal gates in `PLANS.md`.
+
+## Research principles (release requirements)
 
 - Next.js must move to the latest verified compatible 16.3.x patch before release. The official 2026-08-25 security release identifies 16.3.3 as the patched Active-LTS release; the npm registry now publishes 16.3.4 in the same line.
 - WCAG 2.2 AA remains the release floor, with particular attention to focus visibility/obscuring, target size, status messages, error focus, reflow, and reduced motion.

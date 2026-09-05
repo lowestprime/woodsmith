@@ -16,6 +16,8 @@ The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an 
 
 ## 📃 Description
 
+The launch branch also adds searchable, paginated Projects, Orders and Reviews workspaces with one active editor. Switching records flushes pending edits, transfers keyboard focus after rendering, and keeps filtering separate from the editing context. Server refreshes reconcile saved records without resetting an active autosave queue. These changes remain subject to the final production release gates.
+
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`
 - Portfolio category filtering managed through editable labels, matching terms, and icon styles in the Woodshop dashboard
 - Shop pages with asking-price language, cart totals, coupon handling, tax estimate, pickup/delivery/shipping labels, and Stripe checkout plumbing

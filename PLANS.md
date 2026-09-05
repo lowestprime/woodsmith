@@ -19,6 +19,14 @@
 
 ### Next ordered boundary
 
+The expanded September 5 goal preserves every aligned post-v19 change. Recovery re-proved the ext4 checkout at `fa398f5` with all eleven interrupted Studio files present, the two remote branches, and the unchanged v19 NAS runtime. Close the Studio master-detail WIP first, then media truth/recovery, public copy/contact/profile and route-family UX, conditional correspondence rules, full QA, measured safe storage reclamation, integrated exact candidate/recovery/deployment/rollback, and master-only consolidation. None of these gates is waived by an earlier narrow pass.
+
+- Studio: recovered WIP acceptance passes 28 Chromium, eight Firefox and one review-deletion check, with 208 application and 144 audit-runner tests. The datalist locator, commit-time focus, pending-edit preservation, error reflow, server refresh and row clipping are resolved. Manual contrast assessment and broader final release acceptance remain open.
+- Media: investigate the 4 KB JPEG end-marker check against valid images with long trailing payloads; preserve all original bytes. Repair missing fallback/video cropAspect submission and verify metadata normalization, refresh, routing, reload, and real production-clone image bytes. Editorial identity review remains a separate required gate.
+- Public/contact: compact reusable profile sizing, About quick contact, structured piece/intent context, exact-match copy migrations and rendered regression coverage.
+- Routing: operator-managed conditional BCC with synthetic preview, audit history, private persisted destinations and unconditional authentication-mail isolation; primary business address remains `woodsmithbb@proton.me`.
+- Release: prove paired recovery and staged restore before promotion; final remote/ext4/NAS local branch state must be master only after deployment and rollback proof. Mount `/mnt/woodsmith` is the CIFS view of NAS `/volume2/docker_ssd/woodsmith`; reclaim/count physical storage once.
+
 Public slice committed/pushed as `4f2d33e7b3461d5eddc8c1b58a3904bda1c19faa`; responsive/media repairs as `f9d0409`; notification routing as `45667996dce78fdc5c0c7381c1eac8ef603af269`; cart ownership as `f08ddf2`. Production-clone schema v14/v15 and dense media acceptance pass. Next: remaining dense Studio P0/P1 panels and accessibility/performance closure, then storage KEEP/DELETE, candidate/recovery, PR/deploy, and master-only consolidation. Production recipient settings and media remain untouched.
 
 ## 2026-08-08 Woodsmith v19 Admin Completion

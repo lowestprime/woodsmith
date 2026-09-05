@@ -205,6 +205,8 @@ Before promoting schema v15, prove migration, idempotence, and customization pre
 
 ## Reverse proxy
 
+The post-v19 Studio master-detail changes do not add a schema version or alter runtime mounts. Their disposable browser gate includes record-switch flushes, invalid-save recovery, externally refreshed order versions, and review deletion. Run these with synthetic records and disabled providers; never use production invoice/label actions as a UI smoke test. Final exact-image and production-clone acceptance remain required after integration.
+
 Configure Synology Reverse Proxy with:
 
 - destination protocol: `http`

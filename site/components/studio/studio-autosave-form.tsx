@@ -55,6 +55,7 @@ export type StudioAutosaveFormProps<
   children: ReactNode;
   entityKey: string;
   expectedUpdatedAt?: string | null;
+  canonicalEntity?: TEntity;
   mutate: (
     request:
       StudioMutationRequest<TPayload>
@@ -183,6 +184,7 @@ export function StudioAutosaveForm<
   children,
   entityKey,
   expectedUpdatedAt = null,
+  canonicalEntity,
   mutate,
   createPayload,
   coalesce,
@@ -404,10 +406,22 @@ export function StudioAutosaveForm<
     ]);
 
   useEffect(() => {
+    if (canonicalEntity !== undefined) {
+      // A server refresh must not replace an editor's pending payload or reset
+      // its queue. Adopt a newer external record only after local work settles.
+      if (pendingPayloadRef.current.hasValue || queue.hasUnsavedChanges()) return;
+      const currentVersion = queue.getSnapshot().expectedUpdatedAt;
+      if (expectedUpdatedAt && currentVersion && expectedUpdatedAt > currentVersion) {
+        queue.adoptCommittedEntity(canonicalEntity, expectedUpdatedAt);
+      } else if (!currentVersion) {
+        queue.updateExpectedUpdatedAt(expectedUpdatedAt);
+      }
+      return;
+    }
     queue.updateExpectedUpdatedAt(
       expectedUpdatedAt
     );
-  }, [expectedUpdatedAt, queue]);
+  }, [canonicalEntity, expectedUpdatedAt, queue, snapshot.hasUnsavedChanges]);
 
   useEffect(() => {
     onQueue?.(queue);

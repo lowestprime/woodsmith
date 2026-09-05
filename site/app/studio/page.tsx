@@ -1,6 +1,4 @@
 import {
-  createInvoiceAction,
-  createShippingLabelAction,
   applyMediaFolderRulesAction,
   assignMediaCandidateAction,
   cleanupMediaBackgroundAction,
@@ -94,10 +92,9 @@ import {
   StudioProfileEditor
 } from "@/components/studio/studio-profile-editor";
 import {
-  StudioCommissionTypeEditor,
-  StudioOrderEditor,
-  StudioReviewEditor
+  StudioCommissionTypeEditor
 } from "@/components/studio/studio-commerce-editors";
+import { StudioOrdersWorkspace, StudioReviewsWorkspace } from "@/components/studio/studio-commerce-workspaces";
 import {
   StudioSettingsEditor
 } from "@/components/studio/studio-settings-editor";
@@ -827,13 +824,7 @@ export default async function StudioPage({
     : [];
   const verificationMedia = currentPanel === "media" ? listMedia({ includeUnreviewed: true }) : [];
   const verificationQueue = currentPanel === "media" ? buildMediaVerificationQueue(pieces, verificationMedia.filter((m) => m.kind === "image")) : [];
-  const projects = currentPanel === "projects"
-    ? (
-        includeAllAuditRecords
-          ? listProjects(true)
-          : listProjects(true).slice(0, 20)
-      )
-    : [];
+  const projects = currentPanel === "projects" ? listProjects(true) : [];
 
   const projectMedia = currentPanel === "projects"
     ? listMediaForProjectReferences(
@@ -850,21 +841,8 @@ export default async function StudioPage({
       )
     : {};
 
-  const orders = currentPanel === "orders"
-    ? (
-        includeAllAuditRecords
-          ? listOrders()
-          : listOrders().slice(0, 20)
-      )
-    : [];
-
-  const reviews = currentPanel === "reviews"
-    ? (
-        includeAllAuditRecords
-          ? listReviews()
-          : listReviews().slice(0, 20)
-      )
-    : [];
+  const orders = currentPanel === "orders" ? listOrders() : [];
+  const reviews = currentPanel === "reviews" ? listReviews() : [];
 
   const notificationPolicies = currentPanel === "notifications"
     ? listNotificationPolicies()
@@ -1131,20 +1109,11 @@ export default async function StudioPage({
       {currentPanel === "orders" ? (
       <PageSection>
         <div className="section-heading"><p className="eyebrow">Orders</p><h2>Payments and shipping</h2><p>Order status, invoice, and label actions.</p></div>
-        <div className="studio-grid two-column-grid">
-          {orders.map((orderRecord) => (
-            <article className={`studio-panel studio-editor-card${orderRecord.orderNumber === orderHighlight || orderRecord.orderNumber === invoice || orderRecord.orderNumber === shipped ? " highlight-card" : ""}`} key={orderRecord.orderNumber}>
-              <div className="studio-editor-head"><h3>{orderRecord.orderNumber}</h3><span>{formatMoney(orderRecord.totalCents)}</span></div>
-              <StudioOrderEditor order={orderRecord} />
-              <div className="button-row"><form action={createInvoiceAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><button className="button-secondary" type="submit">Issue invoice</button></form><form action={createShippingLabelAction}><input name="orderNumber" type="hidden" value={orderRecord.orderNumber} /><input name="weightOunces" type="hidden" value="96" /><button className="button-secondary" type="submit">Create label</button></form></div>
-              <p className="muted-copy">Updated {formatDateTime(orderRecord.updatedAt)}</p>
-            </article>
-          ))}
-        </div>
+        <StudioOrdersWorkspace orders={orders} initialReference={orderHighlight || invoice || shipped} />
       </PageSection>
       ) : null}
 
-      {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy, rating, and publication state without leaving the current workspace.</p></div><div className="studio-grid two-column-grid">{reviews.map((review) => <StudioReviewEditor highlight={Boolean(pieceHighlight && review.pieceSlug === pieceHighlight)} key={review.id} review={review} />)}</div></PageSection> : null}
+      {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy, rating, and publication state without leaving the current workspace.</p></div><StudioReviewsWorkspace reviews={reviews} initialPiece={pieceHighlight} /></PageSection> : null}
       {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin initialRouting={getNotificationRoutingRecord()} auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
       </div>
     </Shell>

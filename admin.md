@@ -141,6 +141,10 @@ Archive, cancel, and reopen preserve the project and record actor/time/reason in
 
 ### Orders
 
+Projects, Orders and Reviews share a searchable record list with 20 entries per page. Search and pagination preserve the selected editor. Selecting another record waits for pending autosave work; validation failures and conflicts keep the original editor open. Selecting a record moves keyboard focus to its heading. List rows expand to fit long labels, and mobile pagination stays visible even when a save is blocked.
+
+Orders and Reviews adopt refreshed server records without rebuilding the workspace. A newer saved record is adopted only when local edits have settled; pending edits and conflicts retain their existing queue. Review deletion removes the record from the list in place. Invoice and shipping-label actions first flush pending order edits and still require their provider configuration.
+
 Orders can be reviewed and updated from the dashboard. When providers are configured, the dashboard can create Stripe invoices, request EasyPost shipping labels, store tracking numbers, and update payment/shipping state.
 
 ### Reviews

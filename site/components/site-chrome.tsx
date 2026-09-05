@@ -61,7 +61,7 @@ export async function SiteHeader() {
   return (
     <HeaderShell>
       <Shell className="header-inner">
-        <Link className="brand-lockup" href="/">
+        <Link aria-label={`${site.brandName} home`} className="brand-lockup" href="/">
           <BrandMark />
           <span><EditableText as="span" className="brand-mark" target={{ resource: "settings", field: "brandName" }}>{site.brandName}</EditableText><EditableText as="span" className="brand-subtitle" target={{ resource: "settings", field: "brandTagline" }}>{site.brandTagline}</EditableText></span>
         </Link>

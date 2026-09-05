@@ -723,7 +723,7 @@ function FolderRulesPanel({
           {isApplying ? "Applying…" : `Apply to ${preview.eligible} unassigned`}
         </button>
       </div>
-      <div className="studio-verification-list">
+      <div aria-label="Folder rules" className="studio-verification-list" role="region" tabIndex={0}>
         {preview.rules.map((rule) => (
           <FolderRuleEditor
             count={ruleCounts.get(rule.id)}
@@ -738,7 +738,7 @@ function FolderRulesPanel({
       {preview.conflictRows.length > 0 ? (
         <details className="media-advanced-actions">
           <summary>Rule conflicts ({preview.conflictRows.length})</summary>
-          <div className="studio-verification-list">
+          <div aria-label="Folder rule conflicts" className="studio-verification-list" role="region" tabIndex={0}>
             {preview.conflictRows.slice(0, 24).map((conflict) => <p className="muted-copy" key={`${conflict.relativePath}:${conflict.reason}`}><strong>{conflict.reason}</strong> · {conflict.relativePath}</p>)}
           </div>
         </details>
@@ -1669,7 +1669,7 @@ export function StudioMediaWorkspace({
             <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Preview only, do not save AI evidence</span></label>
             <label className="checkbox-row"><input checked={includeReviewed} onChange={(event) => setIncludeReviewed(event.target.checked)} type="checkbox" /><span>Include reviewed media in page/library batches</span></label>
           </div>
-          <div className="media-guided-actions" aria-label="Guided media trainer actions">
+          <div className="media-guided-actions" aria-label="Guided media trainer actions" role="group">
             <button className="button-primary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("full", "selected", [...selectedPaths])} type="button">Train selected</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Improve page</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "library")} type="button">Continue library</button>
@@ -1677,7 +1677,7 @@ export function StudioMediaWorkspace({
             {isAutomating ? <button className="button-secondary" onClick={() => void runAutomation("cancel")} type="button">Cancel run</button> : null}
           </div>
           {isAutomating ? <progress aria-label="Media automation is running" className="media-automation-progress" /> : null}
-          {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
+          {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary" role="group">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
           {automationResult?.nextRecommendedAction ? <p className="muted-copy"><strong>Next:</strong> {automationResult.nextRecommendedAction}</p> : null}
           {automationMessage ? <p aria-live="polite" className="studio-inline-notice" role="status">{automationMessage}</p> : null}
           <details className="media-advanced-actions">
@@ -1703,7 +1703,7 @@ export function StudioMediaWorkspace({
           <details className="studio-panel studio-media-utility-panel" open>
             <summary>Verification queue</summary>
             <p className="muted-copy">Assign photo candidates without publishing guesses. Manual verification always wins.</p>
-            <div className="studio-verification-list">
+            <div aria-label="Media verification queue" className="studio-verification-list" role="region" tabIndex={0}>
               {verificationCards.map((entry) => (
                 <section className="verification-card-compact" key={entry.pieceSlug}>
                   <div className="studio-editor-head">

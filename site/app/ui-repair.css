@@ -970,7 +970,8 @@ body:has(.inline-edit-hint) main {
   top: 0.28rem;
   right: 0.28rem;
   z-index: 2;
-  min-height: 1.45rem;
+  min-height: 2.75rem;
+  min-width: 2.75rem;
   padding: 0.16rem 0.38rem;
   border: 1px solid rgba(255, 255, 255, 0.62);
   border-radius: var(--radius-pill);
@@ -1948,6 +1949,60 @@ textarea {
 .studio-master-item span {
   color: var(--muted);
   font-size: 0.68rem;
+}
+
+.studio-record-list,
+.studio-record-items,
+[data-studio-record-detail] {
+  min-width: 0;
+}
+
+.studio-record-items {
+  display: grid;
+  grid-auto-rows: max-content;
+  align-content: start;
+  gap: 0.28rem;
+  overflow: auto;
+  max-height: 60vh;
+}
+
+.studio-master-list.studio-record-list {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+}
+
+.studio-master-item {
+  overflow-wrap: anywhere;
+  min-width: 0;
+}
+
+.studio-record-count {
+  margin: 0.2rem 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.studio-record-pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.72rem;
+}
+
+.studio-record-pagination button {
+  min-height: 2.75rem;
+  padding: 0.35rem 0.55rem;
+}
+
+@media (max-width: 980px) {
+  .studio-master-list.studio-record-list {
+    position: static;
+    max-height: 18rem;
+  }
 }
 
 .studio-master-item.is-active,

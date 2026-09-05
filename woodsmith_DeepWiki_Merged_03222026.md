@@ -8,6 +8,8 @@ Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed 
 
 ## Stack
 
+The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These source changes are not yet deployed.
+
 - Next.js 16.3 App Router
 - React 19
 - Node `node:sqlite` via `DatabaseSync`
