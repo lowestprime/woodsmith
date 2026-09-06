@@ -73,6 +73,7 @@ import {
   patchMediaMetadata,
   previewMediaFolderRules,
   refreshMediaLibrary,
+  refreshMediaTechnicalMetadata,
   reconcileMediaPieceAssignment,
   rebuildSearchIndex,
   removeCartItem,
@@ -134,6 +135,7 @@ import {
   type SiteSettingsRecord,
   type UserRecord
 } from "@/lib/db";
+import { MEDIA_CROP_ASPECTS } from "./media-crop.ts";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
 import {
   executeStudioServerMutation,
@@ -3797,6 +3799,17 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
   }
 }
 
+export async function refreshMediaPreviewAction(relativePath: string) {
+  try {
+    const admin = await requireAdmin();
+    const [item] = refreshMediaTechnicalMetadata([relativePath], admin.email);
+    revalidateMediaSurfaces();
+    return { ok: true as const, item, message: "Preview inspected from the current source." };
+  } catch (error) {
+    return { ok: false as const, message: error instanceof Error ? error.message : "Preview refresh failed." };
+  }
+}
+
 export async function refreshMediaLibraryAction(): Promise<MediaActionResult> {
   try {
     const admin = await requireAdmin();
@@ -3947,12 +3960,7 @@ const MEDIA_PHOTO_QUALITIES = [
   "needs-reshoot"
 ] as const;
 
-const MEDIA_CROP_ASPECTS = [
-  "free",
-  "square",
-  "portrait",
-  "wide"
-] as const;
+
 
 function validateMediaMetadataAutosavePatch(
   patch: MediaMetadataAutosavePatch

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { toMediaUrl } from "@/lib/format";
+import { MEDIA_CROP_MAX_ZOOM, normalizeMediaCrop } from "@/lib/media-crop";
 
 export function MediaCropEditor({
   relativePath,
@@ -10,7 +11,8 @@ export function MediaCropEditor({
   focalY,
   zoom,
   cleanupMode,
-  cropAspect
+  cropAspect,
+  sourceSignature
 }: {
   relativePath: string;
   altText: string;
@@ -19,16 +21,18 @@ export function MediaCropEditor({
   zoom: number;
   cleanupMode: string;
   cropAspect: string;
+  sourceSignature?: unknown;
 }) {
-  const [x, setX] = useState(focalX);
-  const [y, setY] = useState(focalY);
-  const [scale, setScale] = useState(zoom);
-  const [aspect, setAspect] = useState(cropAspect || "free");
+  const initial = normalizeMediaCrop({ focalX, focalY, zoom, cropAspect });
+  const [x, setX] = useState(initial.focalX);
+  const [y, setY] = useState(initial.focalY);
+  const [scale, setScale] = useState(initial.zoom);
+  const [aspect, setAspect] = useState<string>(initial.cropAspect);
 
   return (
     <div className="media-crop-editor">
       <div className={`media-crop-stage cleanup-${cleanupMode} crop-${aspect}`}>
-        <img alt={altText} src={toMediaUrl(relativePath)} style={{ objectPosition: `${x}% ${y}%`, transform: `scale(${scale})` }} />
+        <img alt={altText} src={toMediaUrl(relativePath, sourceSignature)} style={{ objectPosition: `${x}% ${y}%`, transform: `scale(${scale})` }} />
         <span className="crop-reticle" aria-hidden="true" />
       </div>
       <div className="field-grid three-up compact-grid">
@@ -42,7 +46,7 @@ export function MediaCropEditor({
         </label>
         <label>
           <span>Zoom</span>
-          <input max={3} min={1} name="zoom" onChange={(event) => setScale(Number(event.target.value))} step={0.05} type="range" value={scale} />
+          <input max={MEDIA_CROP_MAX_ZOOM} min={1} name="zoom" onChange={(event) => setScale(Number(event.target.value))} step={0.05} type="range" value={scale} />
         </label>
       </div>
       <label>

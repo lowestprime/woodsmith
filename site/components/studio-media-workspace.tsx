@@ -10,6 +10,8 @@ import { StudioAutosaveForm } from "@/components/studio/studio-autosave-form";
 import { flushStudioNavigationQueues } from "@/components/studio/studio-navigation-state";
 import { useStudioRecordDraft } from "@/components/studio/use-studio-record-draft";
 import { toMediaUrl } from "@/lib/format";
+import { mediaCropFormFields, normalizeMediaCrop } from "@/lib/media-crop";
+import { refreshMediaPreviewAction } from "@/lib/actions";
 import type {
   MediaActionResult,
   MediaFolderRuleAutosavePatch,
@@ -250,12 +252,7 @@ function mediaMetadataPayload(
         formData,
         "projectReference"
       ).trim() || null,
-    focalX:
-      Number(formText(formData, "focalX")),
-    focalY:
-      Number(formText(formData, "focalY")),
-    zoom:
-      Number(formText(formData, "zoom")),
+    ...mediaCropFormFields(formData),
     reviewed: formData.has("reviewed"),
     tags: parseList(formData.get("tagsText")),
     visualLabels: parseList(
@@ -274,10 +271,6 @@ function mediaMetadataPayload(
     ),
     sourceCredit:
       formText(formData, "sourceCredit"),
-    cropAspect: formText(
-      formData,
-      "cropAspect"
-    ) as MediaMetadataAutosavePatch["cropAspect"],
     cropNote:
       formText(formData, "cropNote")
   };
@@ -924,7 +917,24 @@ function MediaInspector({
     onDelete(result.relativePath);
   }
 
+  const [refreshingPreview, setRefreshingPreview] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("");
+  async function refreshPreview() {
+    setRefreshingPreview(true);
+    try {
+      await flushStudioNavigationQueues();
+      const result = await refreshMediaPreviewAction(item.relativePath);
+      if (result.ok) onSave(result.item);
+      setPreviewMessage(result.message);
+    } catch (error) {
+      setPreviewMessage(error instanceof Error ? error.message : "Preview refresh failed.");
+    } finally {
+      setRefreshingPreview(false);
+    }
+  }
+
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
+  const crop = normalizeMediaCrop({ ...item, cropAspect: item.metadata.cropAspect });
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.map(String) : [];
   const aiTags = Array.isArray(item.metadata.aiTags) ? item.metadata.aiTags.map(String) : [];
   const aiDescription = typeof item.metadata.aiDescription === "string" ? item.metadata.aiDescription : "";
@@ -961,13 +971,13 @@ function MediaInspector({
             id: `media:${item.relativePath}`,
             alt: item.altText || item.fileName,
             cleanupMode,
-            focalX: item.focalX,
-            focalY: item.focalY,
+            focalX: crop.focalX,
+            focalY: crop.focalY,
             kind: item.kind,
             order: 0,
-            src: toMediaUrl(item.relativePath),
+            src: toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature),
             unoptimized: imageNeedsUnoptimized(item),
-            zoom: item.zoom
+            zoom: crop.zoom
           }]}
           title={item.fileName}
           variant="single"
@@ -986,6 +996,8 @@ function MediaInspector({
         <div>
           <h3 data-media-inspector-title tabIndex={-1}>{item.fileName}</h3>
           <p className="muted-copy">{item.relativePath}</p>
+          <button className="button-secondary" disabled={refreshingPreview} onClick={refreshPreview} type="button">{refreshingPreview ? "Refreshing preview…" : "Refresh preview"}</button>
+          <p aria-live="polite">{previewMessage}</p>
           <p className="muted-copy">{item.reviewed ? "Reviewed for public use" : "Needs review"} · Cluster {item.clusterKey}</p>
           {aiDescription || aiTags.length > 0 ? <p className="muted-copy">AI notes: {aiDescription || aiTags.join(", ")}</p> : null}
         </div>
@@ -1049,6 +1061,7 @@ function MediaInspector({
         className="request-form compact-form"
         createPayload={createPayload}
         entityKey={`media:${item.relativePath}`}
+        canonicalEntity={item}
         expectedUpdatedAt={item.updatedAt}
         mutate={mutate}
         onStatus={handleStatus}
@@ -1113,7 +1126,9 @@ function MediaInspector({
             <MediaCropEditor
               altText={item.altText}
               cleanupMode={cleanupMode}
-              cropAspect={String(item.metadata.cropAspect ?? "free")}
+              cropAspect={crop.cropAspect}
+              sourceSignature={item.metadata.mediaSourceSignature}
+              key={String(item.metadata.mediaSourceSignature ?? item.relativePath)}
               focalX={item.focalX}
               focalY={item.focalY}
               relativePath={item.relativePath}
@@ -1127,9 +1142,10 @@ function MediaInspector({
                 </p>
               ) : null}
               <div className="field-grid three-up compact-grid">
-                <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
-                <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
-                <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+                <input name="cropAspect" type="hidden" value={crop.cropAspect} />
+                <label><span>Focal X</span><input defaultValue={crop.focalX} min={0} max={100} name="focalX" type="number" /></label>
+                <label><span>Focal Y</span><input defaultValue={crop.focalY} min={0} max={100} name="focalY" type="number" /></label>
+                <label><span>Zoom</span><input defaultValue={crop.zoom} min={1} max={4} name="zoom" step={0.05} type="number" /></label>
               </div>
             </div>
           )}
@@ -1720,7 +1736,7 @@ export function StudioMediaWorkspace({
                       <div className="candidate-assignment-card" data-media-id={item.relativePath} data-media-item="true" data-media-order={entry.suggestions.indexOf(candidate)} key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => void inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
                           {mediaPreviewAvailable(item) ? (
-                            <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                            <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} unoptimized={imageNeedsUnoptimized(item)} />
                           ) : (
                             <span
                               className="media-picker-chip-fallback"
@@ -1811,7 +1827,7 @@ export function StudioMediaWorkspace({
               >
                 <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
                   {item.kind === "image" && mediaPreviewAvailable(item)
-                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} unoptimized={imageNeedsUnoptimized(item)} />
                     : item.kind === "image"
                       ? <span
                           className="media-picker-chip-fallback"
@@ -1819,7 +1835,7 @@ export function StudioMediaWorkspace({
                           data-audit-placeholder-allowed="source-image-preview-unavailable"
                         >Preview unavailable</span>
                     : item.kind === "video"
-                      ? <video muted playsInline preload="none" src={toMediaUrl(item.relativePath)} />
+                      ? <video muted playsInline preload="none" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
                   <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i>{analyzed ? <i>{disposition.label}</i> : null}<i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
                 </div>

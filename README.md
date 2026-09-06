@@ -16,6 +16,8 @@ The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an 
 
 ## 📃 Description
 
+The launch branch repairs JPEG preview inspection for complete images with appended metadata or Motion Photo payloads. Studio's **Refresh preview** reinspects the selected source without rewriting it or changing assignments; crop defaults and video/fallback metadata saves are supported. Recovery uses content revisions to refresh Studio images, preserves technical results across saves, and survives restart. See the [media recovery evidence and source-path exceptions](docs/post-v19-launch-audit-20260902.md#goal-a-technical-media-recovery-2026-09-05). These changes are not yet deployed.
+
 The launch branch also adds searchable, paginated Projects, Orders and Reviews workspaces with one active editor. Switching records flushes pending edits, transfers keyboard focus after rendering, and keeps filtering separate from the editing context. Server refreshes reconcile saved records without resetting an active autosave queue. These changes remain subject to the final production release gates.
 
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`

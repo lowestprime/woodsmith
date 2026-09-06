@@ -137,7 +137,7 @@ test("media deletion uses the shared cancel-first confirmation dialog", () => {
 test("Studio media cards do not preload every video in the paginated grid", () => {
   assert.match(
     mediaWorkspaceSource,
-    /<video muted playsInline preload="none" src=\{toMediaUrl\(item\.relativePath\)\} \/>/
+    /<video muted playsInline preload="none" src=\{toMediaUrl\(item\.relativePath, item\.metadata\.mediaSourceSignature\)\} \/>/
   );
   assert.doesNotMatch(
     mediaWorkspaceSource,

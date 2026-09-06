@@ -3,6 +3,9 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   images: {
+    // Content revisions invalidate media previews after source recovery. Keep
+    // other local images restricted to query-free paths.
+    localPatterns: [{ pathname: "/media/**" }, { pathname: "/**", search: "" }],
     qualities: [75, 86, 88, 92]
   },
   outputFileTracingExcludes: {

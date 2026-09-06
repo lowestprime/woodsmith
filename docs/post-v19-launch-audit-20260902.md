@@ -55,7 +55,47 @@ Restricted reports under `C:/Users/Cooper/.codex/run-logs/post-v19-public-202609
 | `studio-final-firefox-20260905d/studio-workspaces.json` | `842c5f51152a20b54bbe7f7beedfc01ea007a8cfa964acf1ae3bb0b7f499eeaf` |
 | `studio-final-delete-20260905d/studio-workspaces.json` | `d5a659fc98b155b2f4745cf27417b2a64601959c088d36c647417928e2e165dc` |
 
-Next priority is the independently confirmed JPEG technical-classification defect and crop serialization failure, followed by the remaining expanded goal gates in `PLANS.md`.
+The JPEG technical-classification and crop serialization defects are closed by Goal A below. Later goals remain separately scheduled in `PLANS.md`.
+
+## Goal A: technical media recovery (2026-09-05)
+
+The technical media packet following Studio commit `15fe557a16c90ee869c01df781db640e14cea398` is verified. No application source changed after the final passing build and rendered checks; closure adds documentation only. This is source/disposable-clone acceptance, not production deployment or exact release-image acceptance. The existing Goal branch remains active for later manually started work.
+
+**Implemented:** primary JPEG codestream inspection replaces the final-4-KiB end-marker heuristic. It handles marker segments, embedded thumbnails, stuffed bytes, restart markers, progressive scans and delayed height, distinguishing missing/truncated/structurally malformed input while preserving all raw/trailing bytes. Structural inspection is not entropy-decoder certification. Versioned content hashes detect source changes even when size and timestamps remain unchanged. Studio previews use revision URLs, with Next local image query patterns explicitly allowed under `/media/**`; HTTP validators also include change time.
+
+**Refresh and persistence:** selected **Refresh preview** flushes edits, reinspects and audits only selected indexed records, preserves missing records and all editorial fields, and adopts the canonical result in the autosave queue. Editor and rename saves cannot reinstate stale technical failures. Unchanged reindex results retain record versions; changed results advance monotonically. Crop defaults normalize legacy focal coordinates/zoom/aspect; video and unavailable-image forms submit a canonical frame. The browser proved a crop save at zoom 3.5, transition to unavailable after damaging a disposable copy, fallback metadata save, exact source restoration and immediate recovery, video default/save, reload, reindex and container restart.
+
+**Real-byte evidence:** four NAS originals were copied without transcoding and independently hash-verified. Sharp 0.35.3/libvips 8.18.3 with `failOn: "warning"` decoded their complete pixel buffers; truncated disposable derivatives were rejected. Actual encoded baseline/progressive fixtures also passed. Both browsers decoded the real photographs; authenticated HTTP returned byte-identical payloads with correct image content type, 200 responses and 206 byte ranges.
+
+| Source path beneath `Furniture/` | Bytes | Primary JPEG bytes | Decoded dimensions |
+|---|---:|---:|---|
+| `basement-door/PXL_20220901_200641874.jpg` | 2,870,229 | 2,838,445 | 4080 × 3072 |
+| `basement-door/PXL_20260303_034157401.MP.jpg` | 1,851,612 | 1,827,453 | 3072 × 4080 |
+| `chair-mounted-adjustable-artist-easel/PXL_20240218_015604040.jpg` | 2,812,823 | 2,787,256 | 3072 × 4080 |
+| `chair-mounted-adjustable-artist-easel/PXL_20240218_015623629.jpg` | 2,512,689 | 2,492,151 | 4080 × 3072 |
+
+The previous diagnosis that those two February 18 easel JPEGs lacked end-of-image markers is **superseded**. Their primary codestreams are complete; their 25,567-byte and 20,538-byte trailers caused the heuristic's false rejection. Earlier failing audits remain diagnostic records, not evidence of source corruption. No raw file or editorial piece/media identity was changed.
+
+**Unresolved source paths:** the preceding read-only inventory investigation reported two absent indexed paths: `Furniture/dining-room-table/PXL_20230716_004038462.jpg` and `Furniture/dining-room-table/PXL_20230716_004052400.jpg`. Same-folder `DINING_TALBE_20230716_004038462.jpg` and `DINING_TALBE_20230716_004052400.jpg` were candidate matches, but no rename-history provenance established identity. These are unresolved path/provenance exceptions, not proven corrupt or unrecoverable photographs. Goal A does not reassign them. Minimal later step: establish the original-to-candidate identity before an explicit path reconciliation. The retained four-file acceptance does not claim an exhaustive rendered pass for the entire library.
+
+**Gates actually run:**
+
+- `node --experimental-strip-types --test site/lib/media-integrity.test.mts site/lib/media-http.test.mts site/lib/media-recovery.test.mts site/lib/media-reference-transaction.test.mts site/lib/media-batch-transaction.test.mts site/lib/studio-media-editor.test.mts` — 32/32 PASS (`focused.log`).
+- `node --experimental-strip-types --test site/lib/media-access.test.mts site/lib/media-collection.test.mts site/lib/media-folder-rules.test.mts site/lib/piece-media.test.mts site/lib/studio-mutations.test.mts` — 67/67 PASS (`related-media.log`).
+- `npm run typecheck`, `npm run lint`, `npm run build` — PASS in Node 22.23.1; lint has zero errors/eight existing image warnings; Next.js 16.3.4 standalone runtime-data gate passes. SQLite's experimental warning remains. Final logs are `typecheck-final.log`, `lint-final.log`, `build-final.log`.
+- `node /work/visual-audit/scripts/verify-media-recovery.mjs` — real bytes, strict decoding and current production-clone editorial preservation, rollback, idempotence and reopen PASS; `quick_check=ok`. Source snapshot SHA-256 remains `8b0b41f249e68afe77e29779d7a1740c8824e5512076da9b798211dbd1dc00d6`.
+- `node /work/visual-audit/scripts/verify-media-recovery-browser.mjs` — Chromium 1440 initial 7 checks, Chromium 1440 restart/reindex 7 checks, Firefox 390 restart 6 checks, all PASS; zero console/page errors and cross-origin traffic. Final desktop light and mobile dark runs also pass horizontal-overflow assertions. This focused packet does not claim a new complete accessibility matrix.
+
+Restricted evidence stays outside Git at `C:/Users/Cooper/.codex/run-logs/post-v19-public-20260903/media-goal-a/`. Verifier source is committed; JSON/logs, screenshots, databases and raw bytes are excluded. The isolated runner was `woodsmith-visual-audit:app-0067488-audit-686a69c`. The packet's removable runtime is exactly container `woodsmith-mediaqa-goala-app`, internal network `woodsmith-mediaqa-goala`, and volumes `woodsmith-mediaqa-goala-data`/`woodsmith-mediaqa-goala-media`; closure records their removal and final commit identity in the restricted ledger. Earlier Studio fixtures and retained recovery assets are outside that cleanup scope.
+
+| Evidence report | SHA-256 |
+|---|---|
+| `real-byte-decoder.json` | `846ce37c46cbf1d0c86e13a6ffa979aa3233fc42b0ee827d3122ae809c8830a8` |
+| `browser-chromium-initial.json` | `2d79d1c1635f1b354b0809ac26de009bc177a155f81ceb62081270803bf2634e` |
+| `browser-chromium-restart.json` | `2435339c527849898aaf6e78b72613374cfb627878dba45bccff33dc311ccff3` |
+| `browser-firefox-restart.json` | `0280e9fef0ae09ce662e15ed8a627920580e743ff29647698d600c30aebcac68` |
+
+Full-image hashing adds NAS reads at startup/reindex; final deployment performance remains unmeasured. No production deployment, paired recovery replacement, branch consolidation, intake/routing, Visitors or public-copy work is included in this packet. The next manual goal is customer intake/routing as preserved in `PLANS.md`.
 
 ## Research principles (release requirements)
 

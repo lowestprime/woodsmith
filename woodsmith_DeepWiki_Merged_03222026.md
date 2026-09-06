@@ -8,6 +8,8 @@ Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed 
 
 ## Stack
 
+Post-v19 technical media recovery uses `jpeg-structure.ts` to inspect the primary JPEG codestream, accepting trailing payloads without transcoding. `media.ts` computes a versioned content hash in 64 KiB chunks, caches structural results by revision, and detects observed writes/replacements during inspection. Startup/reindex refresh technical metadata while preserving editorial fields and monotonic record versions; unchanged records retain their versions. `refreshMediaTechnicalMetadata` is an explicit, audited transaction over selected indexed paths, with no missing-row deletion or assignment application. Editor saves retain server-owned technical fields, and the Media autosave queue adopts newer canonical records after local work settles. Studio image URLs include the revision; Next's local image patterns allow queries under `/media/**`. HTTP validators also include file change time. `media-crop.ts` supplies shared safe defaults and form serialization. These changes remain undeployed; JPEG structure inspection does not replace strict decoder or identity review.
+
 The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These source changes are not yet deployed.
 
 - Next.js 16.3 App Router

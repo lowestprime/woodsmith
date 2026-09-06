@@ -13,7 +13,7 @@ import {
   type HomeServiceDefinition
 } from "./seed.ts";
 import { scanMediaAsset, scanMediaLibrary } from "./media.ts";
-import { mergeMediaPreviewMetadata } from "./media-preview.ts";
+import { mergeMediaPreviewMetadata, preserveMediaPreviewMetadata } from "./media-preview.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
@@ -1653,7 +1653,8 @@ function syncMediaLibraryIntoDatabase(
     const existing = db.prepare(`
       SELECT piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug, project_reference AS projectReference,
              user_email AS userEmail, focal_x AS focalX, focal_y AS focalY, zoom, reviewed, tags_json AS tagsJson,
-             metadata_json AS metadataJson, alt_text AS altText, created_at AS createdAt
+             metadata_json AS metadataJson, alt_text AS altText, created_at AS createdAt,
+             updated_at AS updatedAt, size_bytes AS sizeBytes
       FROM media_items
       WHERE relative_path = ?
       LIMIT 1
@@ -1735,7 +1736,10 @@ function syncMediaLibraryIntoDatabase(
       tagsJson: existing?.tagsJson ? String(existing.tagsJson) : "[]",
       metadataJson: JSON.stringify(metadata),
       createdAt: existing?.createdAt ? String(existing.createdAt) : media.createdAt,
-      updatedAt: media.updatedAt
+      updatedAt: existing
+        ? (existing.metadataJson !== JSON.stringify(metadata) || Number(existing.sizeBytes) !== media.sizeBytes
+          ? isoAfter(String(existing.updatedAt)) : String(existing.updatedAt))
+        : media.updatedAt
     });
   }
 
@@ -4010,7 +4014,7 @@ export function saveMediaMetadata(input: {
 }) {
   const db = getDatabase();
   const previous = getMedia(input.relativePath);
-  if (!getMedia(input.relativePath)) {
+  if (!previous) {
     const media = scanMediaAsset(input.relativePath);
     if (!media) throw new Error(`Media file '${input.relativePath}' was not found in the configured library.`);
     db.prepare(`
@@ -4020,7 +4024,7 @@ export function saveMediaMetadata(input: {
         focal_x, focal_y, zoom, reviewed, tags_json, metadata_json,
         assignment_source, assignment_rule_id, assigned_at, assigned_by, manual_override,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', '{}', NULL, NULL, NULL, NULL, 0, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', ?, NULL, NULL, NULL, NULL, 0, ?, ?)
     `).run(
       media.relativePath,
       media.folder,
@@ -4029,6 +4033,7 @@ export function saveMediaMetadata(input: {
       media.sizeBytes,
       media.clusterKey,
       media.guessedAlt,
+      writeJson(mergeMediaPreviewMetadata({}, media.preview)),
       media.createdAt,
       media.updatedAt
     );
@@ -4067,7 +4072,7 @@ export function saveMediaMetadata(input: {
     zoom: input.zoom,
     reviewed: input.reviewed ? 1 : 0,
     tagsJson: writeJson(input.tags),
-    metadataJson: writeJson(input.metadata ?? {}),
+    metadataJson: writeJson(preserveMediaPreviewMetadata(input.metadata ?? {}, (previous ?? getMedia(input.relativePath))?.metadata ?? {})),
     assignmentSource: input.assignmentSource === undefined ? previous?.assignmentSource ?? null : input.assignmentSource,
     assignmentRuleId: input.assignmentRuleId === undefined ? previous?.assignmentRuleId ?? null : input.assignmentRuleId,
     assignedAt: input.assignedAt === undefined ? previous?.assignedAt ?? null : input.assignedAt,
@@ -4570,6 +4575,26 @@ export function applyMediaFolderRules(actorEmail: string | null = null): MediaFo
   return withDatabaseTransaction((db) =>
     applyMediaFolderRulesInDatabase(db, actorEmail)
   );
+}
+
+// Inspect explicit records without removing missing rows or applying assignments.
+export function refreshMediaTechnicalMetadata(paths: string[], actorEmail: string | null = null) {
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 500 || paths.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new Error("Choose between 1 and 500 indexed media paths.");
+  }
+  const scans = [...new Set(paths)].map((relativePath) => ({ relativePath, scan: scanMediaAsset(relativePath, { force: true }) }));
+  return withDatabaseTransaction((db) => scans.map(({ relativePath, scan }) => {
+    const current = getMedia(relativePath);
+    if (!current) throw new Error("The selected media record no longer exists.");
+    const metadata = mergeMediaPreviewMetadata(current.metadata, scan?.preview ?? { status: "unavailable", reason: "missing-file" });
+    const sizeBytes = scan?.sizeBytes ?? current.sizeBytes;
+    if (JSON.stringify(metadata) === JSON.stringify(current.metadata) && sizeBytes === current.sizeBytes) return current;
+    db.prepare("UPDATE media_items SET metadata_json = ?, size_bytes = ?, updated_at = ? WHERE relative_path = ?")
+      .run(writeJson(metadata), sizeBytes, isoAfter(current.updatedAt), relativePath);
+    const next = getMedia(relativePath)!;
+    recordAdminEditAudit({ actorEmail, entityType: "media", entityKey: relativePath, operation: "refresh-preview", before: current, after: next });
+    return next;
+  }));
 }
 
 export function refreshMediaLibrary(actorEmail: string | null = null) {
