@@ -13,6 +13,8 @@ import {
   type HomeServiceDefinition
 } from "./seed.ts";
 import { scanMediaAsset, scanMediaLibrary } from "./media.ts";
+import { existingWebsiteInquiry, insertWebsiteInquiry, inquirySubmissionIdentity, listWebsiteInquiriesInDatabase } from "./website-inquiry-store.ts";
+import type { InquiryClassification, WebsiteInquiry } from "./website-inquiry.ts";
 import { mergeMediaPreviewMetadata, preserveMediaPreviewMetadata } from "./media-preview.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
@@ -5087,6 +5089,25 @@ export function createProject(input: ProjectInput) {
   return reference;
 }
 
+export function getExistingWebsiteInquiry(ownerKey: string, key: string, inquiry: WebsiteInquiry) {
+  return existingWebsiteInquiry(getDatabase(), ownerKey, key, inquiry);
+}
+
+export function listWebsiteInquiries(options: Parameters<typeof listWebsiteInquiriesInDatabase>[1] = {}) {
+  return listWebsiteInquiriesInDatabase(getDatabase(), options);
+}
+
+export function acceptWebsiteInquiry(input: { ownerKey: string; key: string; inquiry: WebsiteInquiry; classification: InquiryClassification; project?: ProjectInput }) {
+  return withDatabaseTransaction((db) => {
+    const existing = existingWebsiteInquiry(db, input.ownerKey, input.key, input.inquiry);
+    if (existing) return { record: existing, created: false as const };
+    const legitimateCommission = input.inquiry.channel === "commission" && input.classification.disposition === "legitimate";
+    if (legitimateCommission && !input.project) throw new Error("Commission details are required.");
+    const project = legitimateCommission ? createProjectIdempotent(input.project!, inquirySubmissionIdentity(input.ownerKey, input.key).projectKey) : null;
+    return { record: insertWebsiteInquiry(db, { ...input, projectReference: project?.reference }), created: true as const };
+  });
+}
+
 export function createProjectIdempotent(input: ProjectInput, idempotencyKey: string) {
   const cleanKey = idempotencyKey.trim();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(cleanKey)) throw new Error("Submission idempotency key is invalid.");
@@ -5116,6 +5137,7 @@ export function rollbackCommissionSubmission(reference: string, idempotencyKey: 
     db.prepare("DELETE FROM project_updates WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM project_access_grants WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM commission_submissions WHERE idempotency_hash = ?").run(idempotencyHash);
+    db.prepare("DELETE FROM website_inquiries WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM projects WHERE reference = ?").run(reference);
     return true;
   });

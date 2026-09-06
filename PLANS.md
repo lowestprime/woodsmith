@@ -1,6 +1,21 @@
 # PLANS.md
 
-## Current work packet: Goal A — technical media recovery
+## Completed work packet: Goal B1 — customer intake integrity
+
+**B1 outcome: DONE.** The commit containing this entry completes the customer-intake packet. Full commit/upstream/remote identity, clean-worktree verification, scoped disposable cleanup and evidence hashes are recorded in `C:/Users/Cooper/.codex/run-logs/woodsmith-intake-b1-20260906/closure.json`. See [B1 acceptance](docs/b1-intake-audit-20260906.md) and [website inquiries](docs/website-inquiries.md).
+
+- DONE: normalized About/contact/piece intake, server-resolved catalog truth, owner-bound idempotency, additive v16 inquiry storage and administrator-only inquiry/quarantine review.
+- DONE: server-authoritative Managed Turnstile, fail-closed runtime configuration, conservative combined-signal quarantine before Project/upload/customer-mail effects, and preserved origin/honeypot/quota protections. General/piece inquiries and quarantine do not change bandwidth or lead-time calculations.
+- DONE: retained planner/autosave/validation/private uploads, failed-verification value/FileList preservation, token-free drafts, and free-text/URL reference compatibility. Legitimate planner submissions still create Projects and retain customer/operator mail.
+- DONE: 44 unique focused checks PASS; typecheck PASS; full lint findings resolved through affected-file checks (eight existing image warnings); final build/TypeScript/standalone-data gate PASS. Chromium 1440 and Firefox 390 pass changed flows, private review, error/expiry/retry, fail-closed bypass rejection, overflow and zero unexpected errors/unexplained traffic. Final quick-form honeypot visibility fix passes both browsers.
+- DONE: fresh read-only production snapshot and actual/customized/rollback clone proof, 50 existing tables preserved across v16, retry/idempotence/startup/reopen, source hash unchanged (`c12b643e81a38e44ffb7638b2e2b80afbb15eba4f346cc13c2dff6aa71df13b2`). No production mutation or deployment.
+- DONE: README/admin/deployment/DeepWiki/env/audit alignment; empty new-install forwarding defaults and arbitrary persisted owner preferences preserved. No conditional routing/BCC rules added.
+
+Browser provider responses are controlled isolated fixtures; live Cloudflare/SMTP configuration and deployment are not claimed. Restricted evidence remains outside Git; disposable B1 runtime/clone resources are removed in closure. Stop after this packet. Next manual goal: B2 conditional website-generated routing/BCC.
+
+Later manual goals: **B2** website-generated conditional BCC/routing management using B1 semantics (primary `woodsmithbb@proton.me`; private operator copies; auth isolation; direct inbound Proton rules remain provider-side); **C** standalone `/studio?panel=visitors` removed from Notifications with responsive accessible map/trend geometry; **D** remaining public copy/profile/high-yield UX; **E** final QA/storage/recovery/deployment/master-only consolidation. None is implemented in B1.
+
+## Completed work packet: Goal A — technical media recovery
 
 Single root agent; one work packet only. Preserve the media WIP after Studio commit `15fe557a16c90ee869c01df781db640e14cea398`. Complete JPEG structural inspection, source-signature/preview refresh, canonical crop defaults and fallback/video saves; verify real production-clone bytes, reload/reindex/restart behavior, focused tests and the necessary build/browser gates. Document unresolved source-path truth without changing editorial identity. Commit/push this packet, clean only its disposable resources, mark Goal A complete, and stop. No production deployment is included.
 

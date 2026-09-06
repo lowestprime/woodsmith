@@ -37,7 +37,9 @@ Schema v15 adds a recipient-provenance row for each newly queued account-link de
 
 | Event | Notice / persistence |
 |---|---|
-| Contact or guided commission submission | Buyer `commission_submitted` confirmation and separate `customer_inquiry_admin` operator notice. Submission replay recovers missing queue entries from persisted project content without duplicating logical mail. |
+| About/contact/piece inquiry | Separate inquiry record and `customer_inquiry_admin` operator notice; no Project or customer commission confirmation. Owner-bound replay recovers a missing notice without duplicating it. |
+| Legitimate guided commission | Project plus buyer `commission_submitted` confirmation and separate `customer_inquiry_admin` notice; replay repairs missing queue entries. |
+| Quarantined website solicitation | Private inquiry record only; no Project, upload persistence, lifecycle event or mail. |
 | Authorized buyer project reply | `customer_reply_admin`, committed in the same transaction as the reply. Administrator-authored replies do not notify the same operator. Existing project-access controls remain required. |
 | Review submission | Draft review plus `review_submitted_admin` in one transaction. Approval/publication remains manual. |
 | Local pickup/delivery review | Draft order plus `customer_inquiry_admin` in one transaction, including bounded item names/quantities. The browser returns through a relative 303 redirect, not the container's internal hostname. |
@@ -52,3 +54,5 @@ Operator notices use bounded, escaped names, addresses, references and message e
 No new global-routing setting is introduced. Additive schema v15 creates three missing operator policies/templates using insert-if-absent semantics, plus account-link recipient provenance. It preserves arbitrary existing site settings and existing policies/templates. Migration tests cover transaction failure, retry, idempotence and customization preservation; production-clone proof remains a separate predeployment gate.
 
 Focused tests cover normalization/clear/rejection, recipient-source behavior, global/category/event union, primary/CC exclusion, auth isolation, queued-message provenance, SMTP transport behavior, outbox atomicity and administrative audit redaction. Disposable browser acceptance uses `visual-audit/scripts/verify-notification-routing.mjs` and `verify-routing-state.mjs`, with no production mounts or real SMTP credentials.
+
+Schema v16 adds the normalized website inquiry store. New installations seed empty forwarding defaults, while arbitrary saved settings/templates/policies remain unchanged. Inquiry templates may use the B1 intent/topic/source/piece placeholders documented in [website inquiries](website-inquiries.md). Conditional website-generated routing/BCC remains the next manual B2 task.

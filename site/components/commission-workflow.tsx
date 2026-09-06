@@ -1,9 +1,11 @@
 "use client";
 
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 
-import { submitContactRequestAction } from "@/lib/actions";
+import { submitWebsiteCommissionAction } from "@/lib/actions";
+import { InquiryTurnstile } from "@/components/inquiry-turnstile";
+import type { TurnstileClientConfiguration } from "@/lib/turnstile";
 import { browserOperationId } from "@/lib/browser-id";
 import { firstInvalidCommissionControl } from "@/lib/commission-validation";
 import type { CommissionTypeRecord } from "@/lib/db";
@@ -34,7 +36,7 @@ type StoredDraft = {
 function serializeForm(form: HTMLFormElement) {
   const values: Record<string, string> = {};
   for (const [name, value] of new FormData(form).entries()) {
-    if (value instanceof File || name === "visualizationSvg") continue;
+    if (value instanceof File || ["visualizationSvg", "cf-turnstile-response"].includes(name)) continue;
     values[name] = String(value);
   }
   return values;
@@ -75,7 +77,8 @@ export function CommissionWorkflow({
   queueCount,
   defaultName = "",
   defaultEmail = "",
-  signedIn = false
+  signedIn = false,
+  turnstile
 }: {
   commissionTypes: CommissionTypeRecord[];
   bandwidthLeadTimeDays: number;
@@ -83,7 +86,11 @@ export function CommissionWorkflow({
   defaultName?: string;
   defaultEmail?: string;
   signedIn?: boolean;
+  turnstile: TurnstileClientConfiguration;
 }) {
+  const [submission, submit] = useActionState(submitWebsiteCommissionAction, { ok: false, message: "" });
+  const submissionNotice = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (submission?.message) submissionNotice.current?.focus(); }, [submission]);
   const formRef = useRef<HTMLFormElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -231,6 +238,10 @@ export function CommissionWorkflow({
     return true;
   }
 
+  function preserveSubmissionInputs(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+  }
+
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     const controls = Array.from(event.currentTarget.elements).filter(
       (field): field is HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement =>
@@ -284,7 +295,11 @@ export function CommissionWorkflow({
   void revision;
 
   return (
-    <form action={submitContactRequestAction} className="request-form commission-workflow" noValidate onChange={scheduleAutosave} onInput={scheduleAutosave} onSubmit={handleSubmit} ref={formRef}>
+    // React resets uncontrolled inputs after a resolved action, including an
+    // error result. Retain entered values and FileList for verification retry;
+    // a successful commission navigates to its private Project instead.
+    <form action={submit} className="request-form commission-workflow" noValidate onReset={preserveSubmissionInputs} onChange={scheduleAutosave} onInput={scheduleAutosave} onSubmit={handleSubmit} ref={formRef}>
+      {submission?.message ? <p ref={submissionNotice} role={submission.ok ? "status" : "alert"} tabIndex={-1} className="notice-panel">{submission.message}</p> : null}
       <input name="idempotencyKey" type="hidden" value={idempotencyKey} />
       <input name="draftId" type="hidden" value={draftId} />
       <input name="requestSource" type="hidden" value="commissions-workflow" />
@@ -380,7 +395,8 @@ export function CommissionWorkflow({
         <dl className="commission-review-list"><div><dt>Intent</dt><dd>{review.intent || "Not set"}</dd></div><div><dt>Category</dt><dd>{review.planningCategory || review.commissionTypeSlug || "Not set"}</dd></div><div><dt>Location</dt><dd>{review.cityRegion || review.roomLocation || "Not set"}</dd></div><div><dt>Fulfillment</dt><dd>{review.deliveryMode || "Not set"}</dd></div><div><dt>Contact</dt><dd>{review.customerName || defaultName || "Not set"}</dd></div></dl>
         <p className="notice-panel">The displayed estimate is planning guidance, not a quote. The server recalculates materials, labor, overhead, markup, queue load, and lead time from the submitted options before creating the private project.</p>
         <label className="checkbox-row"><input name="accuracyConfirmation" required type="checkbox" value="1" /><span>I reviewed the contact details, dimensions, and project brief.</span></label>
-        <CommissionSubmitButton ready={Boolean(idempotencyKey)} />
+        <InquiryTurnstile configuration={turnstile} resetKey={submission} />
+        <CommissionSubmitButton ready={Boolean(idempotencyKey) && !submission?.ok && turnstile.mode !== "unavailable"} />
         <p aria-live="polite" className="muted-copy" id="commission-submit-status">Files are uploaded only when you submit. Keep this page open until the private project page appears.</p>
       </section>
 

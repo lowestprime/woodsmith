@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { ContactRequestForm } from "@/components/forms";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
-import { pieceAllowsInquiry } from "@/lib/catalog";
+import { pieceInquiryIntents, WEBSITE_INQUIRY_INTENTS, type WebsiteInquiryIntent } from "@/lib/website-inquiry";
 import { getBandwidthSnapshot, getPiece, getSiteSettings, listCommissionTypes } from "@/lib/db";
 
 export const metadata: Metadata = {
@@ -12,13 +12,13 @@ export const metadata: Metadata = {
   openGraph: { title: "Contact | Beaman Woodworks", description: "Contact the Beaman Woodworks woodshop." }
 };
 
-export default async function ContactPage({ searchParams }: { searchParams: Promise<{ piece?: string; error?: string }> }) {
+export default async function ContactPage({ searchParams }: { searchParams: Promise<{ piece?: string; error?: string; intent?: string; source?: string }> }) {
   await connection();
-  const { piece: pieceSlug = "", error = "" } = await searchParams;
+  const { piece: pieceSlug = "", error = "", intent = "", source = "/contact" } = await searchParams;
   const site = getSiteSettings();
   const bandwidth = getBandwidthSnapshot();
   const requestedPiece = pieceSlug ? getPiece(pieceSlug) : null;
-  const selectedPiece = requestedPiece && pieceAllowsInquiry(requestedPiece) ? requestedPiece : undefined;
+  const selectedPiece = requestedPiece && pieceInquiryIntents(requestedPiece).length > 0 ? requestedPiece : undefined;
 
   return (
     <Shell>
@@ -43,6 +43,8 @@ export default async function ContactPage({ searchParams }: { searchParams: Prom
           bandwidthLeadTimeDays={bandwidth.leadTimeDays}
           commissionTypes={listCommissionTypes()}
           piece={selectedPiece}
+          intent={WEBSITE_INQUIRY_INTENTS.includes(intent as WebsiteInquiryIntent) ? intent as WebsiteInquiryIntent : undefined}
+          sourceRoute={/^\/(about|contact|shop|portfolio(?:\/[a-zA-Z0-9_-]+)?)$/.test(source) ? source : "/contact"}
           queueCount={bandwidth.activeProjects}
         />
       </PageSection>

@@ -103,6 +103,7 @@ The SQLite schema includes these primary tables:
 - `media_operation_batches`
 - `media_operation_items`
 - `commission_drafts`
+- `website_inquiries`
 - `commission_submissions`
 - `project_access_grants`
 - `commission_render_usage`
@@ -111,7 +112,7 @@ The SQLite schema includes these primary tables:
 
 Seeds from `site/lib/seed.ts` initialize site settings, profile records, pages, pieces, custom work types, and process notes. Existing databases are upgraded through seed v6 without deleting runtime orders, projects, users, media metadata, dashboard edits, or deletion tombstones. Seed v3 and later migrations are non-destructive for existing Studio-edited content; they normalize legacy developer-email references, replace only exact stale seed wording, and remove the obsolete public Process navigation entry.
 
-The source additive migration ledger applies through schema version 15. Versions 9-11 normalize notification/lifecycle records, version 12 minimizes visitor/audit data, and version 13 installs synchronized FTS5 search. Version 14 normalizes exact legacy public copy with history while preserving custom content. Version 15 inserts missing operator correspondence policies/templates and adds transactional account-link recipient provenance. Legacy notification history is preserved; queued old authentication links without recipient proof cannot be retried to potentially incorrect destinations and require a fresh request.
+The source additive migration ledger applies through schema version 16. Versions 9-11 normalize notification/lifecycle records, version 12 minimizes visitor/audit data, and version 13 installs synchronized FTS5 search. Version 14 normalizes exact legacy public copy with history while preserving custom content. Version 15 inserts missing operator correspondence policies/templates and adds transactional account-link recipient provenance. Legacy notification history is preserved; queued old authentication links without recipient proof cannot be retried to potentially incorrect destinations and require a fresh request.
 
 `notification-routing.ts` is the shared pure address/recipient resolver. The typed Notifications Overview editor saves the existing `site.email.forwardTo` with explicit clear, expected-version conflict handling and audit provenance. Global/category/event BCC is deduplicated and excludes To/CC. Authentication-link delivery ignores all copies and configured-recipient overrides. Operator inquiry/reply/review notices use independent templates and durable queues; replies/reviews/order requests commit their queue entries atomically. See [notification routing](docs/notification-routing.md). Production remains at the accepted v19 boundary until the post-v19 release gates pass.
 
@@ -248,3 +249,7 @@ Exact Tier 1, production-clone Tier 2, deterministic release packaging, paired b
 # Post-v19 source update (pending release)
 
 The launch branch adds schema v14 audited, exact-match content normalization, location-neutral public defaults, a configured home hero image, a compact contact form separate from the guided commission planner, and a shared progressive scroll rail. Owner-customized persisted values survive normalization. Developer account administration and repository credit remain in technical documentation, not default commercial-page promotion. These are locally validated source changes, not a claim of deployment. Current release gates are tracked in `PLANS.md` and `docs/post-v19-launch-audit-20260902.md`.
+
+## Shared website intake (B1)
+
+`website-intake.ts` normalizes quick inquiry and planner submissions, checks honeypot/owner-bound replay/quota/Turnstile, classifies solicitation, and calls transactional inquiry persistence. Migration v16 is additive. Only legitimate planner inputs invoke the Project/upload preparation boundary; general/piece and quarantined records stay outside bandwidth and lead-time calculations. `website-inquiry-form.tsx` handles compact outreach; the existing planner uses action-state error handling with deliberate input/file retention. Studio exposes private paginated inquiry/quarantine review. Operator mail receives structured context while preserving saved routing and authentication-link isolation. See [website inquiries](docs/website-inquiries.md).

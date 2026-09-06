@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PieceInquiryLinks } from "@/components/piece-inquiry-links";
 import Image from "next/image";
 import Link from "next/link";
 import { connection } from "next/server";
@@ -61,13 +62,14 @@ export default async function ShopPage() {
                     <div><dt>Tax</dt><dd>Calculated at checkout or on invoice</dd></div>
                   </dl>
                   <p className="muted-copy">{getFulfillmentSummary(piece)}</p>
+                  {canAddToCart && canAsk ? <PieceInquiryLinks piece={piece} sourceRoute="/shop" /> : null}
                   <div className="shop-card-price-row">
                     <span className="muted-copy">Final timing and handoff details are confirmed before payment.</span>
                     {canAddToCart ? <form action={addToCartAction}>
                       <input name="pieceSlug" type="hidden" value={piece.slug} />
                       <input name="quantity" type="hidden" value="1" />
                       <button className="button-primary" type="submit">Add to cart</button>
-                    </form> : canAsk ? <Link className="button-primary" href={`/contact?piece=${encodeURIComponent(piece.slug)}`}>Ask about this piece</Link> : <span className="muted-copy">Not accepting inquiries</span>}
+                    </form> : canAsk ? <PieceInquiryLinks piece={piece} sourceRoute="/shop" /> : <span className="muted-copy">Not accepting inquiries</span>}
                   </div>
                 </div>
               </article>

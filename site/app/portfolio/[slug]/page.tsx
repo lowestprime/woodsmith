@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PieceInquiryLinks } from "@/components/piece-inquiry-links";
 import Link from "next/link";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
@@ -134,7 +135,8 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           <h2>{piece.status === "inventory" ? "Ask about this piece" : "Use this piece as the starting point for custom work"}</h2>
           <p>{piece.status === "inventory" ? "Ask about the current build, confirm delivery options, or discuss a related variation. Checkout details remain in the shop." : "Tell William about the room, intended use, timing, and material preferences. He will review the details before preparing a quote."}</p>
         </div>
-        <ContactRequestForm
+        <PieceInquiryLinks piece={piece} sourceRoute={`/portfolio/${piece.slug}`} />
+              <ContactRequestForm
           bandwidthLeadTimeDays={bandwidth.leadTimeDays}
           commissionTypes={listCommissionTypes()}
           piece={piece}

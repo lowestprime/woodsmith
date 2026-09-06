@@ -1031,6 +1031,28 @@ const migrations: Migration[] = [
       }
       return { policiesAdded, authRecipientProvenance: true, existingSettingsPreserved: true };
     }
+  },
+  {
+    version: 16,
+    name: "website-inquiry-integrity-and-quarantine",
+    checksum: "2026-09-website-inquiries-v1",
+    apply(db) {
+      db.exec(`CREATE TABLE website_inquiries (
+        id TEXT PRIMARY KEY,
+        owner_hash TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        disposition TEXT NOT NULL CHECK(disposition IN ('legitimate', 'quarantine')),
+        classification_json TEXT NOT NULL,
+        inquiry_json TEXT NOT NULL,
+        project_reference TEXT REFERENCES projects(reference) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(owner_hash, key_hash),
+        CHECK(disposition <> 'quarantine' OR project_reference IS NULL)
+      ) STRICT;
+      CREATE INDEX idx_website_inquiries_review ON website_inquiries(disposition, created_at DESC);`);
+      return { inquiryStoreCreated: true, existingProjectsAndSettingsUnchanged: true };
+    }
   }
 ];
 

@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { randomUUID } from "node:crypto";
+import { WebsiteInquiryForm } from "@/components/website-inquiry-form";
+import { getTurnstileClientConfiguration } from "@/lib/turnstile";
 import { connection } from "next/server";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 import { AvatarBadge } from "@/components/avatar-badge";
@@ -57,7 +59,7 @@ export default async function AboutPage() {
             <p>{site.builderName} · {site.builderHeadline}</p>
             <p><a href={`mailto:${site.builderEmail}`}>{site.builderEmail}</a></p>
             <p className="muted-copy">For available work, custom builds, delivery, care, or repair.</p>
-            <Link className="button-primary" href="/contact">Send an inquiry</Link>
+            <WebsiteInquiryForm submissionKey={randomUUID()} sourceRoute="/about" turnstile={getTurnstileClientConfiguration()} />
           </article>
           {socialLinks.length > 0 ? <article className="studio-panel">
             <h2>Follow the woodshop</h2>

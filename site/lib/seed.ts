@@ -114,7 +114,7 @@ export const siteSettingsSeed = {
   developerName: "Cooper Beaman",
   developerEmail: "cooperbeaman@proton.me",
   developerHeadline: "Website Developer",
-  notificationForwardEmail: "wbeaman1@gmail.com",
+  notificationForwardEmail: "",
   repoUrl: "https://x.gd/woodsmith_git",
   socialLinks: [
     { label: "Instagram", url: "" },
@@ -183,7 +183,7 @@ export const siteSettingsSeed = {
     fromName: "Beaman Woodworks",
     fromAddress: "woodsmithbb@proton.me",
     replyTo: "woodsmithbb@proton.me",
-    forwardTo: "wbeaman1@gmail.com"
+    forwardTo: ""
   },
   homeSections: [
     {

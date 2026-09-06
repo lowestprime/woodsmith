@@ -3,7 +3,9 @@
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { processWebsiteIntake } from "./website-intake.ts";
+import type { WebsiteInquiryRecord } from "./website-inquiry-store.ts";
 import { secureCookieRequired } from "@/lib/cookie-policy";
 import {
   PIECE_MEDIA_ROLES,
@@ -930,7 +932,8 @@ function serverCommissionEstimate(formData: FormData, requestType: string, dimen
   return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays) };
 }
 
-export async function submitContactRequestAction(formData: FormData) {
+async function submitPlannerRequest(formData: FormData) {
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
   const user = await getCurrentUser();
   const guestName = requiredField(formData.get("customerName"), "Your name").slice(0, 120);
   const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
@@ -961,30 +964,24 @@ export async function submitContactRequestAction(formData: FormData) {
   const deliveryMode = optionalField(formData.get("deliveryMode"));
   if (deliveryMode && !["pickup", "local-delivery", "shipment"].includes(deliveryMode)) throw new Error("Delivery preference is invalid.");
   const idempotencyKey = requiredField(formData.get("idempotencyKey"), "Submission key");
-  if (optionalField(formData.get("companyWebsite"))) throw new Error("The request could not be submitted.");
-  const requestSource = optionalField(formData.get("requestSource")) || "commissions-workflow";
-  if (requestSource === "commissions-workflow" && optionalField(formData.get("accuracyConfirmation")) !== "1") throw new Error("Confirm the request details before submitting.");
+  const requestSource = "commissions-workflow";
   const ownerKey = await commissionOwnerKey(user?.email);
-  const submissionQuota = consumeCommissionSubmissionQuota(ownerKey, user ? 12 : 5);
-  if (!submissionQuota.allowed) throw new Error(`Too many requests were submitted from this browser. Try again in about ${Math.ceil(submissionQuota.retryAfterSeconds / 60)} minutes.`);
   const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
   const stagedUploads: string[] = [];
+  let intake: Awaited<ReturnType<typeof processWebsiteIntake>>;
   try {
-    for (const file of files) {
-      stagedUploads.push(await persistUploadedMedia(file, `commission-staging/${idempotencyKey.slice(0, 24)}`, {
-        maxBytes: 20 * 1024 * 1024,
-        allowedMimePrefixes: ["image/"],
-        allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"]
-      }));
-    }
-  } catch (error) {
-    stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
-    throw error;
-  }
-
-  let result: ReturnType<typeof createProjectIdempotent>;
-  try {
-    result = createProjectIdempotent({
+    const fields = Object.fromEntries(formData);
+    const plannerFields = ["intent", "referencePieceSlug", "commissionTypeSlug", "requestedWidth", "requestedDepth", "requestedHeight", "dimensionsJson", "materialPreference", "joineryPreference", "visualizerOptions", "roomUse", "roomLocation", "functionalLoad", "fitConstraints", "finishPreference", "hardwarePreference", "timingPreference", "phone", "cityRegion", "deliveryMode", "budgetDollars", "includeVisualization", "draftId"];
+    intake = await processWebsiteIntake({ fields, channel: "commission", ownerKey, authenticated: Boolean(user),
+      plannerContext: Object.fromEntries(plannerFields.map(key => [key, optionalField(formData.get(key)).slice(0, 20_000)])),
+      prepareProject: async () => {
+        for (const file of files) {
+          stagedUploads.push(await persistUploadedMedia(file, `commission-staging/${idempotencyKey.slice(0, 24)}`, {
+            maxBytes: 20 * 1024 * 1024, allowedMimePrefixes: ["image/"],
+            allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"]
+          }));
+        }
+        return {
     userEmail: user?.email ?? null,
     guestName,
     guestEmail,
@@ -1022,11 +1019,15 @@ export async function submitContactRequestAction(formData: FormData) {
     leadTimeDays: estimate.leadTimeDays,
     shippingAddress: cityRegion ? { cityRegion } : {},
     billingAddress: { email: guestEmail }
-    }, idempotencyKey);
+        };
+      }
+    });
   } catch (error) {
     stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
     throw error;
   }
+  if (intake.record.classification.disposition === "quarantine") return { ok: true, message: "Thank you. Your message has been received." };
+  const result = { reference: intake.record.projectReference!, created: intake.created };
   const reference = result.reference;
 
   if (!result.created) stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
@@ -1059,7 +1060,7 @@ export async function submitContactRequestAction(formData: FormData) {
         }
         try { deleteMediaAsset(relativePath); } catch { /* Best-effort cleanup; rollback still removes the project key. */ }
       }
-      rollbackCommissionSubmission(reference, idempotencyKey);
+      rollbackCommissionSubmission(reference, intake.projectKey);
       throw error;
     }
 
@@ -1092,7 +1093,7 @@ export async function submitContactRequestAction(formData: FormData) {
     // Replaying a submission can recover a missing outbox entry without duplicating mail.
     const persisted = getProject(reference)!;
     const statusUrl = `${resolveBaseUrl()}/commissions/status`;
-    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference });
+    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference, inquiryContext: intake.record.inquiry });
     const confirmation = queueNotificationEmail({
       category: "commission_submitted",
       to: persisted.guestEmail,
@@ -1116,8 +1117,46 @@ export async function submitContactRequestAction(formData: FormData) {
   redirect(`/requests/${reference}?created=1`);
 }
 
+async function notifyWebsiteInquiry(record: WebsiteInquiryRecord) {
+  if (record.classification.disposition !== "legitimate") return;
+  const inquiry = record.inquiry;
+  const notice = queueOperatorCorrespondence({
+    category: "customer_inquiry_admin", customerName: inquiry.customerName, customerEmail: inquiry.customerEmail,
+    reference: record.id, message: inquiry.message, eventId: record.id,
+    studioUrl: `${resolveBaseUrl()}/studio?panel=inquiries&inquiry=${encodeURIComponent(record.id)}`,
+    inquiryContext: inquiry
+  });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
+}
+
+export async function submitWebsiteInquiryAction(_: unknown, formData: FormData) {
+  try {
+    if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+    const user = await getCurrentUser();
+    const result = await processWebsiteIntake({ fields: Object.fromEntries(formData), channel: "inquiry", ownerKey: await commissionOwnerKey(user?.email), authenticated: Boolean(user) });
+    await notifyWebsiteInquiry(result.record);
+    revalidatePath("/studio");
+    return { ok: true, message: "Thank you. Your message has been received.", receipt: result.record.id };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, message: error instanceof Error ? error.message : "The inquiry could not be submitted. Please try again." };
+  }
+}
+
+export async function submitContactRequestAction(formData: FormData) {
+  return submitPlannerRequest(formData);
+}
+
+export async function submitWebsiteCommissionAction(_: unknown, formData: FormData) {
+  try { return await submitPlannerRequest(formData); }
+  catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, message: error instanceof Error ? error.message : "The request could not be submitted. Please try again." };
+  }
+}
+
 export async function submitCommissionAction(formData: FormData) {
-  return submitContactRequestAction(formData);
+  return submitPlannerRequest(formData);
 }
 
 export async function lookupProjectStatusAction(formData: FormData) {

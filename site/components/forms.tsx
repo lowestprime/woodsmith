@@ -4,16 +4,19 @@ import {
   resetPasswordAction,
   signupAction,
   studioLoginAction,
-  submitContactRequestAction,
   submitProjectReplyAction,
   submitReviewAction,
   updateProfileAction
 } from "@/lib/actions";
+import { randomUUID } from "node:crypto";
 import type { CommissionTypeRecord, PieceRecord, ProjectRecord, UserRecord } from "@/lib/db";
-import { CommissionWorkflow, IdempotencyInput } from "@/components/commission-workflow";
+import { CommissionWorkflow } from "@/components/commission-workflow";
+import { getTurnstileClientConfiguration } from "@/lib/turnstile";
+import { WebsiteInquiryForm } from "@/components/website-inquiry-form";
+import type { WebsiteInquiryIntent } from "@/lib/website-inquiry";
 import { ProfileAvatarFields } from "@/components/profile-avatar-fields";
 
-export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece, defaultName, defaultEmail, guided = false, signedIn }: {
+export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, queueCount, piece, defaultName, defaultEmail, guided = false, signedIn, sourceRoute, intent }: {
   commissionTypes: CommissionTypeRecord[];
   bandwidthLeadTimeDays: number;
   queueCount: number;
@@ -22,88 +25,13 @@ export function ContactRequestForm({ commissionTypes, bandwidthLeadTimeDays, que
   defaultEmail?: string;
   guided?: boolean;
   signedIn?: boolean;
+  sourceRoute?: string;
+  intent?: WebsiteInquiryIntent;
 }) {
   if (!piece && guided) {
-    return <CommissionWorkflow bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} defaultEmail={defaultEmail} defaultName={defaultName} queueCount={queueCount} signedIn={signedIn} />;
+    return <CommissionWorkflow bandwidthLeadTimeDays={bandwidthLeadTimeDays} commissionTypes={commissionTypes} defaultEmail={defaultEmail} defaultName={defaultName} queueCount={queueCount} signedIn={signedIn} turnstile={getTurnstileClientConfiguration()} />;
   }
-  const pieceType = commissionTypes.find((type) => type.slug === piece?.commissionTypeSlug);
-  const materialOptions = pieceType?.materialOptions ?? commissionTypes.flatMap((type) => type.materialOptions).filter((option, index, all) => all.indexOf(option) === index);
-  return (
-    <form action={submitContactRequestAction} className="request-form commission-form-shell">
-      <IdempotencyInput />
-      <input name="pieceSlug" type="hidden" value={piece?.slug ?? ""} />
-      <input name="leadTimeDays" type="hidden" value={bandwidthLeadTimeDays} />
-      <input name="requestSource" type="hidden" value={piece ? "piece-page" : "contact-page"} />
-      <label aria-hidden="true" className="form-honeypot" hidden><span>Company website</span><input autoComplete="off" name="companyWebsite" tabIndex={-1} type="text" /></label>
-      <div className="field-grid two-up compact-grid">
-        <label>
-          <span>Your name</span>
-          <input autoComplete="name" defaultValue={defaultName} name="customerName" required type="text" />
-        </label>
-        <label>
-          <span>Email</span>
-          <input autoComplete="email" defaultValue={defaultEmail} name="email" required type="email" />
-        </label>
-      </div>
-      <div className="field-grid three-up compact-grid">
-        <label>
-          <span>Phone</span>
-          <input name="phone" type="text" />
-        </label>
-        <label>
-          <span>City / region</span>
-          <input name="cityRegion" type="text" />
-        </label>
-        <label>
-          <span>Budget ($)</span>
-          <input min="0" name="budgetDollars" placeholder="1200" step="1" type="number" />
-        </label>
-      </div>
-      <div className="field-grid two-up compact-grid">
-        {!piece ? (
-          <label>
-            <span>What can we help with?</span>
-            <select defaultValue="custom-piece" name="intent">
-              <option value="custom-piece">A custom piece</option>
-              <option value="available-piece">An available piece</option>
-              <option value="repair-or-care">Repair or care</option>
-              <option value="general-question">A general question</option>
-            </select>
-          </label>
-        ) : null}
-        {materialOptions.length > 0 ? (
-          <label>
-            <span>Material preference</span>
-            <select defaultValue="" name="materialPreference">
-              <option value="">Open to recommendation</option>
-              {materialOptions.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        <label>
-          <span>Pickup / delivery</span>
-          <select defaultValue="" name="deliveryMode">
-            <option value="">Decide during review</option>
-            <option value="pickup">Pickup</option>
-            <option value="local-delivery">Local delivery</option>
-            <option value="shipment">Shipment / freight</option>
-          </select>
-        </label>
-      </div>
-      <label>
-        <span>{piece ? "What should the piece do, where will it live, and what timing should we know?" : "How can the woodshop help?"}</span>
-        <textarea name="message" required rows={6} />
-      </label>
-      <label>
-        <span>Reference photos or sketches</span>
-        <input accept="image/*,.heic,.heif,.avif" multiple name="attachments" type="file" />
-      </label>
-      <p className="muted-copy">Current lead time is about {Math.max(1, Math.round(bandwidthLeadTimeDays / 7))} weeks with {queueCount} active project{queueCount === 1 ? "" : "s"} in progress.</p>
-      <button className="button-primary full-width" type="submit">{piece ? "Ask about this piece" : "Send inquiry"}</button>
-    </form>
-  );
+  return <WebsiteInquiryForm submissionKey={randomUUID()} piece={piece} sourceRoute={sourceRoute ?? (piece ? `/portfolio/${piece.slug}` : "/contact")} intent={intent} defaultName={defaultName} defaultEmail={defaultEmail} turnstile={getTurnstileClientConfiguration()} />;
 }
 
 export function LoginForm({ redirectTo = "/account/profile", studio = false, email = "" }: { redirectTo?: string; studio?: boolean; email?: string }) {

@@ -54,7 +54,7 @@ export const OPERATOR_NOTIFICATION_TYPES: readonly NotificationTypeDefinition[] 
 ].map(([key, label, description]) => ({
   key: key as NotificationTypeKey, label, description, enabled: true,
   recipientMode: "request-and-configured", retentionDays: 90, maxAttempts: 4, retryBaseSeconds: 300,
-  variables: [...COMMON_VARIABLES, "customerName", "customerEmail", "reference", "messageExcerpt", "studioUrl"],
+  variables: [...COMMON_VARIABLES, "customerName", "customerEmail", "reference", "messageExcerpt", "studioUrl", ...(key === "customer_inquiry_admin" ? ["inquiryIntent", "inquiryTopic", "sourceRoute", "sourceSurface", "pieceSlug", "pieceTitle", "pieceAvailability"] : [])],
   subjectTemplate: `${label}: {{reference}}`,
   textTemplate: "Customer: {{customerName}}\nEmail: {{customerEmail}}\nReference: {{reference}}\n\n{{messageExcerpt}}\n\nOpen the authenticated woodshop workspace:\n{{studioUrl}}",
   htmlTemplate: "<p><strong>Customer:</strong> {{customerName}}<br><strong>Email:</strong> {{customerEmail}}<br><strong>Reference:</strong> {{reference}}</p><p>{{messageExcerpt}}</p><p>Open the authenticated woodshop workspace: {{studioUrl}}</p>"

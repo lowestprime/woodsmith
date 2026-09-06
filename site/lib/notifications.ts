@@ -609,11 +609,13 @@ export function queueOperatorCorrespondence(input: {
   studioUrl: string;
   eventId: string;
   projectReference?: string;
+  inquiryContext?: import("./website-inquiry.ts").WebsiteInquiry;
 }) {
   return queueNotificationEmail({
     category: input.category, to: getSiteSettings().builderEmail,
     subject: `Customer correspondence: ${input.reference}`, text: "Open the woodshop workspace to read the message.",
-    variables: { customerName: input.customerName.slice(0, 120), customerEmail: input.customerEmail.slice(0, 254), reference: input.reference.slice(0, 120), messageExcerpt: input.message.slice(0, 2000), studioUrl: input.studioUrl },
+    variables: { customerName: input.customerName.slice(0, 120), customerEmail: input.customerEmail.slice(0, 254), reference: input.reference.slice(0, 120), messageExcerpt: input.message.slice(0, 2000), studioUrl: input.studioUrl,
+      ...(input.inquiryContext ? { inquiryIntent: input.inquiryContext.intent, inquiryTopic: input.inquiryContext.topic, sourceRoute: input.inquiryContext.sourceRoute, sourceSurface: input.inquiryContext.sourceSurface, pieceSlug: input.inquiryContext.piece?.slug ?? "", pieceTitle: input.inquiryContext.piece?.title ?? "", pieceAvailability: input.inquiryContext.piece?.availability ?? "" } : {}) },
     projectReference: input.projectReference,
     idempotencyKey: `${input.category}:${input.eventId}`
   });
