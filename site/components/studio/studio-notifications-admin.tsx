@@ -50,6 +50,8 @@ import {
 import { formatDateTime } from "@/lib/format";
 import type { NotificationRoutingRecord } from "@/lib/notification-routing";
 import { GlobalRoutingEditor, RoutingPreview } from "@/components/studio/notification-routing-editor";
+import { ConditionalRoutingEditor } from "./conditional-routing-editor";
+import type { ConditionalRoutingRecord } from "@/lib/conditional-notification-routing";
 
 import {
   ConfirmDestructiveAction
@@ -84,6 +86,7 @@ type SmtpPublicConfiguration = {
 
 type NotificationsAdminProps = {
   initialRouting: NotificationRoutingRecord;
+  initialConditionalRouting: ConditionalRoutingRecord;
   initialPolicies: NotificationPolicyRecord[];
   initialTemplates: NotificationTemplateRecord[];
   initialDeliveries: NotificationDeliverySummary[];
@@ -1174,6 +1177,7 @@ function SmtpWorkspace({
 
 export function StudioNotificationsAdmin({
   initialRouting,
+  initialConditionalRouting,
   initialPolicies,
   initialTemplates,
   initialDeliveries,
@@ -1278,6 +1282,7 @@ export function StudioNotificationsAdmin({
       >
         {tab === "overview" ? (
         <><GlobalRoutingEditor record={routing} onSaved={setRouting} />
+        <ConditionalRoutingEditor initialRecord={initialConditionalRouting} routing={routing} policies={policies} />
         <div className="studio-grid notification-summary-grid">
           <article className="studio-panel">
             <strong>{initialSummary.total}</strong>

@@ -1,5 +1,15 @@
 # PLANS.md
 
+## Completed work packet: Goal B2 — conditional website-generated BCC
+
+Starting invariant verified: clean authoritative `/home/cbeaman/src/woodsmith`; HEAD, upstream and remote equal `29578603d1cb6f8893ab1c38f233bbb42bce615c`. Continue the existing Goal branch; B1 is closed.
+
+**B2 outcome: DONE.** The commit containing this entry implements bounded conditional rules in a separate versioned settings entry (empty when absent; no schema migration), typed autosave/conflict recovery/replay identity and redacted audit. Matching resolves only persisted legitimate B1 inquiry context for operator inquiry notices and planner customer confirmations. Existing primary/global/type/event routing, account-link isolation, quarantine, frozen deliveries and retries are preserved.
+
+63 focused checks, typecheck, lint (eight existing image warnings), build/standalone-data gate, and Chromium/Firefox 1440/390 authenticated acceptance pass. Browser checks include create/edit/clear, preview without writes, conflict/error/network-retry recovery, replay without duplicate writes, unauthorized write rejection, redacted audit, keyboard/focus and no horizontal overflow; zero unexpected errors/unexplained traffic. See [B2 acceptance](docs/b2-routing-audit-20260907.md). Final packet/cleanup/HEAD-upstream-remote verification is retained in `C:/Users/Cooper/.codex/run-logs/woodsmith-routing-b2-20260907/closure.json`.
+
+Stop after this packet. Next manual Goal: **C Visitors**. Goals D/E, branch consolidation and production deployment remain outside B2.
+
 ## Completed work packet: Goal B1 — customer intake integrity
 
 **B1 outcome: DONE.** The commit containing this entry completes the customer-intake packet. Full commit/upstream/remote identity, clean-worktree verification, scoped disposable cleanup and evidence hashes are recorded in `C:/Users/Cooper/.codex/run-logs/woodsmith-intake-b1-20260906/closure.json`. See [B1 acceptance](docs/b1-intake-audit-20260906.md) and [website inquiries](docs/website-inquiries.md).
@@ -13,7 +23,7 @@
 
 Browser provider responses are controlled isolated fixtures; live Cloudflare/SMTP configuration and deployment are not claimed. Restricted evidence remains outside Git; disposable B1 runtime/clone resources are removed in closure. Stop after this packet. Next manual goal: B2 conditional website-generated routing/BCC.
 
-Later manual goals: **B2** website-generated conditional BCC/routing management using B1 semantics (primary `woodsmithbb@proton.me`; private operator copies; auth isolation; direct inbound Proton rules remain provider-side); **C** standalone `/studio?panel=visitors` removed from Notifications with responsive accessible map/trend geometry; **D** remaining public copy/profile/high-yield UX; **E** final QA/storage/recovery/deployment/master-only consolidation. None is implemented in B1.
+Later manual goals after the completed B2 packet above: **C** standalone `/studio?panel=visitors` removed from Notifications with responsive accessible map/trend geometry; **D** remaining public copy/profile/high-yield UX; **E** final QA/storage/recovery/deployment/master-only consolidation. None is implemented in B1/B2.
 
 ## Completed work packet: Goal A — technical media recovery
 

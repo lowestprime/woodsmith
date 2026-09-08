@@ -113,9 +113,9 @@ test("notification routing uses versioned audited autosave and customer messages
   assert.match(reply, /withDatabaseTransaction/);
   assert.match(reply, /customer_reply_admin/);
   assert.match(reply, /eventId: id/);
-  const contact = actionsSource.slice(actionsSource.indexOf("export async function submitContactRequestAction"), actionsSource.indexOf("export async function submitCommissionAction"));
+  const contact = actionsSource.slice(actionsSource.indexOf("async function submitPlannerRequest"), actionsSource.indexOf("async function notifyWebsiteInquiry"));
   assert.match(contact, /category: "customer_inquiry_admin"/);
-  assert.match(contact, /category: "commission_submitted",\s*to: persisted.guestEmail/);
+  assert.match(contact, /category: "commission_submitted",\s*websiteInquiryId: intake.record.id,\s*to: persisted.guestEmail/);
   assert.match(actionsSource, /category: "review_submitted_admin"/);
   const component = readFileSync(new URL("../components/studio/notification-routing-editor.tsx", import.meta.url), "utf8");
   assert.match(component, /data-studio-autosave="ignore"/);

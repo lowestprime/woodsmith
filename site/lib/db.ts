@@ -20,6 +20,8 @@ import { normalizePieceCategories, type PieceCategoryDefinition } from "./catego
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
 import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "./notification-routing.ts";
+import { normalizeConditionalRules, type ConditionalRoutingRecord } from "./conditional-notification-routing.ts";
+import type { WebsiteInquiryRecord } from "./website-inquiry-store.ts";
 import {
   MEDIA_ASSIGNMENT_SOURCES,
   MEDIA_FOLDER_RULE_ROLES,
@@ -2264,6 +2266,26 @@ export function saveNotificationForwarding(forwardTo: string) {
   const settings = getSiteSettings();
   saveSiteSettings({ ...settings, email: { ...settings.email, forwardTo: normalized } });
   return getNotificationRoutingRecord();
+}
+
+export function getConditionalRoutingRecord(): ConditionalRoutingRecord {
+  const row = getDatabase().prepare("SELECT value, updated_at AS updatedAt FROM settings WHERE key = 'notification-conditional-routing'").get() as { value: string; updatedAt: string } | undefined;
+  // A stable absent-record version enables first-save conflict checks without
+  // writing defaults on read or touching arbitrary owner settings.
+  return row ? { rules: normalizeConditionalRules(JSON.parse(row.value)), updatedAt: row.updatedAt } : { rules: [], updatedAt: "1970-01-01T00:00:00.000Z" };
+}
+
+export function saveConditionalRouting(rules: unknown) {
+  upsertSetting(getDatabase(), "notification-conditional-routing", normalizeConditionalRules(rules));
+  return getConditionalRoutingRecord();
+}
+
+export function getWebsiteInquiryForRouting(id: string): WebsiteInquiryRecord | null {
+  const row = getDatabase().prepare("SELECT id, inquiry_json, classification_json, disposition, project_reference, created_at FROM website_inquiries WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const classification = JSON.parse(String(row.classification_json));
+  if (row.disposition !== "legitimate" || classification.disposition !== "legitimate") throw new Error("Quarantined inquiries cannot queue correspondence.");
+  return { id: String(row.id), inquiry: JSON.parse(String(row.inquiry_json)), classification, projectReference: row.project_reference ? String(row.project_reference) : null, createdAt: String(row.created_at) };
 }
 
 export function recordAuthenticationRecipient(deliveryId: string, recipient: string) {

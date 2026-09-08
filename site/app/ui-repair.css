@@ -3776,6 +3776,15 @@ main:focus {
 .notification-routing-roles dt { font-weight: 700; }
 .notification-routing-roles dd { margin: 0 0 0.6rem; color: var(--muted); }
 .notification-routing-preview output { display: block; margin-block: 0.6rem; }
+.notification-conditional-rule {
+  min-width: 0;
+  display: grid;
+  gap: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 1rem;
+  margin: 0;
+}
 
 @media (max-width: 840px) {
   .home-hero-grid {

@@ -188,6 +188,8 @@ import {
 } from "@/lib/notifications";
 import { getNotificationRoutingRecord, saveNotificationForwarding } from "@/lib/db";
 import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "@/lib/notification-routing";
+import { getConditionalRoutingRecord, saveConditionalRouting } from "@/lib/db";
+import { normalizeConditionalRules, type ConditionalRoutingRecord, type ConditionalRule } from "@/lib/conditional-notification-routing";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
@@ -1093,9 +1095,10 @@ async function submitPlannerRequest(formData: FormData) {
     // Replaying a submission can recover a missing outbox entry without duplicating mail.
     const persisted = getProject(reference)!;
     const statusUrl = `${resolveBaseUrl()}/commissions/status`;
-    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference, inquiryContext: intake.record.inquiry });
+    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference, inquiryContext: intake.record.inquiry, websiteInquiryId: intake.record.id });
     const confirmation = queueNotificationEmail({
       category: "commission_submitted",
+      websiteInquiryId: intake.record.id,
       to: persisted.guestEmail,
       subject: `Custom work request received: ${reference}`,
       text: `Your Beaman Woodworks project reference is ${reference}. Open ${statusUrl} and enter the reference with your email to view updates.`,
@@ -1124,7 +1127,7 @@ async function notifyWebsiteInquiry(record: WebsiteInquiryRecord) {
     category: "customer_inquiry_admin", customerName: inquiry.customerName, customerEmail: inquiry.customerEmail,
     reference: record.id, message: inquiry.message, eventId: record.id,
     studioUrl: `${resolveBaseUrl()}/studio?panel=inquiries&inquiry=${encodeURIComponent(record.id)}`,
-    inquiryContext: inquiry
+    inquiryContext: inquiry, websiteInquiryId: record.id
   });
   if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
 }
@@ -4663,6 +4666,23 @@ function normalizeEmailList(
   }
   try { return normalizeNotificationAddresses(value, label); }
   catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+}
+
+export async function saveConditionalRoutingAutosaveAction(input: StudioServerMutationInput<{ rules: ConditionalRule[] }>): Promise<StudioMutationResult<ConditionalRoutingRecord>> {
+  if (!input.expectedUpdatedAt) return { ok: false, code: "validation", message: "Reload the current conditional routing version before saving." };
+  return executeAdminRecordAutosave(input, {
+    scope: "notification-conditional-routing-autosave", entityType: "notification-conditional-routing",
+    conflictMessage: "This operation ID was already used for a different conditional routing update.",
+    validate: patch => {
+      try { return { rules: normalizeConditionalRules(patch.rules) }; }
+      catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+    },
+    loadCurrent: () => getConditionalRoutingRecord(),
+    save: (_current, patch) => saveConditionalRouting(patch.rules),
+    loadCanonical: () => getConditionalRoutingRecord(),
+    updatedAt: entity => entity.updatedAt, entityKey: () => "website", operation: () => "update",
+    invalidate: () => revalidatePath("/studio")
+  });
 }
 
 export async function saveNotificationRoutingAutosaveAction(input: StudioServerMutationInput<{ forwardTo: string }>): Promise<StudioMutationResult<NotificationRoutingRecord>> {

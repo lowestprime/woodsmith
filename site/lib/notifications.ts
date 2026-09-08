@@ -26,6 +26,8 @@ import {
   type NotificationTypeKey
 } from "./notification-policy.ts";
 import { isAuthenticationNotification, resolveNotificationRouting } from "./notification-routing.ts";
+import { getConditionalRoutingRecord, getWebsiteInquiryForRouting } from "./db.ts";
+import { CONDITIONAL_NOTIFICATION_TYPES, conditionalContextFromInquiry, matchConditionalRules } from "./conditional-notification-routing.ts";
 
 type MailResult = {
   accepted?: unknown[];
@@ -470,6 +472,7 @@ export function queueNotificationEmail(
     text: string;
     cc?: string | string[];
     bcc?: string | string[];
+    websiteInquiryId?: string;
     variables?: Record<
       string,
       string | number | null | undefined
@@ -485,7 +488,14 @@ export function queueNotificationEmail(
     ) ?? fallbackPolicy(
       input.category
     );
-  const { recipients, ccRecipients, bccRecipients } = resolveNotificationRouting({ category: input.category, recipientMode: policy.recipientMode, requested: input.to, configured: policy.recipients, globalForwarding: site.email.forwardTo, categoryForwarding: policy.forwardRecipients, cc: input.cc, bcc: input.bcc });
+  let conditionalBcc: string[] = [];
+  if (input.websiteInquiryId && (CONDITIONAL_NOTIFICATION_TYPES as readonly string[]).includes(input.category)) {
+    const record = getWebsiteInquiryForRouting(input.websiteInquiryId);
+    if (!record) throw new Error("The website inquiry routing record is unavailable.");
+    if (input.category === "commission_submitted" && (record.inquiry.channel !== "commission" || !record.projectReference || record.projectReference !== input.projectReference)) throw new Error("The commission inquiry routing context does not match this Project.");
+    conditionalBcc = matchConditionalRules(getConditionalRoutingRecord().rules, input.category, conditionalContextFromInquiry(record.inquiry)).bccRecipients;
+  }
+  const { recipients, ccRecipients, bccRecipients } = resolveNotificationRouting({ category: input.category, recipientMode: policy.recipientMode, requested: input.to, configured: policy.recipients, globalForwarding: site.email.forwardTo, categoryForwarding: policy.forwardRecipients, cc: input.cc, bcc: input.bcc, conditionalBcc });
   if (recipients.length === 0) {
     throw new Error(
       "Notification has no valid primary recipient."
@@ -610,6 +620,7 @@ export function queueOperatorCorrespondence(input: {
   eventId: string;
   projectReference?: string;
   inquiryContext?: import("./website-inquiry.ts").WebsiteInquiry;
+  websiteInquiryId?: string;
 }) {
   return queueNotificationEmail({
     category: input.category, to: getSiteSettings().builderEmail,
@@ -617,6 +628,7 @@ export function queueOperatorCorrespondence(input: {
     variables: { customerName: input.customerName.slice(0, 120), customerEmail: input.customerEmail.slice(0, 254), reference: input.reference.slice(0, 120), messageExcerpt: input.message.slice(0, 2000), studioUrl: input.studioUrl,
       ...(input.inquiryContext ? { inquiryIntent: input.inquiryContext.intent, inquiryTopic: input.inquiryContext.topic, sourceRoute: input.inquiryContext.sourceRoute, sourceSurface: input.inquiryContext.sourceSurface, pieceSlug: input.inquiryContext.piece?.slug ?? "", pieceTitle: input.inquiryContext.piece?.title ?? "", pieceAvailability: input.inquiryContext.piece?.availability ?? "" } : {}) },
     projectReference: input.projectReference,
+    websiteInquiryId: input.websiteInquiryId,
     idempotencyKey: `${input.category}:${input.eventId}`
   });
 }

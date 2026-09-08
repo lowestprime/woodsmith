@@ -45,7 +45,7 @@ export function RoutingPreview({ policy, routing }: { policy: NotificationPolicy
   catch (reason) { error = (reason as Error).message; }
   return <details className="notification-routing-preview" open>
     <summary>Effective delivery routing</summary>
-    {isAuthenticationNotification(policy.category) ? <p><strong>Account-link protection:</strong> the event account is the only recipient. The stored recipient-source and forwarding fields above do not override this security rule.</p> : <p>Effective BCC = global forwarding + per-Type forwarding + event-specific BCC, with duplicate To/CC recipients excluded. Paused types do not send.</p>}
+    {isAuthenticationNotification(policy.category) ? <p><strong>Account-link protection:</strong> the event account is the only recipient. The stored recipient-source and forwarding fields above do not override this security rule, including conditional rules.</p> : <p>Base BCC = global forwarding + per-Type forwarding + event-specific BCC, with duplicate To/CC recipients excluded. This example has no website inquiry context. Use the conditional preview in Overview for applicable additional copies. Paused types do not send.</p>}
     <p>Global BCC: <strong>{routing.forwardTo || "None"}</strong>{isAuthenticationNotification(policy.category) ? " (excluded for this type)" : ""}</p>
     <div className="field-grid two-up compact-grid">
       <label><span>Example event recipient (preview only)</span><input data-studio-autosave="ignore" value={eventRecipient} onChange={event => setEventRecipient(event.target.value)} /></label>

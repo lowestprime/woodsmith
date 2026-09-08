@@ -45,6 +45,7 @@ export function resolveNotificationRouting(input: {
   categoryForwarding?: AddressInput;
   cc?: AddressInput;
   bcc?: AddressInput;
+  conditionalBcc?: readonly string[];
 }) {
   const requested = normalizeNotificationAddresses(input.requested);
   if (isAuthenticationNotification(input.category)) {
@@ -57,7 +58,9 @@ export function resolveNotificationRouting(input: {
   const bccRecipients = [...new Set([
     ...normalizeNotificationAddresses(input.globalForwarding, "Global forwarding"),
     ...normalizeNotificationAddresses(input.categoryForwarding, "Category forwarding"),
-    ...normalizeNotificationAddresses(input.bcc, "Event forwarding")
+    ...normalizeNotificationAddresses(input.bcc, "Event forwarding"),
+    // Each rule is validated independently; the combined union may exceed 30.
+    ...(input.conditionalBcc ?? []).flatMap(value => normalizeNotificationAddresses(value, "Conditional forwarding"))
   ])].filter(value => !recipients.includes(value) && !ccRecipients.includes(value));
   return { recipients, ccRecipients, bccRecipients };
 }
