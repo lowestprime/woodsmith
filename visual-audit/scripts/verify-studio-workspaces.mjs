@@ -333,8 +333,8 @@ async function checkNotifications() {
   await page.goto(`${base}/studio?panel=notifications`);
   await settle(page);
   const tabs = page.getByRole("tablist", { name: "Notification administration" });
-  assert.equal(await tabs.getByRole("tab").count(), 7);
-  const sequence = ["Types", "Templates", "Delivery", "Visitors", "Audit", "SMTP", "Overview"];
+  assert.equal(await tabs.getByRole("tab").count(), 6);
+  const sequence = ["Types", "Templates", "Delivery", "Audit", "SMTP", "Overview"];
   for (const label of sequence) {
     const tab = tabs.getByRole("tab", { name: label, exact: true });
     await tab.focus();
@@ -348,7 +348,7 @@ async function checkNotifications() {
   assert.equal(await tabs.getByRole("tab", { name: "SMTP", exact: true }).getAttribute("aria-selected"), "true");
   await page.keyboard.press("Home");
   assert.equal(await tabs.getByRole("tab", { name: "Overview", exact: true }).getAttribute("aria-selected"), "true");
-  checks.push({ identity: stage, tabs: sequence.length, keyboard: true, denseVisitorsAndAudit: true });
+  checks.push({ identity: stage, tabs: sequence.length, keyboard: true, denseAudit: true });
   await context.close();
 }
 
@@ -445,12 +445,12 @@ try {
     await checkReviewDeletionRefresh();
   } else if (browserName === "chromium") {
     await checkShellMatrix();
-    for (const panel of ["settings", "pages", "pieces", "media", "projects", "orders", "reviews", "notifications"]) {
+    for (const panel of ["settings", "pages", "pieces", "media", "projects", "orders", "reviews", "visitors", "notifications"]) {
       await checkPanel({ panel, width: 1440, theme: "light" });
       await checkPanel({ panel, width: 320, theme: "dark", screenshot: panel !== "media" });
     }
     if (process.env.STUDIO_QA_PHASE === "scan") {
-      for (const view of ["types", "templates", "delivery", "visitors", "audit", "smtp"]) {
+      for (const view of ["types", "templates", "delivery", "audit", "smtp"]) {
         await checkPanel({ panel: "notifications", view, width: 320, theme: "dark" });
       }
     } else {

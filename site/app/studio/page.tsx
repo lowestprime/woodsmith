@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import {
   applyMediaFolderRulesAction,
   assignMediaCandidateAction,
@@ -110,6 +111,7 @@ import { visualAuditRequestAuthorized } from "@/lib/visual-audit";
 import { classifyMediaAccess } from "@/lib/media-access";
 import { mediaPreviewAvailable } from "@/lib/media-preview";
 import { getSmtpPublicConfiguration } from "@/lib/notifications";
+import { StudioVisitorInsights } from "@/components/studio/studio-visitor-insights";
 import { StudioNotificationsAdmin } from "@/components/studio/studio-notifications-admin";
 import { StudioProjectsAdmin } from "@/components/studio/studio-projects-admin";
 import { StudioSearchIndexAdmin } from "@/components/studio/studio-search-index-admin";
@@ -118,7 +120,7 @@ import { visitorIdentityPublicStatus } from "@/lib/visitor-privacy";
 const STUDIO_MEDIA_PAGE_SIZE = 48;
 import { StudioInquiries } from "@/components/studio/studio-inquiries";
 
-const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "categories", "custom", "people", "process", "media", "projects", "orders", "reviews", "inquiries", "notifications"] as const;
+const STUDIO_PANELS = ["overview", "settings", "pages", "pieces", "categories", "custom", "people", "process", "media", "projects", "orders", "reviews", "inquiries", "visitors", "notifications"] as const;
 
 type StudioPanel = (typeof STUDIO_PANELS)[number];
 
@@ -680,6 +682,13 @@ function NewCommissionTypeEditor({ item, highlight = false }: { item: ReturnType
   );
 }
 
+export async function generateMetadata({
+  searchParams
+}: { searchParams: Promise<{ panel?: string }> }) {
+  const { panel } = await searchParams;
+  return panel === "visitors" ? { title: "Visitors | Studio" } : {};
+}
+
 export default async function StudioPage({
   searchParams
 }: {
@@ -715,6 +724,8 @@ export default async function StudioPage({
     view?: string;
     inquiry?: string;
     inquiryPage?: string;
+    visitorRange?: string;
+    visitorPage?: string;
   }>;
 }) {
   const currentAdmin = await requireAdmin();
@@ -748,9 +759,14 @@ export default async function StudioPage({
     view: studioView = "",
     inquiry = "",
     inquiryPage = "1",
+    visitorRange = "30",
+    visitorPage = "1",
     email = "",
     category: categoryHighlight = ""
   } = await searchParams;
+  if (requestedPanel === "notifications" && studioView === "visitors") {
+    redirect("/studio?panel=visitors");
+  }
   const includeAllAuditRecords =
     audit === "all" &&
     await visualAuditRequestAuthorized();
@@ -877,17 +893,17 @@ export default async function StudioPage({
   const latestSmtpVerification = currentPanel === "notifications"
     ? getLatestSmtpVerification()
     : null;
-  const visitorPolicy = currentPanel === "notifications"
+  const visitorPolicy = currentPanel === "visitors"
     ? getVisitorAnalyticsPolicy()
     : null;
-  const visitorInsights = currentPanel === "notifications"
+  const visitorInsights = currentPanel === "visitors"
     ? getVisitorInsights({
-        rangeDays: 30,
-        page: 1,
-        pageSize: 20
+        rangeDays: Number(visitorRange),
+        page: Number(visitorPage),
+        pageSize: 10
       })
     : null;
-  const visitorIdentityStatus = currentPanel === "notifications"
+  const visitorIdentityStatus = currentPanel === "visitors"
     ? visitorIdentityPublicStatus()
     : null;
   const auditPage = currentPanel === "notifications"
@@ -1122,7 +1138,17 @@ export default async function StudioPage({
 
       {currentPanel === "reviews" ? <PageSection><div className="section-heading"><p className="eyebrow">Reviews</p><h2>Customer feedback</h2><p>Moderate review copy, rating, and publication state without leaving the current workspace.</p></div><StudioReviewsWorkspace reviews={reviews} initialPiece={pieceHighlight} /></PageSection> : null}
       {currentPanel === "inquiries" ? <PageSection><StudioInquiries view={studioView} page={inquiryPage} id={inquiry} /></PageSection> : null}
-      {currentPanel === "notifications" && smtpConfiguration && visitorPolicy && visitorInsights && visitorIdentityStatus && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery, visitors, and audit</h2><p>Control notification policy and delivery, review privacy-preserving visitor trends, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin initialRouting={getNotificationRoutingRecord()} initialConditionalRouting={getConditionalRoutingRecord()} auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} initialVisitorInsights={visitorInsights} initialVisitorPolicy={visitorPolicy} smtpConfiguration={smtpConfiguration} visitorIdentityStatus={visitorIdentityStatus} /></PageSection> : null}
+      {currentPanel === "visitors" && visitorPolicy && visitorInsights && visitorIdentityStatus ? (
+        <PageSection className="studio-visitors-section">
+          <div className="section-heading">
+            <p className="eyebrow">Analytics</p>
+            <h2>Visitor activity</h2>
+            <p>Privacy-preserving visitors, sessions and pageviews. Geography is approximate; daily counts use UTC.</p>
+          </div>
+          <StudioVisitorInsights key={`${visitorInsights.rangeDays}:${visitorInsights.page}`} identityStatus={visitorIdentityStatus} initialInsights={visitorInsights} initialPolicy={visitorPolicy} />
+        </PageSection>
+      ) : null}
+      {currentPanel === "notifications" && smtpConfiguration && auditPage && auditFilterOptions ? <PageSection><div className="section-heading"><p className="eyebrow">Operations</p><h2>Delivery and audit</h2><p>Control notification policy and delivery, and inspect redacted administrative changes.</p></div><StudioNotificationsAdmin initialRouting={getNotificationRoutingRecord()} initialConditionalRouting={getConditionalRoutingRecord()} auditFilterOptions={auditFilterOptions} initialAuditPage={auditPage} initialDeliveries={notificationDeliveries} initialPolicies={notificationPolicies} initialSmtpVerification={latestSmtpVerification} initialSummary={notificationSummary} initialTemplates={notificationTemplates} initialView={studioView} smtpConfiguration={smtpConfiguration} /></PageSection> : null}
       </div>
     </Shell>
   );

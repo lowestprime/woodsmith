@@ -77,7 +77,11 @@ test("contact stays compact while the custom planner remains guided", async () =
 
   assert.match(form, /guided\?: boolean/);
   assert.match(form, /if \(!piece && guided\)/);
-  assert.match(form, /value=\{piece \? "piece-page" : "contact-page"\}/);
+  // B1 routes compact inquiries through the dedicated form; the guided
+  // commission workflow remains separate and source context is preserved.
+  assert.match(form, /return <WebsiteInquiryForm\b/);
+  assert.match(form, /piece=\{piece\}/);
+  assert.match(form, /sourceRoute=\{sourceRoute \?\? \(piece \? `\/portfolio\/\$\{piece\.slug\}` : "\/contact"\)\}/);
   assert.doesNotMatch(contact, /\bguided\b/);
   assert.match(commissions, /\s+guided\s+/);
   assert.match(home, /home-hero-media/);

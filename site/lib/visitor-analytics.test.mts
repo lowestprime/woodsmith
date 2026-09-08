@@ -44,7 +44,7 @@ test("visitor analytics deduplicates pageviews, aggregates pseudonyms, applies r
   try {
     const persistence =
       db.getRuntimePersistenceStatus();
-    assert.equal(persistence.schemaVersion, 15);
+    assert.equal(persistence.schemaVersion, 16);
     const identityKey = resolveVisitorIdentityKey();
     assert.ok(identityKey);
     const firstIdentity = createVisitorPseudonyms({
@@ -122,6 +122,10 @@ test("visitor analytics deduplicates pageviews, aggregates pseudonyms, applies r
       previousPageviews: 0
     });
     assert.equal(insights.totalSessions, 2);
+    assert.equal(insights.trend.length, 8);
+    assert.equal(insights.trend.at(-1)?.date, new Date().toISOString().slice(0, 10));
+    assert.equal(insights.trend.reduce((sum, day) => sum + day.pageviews, 0), insights.summary.pageviews);
+    assert.equal(insights.trend.at(-1)?.pageviews, 3);
     assert.deepEqual(insights.countries, [{
       countryCode: "US",
       uniqueVisitors: 1,

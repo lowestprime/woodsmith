@@ -49,7 +49,6 @@ test("protected visual inventory covers every v19 Studio subview and mutation st
       "notifications-types",
       "notifications-templates",
       "notifications-delivery",
-      "notifications-visitors",
       "notifications-audit",
       "notifications-smtp"
     ]

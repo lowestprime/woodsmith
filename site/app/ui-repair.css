@@ -3191,43 +3191,53 @@ main:focus {
   min-width: 0;
 }
 
+/* Intrinsic map coordinates are 960 × 720. Reserve this ratio before
+   hydration; never cap only the SVG height or clip its drawing surface. */
+.studio-visitors-section {
+  width: 100%;
+  max-width: 90rem;
+  margin-inline: auto;
+}
+
+.visitor-visual-grid {
+  align-items: start;
+}
+
 .visitor-map-card,
 .visitor-trend-card {
-  min-height: 16rem;
-}
-
-.visitor-map-card {
-  grid-template-columns: minmax(0, 1fr);
-  overflow: clip;
-}
-
-.visitor-map-card > *,
-.visitor-map-card .worldmap__wrapper,
-.visitor-map-card .worldmap__figure-container {
-  width: 100%;
   min-width: 0;
-  max-width: 100%;
+  align-content: start;
 }
 
-.visitor-map-card .worldmap__figure-container {
+.visitor-map-geometry {
+  width: 100%;
+  max-width: 32rem;
+  aspect-ratio: 4 / 3;
+  margin-inline: auto;
+  pointer-events: none;
+}
+
+.visitor-map-geometry .worldmap__figure-container {
   margin: 0;
-  background: transparent !important;
 }
 
-.visitor-map-card svg {
+.visitor-map-geometry svg {
   display: block;
   width: 100%;
   height: auto;
-  max-height: 13rem;
+  aspect-ratio: 4 / 3;
 }
 
-.visitor-map-card svg text {
-  fill: var(--text);
+.visitor-map-geometry:not([data-ready]) svg {
+  visibility: hidden;
+}
+
+.visitor-map-geometry svg g {
+  transition: none !important;
 }
 
 .visitor-trend-card {
   display: grid;
-  grid-template-rows: auto minmax(8rem, 1fr) auto;
   gap: 0.45rem;
   margin: 0;
   padding: 0.8rem;
@@ -3237,23 +3247,100 @@ main:focus {
   box-shadow: var(--shadow);
 }
 
-.visitor-trend-card figcaption {
+.visitor-trend-card figcaption,
+.visitor-chart-scale {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.visitor-trend-card figcaption span {
+.visitor-trend-card figcaption span,
+.visitor-chart-scale {
   color: var(--muted);
-  font-size: 0.75rem;
+  font-size: 0.85rem;
 }
 
 .visitor-trend-card svg {
+  display: block;
   width: 100%;
-  height: 100%;
-  min-height: 8rem;
+  height: auto;
+  aspect-ratio: 8 / 3;
+}
+
+.visitor-chart-point {
+  fill: var(--accent);
+}
+
+.visitor-data-details {
+  min-width: 0;
+}
+
+.visitor-data-details summary {
+  min-height: 2.75rem;
+  padding-block: 0.65rem;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.visitor-data-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-family: var(--font-work-sans), sans-serif;
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+.visitor-data-table caption {
+  padding-block: 0.6rem;
+  text-align: start;
+  color: var(--muted);
+}
+
+.visitor-data-table th,
+.visitor-data-table td {
+  padding: 0.5rem 0.2rem;
+  border-bottom: 1px solid var(--line);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.visitor-data-table th:first-child {
+  text-align: start;
+}
+
+.visitor-data-table time small {
+  display: block;
+  color: var(--muted);
+}
+
+.visitor-admin-workspace .visitor-session-list {
+  max-height: none;
   overflow: visible;
+}
+
+.visitor-admin-workspace .visitor-session-item {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.visitor-admin-workspace .visitor-session-item span,
+.visitor-admin-workspace .visitor-session-item small {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.visitor-admin-workspace .segmented-control button,
+.visitor-admin-workspace .pagination-controls button {
+  min-height: 2.75rem;
+}
+
+.visitor-load-status {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--muted);
 }
 
 .visitor-chart-line {
@@ -3559,7 +3646,16 @@ main:focus {
 
 @media (max-width: 520px) {
   .visitor-summary-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .visitor-summary-grid .studio-panel {
+    padding: 0.55rem 0.25rem;
+    overflow-wrap: anywhere;
+  }
+
+  .visitor-summary-grid span {
+    font-size: 0.85rem;
   }
 
   .visitor-range-toolbar,

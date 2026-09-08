@@ -7297,7 +7297,8 @@ export function getVisitorInsights(input: {
     trendRows.map((row) => [String(row.date), row])
   );
   const trend = Array.from(
-    { length: rangeDays },
+    // Include both partial UTC boundary days in the rolling window.
+    { length: rangeDays + 1 },
     (_, index) => {
       const date = new Date(
         start.getTime() + index * 24 * 60 * 60 * 1000

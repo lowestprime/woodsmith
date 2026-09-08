@@ -5,6 +5,8 @@ import {
   useState,
   useTransition
 } from "react";
+import { flushStudioNavigationQueues } from "@/components/studio/studio-navigation-state";
+import { useRouter } from "next/navigation";
 import WorldMap, {
   type ISOCode
 } from "react-svg-worldmap";
@@ -29,6 +31,11 @@ import type {
   StudioMutationRequest,
   StudioMutationSnapshot
 } from "@/lib/studio-mutations";
+import {
+  VISITOR_MAP_SIZE, VISITOR_MAP_VIEWBOX,
+  VISITOR_TREND_WIDTH, VISITOR_TREND_HEIGHT,
+  visitorTrendGeometry, visitorWorkspaceHref
+} from "@/lib/visitor-charts";
 import { formatDateTime } from "@/lib/format";
 
 export type VisitorIdentityStatus = {
@@ -42,7 +49,7 @@ export type VisitorIdentityStatus = {
 };
 
 function countryName(code: string | null) {
-  if (!code) return "Unknown";
+  if (!code || code === "ZZ") return "Unknown / unresolved";
   try {
     return new Intl.DisplayNames(
       ["en"],
@@ -68,72 +75,77 @@ function changeLabel(
   return `${percent >= 0 ? "+" : ""}${percent}% from prior period`;
 }
 
-function TrendChart({
-  trend
-}: {
-  trend: VisitorInsightsSnapshot["trend"];
-}) {
-  const width = 720;
-  const height = 170;
-  const inset = 14;
-  const maximum = Math.max(
-    1,
-    ...trend.map((item) => item.pageviews)
-  );
-  const points = trend.map((item, index) => {
-    const x = trend.length <= 1
-      ? width / 2
-      : inset +
-        (index / (trend.length - 1)) *
-          (width - inset * 2);
-    const y = height - inset -
-      (item.pageviews / maximum) *
-        (height - inset * 2);
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-  const total = trend.reduce(
-    (sum, item) => sum + item.pageviews,
-    0
-  );
+function shortDate(date: string) {
+  return new Intl.DateTimeFormat("en", {
+    month: "short", day: "numeric", timeZone: "UTC"
+  }).format(new Date(`${date}T00:00:00Z`));
+}
 
+// react-svg-worldmap draws in pixel coordinates without a viewBox.
+// A fixed intrinsic size plus this local adapter lets CSS scale the complete
+// geometry, without viewport-dependent sizes or a library fork.
+function prepareMap(node: HTMLDivElement | null) {
+  const svg = node?.querySelector("svg");
+  svg?.setAttribute("viewBox", VISITOR_MAP_VIEWBOX);
+  svg?.setAttribute("preserveAspectRatio", "xMidYMid meet");
+  if (svg && node) node.dataset.ready = "true";
+}
+
+function TrendChart({ trend }: { trend: VisitorInsightsSnapshot["trend"] }) {
+  const { points, total } = visitorTrendGeometry(trend.map((day) => day.pageviews));
+  const peak = Math.max(0, ...trend.map((day) => day.pageviews));
   return (
     <figure className="visitor-trend-card">
       <figcaption>
-        <strong>Pageview trend</strong>
+        <strong>Daily pageviews</strong>
         <span>{total} in selected period</span>
       </figcaption>
+      <p className="muted-copy">UTC dates · first and last days may be partial</p>
+      <div className="visitor-chart-scale" aria-hidden="true">
+        <span>Peak {peak}</span><span>Baseline 0</span>
+      </div>
       <svg
-        aria-label={`Daily pageview trend with ${total} total pageviews.`}
-        preserveAspectRatio="none"
-        role="img"
-        viewBox={`0 0 ${width} ${height}`}
+        aria-hidden="true"
+        focusable="false"
+        viewBox={`0 0 ${VISITOR_TREND_WIDTH} ${VISITOR_TREND_HEIGHT}`}
+        preserveAspectRatio="xMidYMid meet"
       >
-        <line
-          className="visitor-chart-baseline"
-          x1={inset}
-          x2={width - inset}
-          y1={height - inset}
-          y2={height - inset}
-        />
-        <polyline
-          className="visitor-chart-line"
-          fill="none"
-          points={points}
-        />
+        <line className="visitor-chart-baseline" x1="12" x2="628" y1="228" y2="228" />
+        <polyline className="visitor-chart-line" fill="none"
+          points={points.map(({ x, y }) => `${x},${y}`).join(" ")} />
+        {points.map(({ x, y }, index) => (
+          <circle className="visitor-chart-point" cx={x} cy={y} r="3" key={trend[index].date} />
+        ))}
       </svg>
       <div className="visitor-chart-axis" aria-hidden="true">
-        <span>{trend[0]?.date ?? ""}</span>
-        <span>{trend.at(-1)?.date ?? ""}</span>
+        <span>{trend[0] ? shortDate(trend[0].date) : ""}</span>
+        <span>{trend.at(-1) ? shortDate(trend.at(-1)!.date) : ""}</span>
       </div>
+      {total === 0 ? <p className="muted-copy">No pageviews recorded in this period.</p> : null}
+      <details className="visitor-data-details">
+        <summary>Daily values ({trend.length} UTC dates)</summary>
+        <table className="visitor-data-table">
+          <caption>Daily activity in the selected rolling window. Peak: {peak} pageviews.</caption>
+          <thead><tr><th scope="col">UTC date</th><th scope="col">Visitors</th><th scope="col">Sessions</th><th scope="col">Pageviews</th></tr></thead>
+          <tbody>{trend.map((day) => (
+            <tr key={day.date}>
+              <th scope="row"><time dateTime={day.date}>{shortDate(day.date)}<small>{day.date.slice(0, 4)}</small></time></th>
+              <td>{day.uniqueVisitors}</td><td>{day.sessions}</td><td>{day.pageviews}</td>
+            </tr>
+          ))}</tbody>
+        </table>
+      </details>
     </figure>
   );
 }
 
 function VisitorPolicyEditor({
   policy,
-  onSaved
+  onSaved,
+  onBusyChange
 }: {
   policy: VisitorAnalyticsPolicyRecord;
+  onBusyChange: (busy: boolean) => void;
   onSaved: (
     policy: VisitorAnalyticsPolicyRecord
   ) => void;
@@ -175,6 +187,7 @@ function VisitorPolicyEditor({
         VisitorAnalyticsPolicyRecord
       >
     ) => {
+      onBusyChange(snapshot.hasUnsavedChanges);
       if (
         snapshot.phase === "saved" &&
         !snapshot.hasUnsavedChanges &&
@@ -183,7 +196,7 @@ function VisitorPolicyEditor({
         onSaved(snapshot.currentEntity);
       }
     },
-    [onSaved]
+    [onSaved, onBusyChange]
   );
 
   return (
@@ -267,47 +280,52 @@ export function StudioVisitorInsights({
   initialPolicy: VisitorAnalyticsPolicyRecord;
   identityStatus: VisitorIdentityStatus;
 }) {
+  const router = useRouter();
   const [insights, setInsights] =
     useState(initialInsights);
   const [policy, setPolicy] =
     useState(initialPolicy);
+  const [policyBusy, setPolicyBusy] = useState(false);
   const [message, setMessage] =
     useState("");
   const [pending, startTransition] =
     useTransition();
 
-  const load = useCallback((
-    rangeDays: number,
-    page: number
-  ) => {
+  function load(rangeDays: number, page: number) {
     startTransition(async () => {
-      const result = await loadVisitorInsightsAction({
-        rangeDays,
-        page,
-        pageSize: insights.pageSize
-      });
-      setMessage(result.message);
-      if (result.ok) {
-        setInsights(result.data);
+      try {
+        await flushStudioNavigationQueues();
+        router.push(visitorWorkspaceHref(rangeDays, page), { scroll: false });
+      } catch {
+        setMessage("Finish saving or resolve the privacy edit before changing the range or page.");
       }
     });
-  }, [insights.pageSize]);
+  }
 
   function purge() {
     startTransition(async () => {
-      const result =
-        await purgeVisitorAnalyticsAction();
-      setMessage(result.message);
-      if (result.ok) {
-        const refreshed =
-          await loadVisitorInsightsAction({
-            rangeDays: insights.rangeDays,
-            page: 1,
-            pageSize: insights.pageSize
-          });
-        if (refreshed.ok) {
+      try {
+        await flushStudioNavigationQueues();
+        const result = await purgeVisitorAnalyticsAction();
+        setMessage(result.message);
+        if (!result.ok) return;
+        const refreshed = await loadVisitorInsightsAction({
+          rangeDays: insights.rangeDays,
+          page: insights.page,
+          pageSize: insights.pageSize
+        });
+        if (!refreshed.ok) {
+          setMessage(refreshed.message);
+          return;
+        }
+        const lastPage = Math.max(1, Math.ceil(refreshed.data.totalSessions / insights.pageSize));
+        if (insights.page > lastPage) {
+          router.replace(visitorWorkspaceHref(insights.rangeDays, lastPage), { scroll: false });
+        } else {
           setInsights(refreshed.data);
         }
+      } catch {
+        setMessage("Could not refresh visitor data. Check your connection and reload before retrying.");
       }
     });
   }
@@ -324,6 +342,9 @@ export function StudioVisitorInsights({
     <div
       className="visitor-admin-workspace"
       data-audit-id="studio-visitor-insights"
+      aria-label="Visitor analytics"
+      role="region"
+      aria-busy={pending}
     >
       <div className="visitor-range-toolbar">
         <div
@@ -350,11 +371,7 @@ export function StudioVisitorInsights({
             </button>
           ))}
         </div>
-        {message ? (
-          <p className="muted-copy" role="status">
-            {message}
-          </p>
-        ) : null}
+        <p className="visitor-load-status" role="status">{pending ? "Loading visitor activity…" : message}</p>
       </div>
 
       <div className="studio-grid visitor-summary-grid">
@@ -384,24 +401,37 @@ export function StudioVisitorInsights({
             </div>
           </div>
           {insights.countries.length > 0 ? (
-            <WorldMap
-              backgroundColor="transparent"
-              borderColor="#8a735e"
-              color="#9a6a3d"
-              data={insights.countries.map((item) => ({
-                country: item.countryCode.toLowerCase() as ISOCode,
-                value: item.uniqueVisitors
-              }))}
-              size="responsive"
-              strokeOpacity={0.42}
-              title="Unique visitors by country"
-              valueSuffix=" visitors"
-            />
+            <>
+              <div className="visitor-map-geometry" aria-hidden="true" inert ref={prepareMap}>
+                <WorldMap
+                  backgroundColor="transparent"
+                  borderColor="var(--muted)"
+                  color="var(--accent)"
+                  data={insights.countries.map((item) => ({
+                    country: item.countryCode.toLowerCase() as ISOCode,
+                    value: item.uniqueVisitors
+                  }))}
+                  size={VISITOR_MAP_SIZE}
+                  strokeOpacity={1}
+                  tooltipTextFunction={() => ""}
+                />
+              </div>
+              <p className="muted-copy">Shading compares unique visitors per country. Country totals can overlap; some countries or territories have no shape on this map.</p>
+              <details className="visitor-data-details">
+                <summary>Country totals ({insights.countries.length})</summary>
+                <table className="visitor-data-table">
+                  <caption>Unique visitors by reported country or region, from the same aggregates as the map.</caption>
+                  <thead><tr><th scope="col">Country / region</th><th scope="col">Unique visitors</th></tr></thead>
+                  <tbody>{insights.countries.map((item) => (
+                    <tr key={item.countryCode}><th scope="row">{countryName(item.countryCode)}</th><td>{item.uniqueVisitors}</td></tr>
+                  ))}</tbody>
+                </table>
+              </details>
+            </>
           ) : (
-            <p className="muted-copy">
-              No country-level records are available for this period.
-            </p>
+            <p className="muted-copy">No country-level records are available for this period.</p>
           )}
+          <p className="muted-copy">Missing geography is not mapped. Unresolved country codes are not assigned a location.</p>
         </article>
         <TrendChart trend={insights.trend} />
       </div>
@@ -430,6 +460,7 @@ export function StudioVisitorInsights({
                   </span>
                 </div>
                 <span>{session.lastPath}</span>
+                {session.referrerHost ? <span className="visitor-session-referrer">Referrer host: {session.referrerHost}</span> : null}
                 <small>
                   {session.pageviewCount} pageview{session.pageviewCount === 1 ? "" : "s"} · {session.deviceClass} · {formatDateTime(session.lastSeenAt)}
                 </small>
@@ -497,11 +528,12 @@ export function StudioVisitorInsights({
           <article className="studio-panel">
             <VisitorPolicyEditor
               onSaved={setPolicy}
+              onBusyChange={setPolicyBusy}
               policy={policy}
             />
             <div className="notification-retention-action">
               <ConfirmDestructiveAction
-                disabled={pending}
+                disabled={pending || policyBusy}
                 confirmLabel="Apply retention"
                 description={`Delete pageviews and sessions older than ${policy.retentionDays} days? This cannot be undone.`}
                 onConfirm={purge}

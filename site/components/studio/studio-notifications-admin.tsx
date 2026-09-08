@@ -27,15 +27,8 @@ import type {
   NotificationDeliverySummary,
   NotificationPolicyRecord,
   NotificationTemplateRecord,
-  SmtpVerificationRecord,
-  VisitorAnalyticsPolicyRecord,
-  VisitorInsightsSnapshot
+  SmtpVerificationRecord
 } from "@/lib/db";
-
-import {
-  StudioVisitorInsights,
-  type VisitorIdentityStatus
-} from "@/components/studio/studio-visitor-insights";
 
 import {
   StudioAuditLog
@@ -93,9 +86,6 @@ type NotificationsAdminProps = {
   initialSummary: NotificationAdminSummary;
   smtpConfiguration: SmtpPublicConfiguration;
   initialSmtpVerification: SmtpVerificationRecord | null;
-  initialVisitorInsights: VisitorInsightsSnapshot;
-  initialVisitorPolicy: VisitorAnalyticsPolicyRecord;
-  visitorIdentityStatus: VisitorIdentityStatus;
   initialAuditPage: {
     records: AdminAuditSummaryRecord[];
     total: number;
@@ -113,7 +103,6 @@ type WorkspaceTab =
   | "types"
   | "templates"
   | "delivery"
-  | "visitors"
   | "audit"
   | "smtp";
 
@@ -125,7 +114,6 @@ const WORKSPACE_TABS: Array<{
   { key: "types", label: "Types" },
   { key: "templates", label: "Templates" },
   { key: "delivery", label: "Delivery" },
-  { key: "visitors", label: "Visitors" },
   { key: "audit", label: "Audit" },
   { key: "smtp", label: "SMTP" }
 ];
@@ -1184,9 +1172,6 @@ export function StudioNotificationsAdmin({
   initialSummary,
   smtpConfiguration,
   initialSmtpVerification,
-  initialVisitorInsights,
-  initialVisitorPolicy,
-  visitorIdentityStatus,
   initialAuditPage,
   auditFilterOptions,
   initialView
@@ -1365,14 +1350,6 @@ export function StudioNotificationsAdmin({
       {tab === "delivery" ? (
         <DeliveryWorkspace
           initialDeliveries={initialDeliveries}
-        />
-      ) : null}
-
-      {tab === "visitors" ? (
-        <StudioVisitorInsights
-          identityStatus={visitorIdentityStatus}
-          initialInsights={initialVisitorInsights}
-          initialPolicy={initialVisitorPolicy}
         />
       ) : null}
 

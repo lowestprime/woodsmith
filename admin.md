@@ -119,7 +119,7 @@ Public piece and shop cards request responsive optimized thumbnails rather than 
 
 ### Visitor map
 
-Open **Notifications → Visitors** for privacy-preserving aggregate analytics. The workspace shows unique visitors, sessions, and pageviews; a paginated trend; an accessible country map and equivalent text list; recent minimized sessions; and the active pseudonym-key cohorts. The map is responsive in both themes and never replaces the text alternative.
+Open **Visitors** in the top-level Studio navigation (`/studio?panel=visitors`) for privacy-preserving analytics. Range and recent-session page are URL-addressable (`visitorRange` and `visitorPage`) and survive reload and Back/Forward. The workspace shows unique visitors, sessions and pageviews; a complete daily UTC trend with expandable numeric values; a locally rendered country map with an equivalent country/region table; ten recent minimized sessions per page, including available referrer hosts; and stored pseudonym-key cohorts. First and last UTC days may be partial in the selected rolling window. Country visitor totals may overlap; missing or unresolved geography is never assigned a location. The map has no pointer-only information or external requests. Privacy controls and confirmed, policy-bounded purge remain here.
 
 - visitor-session email is represented by a dedicated notification policy and is disabled by default; session recording alone does not send mail
 - enabling that policy is an explicit administrative action and still requires a working SMTP configuration and recipient policy
@@ -157,7 +157,7 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Visitors**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
+The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
 
 Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
 

@@ -222,3 +222,7 @@ Exact Tier 1, production-clone Tier 2, paired backup/staged restore, deployment,
 ## Customer inquiries
 
 About/contact and contextual piece forms now use verified website inquiries, separate from Projects. Only legitimate full-planner submissions create Projects. High-confidence solicitation is quarantined before upload/Project/customer-mail effects and can be reviewed privately in Studio → Inquiries. Runtime Managed Turnstile keys are required; missing configuration fails closed. New-install forwarding defaults are empty, existing preferences are preserved, and authentication mail remains isolated. See [website inquiries](docs/website-inquiries.md) for setup, schema v16, verification, and operational boundaries.
+
+## Visitor analytics workspace
+
+Studio Visitors is available directly at `/studio?panel=visitors`. It provides bounded responsive map/trend charts and expandable country/daily numeric tables from the existing private aggregates. Range and recent-session pagination survive URL reload and history navigation. Notifications retains its independent optional visitor-session notice type and Audit. No schema migration, external analytics service or new runtime configuration is required. See the visitor/privacy controls in [admin.md](admin.md).
