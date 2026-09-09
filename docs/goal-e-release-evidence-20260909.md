@@ -48,3 +48,5 @@ Restricted work: `/home/cbeaman/woodsmith-goal-e-20260909`; NAS operational evid
 Production remains image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`, source `0067488abb058829f3b94584c02ea666e552c9a8`, with writable expected DB/media/cache mounts and successful internal/HTTPS health. Prior rollback `sha256:84b96abc2ddd7066b5fe63e6385b17dea7c905eda35221314b5a0203ffac1884` is retained. No production recreation, deployment or branch deletion has occurred.
 
 SQLite remains experimental in Node. Public scale-up should move to Postgres, LibSQL or another stable production database.
+
+Candidate rejection: the first dc322fab image passed runtime/browser checks but its recovery-helper files were unreadable under configured NAS UID 1026. No production transition occurred. Dockerfile now explicitly grants read/traverse permissions to the recovery helpers, matching public/static assets. A replacement clean-commit image must pass UID-1026 helper execution, fresh recovery/staged restore and all exact-image gates before promotion.

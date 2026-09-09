@@ -42,7 +42,7 @@ COPY --from=builder --chown=nextjs:nextjs /app/site/scripts/runtime-state-lib.mj
 
 RUN mkdir -p /app/site/data \
   && chown nextjs:nextjs /app/site/data \
-  && chmod -R a+rX /app/site/public /app/site/.next/static
+  && chmod -R a+rX /app/site/public /app/site/.next/static /app/site/ops
 
 USER nextjs
 
