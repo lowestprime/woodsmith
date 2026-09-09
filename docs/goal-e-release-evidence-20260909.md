@@ -1,6 +1,6 @@
 # Goal E release evidence
 
-Status: final source preparation; production still serves accepted v19. This ledger is updated at transaction checkpoints, not a claim that pending promotion gates passed.
+Status: SAFE PREDEPLOYMENT CHECKPOINT at 2026-09-09 16:44 UTC. Source, candidate and final paired recovery gates below pass; production still serves accepted v19. The current allowance was 96% consumed, so no production transition was begun. Goal E remains active, not complete.
 
 ## Source and release-gap classification
 
@@ -20,7 +20,7 @@ Starting authoritative checkout: `/home/cbeaman/src/woodsmith`, clean Goal branc
 | Commerce/providers | Stripe/EasyPost absent: retain truthful unconfigured/degraded behavior and prohibit real charges/labels. No configuration is fabricated. |
 | Proton inbound | Provider-side only. No authenticated provider session exposed. Operator action: sign into Proton settings, inspect/configure forwarding/filter rules for the business mailbox and intended operational recipients, then verify using an owner-controlled sender. Application-generated routing does not inspect arbitrary inbound mail. |
 | HSTS | Application adds host-only `max-age=31536000`, without subdomain/preload expansion. Exact-image and live edge propagation remain required. |
-| Candidate/recovery/live/Git | Pending: exact clean amd64 candidate, new post-Turnstile paired backup + staged restore, immutable deploy, persistence, rollback/return, PR/master integration and final branch consolidation. |
+| Candidate/recovery/live/Git | Exact clean replacement candidate and post-Turnstile paired backup/staged restore PASS (identities below). Pending: NAS candidate smoke with production UID/config, immutable deploy, live providers/intake/routing/auth, persistence, rollback/return, PR/master integration and branch consolidation. |
 
 Security references: [Next.js August release](https://nextjs.org/blog/august-2026-security-release), [support policy](https://nextjs.org/support-policy), [Nodemailer parser advisory](https://github.com/nodemailer/nodemailer/security/advisories/GHSA-2x7j-588g-ccc2), [Nodemailer content-access advisory](https://github.com/nodemailer/nodemailer/security/advisories/GHSA-8m3c-c648-2xjj), [sharp advisory](https://github.com/lovell/sharp/security/advisories/GHSA-rgj7-g3m4-5g8c).
 
@@ -50,3 +50,18 @@ Production remains image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235
 SQLite remains experimental in Node. Public scale-up should move to Postgres, LibSQL or another stable production database.
 
 Candidate rejection: the first dc322fab image passed runtime/browser checks but its recovery-helper files were unreadable under configured NAS UID 1026. No production transition occurred. Dockerfile now explicitly grants read/traverse permissions to the recovery helpers, matching public/static assets. A replacement clean-commit image must pass UID-1026 helper execution, fresh recovery/staged restore and all exact-image gates before promotion.
+
+## Accepted replacement candidate and final recovery checkpoint
+
+- Candidate build source: `a019ec6c3e829983a20d7af939cf082420fbdb55`. Later ledger-only commits do not change its application/Docker/Compose input trees.
+- Candidate tag: `woodsmith:candidate-a019ec6c`. Laptop OCI index: `sha256:f23e41b081359760fb8106bb850a55611297c2c66ffa6cc4a13aeb34d0399552`.
+- NAS image / immutable platform configuration: `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`. Different engine identifier representations are reconciled by identical platform configuration and every RootFS diff ID; no NAS rebuild occurred.
+- Transport artifact: `releases/goal-e-20260909/candidate-a019ec6c-linux-amd64.tar.gz`; SHA-256 `87a77ab6861e4801b94ed8cd876439cd19a06468d090063ab363e7643bade851`. Gzip/tar/config integrity and transfer hashes PASS.
+- Linux/amd64; Node 22.23.2; Next.js 16.3.4. No baked database/environment/production media. UID 1026:100 can read all 1,823 application files, including both recovery helpers.
+- Exact replacement runtime passes 254/254 application tests and 16 Chromium/Firefox targeted real-media/buyer/Studio browser cases, zero failures; minimum sampled normal-text contrast 6.379:1.
+- NEW paired recovery: `backups/runtime/woodsmith-runtime-goal-e-final-a019ec6c-20260909`. Manifest SHA-256 `3f2a340af9d010f9a596d4d507f829682fc4457ade23d4b44bd2c81aa17b8afb`; SQLite quick_check ok; 3,187 media files / 1,978,750,161 bytes.
+- Staged restore PASS: `restores/goal-e-final-a019ec6c-20260909-data`, `/volume1/homes/Cooper/Photos/.woodsmith-restore-goal-e-final-a019ec6c-20260909`, and restricted `restores/goal-e-final-a019ec6c-20260909.env`. Current NAS environment, final paired environment and staged environment hashes match. Backup environment mode is 600. Credentials were not printed, diffed or staged.
+- Production container remains `651cebbd441245c374045b14d3392d826aa3dccf1cf7957cf18509ef5262d02a`, old image `904bf2785c37…`, started 2026-08-31T16:48:53.622800709Z. Final live HTTPS probe returns 200. Old production has not loaded the new keys.
+- Disposable Goal-E local application/browser containers and internal QA network removed; NAS backup/restore helper containers exited and were removed. Candidate/recovery/evidence retained. No branch deletion, PR merge, production deployment, restart or rollback transition performed.
+
+Resume the EXISTING Goal: minimally recheck current clean Git and candidate/runtime/environment identities. Revalidate or refresh paired recovery if production/environment/media changed after this checkpoint. Complete NAS exact-candidate smoke before promotion, prepare a fail-closed production/rollback transaction, then deploy the recorded image without rebuilding. Finish all live/persistence/rollback/master-only gates before marking complete. Do not use the rejected dc322fab image or its failed recovery attempt.

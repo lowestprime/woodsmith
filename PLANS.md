@@ -1,5 +1,9 @@
 # PLANS.md
 
+## SAFE predeployment checkpoint - Goal E remains ACTIVE
+
+2026-09-09 16:44 UTC: current allowance 96% consumed; no production transition started. Application/security/release QA, measured reclamation, clean replacement candidate and NEW post-Turnstile paired recovery/staged restore pass. Candidate build source is `a019ec6c3e829983a20d7af939cf082420fbdb55`; NAS immutable image is `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`. Exact identities, safe resume instructions and pending gates are in [Goal E evidence](docs/goal-e-release-evidence-20260909.md#accepted-replacement-candidate-and-final-recovery-checkpoint). Production remains accepted v19 and HTTPS 200; local disposable runtimes are removed. Resume this Goal without rebuilding/restarting closed work. NAS candidate smoke, deployment/live providers, persistence, rollback/return, PR/master and master-only consolidation remain pending.
+
 ## Active work packet: Goal E — final release
 
 Started 2026-09-09 in ASTRA_E; single writer, no delegation. Authoritative ext4 checkout is clean at Goal-D closure `c594aba8d72c88d668fe3f1a58b694a218264ad7`, equal to upstream and GitHub. A/B1/B2/C/D are closed evidence. The current NAS/CIFS checkout is clean at `81b35c4`; deployed v19 is independently identified by source `0067488` and image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Internal and HTTPS ingress return 200.
