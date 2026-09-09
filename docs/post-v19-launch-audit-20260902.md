@@ -6,6 +6,10 @@ Baseline: `origin/master` at `57def6436af7c4a514181d7307c112fa157f73c8`
 
 Goal branch: `codex/woodsmith-post-v19-public-launch-20260902`
 
+## Final release
+
+[Goal E release evidence](goal-e-release-evidence-20260909.md) records current source gates, production-clone acceptance, storage measurements, recovery and deployment boundaries. Earlier Goal sections below remain closed historical evidence.
+
 ## Evidence boundary
 
 - The deployed v19 application remains `0067488abb058829f3b94584c02ea666e552c9a8`; the accepted v19 audit runner remains `686a69c0cc5011394f35add750c29663626990f8`.

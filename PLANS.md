@@ -1,5 +1,23 @@
 # PLANS.md
 
+## Active work packet: Goal E — final release
+
+Started 2026-09-09 in ASTRA_E; single writer, no delegation. Authoritative ext4 checkout is clean at Goal-D closure `c594aba8d72c88d668fe3f1a58b694a218264ad7`, equal to upstream and GitHub. A/B1/B2/C/D are closed evidence. The current NAS/CIFS checkout is clean at `81b35c4`; deployed v19 is independently identified by source `0067488` and image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Internal and HTTPS ingress return 200.
+
+Safe checkpoint: production unchanged; no storage deletion, deployment, rollback transition, or branch deletion begun. Restricted working evidence: `/home/cbeaman/woodsmith-goal-e-20260909`.
+
+1. Current-state/gap audit: Git/production/mount endpoints verified; finish physical storage identity, recovery inventory and release gap ledger.
+2. Security/source: retain current stable Next.js 16.3.4; remediate newly reported Nodemailer, sharp and transitive dependency advisories, then run focused and final application/audit gates.
+3. Production-clone QA: real paired DB/media bytes, remaining dense Studio/contrast/performance and representative route families; reuse unchanged closed-Goal matrices.
+4. Storage: measure KEEP/DELETE/REBUILDABLE ledger; verify sufficient recovery before any deletion; reclaim/count shared NAS storage once.
+5. Candidate/recovery: clean committed linux/amd64 image, exact identity and disposable proof; fresh paired backup and verified staged restore before promotion.
+6. Live release: immutable deployment, safe provider fixtures, persistence, rollback, return and verification. Never cross this boundary without executable rollback.
+7. Git closure: push/review/merge into current master only after live proof, then consolidate remote/ext4/CIFS/NAS branches and perform final live/documentation audit.
+
+Turnstile runtime configuration is now present and independently verified without exposing values. Production has not been restarted. The initial recovery predates this operator change: create a NEW final paired recovery and staging restore before deployment. SMTP is configured; Stripe/EasyPost are absent and must retain honest degraded behavior. Direct inbound Proton forwarding remains provider-side. The two Goal-A dining-table identities remain unresolved editorial evidence, not permission to reassign.
+
+Current Goal-E source, QA, recovery, storage measurements and pending transaction gates: [release evidence](docs/goal-e-release-evidence-20260909.md).
+
 ## Completed work packet: Goal D — public copy and profile proportions
 
 **Goal D outcome: DONE.** One coherent packet on the existing branch, starting from Goal C `64e4b554018779fdf4e20f4554ae7924f8a1b3da`; no production deployment or Goal E work.

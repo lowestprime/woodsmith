@@ -2,6 +2,8 @@
 
 This document replaces the earlier Woodsmith DeepWiki export with the current Beaman Woodworks 3.0 architecture.
 
+Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+
 ## Overview
 
 Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed content and operations layer. It is designed to run on a Synology NAS and keep portfolio, shop, process writing, contact-first custom work intake, project tracking, media management, commerce operations, and private Woodshop administration inside one deployment.

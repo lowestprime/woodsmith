@@ -1,5 +1,7 @@
 # Beaman Woodworks Synology NAS Deployment Guide
 
+Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+
 ## Goal
 
 Deploy Beaman Woodworks from `/volume2/docker_ssd/woodsmith/` so that:
@@ -468,7 +470,7 @@ Release `0067488-20260831T050142Z` passed deterministic package hashing, product
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
 - The post-v19 source dependency is Next.js 16.3.4. The deployed v19 image remains evidence-bound to its original Next.js 16.3.0 build until the post-v19 branch produces and validates a new exact candidate. Any source change requires new dependency, build, image, recovery, and deployment evidence for the changed boundary.
-- `Strict-Transport-Security` remains absent at the Cloudflare edge. Canonical HTTPS, `www`/HTTP redirects, and the retired-host 410 passed, but HSTS must be enabled in Cloudflare to close this residual.
+- Goal E adds host-only HSTS (`max-age=31536000`) in application response headers. Verify it survives the reverse proxy and Cloudflare at the exact-candidate live gate; no subdomain or preload policy is added.
 - After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
 - Verify top-level Visitors and all six Notifications views render; Visitors and Notifications → Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.

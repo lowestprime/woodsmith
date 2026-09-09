@@ -306,7 +306,7 @@ export function CommissionWorkflow({
       <input name="pieceSlug" type="hidden" value="" />
       <label aria-hidden="true" className="form-honeypot" hidden><span>Company website</span><input autoComplete="off" name="companyWebsite" tabIndex={-1} type="text" /></label>
 
-      <div className="commission-progress" aria-label={`Step ${currentStep} of ${STEPS.length}`}>
+      <div className="commission-progress" role="group" aria-label={`Step ${currentStep} of ${STEPS.length}`}>
         <div className="commission-progress-meter"><span style={{ width: `${currentStep / STEPS.length * 100}%` }} /></div>
         <div><strong>Step {currentStep} of {STEPS.length}</strong><span>{saveStatus}</span></div>
         <ol>

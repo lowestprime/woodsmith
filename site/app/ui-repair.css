@@ -3951,3 +3951,13 @@ main > .about-shell { --public-width: 72rem; }
 }
 
 main > .shell:not(.studio-shell) .account-layout { align-items: start; }
+
+/* Reserve the initial viewport while streamed route content is pending. */
+.global-loading-shell {
+  min-height: 100svh;
+}
+
+.request-form .muted-copy a {
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
