@@ -12,7 +12,7 @@ export default async function ProfilePage({
 }) {
   const user = await requireUser();
   const projects = listProjectsForEmail(user.email);
-  const { verify, verificationError } = await searchParams;
+  const { verify } = await searchParams;
 
   return (
     <Shell>
@@ -21,8 +21,8 @@ export default async function ProfilePage({
         {verify === "already" ? (
           <p className="notice-panel" role="status">Your email is already verified.</p>
         ) : null}
-        {verify === "sent" ? <p className="notice-panel" role="status">SMTP accepted the verification email. Check your inbox and spam folder for the activation link.</p> : null}
-        {verify === "failed" ? <div className="notice-panel danger" role="alert"><strong>Verification email was not sent.</strong><p>{verificationError || "Please try again or contact the woodshop for help."}</p></div> : null}
+        {verify === "sent" ? <p className="notice-panel" role="status">Your verification email is on its way. Check your inbox and spam folder for the link.</p> : null}
+        {verify === "failed" ? <div className="notice-panel danger" role="alert"><strong>Verification email was not sent.</strong><p>Please try again or contact the woodshop for help.</p></div> : null}
         {!user.emailVerified ? <VerificationResendPanel email={user.email} /> : null}
         <div className="account-layout">
           <ProfileForm user={user} />

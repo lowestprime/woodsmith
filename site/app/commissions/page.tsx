@@ -21,7 +21,7 @@ export default async function CommissionsPage() {
   return (
     <Shell>
       <PageSection editHref="/studio?panel=pages&page=commissions#page-commissions">
-        <PageIntro eyebrow="Custom work" title={page?.title ?? "Custom Work Contact"} copy={page?.intro ?? "Custom work now starts with a direct contact request instead of a fixed public template."} />
+        <PageIntro eyebrow="Custom work" title={page?.title ?? "Request Custom Work"} copy={page?.intro ?? "Describe the piece, room, dimensions, materials, timing, and fulfillment needs."} />
         {page?.body ? <p className="page-body-copy">{page.body}</p> : null}
         <p className="muted-copy">Already have a reference? <Link href="/commissions/status">Look up your project status here.</Link></p>
         <ContactRequestForm

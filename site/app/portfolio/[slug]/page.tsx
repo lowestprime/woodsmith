@@ -106,11 +106,6 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           </div>
           {piece.status === "inventory" ? (
             <div className="piece-reserve-panel">
-              <div>
-                <span>Availability</span>
-                <strong>{piece.availabilityLabel}</strong>
-                <small>{Math.max(0, piece.inventoryCount)} available</small>
-              </div>
               <Link className="button-primary" href={`/shop#piece-${encodeURIComponent(piece.slug)}`}>View shop details</Link>
             </div>
           ) : null}
@@ -120,7 +115,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
           {mediaItems.length > 0 ? (
             <MediaCollection collectionId={`${piece.slug}:gallery`} items={mediaItems} preloadFirst title={piece.title} variant="detail-stage" />
           ) : (
-            <div className="piece-card-placeholder tall-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photography for this piece is still being reviewed.</div>
+            <div className="piece-card-placeholder tall-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photos coming soon. Ask William about this piece.</div>
           )}
         </div>
       </PageSection>
@@ -133,7 +128,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
       {allowInquiry ? <PageSection className="split-section commissions-layout" editHref={`/studio?panel=custom&piece=${encodeURIComponent(piece.slug)}`}>
         <div>
           <h2>{piece.status === "inventory" ? "Ask about this piece" : "Use this piece as the starting point for custom work"}</h2>
-          <p>{piece.status === "inventory" ? "Ask about the current build, confirm delivery options, or discuss a related variation. Checkout details remain in the shop." : "Tell William about the room, intended use, timing, and material preferences. He will review the details before preparing a quote."}</p>
+          <p>{piece.status === "inventory" ? "Ask about the current build, delivery options, or a related variation." : "Tell William about the room, intended use, timing, and material preferences. He will review the details before preparing a quote."}</p>
         </div>
         <PieceInquiryLinks piece={piece} sourceRoute={`/portfolio/${piece.slug}`} />
               <ContactRequestForm
@@ -153,7 +148,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
               <span>{review.reviewerName} · {review.rating}/5</span>
               <p>{review.body}</p>
             </article>
-          )) : <p className="muted-copy">No approved reviews are published for this piece yet.</p>}
+          )) : <p className="muted-copy">No reviews for this piece yet.</p>}
         </div>
         {acceptReviews ? <ReviewForm piece={piece} /> : null}
       </PageSection> : null}

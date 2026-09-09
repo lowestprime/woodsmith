@@ -982,7 +982,7 @@ export default async function StudioPage({
   };
 
   return (
-    <Shell>
+    <Shell className="studio-shell">
       <StudioScrollRestore />
       <StudioNavigationState />
       <div data-studio-root="true">

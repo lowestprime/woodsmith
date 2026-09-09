@@ -3891,3 +3891,63 @@ main:focus {
     min-height: clamp(20rem, 82vw, 34rem);
   }
 }
+
+/* Public editorial measures. Studio retains its full-width dense workspace. */
+:root {
+  --public-width: 96rem;
+  --public-form-width: 48rem;
+  --reading-measure: 72ch;
+}
+main > .shell:not(.studio-shell) {
+  max-width: var(--public-width);
+  margin-inline: max(var(--site-gutter), calc((100% - var(--public-width)) / 2));
+}
+main > .shell:not(.studio-shell) .page-intro > p,
+main > .shell:not(.studio-shell) .page-body-copy,
+.reading-body { max-width: var(--reading-measure); }
+.reading-body { overflow-wrap: anywhere; }
+.reading-body > * + * { margin-block-start: 1rem; }
+.reading-body img { max-width: 100%; height: auto; }
+.reading-body pre { max-width: 100%; overflow-x: auto; }
+main > .shell:not(.studio-shell) .request-form {
+  width: 100%;
+  max-width: var(--public-form-width);
+}
+.piece-card-placeholder {
+  min-height: 6rem;
+  aspect-ratio: auto;
+}
+.piece-card-placeholder.tall-placeholder { min-height: 10rem; }
+.piece-card-meta, .piece-card-footer, .shop-card-price-row, .journal-meta {
+  flex-wrap: wrap;
+}
+main > .about-shell { --public-width: 72rem; }
+.about-shell .profile-grid { grid-template-columns: minmax(0, 1fr); max-width: 58rem; }
+.about-shell .profile-card {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: start;
+  padding-inline: 0 !important;
+  border-block: 1px solid var(--line);
+}
+.profile-copy { min-width: 0; display: grid; gap: 0.4rem; }
+.profile-copy h2 { font-size: clamp(1.6rem, 2.5vw, 2.2rem); }
+.profile-copy p { margin: 0; white-space: pre-line; overflow-wrap: anywhere; }
+.profile-copy .share-links { flex-wrap: wrap; overflow-wrap: anywhere; }
+.about-contact-link { margin-block: 0.75rem 1.25rem; }
+.about-contact-link a, .profile-copy a { display: inline-block; min-height: 1.75rem; }
+.about-shell .contact-grid {
+  max-width: 58rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(28rem, 100%), 1fr));
+}
+.profile-avatar-editor { display: grid; gap: 0.75rem; min-width: 0; }
+.profile-avatar-preview { width: fit-content; }
+@media (max-width: 540px) {
+  .about-shell .profile-card { gap: 0.6rem 1rem; }
+  .profile-copy { display: contents; }
+  .profile-heading { grid-column: 2; grid-row: 1; align-self: center; }
+  .profile-copy > p:not(.eyebrow), .profile-copy .share-links { grid-column: 1 / -1; }
+}
+
+main > .shell:not(.studio-shell) .account-layout { align-items: start; }

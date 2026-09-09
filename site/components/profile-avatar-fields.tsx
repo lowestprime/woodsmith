@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { readAvatarGradient } from "@/lib/avatar";
-import { resolveAssetUrl } from "@/lib/format";
+import { useEffect, useState } from "react";
+import { avatarColorInputType, profileInitials, readAvatarGradient, resolveAvatarGradient } from "@/lib/avatar";
+import { AvatarBadge } from "@/components/avatar-badge";
 
 type ProfileAvatarFieldsProps = {
   displayName: string;
@@ -11,31 +11,21 @@ type ProfileAvatarFieldsProps = {
   metadata: Record<string, unknown>;
 };
 
-function initialsFor(label: string) {
-  return label
-    .split(/\s+/g)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((segment) => segment[0]?.toUpperCase() ?? "")
-    .join("") || "BW";
-}
-
 export function ProfileAvatarFields({ displayName, email, avatarPath, metadata }: ProfileAvatarFieldsProps) {
-  const gradient = readAvatarGradient(metadata);
+  const gradient = resolveAvatarGradient(email || displayName, readAvatarGradient(metadata));
   const [from, setFrom] = useState(gradient?.from ?? "#e6d7c0");
   const [to, setTo] = useState(gradient?.to ?? "#5a3a25");
   const [angle, setAngle] = useState(String(Math.round(gradient?.angle ?? 132)));
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const initials = useMemo(() => initialsFor(displayName || email), [displayName, email]);
+  const [removeAvatar, setRemoveAvatar] = useState(false);
+  const initials = profileInitials(displayName || email);
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   return (
     <div className="profile-avatar-editor">
       <div className="profile-avatar-preview">
-        {previewUrl || avatarPath ? (
-          <img alt={`${displayName || email} profile picture`} src={previewUrl || resolveAssetUrl(avatarPath) || ""} />
-        ) : (
-          <span style={{ background: `linear-gradient(${angle}deg, ${from}, ${to})` }}>{initials}</span>
-        )}
+        <AvatarBadge avatarPath={removeAvatar ? null : previewUrl || avatarPath} gradient={{ from, to, angle: Number(angle) }}
+          label={initials} seed={email || displayName} variant="editor" />
       </div>
       <label>
         <span>Profile picture</span>
@@ -53,24 +43,24 @@ export function ProfileAvatarFields({ displayName, email, avatarPath, metadata }
         />
       </label>
       <label className="checkbox-row">
-        <input name="removeAvatar" type="checkbox" value="1" />
-        <span>Use the customizable default avatar instead of an uploaded picture</span>
+        <input checked={removeAvatar} onChange={(event) => setRemoveAvatar(event.target.checked)} name="removeAvatar" type="checkbox" value="1" />
+        <span>Use initials instead of a photo</span>
       </label>
       <div className="field-grid three-up compact-grid">
         <label>
           <span>Gradient start</span>
-          <input name="avatarGradientFrom" onChange={(event) => setFrom(event.target.value)} type="color" value={from} />
+          <input name="avatarGradientFrom" onChange={(event) => setFrom(event.target.value)} type={avatarColorInputType(from)} value={from} />
         </label>
         <label>
           <span>Gradient end</span>
-          <input name="avatarGradientTo" onChange={(event) => setTo(event.target.value)} type="color" value={to} />
+          <input name="avatarGradientTo" onChange={(event) => setTo(event.target.value)} type={avatarColorInputType(to)} value={to} />
         </label>
         <label>
           <span>Angle</span>
           <input max={360} min={0} name="avatarGradientAngle" onChange={(event) => setAngle(event.target.value)} type="range" value={angle} />
         </label>
       </div>
-      <p className="muted-copy">If you do not upload a photo, the account badge uses this gradient avatar everywhere across the site.</p>
+      <p className="muted-copy">Choose a photo or colors for your initials.</p>
     </div>
   );
 }

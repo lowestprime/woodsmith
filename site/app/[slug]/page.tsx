@@ -25,7 +25,7 @@ export default async function DynamicPage({ params }: { params: Promise<{ slug: 
         <p className="eyebrow">{page.navLabel}</p>
         <h1>{page.title}</h1>
         <p className="lede">{page.intro}</p>
-        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(page.body) as string) }} />
+        <div className="reading-body" dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(page.body) as string) }} />
       </PageSection>
     </Shell>
   );

@@ -407,7 +407,6 @@ export const seedPieces: SeedPiece[] = [
     details: [
       "Sized around the room rather than a catalog dimension.",
       "Joinery, top thickness, and finish schedule are settled during review.",
-      "Photography is still being assembled before a public image set is released."
     ],
     tags: ["dining table", "table", "custom", "commission"],
     materials: ["White Oak", "Walnut", "Cherry", "Hard Maple"],
@@ -432,7 +431,6 @@ export const seedPieces: SeedPiece[] = [
     details: [
       "Can be wall-mounted or made to sit on the counter.",
       "Shelf spacing and mounting details are reviewed before the build begins.",
-      "Public photography will be added after media for this piece is verified."
     ],
     tags: ["spice rack", "storage", "kitchen", "custom"],
     materials: ["Maple", "Cherry", "White Oak"],
@@ -680,7 +678,7 @@ export const seedProfiles: SeedProfile[] = [
     headline: "Master Builder",
     bio: "William Beaman builds furniture, cabinetry, and room-specific woodwork with an emphasis on durable joinery, measured proportions, and daily use.",
     publicProfile: true,
-    avatarPath: "profiles/william-beaman.svg",
+    avatarPath: "",
     links: [],
     metadata: { showOnAboutPage: true, woodworker: true }
   },

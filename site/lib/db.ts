@@ -1,3 +1,4 @@
+import { applyPublicCopyRefinements } from "./public-copy-normalization.ts";
 import { accessSync, constants as fsConstants, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -1082,6 +1083,7 @@ function getDatabase() {
         applySeedAssignments: !databaseExisted && seededVersionBeforeInitialization === 0
       });
       applySchemaMigrations(database);
+      applyPublicCopyRefinements(database);
       initialized = true;
     }
 

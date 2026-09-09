@@ -49,7 +49,7 @@ function SearchResults({
       </div>
       {response.results.length === 0 ? (
         <p className="notice-panel">
-          No indexed content matched this search.
+          No pieces or notes matched. Try a material, type of furniture, or a shorter phrase.
         </p>
       ) : null}
     </div>

@@ -8,10 +8,11 @@ import { HeaderShell } from "@/components/header-shell";
 import { SiteNavLink } from "@/components/site-nav-link";
 import { CategoryIcon as SharedCategoryIcon } from "@/components/category-icon";
 import { EditableText, inlineEditAttrs, type InlineEditTarget } from "@/components/inline-editable";
-import { avatarGradientStyle } from "@/lib/avatar";
+import { profileInitials, readAvatarGradient } from "@/lib/avatar";
+import { AvatarBadge } from "@/components/avatar-badge";
 import { getDisplayMediaPaths } from "@/lib/catalog";
 import { findPieceCategory, pieceCategoryIcon, type PieceCategoryDefinition } from "@/lib/categories";
-import { formatDate, formatLeadTime, resolveAssetUrl, toMediaUrl } from "@/lib/format";
+import { formatDate, formatLeadTime, toMediaUrl } from "@/lib/format";
 import { getCurrentUser } from "@/lib/auth";
 import { getBandwidthSnapshot, getMedia, getSiteSettings, listCartItems, listPages, type PieceRecord, type PostRecord, type ProjectRecord } from "@/lib/db";
 import { logoutAction } from "@/lib/actions";
@@ -34,12 +35,6 @@ export function BrandMark() {
 
 const getViewer = cache(async () => getCurrentUser());
 
-function AccountBadge({ label, avatarPath, loggedIn, seed }: { label: string; avatarPath?: string | null; loggedIn: boolean; seed?: string }) {
-  if (avatarPath) return <img alt={label} className="account-badge-avatar" src={resolveAssetUrl(avatarPath)} />;
-  if (!loggedIn) return <span className="account-badge account-badge-placeholder" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.4" /><path d="M5.75 18.25c1.5-3 3.63-4.5 6.25-4.5s4.75 1.5 6.25 4.5" /></svg></span>;
-  return <span className="account-badge account-badge-gradient" aria-hidden="true" style={avatarGradientStyle(seed ?? label)}>{label}</span>;
-}
-
 function EditGlyph() {
   return <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 16.8V20h3.2L18.7 8.5l-3.2-3.2L4 16.8Z" /><path d="m14.9 5.9 3.2 3.2" /></svg>;
 }
@@ -57,7 +52,7 @@ export async function SiteHeader() {
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
   const accountHref = user ? (user.role === "admin" ? "/studio" : "/account/profile") : "/account/login";
-  const accountLabel = (user?.displayName ?? "").split(/\s+/g).filter(Boolean).slice(0, 2).map((segment) => segment[0]?.toUpperCase() ?? "").join("") || "BW";
+  const accountLabel = profileInitials(user?.displayName ?? "");
   return (
     <HeaderShell>
       <Shell className="header-inner">
@@ -77,7 +72,7 @@ export async function SiteHeader() {
         </nav>
         <div className="header-actions">
           <Link aria-label={`Cart${cartCount > 0 ? `, ${cartCount} items` : ""}`} className="nav-link-pill cart-link" href="/shop/cart"><span aria-hidden="true">Cart</span><strong>{cartCount}</strong></Link>
-          <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}><AccountBadge avatarPath={user?.avatarPath} label={accountLabel} loggedIn={Boolean(user)} seed={user?.email ?? user?.displayName ?? accountLabel} /></Link>
+          <Link aria-label={user ? `${user.displayName} account` : "Account"} className="account-link" href={accountHref} title={user ? `${user.displayName}${user.role === "admin" ? " · woodshop dashboard" : ""}` : "Account"}><AvatarBadge avatarPath={user?.avatarPath} gradient={readAvatarGradient(user?.metadata)} label={accountLabel} placeholder={!user} seed={user?.email ?? user?.displayName ?? accountLabel} /></Link>
           {user ? <form action={logoutAction}><button aria-label="Log out" className="header-icon-button" type="submit" title="Log out"><svg aria-hidden="true" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg></button></form> : null}
           <ThemeToggle initialTheme={initialTheme} />
         </div>
@@ -98,7 +93,7 @@ export function SiteFooter() {
             <p className="footer-title">{group.heading}</p>
             <ul className="footer-item-list">
               {[...group.items].filter((item) => item.visible).sort((left, right) => left.order - right.order).map((item) => {
-                const content = <><span>{item.label}</span><strong>{item.value}</strong></>;
+                const content = <>{item.label.trim().toLowerCase() !== item.value.trim().toLowerCase() ? <span>{item.label}</span> : null}<strong>{item.value}</strong></>;
                 if (item.type === "internal-link") return <li key={item.id}><Link href={item.url}>{content}</Link></li>;
                 if (item.type === "email") return <li key={item.id}><a href={item.url || `mailto:${item.value}`}>{content}</a></li>;
                 if (item.type === "external-link") return <li key={item.id}><a href={item.url} rel="noreferrer" target={item.newTab ? "_blank" : undefined}>{content}</a></li>;
@@ -126,7 +121,7 @@ export function PieceCard({ piece, categories, order = 0 }: { piece: PieceRecord
   return (
     <article className="piece-card" data-media-id={`piece:${piece.slug}`} data-media-item="true" data-media-order={order}>
       <Link className="piece-card-link" href={`/portfolio/${piece.slug}`} prefetch={false}>
-        {firstImage ? <Image alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} width={1200} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photography in review</div>}
+        {firstImage ? <Image alt={media?.altText || piece.title} className={`piece-card-image cleanup-${String(media?.metadata.cleanupMode ?? "original")}`} height={900} quality={88} sizes="(max-width: 720px) calc(100vw - 1rem), (max-width: 1500px) 50vw, 33vw" src={toMediaUrl(firstImage)} style={{ objectPosition: `${media?.focalX ?? 50}% ${media?.focalY ?? 50}%`, transform: `scale(${media?.zoom ?? 1})` }} width={1200} /> : <div className="piece-card-placeholder" data-audit-placeholder="piece-media" data-audit-placeholder-allowed="human-media-verification-pending">Photos coming soon</div>}
         <div className="piece-card-body">
           <div className="piece-card-meta"><span className="category-meta"><SharedCategoryIcon category={category} name={pieceCategoryIcon(piece.category, categories)} />{category?.label ?? piece.category}</span></div>
           <h3 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h3>

@@ -1,9 +1,24 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { retiredPublicCopy } from "./public-copy-normalization.ts";
+import { publicPieceCopyReplacements, retiredPublicCopy } from "./public-copy-normalization.ts";
 
 const sourceFiles = [
+  "../app/[slug]/page.tsx",
+  "../app/journal/page.tsx",
+  "../app/journal/[slug]/page.tsx",
+  "../app/process/[slug]/page.tsx",
+  "../app/shop/cart/page.tsx",
+  "../app/account/reset/page.tsx",
+  "../app/account/verify/page.tsx",
+  "../app/account/verify/[token]/page.tsx",
+  "../app/requests/[reference]/page.tsx",
+  "../components/website-inquiry-form.tsx",
+  "../components/profile-avatar-fields.tsx",
+  "../components/verification-resend-panel.tsx",
+  "../app/error.tsx",
+  "../app/loading.tsx",
+  "../app/not-found.tsx",
   "../app/page.tsx",
   "../app/portfolio/page.tsx",
   "../app/portfolio/[slug]/page.tsx",
@@ -61,7 +76,12 @@ test("public routes do not expose retired implementation language", async () => 
     /FTS5 lexical/i,
     /who designed the website/i,
     /Website design and development by/i,
-    /Website source/i
+    /Website source/,
+    /SMTP accepted/,
+    /exact backend summary/,
+    /Backend returned HTTP/,
+    /No indexed content matched/,
+    /fixed public template/i
   ]) {
     assert.doesNotMatch(combined, pattern);
   }
@@ -98,4 +118,17 @@ test("public browsing keeps contact discoverable and suppresses repeated card me
   assert.match(home, /heroMedia && heroMedia\.metadata\.mediaPreviewStatus !== "unavailable"/);
   assert.match(catalog, /Boolean\(media\)/);
   assert.match(config, /qualities:\s*\[75, 86, 88, 92\]/);
+});
+
+test("fresh piece defaults retire only the known media-workflow details", async () => {
+  const { seedPieces, seedProfiles } = await import("./seed.ts");
+  for (const replacement of publicPieceCopyReplacements) {
+    assert.deepEqual(seedPieces.find(piece => piece.slug === replacement.slug)?.details, replacement.to);
+  }
+  const builder = seedProfiles.find(profile => profile.email === "woodsmithbb@proton.me")!;
+  assert.equal(builder.publicProfile, true);
+  assert.equal(builder.displayName, "William Beaman");
+  assert.ok(builder.bio.includes("durable joinery"));
+  assert.deepEqual(builder.links, []);
+  assert.equal(builder.avatarPath, "");
 });

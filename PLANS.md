@@ -1,5 +1,17 @@
 # PLANS.md
 
+## Completed work packet: Goal D — public copy and profile proportions
+
+**Goal D outcome: DONE.** One coherent packet on the existing branch, starting from Goal C `64e4b554018779fdf4e20f4554ae7924f8a1b3da`; no production deployment or Goal E work.
+
+- Reusable 28px compact, 80px editor and 80/112px public avatars share photo/initial geometry, preserve custom colors and owner media, and correctly preview/release local blob URLs. About retains the builder biography, links and canonical contact; its desktop profile card is about 187px tall (previously 1861px).
+- Bounded public content/forms, compact missing-photo areas, wrapping metadata, unstretched account panels, first-cart-image eager loading, and removal of duplicate availability/footer labels. Studio retains its dense full-width workspace; route progress and A/B1/B2/C semantics are preserved.
+- Customer-facing account/search/error/planner copy replaces technical wording. Data-only `post-v19-public-copy-v2` removes two complete exact legacy piece-detail defaults transactionally, with existing history records and a one-time marker. Arbitrary owner text, unrelated records and schema remain unchanged; rollback, retry and idempotence are tested.
+- Final checks PASS: focused 40/40; full application tests 254/254; typecheck; lint (zero errors, six existing image warnings); production build and standalone runtime-data gate. Existing Node SQLite experimental warnings remain.
+- Rendered PASS: Chromium 210 and Firefox 90 layout/theme cases; 30 supplementary route/copy checks; zero accessibility violations, unexpected browser errors or unexplained cross-origin traffic. Ten cross-browser interaction groups, 16 actual 200% reflow cases and six uploaded/long-profile cases pass. See the existing [launch audit](docs/post-v19-launch-audit-20260902.md#goal-d-public-copy-and-profile-proportions-2026-09-08) for route equivalence and test boundaries.
+
+Final commit/push, clean HEAD/upstream/remote equality and disposable-runtime cleanup are verified during closure. Next manual Goal: **E final QA / storage / recovery / deployment / master-only consolidation**. Stop after Goal D.
+
 ## Completed work packet: Goal C — standalone Visitors
 
 **Goal C outcome: DONE.** One coherent packet on the existing Goal branch. Starting invariant: clean authoritative `/home/cbeaman/src/woodsmith`, with HEAD/upstream/remote at `1f8ad27874456c2ab94e633e72eb4153adf9941a`. The commit containing this entry completes Goal C; final Git identity and scoped cleanup are verified during closure.

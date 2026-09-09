@@ -251,14 +251,14 @@ export function normalizePublicSiteSettings(value: unknown) {
   return { changed: changes.length > 0, changes, value: next };
 }
 
-function recordChange(db: DatabaseSync, change: NormalizationChange, appliedAt: string) {
+function recordChange(db: DatabaseSync, change: NormalizationChange, appliedAt: string, normalizationId = PUBLIC_COPY_NORMALIZATION_ID) {
   db.prepare(`
     INSERT INTO content_normalization_history (
       normalization_id, entity_type, entity_key, field_name,
       before_value, after_value, applied_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(
-    PUBLIC_COPY_NORMALIZATION_ID,
+    normalizationId,
     change.entityType,
     change.entityKey,
     change.field,
@@ -366,4 +366,62 @@ export function applyPublicCopyNormalization(db: DatabaseSync) {
     changedProfiles,
     historyCount: Number(historyCount.count ?? 0)
   };
+}
+
+// Data-only follow-up: the existing schema/history tables remain unchanged.
+// Match the entire known default array, never keywords within owner copy.
+export const PUBLIC_COPY_REFINEMENT_ID = "post-v19-public-copy-v2";
+export const publicPieceCopyReplacements = [
+  {
+    slug: "dining-room-table",
+    from: [
+      "Sized around the room rather than a catalog dimension.",
+      "Joinery, top thickness, and finish schedule are settled during review.",
+      "Photography is still being assembled before a public image set is released."
+    ],
+    to: [
+      "Sized around the room rather than a catalog dimension.",
+      "Joinery, top thickness, and finish schedule are settled during review."
+    ]
+  },
+  {
+    slug: "spice-rack",
+    from: [
+      "Can be wall-mounted or made to sit on the counter.",
+      "Shelf spacing and mounting details are reviewed before the build begins.",
+      "Public photography will be added after media for this piece is verified."
+    ],
+    to: [
+      "Can be wall-mounted or made to sit on the counter.",
+      "Shelf spacing and mounting details are reviewed before the build begins."
+    ]
+  }
+] as const;
+
+export function applyPublicCopyRefinements(db: DatabaseSync) {
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    if (db.prepare("SELECT 1 FROM settings WHERE key = ?").get(PUBLIC_COPY_REFINEMENT_ID)) {
+      db.exec("COMMIT");
+      return 0;
+    }
+    const appliedAt = new Date().toISOString();
+    let changed = 0;
+    for (const replacement of publicPieceCopyReplacements) {
+      const before = JSON.stringify(replacement.from);
+      const after = JSON.stringify(replacement.to);
+      const result = db.prepare("UPDATE pieces SET details_json = ?, updated_at = ? WHERE slug = ? AND details_json = ?")
+        .run(after, appliedAt, replacement.slug, before);
+      if (Number(result.changes) !== 1) continue;
+      recordChange(db, { entityType: "piece", entityKey: replacement.slug, field: "details", before, after }, appliedAt, PUBLIC_COPY_REFINEMENT_ID);
+      changed += 1;
+    }
+    db.prepare("INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)")
+      .run(PUBLIC_COPY_REFINEMENT_ID, JSON.stringify({ appliedAt, changed }), appliedAt);
+    db.exec("COMMIT");
+    return changed;
+  } catch (error) {
+    db.exec("ROLLBACK");
+    throw error;
+  }
 }

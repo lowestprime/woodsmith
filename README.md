@@ -12,7 +12,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 
 ## Post-v19 launch work (not yet deployed)
 
-The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an image-led home page, a compact `/contact` form, and the separate guided `/commissions` planner. Schema v14 updates exact legacy public copy and records each before/after change; customized content is preserved. Default public copy is location-neutral. Default developer promotion is removed from the commercial pages without deleting the account or technical credits. See [the launch audit](docs/post-v19-launch-audit-20260902.md) for validation and remaining release gates. Production remains on the accepted v19 application until those gates pass.
+The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an image-led home page, a compact `/contact` form, and the separate guided `/commissions` planner. Schema v14 updates exact legacy public copy and records each before/after change; customized content is preserved. The data-only v2 refinement also removes two exact legacy piece-detail arrays, using the existing history table and a one-time marker without changing the schema. About now uses compact responsive profiles; public forms and reading content have bounded measures, and uploaded photos share avatar geometry with generated initials. Default public copy is location-neutral. Default developer promotion is removed from the commercial pages without deleting the account or technical credits. See [the launch audit](docs/post-v19-launch-audit-20260902.md) for validation and remaining release gates. Production remains on the accepted v19 application until those gates pass.
 
 ## 📃 Description
 
