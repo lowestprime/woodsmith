@@ -10,15 +10,15 @@
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
-Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
 
-## Post-v19 launch work (not yet deployed)
+## Post-v19 launch release
 
 The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an image-led home page, a compact `/contact` form, and the separate guided `/commissions` planner. Schema v14 updates exact legacy public copy and records each before/after change; customized content is preserved. The data-only v2 refinement also removes two exact legacy piece-detail arrays, using the existing history table and a one-time marker without changing the schema. About now uses compact responsive profiles; public forms and reading content have bounded measures, and uploaded photos share avatar geometry with generated initials. Default public copy is location-neutral. Default developer promotion is removed from the commercial pages without deleting the account or technical credits. See [the launch audit](docs/post-v19-launch-audit-20260902.md) for validation and remaining release gates. Production remains on the accepted v19 application until those gates pass.
 
 ## 📃 Description
 
-The launch branch repairs JPEG preview inspection for complete images with appended metadata or Motion Photo payloads. Studio's **Refresh preview** reinspects the selected source without rewriting it or changing assignments; crop defaults and video/fallback metadata saves are supported. Recovery uses content revisions to refresh Studio images, preserves technical results across saves, and survives restart. See the [media recovery evidence and source-path exceptions](docs/post-v19-launch-audit-20260902.md#goal-a-technical-media-recovery-2026-09-05). These changes are not yet deployed.
+The launch branch repairs JPEG preview inspection for complete images with appended metadata or Motion Photo payloads. Studio's **Refresh preview** reinspects the selected source without rewriting it or changing assignments; crop defaults and video/fallback metadata saves are supported. Recovery uses content revisions to refresh Studio images, preserves technical results across saves, and survives restart. See the [media recovery evidence and source-path exceptions](docs/post-v19-launch-audit-20260902.md#goal-a-technical-media-recovery-2026-09-05). These changes are deployed in the accepted Goal E image.
 
 The launch branch also adds searchable, paginated Projects, Orders and Reviews workspaces with one active editor. Switching records flushes pending edits, transfers keyboard focus after rendering, and keeps filtering separate from the editing context. Server refreshes reconcile saved records without resetting an active autosave queue. These changes remain subject to the final production release gates.
 
@@ -217,7 +217,7 @@ Use these docs together:
 
 ## Current production release
 
-The validated production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner-only repairs culminate at `686a69c0cc5011394f35add750c29663626990f8`; the application `site` tree is identical at both commits, so no application redeploy was required.
+The retained v19 production baseline was source `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner-only repairs culminate at `686a69c0cc5011394f35add750c29663626990f8`; the application `site` tree is identical at both commits, so no application redeploy was required.
 
 Exact Tier 1, production-clone Tier 2, paired backup/staged restore, deployment, forced-recreation persistence, rollback/return-to-candidate, and final Tier 3 passed. The full live-production run `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1` validated 1,784 routes, 22,347 observations, and 5,948 captures with zero validation failures, unexpected diagnostics, unapproved cross-origin requests, or successful unsafe requests. See the release evidence ledger for exact paths, hashes, image IDs, and classified caveats.
 

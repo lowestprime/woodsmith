@@ -1,6 +1,6 @@
 # Notification Routing
 
-This describes the post-v19 source. Production adoption requires the normal candidate, migration, recovery, and deployment gates.
+This describes the deployed Goal E release. Live canonical inquiry delivery, conditional BCC, quarantine exclusion and authentication-mail isolation passed; temporary rules and fixture deliveries were cleaned. See [release evidence](goal-e-release-evidence-20260909.md).
 
 ## Address Roles
 

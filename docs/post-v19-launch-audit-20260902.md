@@ -4,13 +4,13 @@ Date: 2026-09-02
 
 Baseline: `origin/master` at `57def6436af7c4a514181d7307c112fa157f73c8`
 
-Goal branch: `codex/woodsmith-post-v19-public-launch-20260902`
+Historical Goal branch: `codex/woodsmith-post-v19-public-launch-20260902`
 
 ## Final release
 
-[Goal E release evidence](goal-e-release-evidence-20260909.md) records current source gates, production-clone acceptance, storage measurements, recovery and deployment boundaries. Earlier Goal sections below remain closed historical evidence.
+[Goal E release evidence](goal-e-release-evidence-20260909.md) records accepted source a019ec6c, immutable deployment, persistence, real rollback/return, three live Managed Turnstile submissions, routing/auth isolation and fixture cleanup. Earlier Goal sections below remain closed historical evidence.
 
-## Evidence boundary
+## Original audit evidence boundary (historical)
 
 - The deployed v19 application remains `0067488abb058829f3b94584c02ea666e552c9a8`; the accepted v19 audit runner remains `686a69c0cc5011394f35add750c29663626990f8`.
 - The v19 evidence tag is retained. Production is not modified during this audit.

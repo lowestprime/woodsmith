@@ -1,6 +1,6 @@
 # Goal E release evidence
 
-Status: SAFE PREDEPLOYMENT CHECKPOINT at 2026-09-09 16:44 UTC. Source, candidate and final paired recovery gates below pass; production still serves accepted v19. The current allowance was 96% consumed, so no production transition was begun. Goal E remains active, not complete.
+Status: SAFE POST-RETURN CHECKPOINT, 2026-09-12. Exact candidate is deployed; production recreation, real v19 rollback and return pass. Final live fixture cleanup is complete; Git/master closure is in progress. Earlier predeployment sections below are historical evidence, not instructions to repeat those gates.
 
 ## Source and release-gap classification
 
@@ -79,3 +79,33 @@ Resume the EXISTING Goal: minimally recheck current clean Git and candidate/runt
 - Weekly allowance reached 98% used before promotion. No production transition began. Goal E remains ACTIVE; live/provider validation, persistence, rollback/return, PR merge and master-only consolidation remain pending. Resume with the same immutable candidate and recovery unless current runtime identity changes.
 
 - Follow-up isolated old-image -> accepted-candidate return PASS on the same disposable upgraded DB: six routes, schema 16 and quick_check ok. All 45 compared application tables match the pre-rollback candidate clone, including media preview metadata; only derived site_search_* tables and media_items.updated_at are excluded. Restricted result: `nas-smoke/return-compatibility.json`. The container was removed in guaranteed cleanup. This resolves clone compatibility, not production rollback. Weekly allowance is now 99% used; production remains untouched.
+
+
+## Production transaction - 2026-09-12
+
+Current source/evidence started clean at `860e1f625ae5eaeaf93773ae3d8623dc74cb7a3d`, equal to upstream/remote. Candidate configuration, revision and RootFS match. Final paired recovery/staged DB/environment and current media inventory match; every current production table matches the backup logically. No rebuild or new backup was needed.
+
+| Stage | Container | Image |
+| --- | --- | --- |
+| Original / exercised rollback | `651cebbd441245c374045b14d3392d826aa3dccf1cf7957cf18509ef5262d02a` | `904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c` |
+| Initial promotion | `34488bf9d9f20758dc293cea1de89db9c3f9613adebf758fb9e446eb864b3f0f` | `9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3` |
+| Recreated / intended returned candidate | `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2` | `9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3` |
+
+Each production transition passed expected UID 1026:100, exact writable DB/media/cache mount identities, schema 16, quick_check, internal routes and public HTTPS. A temporary DB settings fixture and hash-checked files on all three mounts persisted through recreation, real old-container rollback and return. They were removed after proof. Rollback preserved current compatible schema-16 state and writes; verified paired recovery remains retained. Three actual JPEGs served 200 with valid signatures; original media inventory remained 3,187 files / 1,978,750,161 bytes.
+
+Live authenticated Chromium/Firefox checks covered Studio, Visitors, Notifications, Media, Inquiries, search, account and commissions: 17 completed route cases had zero overflow, broken visible images, framework overlays or application page errors. Firefox Contact navigation timed out while loading the external challenge; the separate Chromium check confirmed the live Cloudflare human checkbox. Cloudflare Insights and challenge origins are explained third-party requests; the challenge's PAT 401 and obfuscated console messages are provider diagnostics. Earlier login/streamed-heading harness errors were corrected without application changes.
+
+SMTP connection verification passed through Studio. A disposable customer account was created, verified and logged in; profile/projects/cart/commission status passed. Verification and reset deliveries are both SMTP-accepted on the first attempt, address only that fixture account, and have zero CC/BCC while correspondence routing is configured. This proves SMTP acceptance and recipient isolation, not inbox placement. Stripe/EasyPost remain absent and no charge or label was created.
+
+The operator completed **three** real Managed Turnstile submissions. The first legitimate inquiry produced an SMTP-accepted canonical business notice; the SEO/marketing inquiry was quarantined with no Project or mail. Their General topic correctly excluded the temporary care-repair BCC rule. After the rule matched Contact irrespective of topic, the third inquiry produced a sent customer_inquiry_admin notice with exactly the canonical primary recipient, zero CC and exactly one expected private BCC. Its persisted inquiry/message and delivery correspond to the unique positive-test marker, not the quarantine fixture. Both auth-link deliveries retain single-recipient provenance and zero copies.
+
+Restricted evidence: `production-transaction.jsonl`, `persistence-proof.jsonl`, `live-mail-proof.json`, and laptop `live/` browser/provider/customer results. Runtime environment, cookies, passwords and provider tokens remain private and outside Git. The retained old container is stopped as `woodsmith-v19-retained-goal-e`.
+
+
+## Final live fixture cleanup
+
+The restricted full proof SHA-256 is `eb67088b34b89d42b16a08afeef9a7d1420da188e86f0b270dfd5832a12d9517`; `final-fixture-proof-summary.json` and `final-fixture-cleanup-summary.json` contain the redacted results. Full recipient/message/account rows remain restricted outside Git.
+
+Exact-ID transactional cleanup removed three inquiries, five associated deliveries (including their supported legacy/attempt/auth-recipient cascades), one disposable customer and two customer sessions. No fixture Project or customer-linked order/review/media/cart existed. The temporary conditional setting is restored to its original absence; all other settings remain unchanged. SQLite quick_check is ok and foreign_key_check has zero rows. Existing administrative/mutation audit, normal expiring operator sessions and security-retention records remain intact; no audit history was bypassed or rewritten. The earlier persistence marker files/setting were already removed. The UI cleanup attempt did not establish persistence; guarded operator cleanup restored the exact saved pre-test state.
+
+After cleanup, fresh authenticated browser checks passed Visitors, Notifications (temporary rule absent), Inquiries, Portfolio and Contact, with zero overflow, overlays or page errors. Runtime remains the intended returned candidate. No broad source/browser suites were rerun for documentation changes.

@@ -2,7 +2,7 @@
 
 This document replaces the earlier Woodsmith DeepWiki export with the current Beaman Woodworks 3.0 architecture.
 
-Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
 
 ## Overview
 
@@ -10,9 +10,9 @@ Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed 
 
 ## Stack
 
-Post-v19 technical media recovery uses `jpeg-structure.ts` to inspect the primary JPEG codestream, accepting trailing payloads without transcoding. `media.ts` computes a versioned content hash in 64 KiB chunks, caches structural results by revision, and detects observed writes/replacements during inspection. Startup/reindex refresh technical metadata while preserving editorial fields and monotonic record versions; unchanged records retain their versions. `refreshMediaTechnicalMetadata` is an explicit, audited transaction over selected indexed paths, with no missing-row deletion or assignment application. Editor saves retain server-owned technical fields, and the Media autosave queue adopts newer canonical records after local work settles. Studio image URLs include the revision; Next's local image patterns allow queries under `/media/**`. HTTP validators also include file change time. `media-crop.ts` supplies shared safe defaults and form serialization. These changes remain undeployed; JPEG structure inspection does not replace strict decoder or identity review.
+Post-v19 technical media recovery uses `jpeg-structure.ts` to inspect the primary JPEG codestream, accepting trailing payloads without transcoding. `media.ts` computes a versioned content hash in 64 KiB chunks, caches structural results by revision, and detects observed writes/replacements during inspection. Startup/reindex refresh technical metadata while preserving editorial fields and monotonic record versions; unchanged records retain their versions. `refreshMediaTechnicalMetadata` is an explicit, audited transaction over selected indexed paths, with no missing-row deletion or assignment application. Editor saves retain server-owned technical fields, and the Media autosave queue adopts newer canonical records after local work settles. Studio image URLs include the revision; Next's local image patterns allow queries under `/media/**`. HTTP validators also include file change time. `media-crop.ts` supplies shared safe defaults and form serialization. These changes are deployed; JPEG structure inspection does not replace strict decoder or identity review.
 
-The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These source changes are not yet deployed.
+The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These changes are deployed in the accepted Goal E image.
 
 - Next.js 16.3 App Router
 - React 19
@@ -245,12 +245,12 @@ The active design language is based on the Beaman Woodworks 2.0 prototypes but u
 
 ## 2026-09-01 v19 release state
 
-The validated production application is `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner repairs through `686a69c0cc5011394f35add750c29663626990f8` modify only `visual-audit/src`; the application `site` tree remains `60afd107a3b4d6c805497f79dc7cc01aaaeb38c2` at both identities.
+The retained v19 production baseline was `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner repairs through `686a69c0cc5011394f35add750c29663626990f8` modify only `visual-audit/src`; the application `site` tree remains `60afd107a3b4d6c805497f79dc7cc01aaaeb38c2` at both identities.
 
 Exact Tier 1, production-clone Tier 2, deterministic release packaging, paired backup/staged restore, deployment, route/database/search/SMTP/sidecar checks, forced-recreation persistence, legacy-host retirement, rollback/return-to-candidate, and final live-production Tier 3 passed. The authoritative full Tier-3 run is `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1`. See [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md) for exact run IDs, evidence paths, hashes, image IDs, retained diagnostic history, and classified caveats.
 # Post-v19 source update (pending release)
 
-The launch branch adds schema v14 audited, exact-match content normalization, location-neutral public defaults, a configured home hero image, a compact contact form separate from the guided commission planner, and a shared progressive scroll rail. Owner-customized persisted values survive normalization. Developer account administration and repository credit remain in technical documentation, not default commercial-page promotion. These are locally validated source changes, not a claim of deployment. Current release gates are tracked in `PLANS.md` and `docs/post-v19-launch-audit-20260902.md`.
+The launch branch adds schema v14 audited, exact-match content normalization, location-neutral public defaults, a configured home hero image, a compact contact form separate from the guided commission planner, and a shared progressive scroll rail. Owner-customized persisted values survive normalization. Developer account administration and repository credit remain in technical documentation, not default commercial-page promotion. These source changes are deployed in the accepted Goal E image. Current release gates are tracked in `PLANS.md` and `docs/post-v19-launch-audit-20260902.md`.
 
 ## Shared website intake (B1)
 

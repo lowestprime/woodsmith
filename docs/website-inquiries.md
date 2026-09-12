@@ -22,6 +22,8 @@ Operator templates may use `inquiryIntent`, `inquiryTopic`, `sourceRoute`, `sour
 
 ## Operations
 
+Goal E is deployed with schema 16 and real Managed Turnstile. Three operator-completed live submissions proved legitimate intake, quarantine without Project/mail, and conditional BCC. All live test inquiries and routing fixtures were removed. See [release evidence](goal-e-release-evidence-20260909.md).
+
 Deploy only through the normal candidate/recovery gates. Back up SQLite and the media library together. Validate v16 on a fresh disposable production snapshot; retain its hash and migration evidence outside Git. `site/scripts/verify-inquiry-clone.mts` checks the immediate v15→v16 boundary, injected ledger failure/DDL rollback, retry, idempotence, existing-table preservation, startup/reopen and unchanged snapshot bytes. Earlier prerequisite migrations keep their own identities.
 
 `site/scripts/verify-inquiry-browser.mjs` exercises the B1 forms and private review using synthetic data in an internal Docker network. It checks server action rejection/success, selected-file retry, token-free drafts, structured context, quarantine side-effect exclusion, keyboard/focus behavior, and desktop/mobile overflow and error assertions. It requires the isolated provider fixture and an initialized synthetic database; never point it at production.

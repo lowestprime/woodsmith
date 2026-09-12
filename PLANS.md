@@ -1,26 +1,14 @@
 # PLANS.md
 
-## SAFE predeployment checkpoint - Goal E remains ACTIVE
+## SAFE post-return checkpoint - Goal E remains ACTIVE
 
-2026-09-09 resumed checkpoint: minimal source/image/transport/recovery identity checks and the isolated NAS exact-candidate smoke PASS. The weekly allowance reached 98% consumed before production mutation, so the contiguous deployment/persistence/rollback/return transaction has not begun. Application build source remains `a019ec6c3e829983a20d7af939cf082420fbdb55`; NAS image remains `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`. No rebuild or new recovery was needed: current production DB contents, media inventory and runtime environment still match the accepted final recovery. Production remains accepted v19, unchanged start time, internal/HTTPS 200. Disposable NAS smoke containers are removed. See [Goal E evidence](docs/goal-e-release-evidence-20260909.md#nas-smoke-and-resumed-safe-checkpoint). Next: prepare and complete the production transaction with adequate allowance, then PR/master and master-only closure. Goal E remains ACTIVE.
+2026-09-12: exact accepted candidate is deployed, recreated, rolled back to retained v19 and returned successfully. Production container is `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, source `a019ec6c`, schema 16. DB and data/media/cache persistence proofs pass; their scoped marker fixtures are removed. Live Studio/customer routes and SMTP/auth isolation pass. Three human-completed Managed Turnstile submissions prove legitimate intake, quarantine and matching conditional BCC. Auth isolation and SMTP acceptance pass. All three inquiries, five test deliveries, the disposable customer/two sessions and temporary routing entry are removed; owner settings are restored. PR/master integration and branch consolidation remain pending. Do not repeat predeployment tests, rebuild, restore the predeployment DB, or redeploy merely for later documentation commits. Current evidence: [Goal E release ledger](docs/goal-e-release-evidence-20260909.md).
 
-## Active work packet: Goal E — final release
+## Goal E release closeout
 
-Started 2026-09-09 in ASTRA_E; single writer, no delegation. Authoritative ext4 checkout is clean at Goal-D closure `c594aba8d72c88d668fe3f1a58b694a218264ad7`, equal to upstream and GitHub. A/B1/B2/C/D are closed evidence. The current NAS/CIFS checkout is clean at `81b35c4`; deployed v19 is independently identified by source `0067488` and image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Internal and HTTPS ingress return 200.
+Technical release gates are complete. The original v19 rollback container/image and verified paired recovery remain retained. Only PR/master integration, master-only consolidation and the final completion audit remain. Reuse the unchanged accepted application/Docker/Compose tree; documentation commits require no rebuild or redeployment.
 
-Current safe checkpoint: production unchanged; storage reclamation is closed. No deployment, rollback transition, or branch deletion begun. Restricted working evidence: `/home/cbeaman/woodsmith-goal-e-20260909`.
-
-1. Current-state/gap audit: Git/production/mount endpoints verified; finish physical storage identity, recovery inventory and release gap ledger.
-2. Security/source: retain current stable Next.js 16.3.4; remediate newly reported Nodemailer, sharp and transitive dependency advisories, then run focused and final application/audit gates.
-3. Production-clone QA: real paired DB/media bytes, remaining dense Studio/contrast/performance and representative route families; reuse unchanged closed-Goal matrices.
-4. Storage: measure KEEP/DELETE/REBUILDABLE ledger; verify sufficient recovery before any deletion; reclaim/count shared NAS storage once.
-5. Candidate/recovery: clean committed linux/amd64 image, exact identity and disposable proof; fresh paired backup and verified staged restore before promotion.
-6. Live release: immutable deployment, safe provider fixtures, persistence, rollback, return and verification. Never cross this boundary without executable rollback.
-7. Git closure: push/review/merge into current master only after live proof, then consolidate remote/ext4/CIFS/NAS branches and perform final live/documentation audit.
-
-Turnstile runtime configuration is now present and independently verified without exposing values. Production has not been restarted. The accepted final paired recovery and staged restore include this operator change; resumed identity comparisons still pass. SMTP is configured; Stripe/EasyPost are absent and must retain honest degraded behavior. Direct inbound Proton forwarding remains provider-side. The two Goal-A dining-table identities remain unresolved editorial evidence, not permission to reassign.
-
-Current Goal-E source, QA, recovery, storage measurements and pending transaction gates: [release evidence](docs/goal-e-release-evidence-20260909.md).
+The canonical business address remains woodsmithbb@proton.me. SMTP acceptance is proven; inbox placement and arbitrary inbound Proton forwarding are provider-side. Stripe/EasyPost remain unconfigured. The two Goal-A dining-table identities remain explicitly unassigned.
 
 ## Completed work packet: Goal D — public copy and profile proportions
 

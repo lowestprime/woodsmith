@@ -2,7 +2,7 @@
 
 This guide covers the private Woodshop dashboard at `/studio`.
 
-Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
 
 ## Pending post-v19 content update
 

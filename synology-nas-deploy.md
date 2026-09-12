@@ -1,6 +1,6 @@
 # Beaman Woodworks Synology NAS Deployment Guide
 
-Current final-release status and exact verification boundaries: [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
 
 ## Goal
 
@@ -203,7 +203,7 @@ docker compose -f docker-compose.synology.yml up -d
 
 The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
 
-The source SQLite schema ledger applies through version 15. Versions 1-8 persist normalized media, commerce, audit, drafts, quotas and folder rules. Versions 9-11 add notification and project lifecycle records. Version 12 minimizes visitor/audit data; version 13 adds synchronized FTS5 search. Version 14 normalizes exact legacy public copy with before/after history. Version 15 inserts missing operator correspondence policies/templates and account-link recipient provenance without replacing existing site settings or custom policies. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
+The source SQLite schema ledger applies through version 16. Version 16 adds verified website inquiries and quarantine. Versions 1-8 persist normalized media, commerce, audit, drafts, quotas and folder rules. Versions 9-11 add notification and project lifecycle records. Version 12 minimizes visitor/audit data; version 13 adds synchronized FTS5 search. Version 14 normalizes exact legacy public copy with before/after history. Version 15 inserts missing operator correspondence policies/templates and account-link recipient provenance without replacing existing site settings or custom policies. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
 
 Before promoting schema v15, prove migration, idempotence, and customization preservation on a disposable production clone. Authentication mail queued before recipient provenance existed fails closed on retry; request a fresh reset/verification link instead. Global notification BCC is now editable in Notifications Overview and is never copied into authentication-token mail. Verify routing in disposable state, not by changing production recipients during ordinary testing. See [notification routing](docs/notification-routing.md).
 
@@ -461,7 +461,7 @@ The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-
 
 ## Validated v19 deployment
 
-The current production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
+The retained v19 rollback baseline is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
 
 Release `0067488-20260831T050142Z` passed deterministic package hashing, production-clone Tier 2, paired backup/staged restore, immutable deployment, post-deploy database/routes/search/SMTP/sidecar checks, forced recreation, rollback/return-to-candidate, and final Tier 3. The paired backup manifest is `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`. Exact artifact paths, hashes, and retained rollback inputs are in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).
 
@@ -478,7 +478,7 @@ Release `0067488-20260831T050142Z` passed deterministic package hashing, product
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.
 ## Post-v19 migration gate
 
-The active launch branch adds schema v14 exact-match public-copy normalization and v15 operator-notification defaults/auth-recipient provenance. Migrations run transactionally, retain arbitrary owner customization and existing routing/templates, and fail if required audit recording fails. The 2026-09-04 read-only production snapshot passed migration, rollback injection, customized-content preservation, and two application initializations in an isolated clone. Exact source/report hashes and the verifier are recorded in `docs/post-v19-launch-audit-20260902.md`. A fresh paired database/media backup and staged restore remain mandatory. This database-only proof and local source/build checks do not authorize deployment; v19 rollback assets and evidence remain retained. After the new candidate is deployed, expect schema 15; the unchanged v19 runtime still reports schema 13.
+The active launch branch adds schema v14 exact-match public-copy normalization and v15 operator-notification defaults/auth-recipient provenance. Migrations run transactionally, retain arbitrary owner customization and existing routing/templates, and fail if required audit recording fails. The 2026-09-04 read-only production snapshot passed migration, rollback injection, customized-content preservation, and two application initializations in an isolated clone. Exact source/report hashes and the verifier are recorded in `docs/post-v19-launch-audit-20260902.md`. A fresh paired database/media backup and staged restore remain mandatory. This database-only proof and local source/build checks do not authorize deployment; v19 rollback assets and evidence remain retained. The deployed Goal E candidate uses schema 16. The retained v19 image was also verified against the current compatible schema-16 state during rollback.
 
 ## Website intake configuration and schema v16
 
@@ -489,3 +489,16 @@ Before promotion, run the fresh disposable inquiry-clone gate against a read-onl
 ### Conditional website-generated BCC (B2 source)
 
 B2 uses the existing `settings` table with an independent `notification-conditional-routing` entry; there is no new schema migration, environment variable or SMTP configuration. Missing rules are an empty no-op, and saved owner routing/templates/settings remain intact. SQLite backups include the rules; keep the established DB/media recovery procedure. Rules affect only newly queued legitimate B1 inquiry notices and planner confirmations. Delivery retries preserve the original To/CC/BCC snapshot. Account links and quarantine remain isolated. [Notification routing](docs/notification-routing.md) defines conditions, limits and Studio recovery. B2's synthetic build/browser checks are source acceptance, not production deployment or live provider delivery proof. Normal release/recovery gates still apply; `node:sqlite` continues to emit Node's experimental API warning, and public deployment should move to Postgres, LibSQL or another stable production database.
+
+
+## Current immutable runtime control
+
+Goal E uses Compose project `woodsmith-e-release` on external network `woodsmith_default`. The restricted release directory `/volume2/docker_ssd/woodsmith/releases/goal-e-20260909` holds `accepted-compose.yml`, `immutable-runtime-override.json` (the exact accepted image and external network), and `promote-transaction.py`. The original v19 container is stopped as `woodsmith-v19-retained-goal-e`; keep it, its image and paired recovery.
+
+Recreate only the intended image with the current runtime environment:
+
+```bash
+docker compose --project-name woodsmith-e-release --env-file /volume2/docker_ssd/woodsmith/.env -f /volume2/docker_ssd/woodsmith/releases/goal-e-20260909/accepted-compose.yml -f /volume2/docker_ssd/woodsmith/releases/goal-e-20260909/immutable-runtime-override.json up -d --no-build --pull never --force-recreate woodsmith
+```
+
+The exercised compatibility rollback stops/disconnects the candidate, activates the retained v19 container on the same DB/media/cache mounts and ingress, then returns to the exact candidate. It retains current writes; it does not downgrade the database or substitute the predeployment snapshot. Schema 16 compatibility was first proved in the isolated clone, then production persistence fixtures and SQLite integrity passed at every actual transition. Use the paired staged-restoration procedure above for state recovery when compatibility/integrity checks fail. Never print resolved environment or full container inspection in shared evidence.
