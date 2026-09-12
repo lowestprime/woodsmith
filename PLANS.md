@@ -1,14 +1,14 @@
 # PLANS.md
 
-## SAFE post-return checkpoint - Goal E remains ACTIVE
+## Completed work packet: Goal E — final release
 
-2026-09-12: exact accepted candidate is deployed, recreated, rolled back to retained v19 and returned successfully. Production container is `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, source `a019ec6c`, schema 16. DB and data/media/cache persistence proofs pass; their scoped marker fixtures are removed. Live Studio/customer routes and SMTP/auth isolation pass. Three human-completed Managed Turnstile submissions prove legitimate intake, quarantine and matching conditional BCC. Auth isolation and SMTP acceptance pass. All three inquiries, five test deliveries, the disposable customer/two sessions and temporary routing entry are removed; owner settings are restored. PR/master integration and branch consolidation remain pending. Do not repeat predeployment tests, rebuild, restore the predeployment DB, or redeploy merely for later documentation commits. Current evidence: [Goal E release ledger](docs/goal-e-release-evidence-20260909.md).
+**Goal E outcome: COMPLETE.** Accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55` is deployed as NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, returned container `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, schema 16. Immutable promotion, recreation/persistence, real v19 rollback and return pass. All three human Turnstile submissions, legitimate/quarantine behavior, conditional BCC, SMTP acceptance and auth isolation pass; scoped live fixtures are cleaned.
 
-## Goal E release closeout
+[PR #8](https://github.com/lowestprime/woodsmith/pull/8) merged at `65a8e5f55207345f56d4f3e8f65ee367258788a5`. GitHub, authoritative WSL, CIFS and NAS each contain master only; deliberate tags/history remain. Final master application/Docker/Compose trees equal the accepted deployed source. Post-consolidation live identity, SQLite/foreign keys, 3,187-file media inventory, authenticated Studio/Visitors/Notifications/Inquiries and public Contact/Portfolio checks pass.
 
-Technical release gates are complete. The original v19 rollback container/image and verified paired recovery remain retained. Only PR/master integration, master-only consolidation and the final completion audit remain. Reuse the unchanged accepted application/Docker/Compose tree; documentation commits require no rebuild or redeployment.
+The original v19 rollback container/image and final paired recovery/staged restore remain retained. No production secrets, runtime databases, cookies, fixture credentials or recipient configuration entered Git. [The release ledger](docs/goal-e-release-evidence-20260909.md#completion-contract-audit) records all 25 requirements and exact evidence.
 
-The canonical business address remains woodsmithbb@proton.me. SMTP acceptance is proven; inbox placement and arbitrary inbound Proton forwarding are provider-side. Stripe/EasyPost remain unconfigured. The two Goal-A dining-table identities remain explicitly unassigned.
+Canonical business address: woodsmithbb@proton.me. SMTP acceptance does not prove inbox placement. Arbitrary inbound Proton forwarding remains an explicit provider-side operator item; Stripe/EasyPost are honestly unconfigured. The two Goal-A dining-table identities remain unassigned. Existing Node SQLite experimental caveat remains documented. Stop after Goal E; no next work packet is authorized.
 
 ## Completed work packet: Goal D — public copy and profile proportions
 

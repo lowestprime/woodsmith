@@ -1,6 +1,6 @@
 # Goal E release evidence
 
-Status: SAFE POST-RETURN CHECKPOINT, 2026-09-12. Exact candidate is deployed; production recreation, real v19 rollback and return pass. Final live fixture cleanup is complete; Git/master closure is in progress. Earlier predeployment sections below are historical evidence, not instructions to repeat those gates.
+Status: **COMPLETE**, 2026-09-12. Exact candidate deployed; live acceptance, fixture cleanup, persistence, real v19 rollback/return, PR merge and master-only consolidation pass. Earlier predeployment sections below are closed historical evidence.
 
 ## Source and release-gap classification
 
@@ -109,3 +109,44 @@ The restricted full proof SHA-256 is `eb67088b34b89d42b16a08afeef9a7d1420da188e8
 Exact-ID transactional cleanup removed three inquiries, five associated deliveries (including their supported legacy/attempt/auth-recipient cascades), one disposable customer and two customer sessions. No fixture Project or customer-linked order/review/media/cart existed. The temporary conditional setting is restored to its original absence; all other settings remain unchanged. SQLite quick_check is ok and foreign_key_check has zero rows. Existing administrative/mutation audit, normal expiring operator sessions and security-retention records remain intact; no audit history was bypassed or rewritten. The earlier persistence marker files/setting were already removed. The UI cleanup attempt did not establish persistence; guarded operator cleanup restored the exact saved pre-test state.
 
 After cleanup, fresh authenticated browser checks passed Visitors, Notifications (temporary rule absent), Inquiries, Portfolio and Contact, with zero overflow, overlays or page errors. Runtime remains the intended returned candidate. No broad source/browser suites were rerun for documentation changes.
+
+
+## Master integration and final live audit
+
+[PR #8](https://github.com/lowestprime/woodsmith/pull/8) merged the reviewed 137-file Post-v19 release into current master without rewriting history. Merge SHA: `65a8e5f55207345f56d4f3e8f65ee367258788a5`. Master is byte-equivalent to accepted `a019ec6c` for `site`, `Dockerfile`, `.dockerignore` and `docker-compose.synology.yml`. Final closure edits are documentation-only; no rebuild or redeployment.
+
+Remote GitHub, authoritative WSL, shared CIFS Git view and NAS checkout each have **master only**. Both older NAS branches were proven ancestors of master before normal deletion; their stale upstream settings were removed when Git's upstream-based deletion check initially refused. Deliberate tags were retained. CIFS source `//192.168.1.126/docker_ssd/woodsmith` and NAS `/volume2/docker_ssd/woodsmith` still resolve to the same project; matching branch/HEAD and NAS clean status prove the shared checkout. A redundant slow CIFS status scan is not a separate source/recovery copy.
+
+After consolidation, the returned candidate/container remains exact, retained v19 remains stopped, and paired recovery manifest identity still matches. SQLite schema 16, quick_check ok, zero foreign-key errors, 3,187 media files / 1,978,750,161 bytes and expected writable mounts pass. Active fixture inquiry/customer counts are zero; the conditional setting is absent as before testing. Fresh authenticated Visitors/Notifications/Inquiries and public Portfolio/Contact browser checks pass with zero overflow, overlays or application page errors. HTTPS returns 200. No production transition was repeated during Git closure.
+
+## Completion-contract audit
+
+| # | Requirement | Authoritative evidence / result |
+| --- | --- | --- |
+| 1 | A/B1/B2/C/D intact | Closed evidence retained; Goal-D commit is an ancestor of final master; deployed input tree equals accepted final source. PASS. |
+| 2 | Remaining release-only QA | Source/clone acceptance plus real live intake, routing, auth and final route checks above. PASS. |
+| 3 | Framework/security | Retained stable Next 16.3.4/security gate, patched dependencies and zero reported vulnerabilities at accepted boundary. PASS. |
+| 4 | Final source gates | 254 tests, typecheck, lint and build/standalone gate pass; no subsequent application/Docker input change. PASS. |
+| 5 | Production-clone data/media | Paired real-media clone, migration/data proof and bounded rendered acceptance above. PASS. |
+| 6 | Provider truth | Managed Turnstile submissions, SMTP acceptance/auth isolation; Stripe/EasyPost absent; Proton inbound operator item explicitly external. PASS. |
+| 7 | Physical storage identity | CIFS/Samba/NAS identity proven and reused; shared project counted once. PASS. |
+| 8 | Safe measured reclamation | Btrfs-aware ledger; volume1 measured 2,797,539,328 bytes reclaimed; no unsupported volume2 claim. PASS. |
+| 9 | Exact clean amd64 candidate | Source a019ec6c, immutable image/config/transport and UID readability records above. PASS. |
+| 10 | Fresh paired recovery | Final post-Turnstile manifest 3f2a340a… includes DB, 3,187 media files and restricted environment. PASS. |
+| 11 | Staged restore before deploy | Accepted final staged DB/media/environment verified before promotion. PASS. |
+| 12 | Immutable deployment | Recorded promotion/returned image 9424406a…; no rebuild. PASS. |
+| 13 | Production data/runtime | Schema 16, quick_check, foreign keys, expected writable mounts, media and HTTPS pass. |
+| 14 | Live Studio/customer/intake/routing | Authenticated route evidence, disposable customer lifecycle, three human inquiries and exact positive BCC proof. PASS. |
+| 15 | Recreation persistence | DB fixture and all three mounted-state hash probes pass before/after forced recreation. PASS. |
+| 16 | Real rollback | Original v19 container reactivated on compatible current state; identity/DB/media/HTTPS pass. |
+| 17 | Return/reverification | Intended image returned; persistence and final live checks pass. |
+| 18 | Master integration | PR #8 merged into current master at 65a8e5f…; no force push or history rewrite. PASS. |
+| 19 | Remote master only | Final remote head query: master only. PASS. |
+| 20 | WSL master only | Final local branch query: master only. PASS. |
+| 21 | CIFS master only | Shared Git-view branch/HEAD query: master only, same final checkout. PASS. |
+| 22 | NAS master only | Final NAS branch query: master only; source equality proven before deletions. PASS. |
+| 23 | Documentation current | Existing WIP completed; current release, schema, runtime control, live proof/cleanup and topology documented. PASS. |
+| 24 | No private state in Git | Release diff/paths checked against runtime secrets and private fixture identities; runtime/recovery/evidence excluded. PASS. |
+| 25 | No undocumented assumption | All boundaries explicit; dining-table identity unknowns unassigned; provider-only and SQLite caveats retained. PASS. |
+
+Retained test residue is limited to existing administrative/mutation audit, normal expiring operator sessions and security-retention records; these were not rewritten to erase history. Full fixture proof and cleanup manifests remain restricted outside Git. Production rollback and paired recovery remain retained.
