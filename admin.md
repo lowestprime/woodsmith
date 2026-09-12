@@ -2,6 +2,14 @@
 
 This guide covers the private Woodshop dashboard at `/studio`.
 
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+
+## Pending post-v19 content update
+
+Schema v14 replaces only exact legacy default wording in pages, site settings, and seeded biographies, with before/after records in `content_normalization_history`. Divergent owner-written text is not replaced. Only the untouched default developer profile is removed from public display; its account, permissions, and Studio controls remain available. The ordinary public-profile control can restore visibility after migration. No production content has been changed by local validation. `/contact` becomes a compact inquiry form; `/commissions` retains the guided planner. The home page now displays its configured hero media.
+
+The data-only `post-v19-public-copy-v2` startup refinement removes the complete known media-review detail arrays for Dining Room Table and Spice Rack, preserving divergent owner edits. It records before/after values in the existing history table and applies once; no schema migration is added. Profile photos and initials use consistent compact/public/editor sizes. The two original bundled profile illustrations display as initials; genuine owner media and custom gradient values remain available. Local upload previews are released when replaced or unmounted.
+
 ## Login
 
 - Open `/studio/login`.
@@ -84,6 +92,10 @@ The desk keeps one active inspector beside the thumbnail browser on desktop; pho
 
 Uploads, filesystem refreshes, folder-rule application, assignment recommendations, rename, batch organization, AI analysis/cleanup, rollback, and file deletion remain explicit operations. Deletion uses a Cancel-first modal, closes with `Esc`, restores focus to its trigger, and removes the file plus saved references only after confirmation. Editing a source-folder rule recalculates the dry-run preview but never applies the rule automatically.
 
+On the post-v19 branch, **Refresh preview** in the selected Media inspector flushes pending edits, reads that source again, records technical status/dimensions/content revision, and updates the preview without reloading the route. It preserves the original file, assignment, review state, tags, and crop. A missing source retains its indexed record and an explicit failure. This is narrower than **Rescan files**, whose existing full-library reconciliation can remove missing records; use the selected preview refresh when investigating a missing file. Both operations preserve existing technical results against stale editor snapshots.
+
+Complete JPEG primary images may have appended payloads, including Motion Photo data. Their primary end marker need not be near the end of the file. The inspector validates JPEG marker structure; it does not certify entropy decoding or photo identity. Defaults are centered focal coordinates, zoom 1, and a free frame; legacy invalid values are normalized within focal 0–100 and zoom 1–4. Video and unavailable-image metadata forms retain a valid crop frame. Actual malformed/truncated sources remain labeled unavailable; repair raw bytes only through a separate provenance-preserving maintenance operation. See the launch audit for real-byte evidence and unresolved source paths.
+
 The **Organize selected** panel uses `{name}`, `{index}`, and `{folder}` rename tokens. Every batch is preflighted for collisions, limited to 96 records, recorded in `media_operation_batches` / `media_operation_items`, and applied with one SQLite reference transaction after the filesystem moves succeed. If a move or database update fails, completed moves are reversed. Rollback performs the same checks in reverse and stops rather than overwriting a media record or normalized link changed after the original batch. Back up `site/data/` and the mounted photo tree together before large production reorganizations.
 
 Synology sidecar files such as `SYNOINDEX_MEDIA_INFO`, `.DS_Store`, `Thumbs.db`, AppleDouble `._*`, `@eaDir`, and `SYNOFILE_THUMB*` files are filtered during indexing and querying. Manual media assignments take priority over heuristic clustering. The verification queue offers at most one sufficiently separated best-piece proposal per unassigned image; ambiguous matches remain in the library for manual review. Inspecting a candidate never assigns it.
@@ -111,7 +123,7 @@ Public piece and shop cards request responsive optimized thumbnails rather than 
 
 ### Visitor map
 
-Open **Notifications → Visitors** for privacy-preserving aggregate analytics. The workspace shows unique visitors, sessions, and pageviews; a paginated trend; an accessible country map and equivalent text list; recent minimized sessions; and the active pseudonym-key cohorts. The map is responsive in both themes and never replaces the text alternative.
+Open **Visitors** in the top-level Studio navigation (`/studio?panel=visitors`) for privacy-preserving analytics. Range and recent-session page are URL-addressable (`visitorRange` and `visitorPage`) and survive reload and Back/Forward. The workspace shows unique visitors, sessions and pageviews; a complete daily UTC trend with expandable numeric values; a locally rendered country map with an equivalent country/region table; ten recent minimized sessions per page, including available referrer hosts; and stored pseudonym-key cohorts. First and last UTC days may be partial in the selected rolling window. Country visitor totals may overlap; missing or unresolved geography is never assigned a location. The map has no pointer-only information or external requests. Privacy controls and confirmed, policy-bounded purge remain here.
 
 - visitor-session email is represented by a dedicated notification policy and is disabled by default; session recording alone does not send mail
 - enabling that policy is an explicit administrative action and still requires a working SMTP configuration and recipient policy
@@ -137,6 +149,10 @@ Archive, cancel, and reopen preserve the project and record actor/time/reason in
 
 ### Orders
 
+Projects, Orders and Reviews share a searchable record list with 20 entries per page. Search and pagination preserve the selected editor. Selecting another record waits for pending autosave work; validation failures and conflicts keep the original editor open. Selecting a record moves keyboard focus to its heading. List rows expand to fit long labels, and mobile pagination stays visible even when a save is blocked.
+
+Orders and Reviews adopt refreshed server records without rebuilding the workspace. A newer saved record is adopted only when local edits have settled; pending edits and conflicts retain their existing queue. Review deletion removes the record from the list in place. Invoice and shipping-label actions first flush pending order edits and still require their provider configuration.
+
 Orders can be reviewed and updated from the dashboard. When providers are configured, the dashboard can create Stripe invoices, request EasyPost shipping labels, store tracking numbers, and update payment/shipping state.
 
 ### Reviews
@@ -145,9 +161,13 @@ Reviews are moderated from the dashboard. They can remain draft, be published, o
 
 ### Notifications
 
-The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Visitors**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
+The compact Notifications workspace has **Overview**, **Types**, **Templates**, **Delivery**, **Audit**, and **SMTP** views. The tab list supports arrow keys plus Home/End and exposes one labelled active tabpanel. Password resets, verification links, account notices, custom requests, project updates, order updates, invoices, shipping notices, optional visitor notices, and authenticated SMTP tests all use typed policies and allowlisted template variables.
 
 Policies control enablement, recipient mode, optional forwarding recipients, retention, maximum attempts, and retry delay. Disabled categories are recorded as suppressed rather than sent. Manual retry rechecks the current policy and cannot bypass a disabled category. Idempotency keys prevent duplicate logical deliveries, and bounded retry attempts retain redacted error summaries for diagnosis.
+
+In the post-v19 source, **Overview -> Global forwarding recipients (BCC)** edits the existing delivery default without changing SMTP credentials or Builder email. Clear the field to remove global copies. **Conditional website-generated BCC** adds up to 20 rules for legitimate inquiry operator notices and planner customer confirmations. Add a named rule with at least one condition and private recipients; all conditions must match. Existing rules autosave; Remove/Clear stops their copies on new mail. Defaults are empty. The Overview conditional preview uses saved rules and hypothetical context, never saves or sends examples, and shows global/type/event/conditional BCC excluding To/CC. Types retains its base preview without inquiry context. Validation errors provide **Retry save**; concurrent changes require explicitly discarding local edits and adopting the latest saved record. Account links and quarantine remain excluded. [Notification routing](docs/notification-routing.md) documents every address role, condition and customer-message path.
+
+Verification/reset links go only to the requesting account, never to global or per-Type copies. Schema v15 records recipient provenance for new account-link mail; old queued links lacking it must be requested again. New inquiry, customer reply, review, and order-review notices are separate from buyer confirmations. Deployment requires the migration/recovery gates; these source changes are not an assertion that production has already changed.
 
 Delivery rows are summary-only until opened; message bodies and attempt details are loaded on demand. SMTP verification reports host/port/sender and categorized failures but never returns or renders `SMTP_PASSWORD`. Delivery is reported as successful only when the SMTP transport accepts the primary recipient. Configuration, authentication, sender, connection, and recipient failures remain explicit instead of being reported as sent.
 
@@ -237,3 +257,7 @@ Do not copy a live WAL database file by itself. Follow the paired runtime-state 
 Production is validated at application source `0067488abb058829f3b94584c02ea666e552c9a8` and NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The final audit runner is `686a69c0cc5011394f35add750c29663626990f8`; all post-application changes are confined to `visual-audit/src`, and the application `site` tree is unchanged.
 
 The paired backup manifest `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`, staged restore, deployment, forced-recreation persistence, sidecar/SMTP/search checks, rollback/return-to-candidate, and final Tier-3 archive all passed. Keep the rollback image, paired backup, staged restore evidence, and rollback-used state through the operational stability window. Exact records are indexed in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).
+
+## Website inquiry review
+
+Use **Studio → Inquiries** for general/piece messages and full-planner inquiry records. **Quarantine** shows deterministic combined-signal solicitation with its classification reasons; these records never enter Projects or queue/lead-time calculations. Review is read-only and administrator-only. Existing project access controls remain unchanged. Legitimate general messages notify the Builder address; planner submissions retain their customer confirmation. Configure runtime Managed Turnstile keys before enabling online intake; failed checks preserve form values and planner files for retry. Conditional copies are managed separately in Notifications and cannot release or send quarantined inquiries. See [website inquiries](docs/website-inquiries.md).

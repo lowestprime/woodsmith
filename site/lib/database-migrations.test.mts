@@ -5,12 +5,31 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { applySchemaMigrations } from "./database-migrations.ts";
+import {
+  PUBLIC_COPY_NORMALIZATION_ID,
+  publicPageCopyReplacements,
+  scientistDeskDetails
+} from "./public-copy-normalization.ts";
 
 function fixtureDatabase(options: { omitPriceColumn?: boolean } = {}) {
   const directory = mkdtempSync(path.join(tmpdir(), "woodsmith-migration-"));
   const db = new DatabaseSync(path.join(directory, "fixture.sqlite"));
   db.exec(`
     PRAGMA foreign_keys = ON;
+    CREATE TABLE users (
+      email TEXT PRIMARY KEY,
+      display_name TEXT NOT NULL DEFAULT '',
+      headline TEXT NOT NULL DEFAULT '',
+      bio TEXT NOT NULL DEFAULT '',
+      public_profile INTEGER NOT NULL DEFAULT 0,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT ''
+    ) STRICT;
+    CREATE TABLE settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    ) STRICT;
     CREATE TABLE pages (
       slug TEXT PRIMARY KEY,
       title TEXT NOT NULL DEFAULT '',
@@ -111,6 +130,56 @@ function fixtureDatabase(options: { omitPriceColumn?: boolean } = {}) {
   return { db, directory };
 }
 
+test("schema 16 rolls back DDL and ledger, retries, and preserves arbitrary persisted customizations", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 15 });
+    db.prepare("INSERT INTO settings VALUES ('owner-extension', ?, 'original')").run('{ "nested": [1, {"keep":true}], "forwardTo":"private@example.test" }');
+    db.exec("UPDATE notification_policies SET label = 'Custom owner policy', enabled = 0");
+    const tables = (db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name").all() as Array<{ name: string }>).map(row => row.name);
+    const snapshot = () => Object.fromEntries(tables.map(table => [table, db.prepare(`SELECT * FROM "${table}"`).all()]));
+    const before = snapshot();
+    db.exec("CREATE TRIGGER reject_inquiry_migration BEFORE INSERT ON schema_migrations WHEN NEW.version = 16 BEGIN SELECT RAISE(ABORT, 'v16 failure injection'); END");
+    assert.throws(() => applySchemaMigrations(db), /v16 failure injection/);
+    assert.deepEqual(snapshot(), before);
+    assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'website_inquiries'").get(), undefined);
+    db.exec("DROP TRIGGER reject_inquiry_migration");
+    assert.deepEqual(applySchemaMigrations(db).applied.map(row => row.version), [16]);
+    const after = snapshot();
+    for (const table of tables.filter(table => table !== "schema_migrations")) assert.deepEqual(after[table], before[table], table);
+    assert.deepEqual(applySchemaMigrations(db).applied, []);
+    assert.equal(db.prepare("SELECT count(*) AS n FROM website_inquiries").get()!.n, 0);
+    const reopened = new DatabaseSync(path.join(directory, "fixture.sqlite"));
+    try {
+      assert.deepEqual(applySchemaMigrations(reopened).applied, []);
+      assert.equal(reopened.prepare("PRAGMA quick_check").get()!.quick_check, "ok");
+      assert.deepEqual(reopened.prepare("SELECT * FROM settings").all(), before.settings);
+    } finally { reopened.close(); }
+  } finally { db.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
+test("schema 15 adds operator types without changing customized settings or policies and rolls back failures", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 14 });
+    const settings = '{ "email": {"forwardTo":"custom@example.test"}, "ownerField": [1,2,3] }';
+    db.prepare("INSERT INTO settings VALUES ('site',?,'old')").run(settings);
+    db.exec("UPDATE notification_policies SET label = 'Owner custom label', forward_recipients_json = '[\"owner@example.test\"]' WHERE category = 'project_status'");
+    const policy = db.prepare("SELECT * FROM notification_policies WHERE category = 'project_status'").get();
+    db.exec("CREATE TRIGGER reject_operator_policy BEFORE INSERT ON notification_policies WHEN NEW.category = 'customer_reply_admin' BEGIN SELECT RAISE(ABORT, 'test rejection'); END");
+    assert.throws(() => applySchemaMigrations(db), /test rejection/);
+    assert.equal(db.prepare("SELECT version FROM schema_migrations WHERE version = 15").get(), undefined);
+    assert.equal(db.prepare("SELECT name FROM sqlite_master WHERE name = 'notification_auth_recipients'").get(), undefined);
+    assert.equal(db.prepare("SELECT category FROM notification_policies WHERE category = 'customer_inquiry_admin'").get(), undefined);
+    db.exec("DROP TRIGGER reject_operator_policy");
+    assert.deepEqual(applySchemaMigrations(db).applied.map(row => row.version), [15, 16]);
+    assert.deepEqual(applySchemaMigrations(db).applied, []);
+    assert.equal((db.prepare("SELECT value FROM settings WHERE key = 'site'").get() as { value: string }).value, settings);
+    assert.deepEqual(db.prepare("SELECT * FROM notification_policies WHERE category = 'project_status'").get(), policy);
+    assert.equal((db.prepare("SELECT COUNT(*) AS n FROM notification_policies").get() as { n: number }).n, 13);
+  } finally { db.close(); rmSync(directory, { recursive: true, force: true }); }
+});
+
 test("schema migrations are additive, idempotent, and preserve reconciled normalized-link truth", () => {
   const { db, directory } = fixtureDatabase();
   try {
@@ -170,7 +239,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     const second = applySchemaMigrations(db);
     assert.equal(first.quickCheckBefore, "ok");
     assert.equal(first.quickCheckAfter, "ok");
-    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
+    assert.deepEqual(first.applied.map((entry) => entry.version), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
     assert.equal(second.applied.length, 0);
 
     const policies = (db.prepare(`SELECT slug, price_mode AS priceMode, price_cents AS priceCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode FROM pieces ORDER BY slug`).all() as Array<Record<string, unknown>>).map((row) => ({ ...row }));
@@ -230,8 +299,8 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     assert.deepEqual(
       { ...notificationCounts },
       {
-        policies: 10,
-        templates: 10,
+        policies: 13,
+        templates: 13,
         deliveries: 1
       }
     );
@@ -260,7 +329,7 @@ test("schema migrations are additive, idempotent, and preserve reconciled normal
     ]);
 
     const migrationCount = db.prepare("SELECT COUNT(*) AS n FROM schema_migrations").get() as { n: number };
-    assert.equal(migrationCount.n, 13);
+    assert.equal(migrationCount.n, 16);
     const searchStatus = db.prepare(`
       SELECT expected_documents AS expectedDocuments,
              indexed_documents AS indexedDocuments,
@@ -306,13 +375,13 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [7, 8, 9, 10, 11, 12, 13]
+      [7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     );
     const policyCount = db.prepare(`
         SELECT COUNT(*) AS count
         FROM notification_policies
       `).get() as { count: number };
-    assert.equal(policyCount.count, 10);
+    assert.equal(policyCount.count, 13);
 
     const restart = applySchemaMigrations(db);
     assert.equal(restart.applied.length, 0);
@@ -323,7 +392,7 @@ test("a real schema-version-6 fixture upgrades through current and remains idemp
     `).all() as Array<{ version: number }>;
     assert.deepEqual(
       versions.map((row) => row.version),
-      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
+      [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     );
   } finally {
     db.close();
@@ -355,7 +424,7 @@ test("a schema-version-10 fixture adds the disabled visitor-session policy", () 
       upgrade.applied.map(
         (entry) => entry.version
       ),
-      [11, 12, 13]
+      [11, 12, 13, 14, 15, 16]
     );
     assert.deepEqual(
       {
@@ -511,7 +580,7 @@ test("schema version 12 scrubs legacy visitor identifiers and audit private data
       applySchemaMigrations(db).applied.map(
         (entry) => entry.version
       ),
-      [13]
+      [13, 14, 15, 16]
     );
     assert.equal(
       applySchemaMigrations(db).applied.length,
@@ -523,6 +592,215 @@ test("schema version 12 scrubs legacy visitor identifiers and audit private data
       recursive: true,
       force: true
     });
+  }
+});
+
+test("schema version 14 normalizes only exact legacy public copy and records before-after evidence", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 13 });
+    const stamp = "2026-09-02T12:00:00.000Z";
+    const homeIntro = publicPageCopyReplacements.find(
+      (entry) => entry.slug === "home" && entry.field === "intro"
+    )!;
+    const portfolioBody = publicPageCopyReplacements.find(
+      (entry) => entry.slug === "portfolio" && entry.field === "body"
+    )!;
+    const processIntro = publicPageCopyReplacements.find(
+      (entry) => entry.slug === "process" && entry.field === "intro"
+    )!;
+
+    const insertPage = db.prepare(`
+      INSERT INTO pages (slug, intro, body, updated_at)
+      VALUES (?, ?, ?, ?)
+    `);
+    insertPage.run("home", homeIntro.from, "Owner-written home body", stamp);
+    insertPage.run("portfolio", "Owner-written portfolio intro", portfolioBody.from, stamp);
+    insertPage.run("process", processIntro.from, "Owner-written process body", stamp);
+
+    db.prepare(`
+      INSERT INTO pieces (
+        slug, status, publication_status, details_json, updated_at
+      ) VALUES (?, 'commission', 'published', ?, ?)
+    `).run(
+      "scientists-desk",
+      JSON.stringify([
+        "Archival media is still being verified before additional photos are published.",
+        "Dimensions, cable handling, and drawer options are set during the commission review.",
+        "The public listing remains available so buyers can reference the build while media review is in progress."
+      ]),
+      stamp
+    );
+
+    const legacySettings = {
+      brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop.",
+      navigation: [
+        { label: "Workshop", href: "/" },
+        { label: "Portfolio", href: "/portfolio" },
+        { label: "Shop", href: "/shop" },
+        { label: "About", href: "/about" },
+        { label: "Contact", href: "/contact" }
+      ],
+      homeSections: [
+        {
+          key: "hero",
+          title: "Tables, cabinetry, benches, and smaller household pieces made for steady daily use.",
+          copy: "View finished work, current availability, and lead-time guidance from one woodshop website."
+        }
+      ],
+      homeServices: [
+        {
+          id: "portfolio",
+          body: "Finished pieces with verified photography, materials, dimensions, and build notes."
+        }
+      ],
+      footer: {
+        introHeading: "Beaman Woodworks",
+        introBody: "Furniture, cabinetry, and small-batch work made in the Beaman woodshop.",
+        groups: [
+          {
+            id: "website-credit",
+            heading: "Website",
+            visible: true,
+            order: 20,
+            items: [
+              { id: "developer", label: "Design & development", value: "Cooper Beaman", url: "", type: "text", visible: true, newTab: false, order: 10 },
+              { id: "developer-email", label: "Email", value: "cooperbeaman@proton.me", url: "mailto:cooperbeaman@proton.me", type: "email", visible: true, newTab: false, order: 20 }
+            ]
+          },
+          {
+            id: "links",
+            heading: "Information",
+            visible: true,
+            order: 30,
+            items: [
+              { id: "care", label: "Care & warranty", value: "Care & warranty", url: "/care-and-warranty", type: "internal-link", visible: true, newTab: false, order: 10 },
+              { id: "repository", label: "Website source", value: "GitHub repository", url: "https://x.gd/woodsmith_git", type: "external-link", visible: true, newTab: true, order: 20 }
+            ]
+          }
+        ]
+      }
+    };
+    db.prepare(`INSERT INTO settings (key, value, updated_at) VALUES ('site', ?, ?)`)
+      .run(JSON.stringify(legacySettings), stamp);
+
+    const upgrade = applySchemaMigrations(db);
+    assert.deepEqual(upgrade.applied.map((entry) => entry.version), [14, 15, 16]);
+
+    const pages = db.prepare(`
+      SELECT slug, intro, body FROM pages ORDER BY slug
+    `).all() as Array<Record<string, unknown>>;
+    assert.deepEqual(pages.map((row) => ({ ...row })), [
+      { slug: "home", intro: homeIntro.to, body: "Owner-written home body" },
+      { slug: "portfolio", intro: "Owner-written portfolio intro", body: portfolioBody.to },
+      { slug: "process", intro: processIntro.to, body: "Owner-written process body" }
+    ]);
+
+    const piece = db.prepare(`SELECT details_json AS detailsJson FROM pieces WHERE slug = 'scientists-desk'`).get() as { detailsJson: string };
+    assert.deepEqual(JSON.parse(piece.detailsJson), scientistDeskDetails);
+
+    const settings = JSON.parse(String(db.prepare(`SELECT value FROM settings WHERE key = 'site'`).get().value)) as Record<string, unknown>;
+    assert.equal(settings.brandTagline, "Furniture and cabinetry from the Beaman woodshop.");
+    assert.deepEqual(settings.navigation, [
+      { label: "Workshop", href: "/" },
+      { label: "Portfolio", href: "/portfolio" },
+      { label: "Shop", href: "/shop" },
+      { label: "Custom", href: "/commissions" },
+      { label: "About", href: "/about" }
+    ]);
+    assert.equal((settings.footer as { groups: unknown[] }).groups.length, 1);
+    assert.equal(
+      ((settings.footer as { groups: Array<{ items: unknown[] }> }).groups[0]).items.length,
+      1
+    );
+
+    const history = db.prepare(`
+      SELECT entity_type AS entityType, entity_key AS entityKey,
+             field_name AS field, before_value AS beforeValue,
+             after_value AS afterValue
+      FROM content_normalization_history
+      WHERE normalization_id = ?
+      ORDER BY entity_type, entity_key, field_name
+    `).all(PUBLIC_COPY_NORMALIZATION_ID) as Array<Record<string, unknown>>;
+    assert.ok(history.length >= 10);
+    assert.ok(history.some((row) => row.entityType === "page" && row.entityKey === "home" && row.field === "intro" && row.beforeValue === homeIntro.from && row.afterValue === homeIntro.to));
+    assert.ok(history.some((row) => row.entityType === "piece" && row.entityKey === "scientists-desk"));
+    assert.equal(applySchemaMigrations(db).applied.length, 0);
+    assert.equal(
+      db.prepare(`SELECT COUNT(*) AS count FROM content_normalization_history WHERE normalization_id = ?`).get(PUBLIC_COPY_NORMALIZATION_ID).count,
+      history.length
+    );
+    assert.equal(db.prepare("PRAGMA quick_check").get()["quick_check"], "ok");
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("schema version 14 changes only untouched seeded profiles and preserves owner choices", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 13 });
+    const builderBio = "William Beaman builds furniture, cabinetry, and room-specific woodwork with an emphasis on durable joinery, measured proportions, and daily use.";
+    const developerBio = "Cooper Beaman designed and built the Beaman Woodworks platform so the portfolio, media archive, shop, process writing, project tracking, and woodshop operations can all be managed in one deployment.";
+    const insert = db.prepare(`INSERT INTO users (email, display_name, headline, bio, public_profile, metadata_json) VALUES (?, ?, ?, ?, 1, ?)`);
+    insert.run("woodsmithbb@proton.me", "William Beaman", "Master Builder", `${builderBio} The public site reflects current work, available inventory, and the active build queue from his bench.`, '{}');
+    insert.run("cooperbeaman@proton.me", "Cooper Beaman", "Website Developer", developerBio, JSON.stringify({ showOnAboutPage: true, developer: true }));
+    insert.run("maker@example.com", "Another maker", "Woodworker", "Owner-written biography", '{}');
+    applySchemaMigrations(db);
+    assert.equal(db.prepare(`SELECT bio FROM users WHERE email = 'woodsmithbb@proton.me'`).get().bio, builderBio);
+    assert.equal(db.prepare(`SELECT public_profile FROM users WHERE email = 'cooperbeaman@proton.me'`).get().public_profile, 0);
+    assert.equal(db.prepare(`SELECT bio FROM users WHERE email = 'maker@example.com'`).get().bio, "Owner-written biography");
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM content_normalization_history WHERE entity_type = 'user'`).get().n, 2);
+    db.prepare(`UPDATE users SET public_profile = 1, bio = 'Owner-written company story' WHERE email = 'cooperbeaman@proton.me'`).run();
+    assert.equal(applySchemaMigrations(db).applied.length, 0);
+    assert.equal(db.prepare(`SELECT public_profile FROM users WHERE email = 'cooperbeaman@proton.me'`).get().public_profile, 1);
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("schema version 14 preserves malformed and customized settings byte for byte", () => {
+  for (const value of ['{invalid', JSON.stringify({ brandTagline: 'An owner-written tagline', navigation: [], custom: { retained: true } })]) {
+    const { db, directory } = fixtureDatabase();
+    try {
+      applySchemaMigrations(db, { throughVersion: 13 });
+      db.prepare(`INSERT INTO settings VALUES ('site', ?, 'unchanged')`).run(value);
+      db.prepare(`INSERT INTO users (email, display_name, headline, bio, public_profile) VALUES ('cooperbeaman@proton.me', 'Cooper Beaman', 'Website Developer', 'Owner-written company story', 1)`).run();
+      applySchemaMigrations(db);
+      assert.equal(db.prepare(`SELECT value FROM settings WHERE key = 'site'`).get().value, value);
+      assert.equal(db.prepare(`SELECT updated_at FROM settings WHERE key = 'site'`).get().updated_at, 'unchanged');
+      assert.equal(db.prepare(`SELECT public_profile FROM users WHERE email = 'cooperbeaman@proton.me'`).get().public_profile, 1);
+    } finally {
+      db.close();
+      rmSync(directory, { recursive: true, force: true });
+    }
+  }
+});
+
+test("schema version 14 rolls back content and ledger when settings audit recording fails", () => {
+  const { db, directory } = fixtureDatabase();
+  try {
+    applySchemaMigrations(db, { throughVersion: 13 });
+    const legacy = JSON.stringify({ brandTagline: "Furniture, cabinetry, and small-batch work from the Beaman woodshop." });
+    db.prepare(`INSERT INTO settings VALUES ('site', ?, 'unchanged')`).run(legacy);
+    db.exec(`CREATE TABLE content_normalization_history (
+      normalization_id TEXT, entity_type TEXT, entity_key TEXT, field_name TEXT,
+      before_value TEXT, after_value TEXT, applied_at TEXT
+    );
+    CREATE TRIGGER reject_setting_history BEFORE INSERT ON content_normalization_history
+      WHEN NEW.entity_type = 'setting' BEGIN SELECT RAISE(ABORT, 'audit write rejected'); END;`);
+    assert.throws(() => applySchemaMigrations(db), /audit write rejected/);
+    assert.equal(db.prepare(`SELECT value FROM settings WHERE key = 'site'`).get().value, legacy);
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 14`).get().n, 0);
+    assert.equal(db.prepare(`SELECT COUNT(*) AS n FROM content_normalization_history`).get().n, 0);
+    db.exec('DROP TRIGGER reject_setting_history');
+    assert.deepEqual(applySchemaMigrations(db).applied.map((row) => row.version), [14, 15, 16]);
+    assert.equal(applySchemaMigrations(db).applied.length, 0);
+  } finally {
+    db.close();
+    rmSync(directory, { recursive: true, force: true });
   }
 });
 

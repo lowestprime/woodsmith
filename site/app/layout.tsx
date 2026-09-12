@@ -9,6 +9,7 @@ import { SiteFooter, SiteHeader } from "@/components/site-chrome";
 import { VisitorTracker } from "@/components/visitor-tracker";
 import { InlineEditAssistant } from "@/components/inline-edit-assistant";
 import { StudioMediaHotkeys } from "@/components/studio-media-hotkeys";
+import { RouteProgressRail } from "@/components/route-progress-rail";
 
 const mackintosh = localFont({
   variable: "--font-mackintosh",
@@ -86,6 +87,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     <html className={mackintosh.variable} data-scroll-behavior="smooth" data-theme={theme} lang="en" suppressHydrationWarning>
       <body>
         <div className="site-backdrop" />
+        <RouteProgressRail />
         <a className="skip-link" href="#main-content">Skip to main content</a>
         <VisitorTracker />
         <SiteHeader />

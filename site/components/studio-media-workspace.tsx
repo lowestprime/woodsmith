@@ -10,6 +10,8 @@ import { StudioAutosaveForm } from "@/components/studio/studio-autosave-form";
 import { flushStudioNavigationQueues } from "@/components/studio/studio-navigation-state";
 import { useStudioRecordDraft } from "@/components/studio/use-studio-record-draft";
 import { toMediaUrl } from "@/lib/format";
+import { mediaCropFormFields, normalizeMediaCrop } from "@/lib/media-crop";
+import { refreshMediaPreviewAction } from "@/lib/actions";
 import type {
   MediaActionResult,
   MediaFolderRuleAutosavePatch,
@@ -250,12 +252,7 @@ function mediaMetadataPayload(
         formData,
         "projectReference"
       ).trim() || null,
-    focalX:
-      Number(formText(formData, "focalX")),
-    focalY:
-      Number(formText(formData, "focalY")),
-    zoom:
-      Number(formText(formData, "zoom")),
+    ...mediaCropFormFields(formData),
     reviewed: formData.has("reviewed"),
     tags: parseList(formData.get("tagsText")),
     visualLabels: parseList(
@@ -274,10 +271,6 @@ function mediaMetadataPayload(
     ),
     sourceCredit:
       formText(formData, "sourceCredit"),
-    cropAspect: formText(
-      formData,
-      "cropAspect"
-    ) as MediaMetadataAutosavePatch["cropAspect"],
     cropNote:
       formText(formData, "cropNote")
   };
@@ -723,7 +716,7 @@ function FolderRulesPanel({
           {isApplying ? "Applying…" : `Apply to ${preview.eligible} unassigned`}
         </button>
       </div>
-      <div className="studio-verification-list">
+      <div aria-label="Folder rules" className="studio-verification-list" role="region" tabIndex={0}>
         {preview.rules.map((rule) => (
           <FolderRuleEditor
             count={ruleCounts.get(rule.id)}
@@ -738,7 +731,7 @@ function FolderRulesPanel({
       {preview.conflictRows.length > 0 ? (
         <details className="media-advanced-actions">
           <summary>Rule conflicts ({preview.conflictRows.length})</summary>
-          <div className="studio-verification-list">
+          <div aria-label="Folder rule conflicts" className="studio-verification-list" role="region" tabIndex={0}>
             {preview.conflictRows.slice(0, 24).map((conflict) => <p className="muted-copy" key={`${conflict.relativePath}:${conflict.reason}`}><strong>{conflict.reason}</strong> · {conflict.relativePath}</p>)}
           </div>
         </details>
@@ -924,7 +917,24 @@ function MediaInspector({
     onDelete(result.relativePath);
   }
 
+  const [refreshingPreview, setRefreshingPreview] = useState(false);
+  const [previewMessage, setPreviewMessage] = useState("");
+  async function refreshPreview() {
+    setRefreshingPreview(true);
+    try {
+      await flushStudioNavigationQueues();
+      const result = await refreshMediaPreviewAction(item.relativePath);
+      if (result.ok) onSave(result.item);
+      setPreviewMessage(result.message);
+    } catch (error) {
+      setPreviewMessage(error instanceof Error ? error.message : "Preview refresh failed.");
+    } finally {
+      setRefreshingPreview(false);
+    }
+  }
+
   const cleanupMode = String(item.metadata.cleanupMode ?? "original");
+  const crop = normalizeMediaCrop({ ...item, cropAspect: item.metadata.cropAspect });
   const visualLabels = Array.isArray(item.metadata.visualLabels) ? item.metadata.visualLabels.map(String) : [];
   const aiTags = Array.isArray(item.metadata.aiTags) ? item.metadata.aiTags.map(String) : [];
   const aiDescription = typeof item.metadata.aiDescription === "string" ? item.metadata.aiDescription : "";
@@ -961,12 +971,13 @@ function MediaInspector({
             id: `media:${item.relativePath}`,
             alt: item.altText || item.fileName,
             cleanupMode,
-            focalX: item.focalX,
-            focalY: item.focalY,
+            focalX: crop.focalX,
+            focalY: crop.focalY,
             kind: item.kind,
             order: 0,
-            src: toMediaUrl(item.relativePath),
-            zoom: item.zoom
+            src: toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature),
+            unoptimized: imageNeedsUnoptimized(item),
+            zoom: crop.zoom
           }]}
           title={item.fileName}
           variant="single"
@@ -983,8 +994,10 @@ function MediaInspector({
       )}
       <div className="studio-media-inspector-head">
         <div>
-          <h3>{item.fileName}</h3>
+          <h3 data-media-inspector-title tabIndex={-1}>{item.fileName}</h3>
           <p className="muted-copy">{item.relativePath}</p>
+          <button className="button-secondary" disabled={refreshingPreview} onClick={refreshPreview} type="button">{refreshingPreview ? "Refreshing preview…" : "Refresh preview"}</button>
+          <p aria-live="polite">{previewMessage}</p>
           <p className="muted-copy">{item.reviewed ? "Reviewed for public use" : "Needs review"} · Cluster {item.clusterKey}</p>
           {aiDescription || aiTags.length > 0 ? <p className="muted-copy">AI notes: {aiDescription || aiTags.join(", ")}</p> : null}
         </div>
@@ -1048,6 +1061,7 @@ function MediaInspector({
         className="request-form compact-form"
         createPayload={createPayload}
         entityKey={`media:${item.relativePath}`}
+        canonicalEntity={item}
         expectedUpdatedAt={item.updatedAt}
         mutate={mutate}
         onStatus={handleStatus}
@@ -1112,7 +1126,9 @@ function MediaInspector({
             <MediaCropEditor
               altText={item.altText}
               cleanupMode={cleanupMode}
-              cropAspect={String(item.metadata.cropAspect ?? "free")}
+              cropAspect={crop.cropAspect}
+              sourceSignature={item.metadata.mediaSourceSignature}
+              key={String(item.metadata.mediaSourceSignature ?? item.relativePath)}
               focalX={item.focalX}
               focalY={item.focalY}
               relativePath={item.relativePath}
@@ -1126,9 +1142,10 @@ function MediaInspector({
                 </p>
               ) : null}
               <div className="field-grid three-up compact-grid">
-                <label><span>Focal X</span><input defaultValue={item.focalX} name="focalX" type="number" /></label>
-                <label><span>Focal Y</span><input defaultValue={item.focalY} name="focalY" type="number" /></label>
-                <label><span>Zoom</span><input defaultValue={item.zoom} name="zoom" step={0.05} type="number" /></label>
+                <input name="cropAspect" type="hidden" value={crop.cropAspect} />
+                <label><span>Focal X</span><input defaultValue={crop.focalX} min={0} max={100} name="focalX" type="number" /></label>
+                <label><span>Focal Y</span><input defaultValue={crop.focalY} min={0} max={100} name="focalY" type="number" /></label>
+                <label><span>Zoom</span><input defaultValue={crop.zoom} min={1} max={4} name="zoom" step={0.05} type="number" /></label>
               </div>
             </div>
           )}
@@ -1250,6 +1267,7 @@ export function StudioMediaWorkspace({
   const [isDirty, setIsDirty] = useState(false);
   const [isAutomating, setIsAutomating] = useState(false);
   const [mobilePane, setMobilePane] = useState<"tools" | "browser" | "inspector">("browser");
+  const workspaceRef = useRef<HTMLDivElement>(null);
   const [isPagePending, startPageTransition] = useTransition();
   const requestSequence = useRef(0);
   const initialRequest = useRef(true);
@@ -1279,6 +1297,16 @@ export function StudioMediaWorkspace({
     ])
   );
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  useEffect(() => {
+    if (mobilePane !== "inspector") return;
+    const workspace = workspaceRef.current;
+    const tabs = workspace?.querySelector<HTMLElement>(".studio-media-mobile-tabs");
+    if (!tabs || tabs.getClientRects().length === 0) return;
+    // A mobile pane switch hides its originating thumbnail. Keep keyboard focus
+    // on the newly visible record, not a hidden control or the page body.
+    workspace?.querySelector<HTMLElement>("[data-media-inspector-title]")?.focus({ preventScroll: true });
+  }, [mobilePane, selectedPath]);
 
   useEffect(() => {
     const reconcileMediaItems =
@@ -1439,7 +1467,10 @@ export function StudioMediaWorkspace({
   }
 
   async function selectItem(relativePath: string) {
-    if (relativePath === selectedPath) return;
+    if (relativePath === selectedPath) {
+      setMobilePane("inspector");
+      return;
+    }
     try {
       await flushStudioNavigationQueues();
       setIsDirty(false);
@@ -1545,7 +1576,7 @@ export function StudioMediaWorkspace({
   }
 
   return (
-    <div className="studio-media-workspace" data-mobile-pane={mobilePane}>
+    <div className="studio-media-workspace" data-mobile-pane={mobilePane} ref={workspaceRef}>
       <div aria-label="Media workspace section" className="studio-media-mobile-tabs" role="group">
         <button aria-pressed={mobilePane === "tools"} onClick={() => setMobilePane("tools")} type="button">Tools</button>
         <button aria-pressed={mobilePane === "browser"} onClick={() => setMobilePane("browser")} type="button">Library</button>
@@ -1654,7 +1685,7 @@ export function StudioMediaWorkspace({
             <label className="checkbox-row"><input checked={safeMode} onChange={(event) => setSafeMode(event.target.checked)} type="checkbox" /><span>Preview only, do not save AI evidence</span></label>
             <label className="checkbox-row"><input checked={includeReviewed} onChange={(event) => setIncludeReviewed(event.target.checked)} type="checkbox" /><span>Include reviewed media in page/library batches</span></label>
           </div>
-          <div className="media-guided-actions" aria-label="Guided media trainer actions">
+          <div className="media-guided-actions" aria-label="Guided media trainer actions" role="group">
             <button className="button-primary" disabled={isAutomating || selectedPaths.size === 0} onClick={() => void runAutomation("full", "selected", [...selectedPaths])} type="button">Train selected</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "page")} type="button">Improve page</button>
             <button className="button-secondary" disabled={isAutomating} onClick={() => void runAutomation("full", "library")} type="button">Continue library</button>
@@ -1662,7 +1693,7 @@ export function StudioMediaWorkspace({
             {isAutomating ? <button className="button-secondary" onClick={() => void runAutomation("cancel")} type="button">Cancel run</button> : null}
           </div>
           {isAutomating ? <progress aria-label="Media automation is running" className="media-automation-progress" /> : null}
-          {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
+          {runSummary.length ? <div aria-label="Last automation run summary" className="media-run-summary" role="group">{runSummary.map((item) => <span key={item}>{item}</span>)}</div> : null}
           {automationResult?.nextRecommendedAction ? <p className="muted-copy"><strong>Next:</strong> {automationResult.nextRecommendedAction}</p> : null}
           {automationMessage ? <p aria-live="polite" className="studio-inline-notice" role="status">{automationMessage}</p> : null}
           <details className="media-advanced-actions">
@@ -1688,7 +1719,7 @@ export function StudioMediaWorkspace({
           <details className="studio-panel studio-media-utility-panel" open>
             <summary>Verification queue</summary>
             <p className="muted-copy">Assign photo candidates without publishing guesses. Manual verification always wins.</p>
-            <div className="studio-verification-list">
+            <div aria-label="Media verification queue" className="studio-verification-list" role="region" tabIndex={0}>
               {verificationCards.map((entry) => (
                 <section className="verification-card-compact" key={entry.pieceSlug}>
                   <div className="studio-editor-head">
@@ -1705,7 +1736,7 @@ export function StudioMediaWorkspace({
                       <div className="candidate-assignment-card" data-media-id={item.relativePath} data-media-item="true" data-media-order={entry.suggestions.indexOf(candidate)} key={item.relativePath}>
                         <button aria-label={`Inspect ${item.fileName}`} className="candidate-preview" onClick={() => void inspectCandidate(item)} title={`Inspect candidate scored ${score}`} type="button">
                           {mediaPreviewAvailable(item) ? (
-                            <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                            <Image alt={item.altText || item.fileName} fill sizes="96px" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} unoptimized={imageNeedsUnoptimized(item)} />
                           ) : (
                             <span
                               className="media-picker-chip-fallback"
@@ -1768,7 +1799,16 @@ export function StudioMediaWorkspace({
           </div>
           <span aria-live="polite" className="muted-copy studio-media-result-count">{pageMessage ?? `${items.length} shown · ${total} indexed`} · {selectedPaths.size} selected {selectedPaths.size > 0 ? <button className="text-button" onClick={() => setSelectedPaths(new Set())} type="button">Clear</button> : null}</span>
         </div>
-        <div aria-label="Mounted media library" className="studio-media-browser-grid" data-media-collection="studio-media-library" data-media-collection-variant="picker-grid" role="region">
+        <div aria-label="Mounted media library" className="studio-media-browser-grid" data-media-collection="studio-media-library" data-media-collection-variant="picker-grid" role="region" onKeyDown={(event) => {
+          if (!(event.target instanceof HTMLElement) || !event.target.matches(".studio-media-browser-card")) return;
+          if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+          const cards = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>(".studio-media-browser-card"));
+          const current = cards.indexOf(event.target as HTMLButtonElement);
+          const columns = Math.max(1, getComputedStyle(event.currentTarget).gridTemplateColumns.split(" ").length);
+          const steps: Record<string, number> = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns };
+          const next = event.key === "Home" ? 0 : event.key === "End" ? cards.length - 1 : event.key in steps ? Math.min(cards.length - 1, Math.max(0, current + steps[event.key])) : null;
+          if (next !== null && current >= 0) { event.preventDefault(); cards[next]?.focus(); }
+        }}>
           {items.map((item, index) => {
             const selectedForAutomation = selectedPaths.has(item.relativePath);
             const analyzed = Boolean(item.metadata.aiAnalyzed);
@@ -1783,12 +1823,11 @@ export function StudioMediaWorkspace({
                 data-media-index={index + 1}
                 data-media-path={item.relativePath}
                 onClick={() => void selectItem(item.relativePath)}
-                tabIndex={item.relativePath === selectedItem?.relativePath || (!selectedItem && index === 0) ? 0 : -1}
                 type="button"
               >
                 <div className={`studio-media-browser-thumb cleanup-${String(item.metadata.cleanupMode ?? "original")}`}>
                   {item.kind === "image" && mediaPreviewAvailable(item)
-                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath)} unoptimized={imageNeedsUnoptimized(item)} />
+                    ? <Image alt={item.altText || item.fileName} fill sizes="(max-width: 720px) 42vw, 160px" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} unoptimized={imageNeedsUnoptimized(item)} />
                     : item.kind === "image"
                       ? <span
                           className="media-picker-chip-fallback"
@@ -1796,7 +1835,7 @@ export function StudioMediaWorkspace({
                           data-audit-placeholder-allowed="source-image-preview-unavailable"
                         >Preview unavailable</span>
                     : item.kind === "video"
-                      ? <video muted playsInline preload="none" src={toMediaUrl(item.relativePath)} />
+                      ? <video muted playsInline preload="none" src={toMediaUrl(item.relativePath, item.metadata.mediaSourceSignature)} />
                       : <span className="media-picker-chip-fallback">{item.kind.toUpperCase()}</span>}
                   <span className="media-ai-badges" aria-label="Media automation state"><i>{analyzed ? "AI" : "No AI"}</i>{analyzed ? <i>{disposition.label}</i> : null}<i>{embedded ? "Vector" : "No vector"}</i>{clusterId ? <i>{item.metadata.aiClusterRepresentative ? "Cluster lead" : "Cluster"}</i> : null}{highCandidate ? <i>High match</i> : null}{!item.altText ? <i>Missing alt</i> : null}</span>
                 </div>
@@ -1883,9 +1922,10 @@ export function StudioMediaWorkspace({
                 fileName: result.relativePath.split("/").at(-1) || result.relativePath,
                 updatedAt: new Date().toISOString()
               }));
-              if (selectedPath === result.previousPath) {
-                setSelectedPath(result.relativePath);
-              }
+              // The rename form always belongs to the open inspector. Select
+              // the returned path unconditionally so a page/filter transition
+              // cannot leave selection on the removed pre-rename identity.
+              setSelectedPath(result.relativePath);
               setIsDirty(false);
               void formData;
             }}

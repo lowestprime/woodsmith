@@ -21,6 +21,9 @@ import {
 import {
   installSearchIndexInDatabase
 } from "./search-index.ts";
+import {
+  applyPublicCopyNormalization
+} from "./public-copy-normalization.ts";
 
 type MigrationReport = Record<string, unknown>;
 
@@ -588,7 +591,7 @@ const migrations: Migration[] = [
       // Migration 9 shipped with the original nine categories. Keep its
       // historical behavior stable; later categories have their own ledger row.
       for (const definition of DEFAULT_NOTIFICATION_TYPES.filter(
-        (item) => item.key !== "visitor_session"
+        (item) => item.key !== "visitor_session" && !["customer_inquiry_admin", "customer_reply_admin", "review_submitted_admin"].includes(item.key)
       )) {
         seededPolicies += Number(insertPolicy.run(
           definition.key,
@@ -997,6 +1000,58 @@ const migrations: Migration[] = [
         synchronized: status.synchronized,
         integrityStatus: status.integrityStatus
       };
+    }
+  },
+  {
+    version: 14,
+    name: "post-v19-public-copy-normalization",
+    checksum: "2026-09-post-v19-public-copy-v1",
+    apply(db) {
+      return applyPublicCopyNormalization(db);
+    }
+  },
+  {
+    version: 15,
+    name: "operator-correspondence-and-auth-recipient-provenance",
+    checksum: "2026-09-notification-routing-v1",
+    apply(db) {
+      db.exec(`CREATE TABLE IF NOT EXISTS notification_auth_recipients (
+        delivery_id TEXT PRIMARY KEY REFERENCES notification_deliveries(id) ON DELETE CASCADE,
+        recipient TEXT NOT NULL
+      ) STRICT;`);
+      const timestamp = nowIso();
+      let policiesAdded = 0;
+      for (const definition of DEFAULT_NOTIFICATION_TYPES.filter(item => ["customer_inquiry_admin", "customer_reply_admin", "review_submitted_admin"].includes(item.key))) {
+        policiesAdded += Number(db.prepare(`INSERT OR IGNORE INTO notification_policies
+          (category,label,description,enabled,recipient_mode,retention_days,max_attempts,retry_base_seconds,created_at,updated_at,updated_by)
+          VALUES (?,?,?,?,?,?,?,?,?,?,'migration-v15')`).run(definition.key, definition.label, definition.description, 1, definition.recipientMode, definition.retentionDays, definition.maxAttempts, definition.retryBaseSeconds, timestamp, timestamp).changes);
+        db.prepare(`INSERT OR IGNORE INTO notification_templates
+          (category,subject_template,text_template,html_template,created_at,updated_at,updated_by)
+          VALUES (?,?,?,?,?,?,'migration-v15')`).run(definition.key, definition.subjectTemplate, definition.textTemplate, definition.htmlTemplate, timestamp, timestamp);
+      }
+      return { policiesAdded, authRecipientProvenance: true, existingSettingsPreserved: true };
+    }
+  },
+  {
+    version: 16,
+    name: "website-inquiry-integrity-and-quarantine",
+    checksum: "2026-09-website-inquiries-v1",
+    apply(db) {
+      db.exec(`CREATE TABLE website_inquiries (
+        id TEXT PRIMARY KEY,
+        owner_hash TEXT NOT NULL,
+        key_hash TEXT NOT NULL,
+        payload_hash TEXT NOT NULL,
+        disposition TEXT NOT NULL CHECK(disposition IN ('legitimate', 'quarantine')),
+        classification_json TEXT NOT NULL,
+        inquiry_json TEXT NOT NULL,
+        project_reference TEXT REFERENCES projects(reference) ON DELETE SET NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(owner_hash, key_hash),
+        CHECK(disposition <> 'quarantine' OR project_reference IS NULL)
+      ) STRICT;
+      CREATE INDEX idx_website_inquiries_review ON website_inquiries(disposition, created_at DESC);`);
+      return { inquiryStoreCreated: true, existingProjectsAndSettingsUnchanged: true };
     }
   }
 ];

@@ -6,7 +6,7 @@ export default async function CommissionStatusPage({ searchParams }: { searchPar
   return (
     <Shell>
       <PageSection editHref="/studio?panel=projects">
-        <PageIntro eyebrow="Project status" title="Open an existing project" copy="Enter the project reference and buyer email. A private access cookie opens the tracker without placing the email address in the URL." />
+        <PageIntro eyebrow="Project status" title="Open an existing project" copy="Enter the project reference and buyer email to securely view its latest updates." />
         {error ? <p className="notice-panel danger" role="alert">The reference and email did not match a project. Check both entries and try again.</p> : null}
         <form action={lookupProjectStatusAction} className="request-form compact-form">
           <div className="field-grid two-up compact-grid">

@@ -1,5 +1,7 @@
 # Beaman Woodworks Synology NAS Deployment Guide
 
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+
 ## Goal
 
 Deploy Beaman Woodworks from `/volume2/docker_ssd/woodsmith/` so that:
@@ -169,7 +171,9 @@ Optional local container smoke test:
 
 For local app and visual-audit images on Windows, use `visual-audit/scripts/run-local-disposable-smoke.ps1`. Both local modes run without production mounts or credentials. A dirty pre-commit app must retain the Dockerfile's `WOODSMITH_BUILD_SHA=unknown`; only `-TargetMode live-readonly -Scope smoke` accepts that unstamped identity, and it never counts as exact release evidence. Snapshot-lab runs, full archives, and remote/release evidence require an app image stamped with the exact commit SHA. After committing, rebuild with that exact SHA before accepting snapshot-lab, Tier 1, Tier 2, or release evidence. The `-TargetMode snapshot-lab` variant proves the inventory-derived v19 mutation round trips against separate online-cloned SQLite and copied synthetic-media volumes. It expects ten successful clone-only writes with no projects or twelve with at least one project, rejects every unrelated successful write, restores ordinary edited values, removes its draft, and verifies source fingerprints. Both modes remove their temporary app, data, media, output, and secret resources after validation.
 
-Media synchronization performs bounded source-signature inspection and records an unavailable-preview status for empty, unreadable, invalid-signature, or detectably truncated images. It does not alter originals. Public piece galleries omit known-unavailable images, and authenticated media tools render a labeled fallback without requesting the broken source. Replace or repair an original only through a separately approved media-maintenance workflow, then refresh the Media library so the status is recomputed. The signature guard catches the observed missing JPEG end marker and common malformed files but does not replace full decoder validation or human photo review.
+On the post-v19 branch, media synchronization inspects primary JPEG marker structure and accepts complete images with long appended payloads. It records unavailable status for empty, unreadable, invalid-signature, and detectably malformed/truncated images without altering originals. The earlier final-4-KiB end-marker heuristic falsely rejected valid source photographs and is superseded. Public piece galleries continue to omit known-unavailable images; editorial review is independent.
+
+Startup and reindex read each indexed image's complete bytes to compute a content revision, using bounded 64 KiB buffers; initial JPEG structure inspection also reads the primary codestream. This deliberately detects same-size edits even when timestamps do not change. Full-library NAS I/O/startup cost remains a final deployment measurement, not a claimed performance improvement. A versioned 512-entry cache avoids repeat structural parsing, not content hashing. **Refresh preview** flushes the selected editor and reinspects only its indexed path; it preserves missing records and editorial metadata. **Rescan files** retains its existing broad missing-record reconciliation. After separately authorized source maintenance, prefer selected refresh when investigating missing paths. No schema migration, derivative generation, raw overwrite, or mount/config change is introduced by this media packet. Preserve `MEDIA_ROOT=/app/pics`, writable raw/data mounts, and paired recovery. Strict decoder validation and human identity review remain separate checks; see the [Goal A evidence](docs/post-v19-launch-audit-20260902.md#goal-a-technical-media-recovery-2026-09-05). This branch has not been deployed by Goal A.
 
 ```bash
 docker run --rm -p 3002:3002 \
@@ -199,9 +203,13 @@ docker compose -f docker-compose.synology.yml up -d
 
 The startup path includes seed migration v6. It preserves dashboard edits and deletion tombstones, normalizes legacy developer-contact data, removes the obsolete Process navigation entry, and replaces only exact legacy Shop/Process/custom-work seed wording.
 
-The independent SQLite schema ledger currently applies through version 13. Versions 1-8 persist normalized piece/media truth, commerce policies, edit and rename history, account drafts, idempotency keys, expiring project-access grants, render/submission quotas, media-operation snapshots, and source-folder assignment rules. Versions 9-11 add typed notification policies/templates/deliveries/attempts, SMTP verification history, project lifecycle/dependency-deletion ledgers, and the disabled-by-default visitor-session notification policy. Version 12 adds minimized visitor pageviews and policy data, indexed redacted audit queries, and a one-time scrub of legacy raw visitor and sensitive audit fields. Version 13 creates and rebuilds the synchronized FTS5 site-search index. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
+The source SQLite schema ledger applies through version 16. Version 16 adds verified website inquiries and quarantine. Versions 1-8 persist normalized media, commerce, audit, drafts, quotas and folder rules. Versions 9-11 add notification and project lifecycle records. Version 12 minimizes visitor/audit data; version 13 adds synchronized FTS5 search. Version 14 normalizes exact legacy public copy with before/after history. Version 15 inserts missing operator correspondence policies/templates and account-link recipient provenance without replacing existing site settings or custom policies. These migrations are additive and idempotent. Never replace the mounted `/app/site/data` directory during an image rebuild; create the paired backup and run `PRAGMA quick_check` before and after deployment.
+
+Before promoting schema v15, prove migration, idempotence, and customization preservation on a disposable production clone. Authentication mail queued before recipient provenance existed fails closed on retry; request a fresh reset/verification link instead. Global notification BCC is now editable in Notifications Overview and is never copied into authentication-token mail. Verify routing in disposable state, not by changing production recipients during ordinary testing. See [notification routing](docs/notification-routing.md).
 
 ## Reverse proxy
+
+The post-v19 Studio master-detail changes do not add a schema version or alter runtime mounts. Their disposable browser gate includes record-switch flushes, invalid-save recovery, externally refreshed order versions, and review deletion. Run these with synthetic records and disabled providers; never use production invoice/label actions as a UI smoke test. Final exact-image and production-clone acceptance remain required after integration.
 
 Configure Synology Reverse Proxy with:
 
@@ -223,7 +231,7 @@ If you want the dashboard visitor map to show country and city data, enable Clou
 
 Without those headers, the app still records minimized visitor sessions, paths, and hosts, but the map/list will show unknown location data. New records never persist the incoming raw IP address, full user-agent string, complete referrer URL, Cloudflare ray ID, or precise latitude/longitude.
 
-Generate `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, set a descriptive `VISITOR_HMAC_KEY_ID`, and rotate both together when starting a new deliberately unlinkable analytics cohort. The application can fall back to `SESSION_SECRET`, but that is a compatibility path rather than the preferred production configuration. Leave `VISITOR_TRACK_INTERNAL=false` unless there is a documented reason to count private-network requests. In **Notifications → Visitors**, verify the collection/city/referrer-host policy and retention period before release; purge is bounded by that policy and is audited.
+Generate `VISITOR_HMAC_SECRET` independently from `SESSION_SECRET`, set a descriptive `VISITOR_HMAC_KEY_ID`, and rotate both together when starting a new deliberately unlinkable analytics cohort. The application can fall back to `SESSION_SECRET`, but that is a compatibility path rather than the preferred production configuration. Leave `VISITOR_TRACK_INTERNAL=false` unless there is a documented reason to count private-network requests. In top-level **Visitors** (`/studio?panel=visitors`), verify the collection/city/referrer-host policy and retention period before release; purge is bounded by that policy and is audited.
 
 Visitor recording does not automatically send email. The `visitor_session` notification policy is disabled by default and must remain disabled unless an administrator intentionally enables it and verifies the recipient/retention policy. SMTP credentials remain environment-only and must never be copied into browser evidence or deployment logs.
 
@@ -453,7 +461,7 @@ The Docker context excludes SQLite databases, WAL/SHM files, backups, and media-
 
 ## Validated v19 deployment
 
-The current production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
+The retained v19 rollback baseline is source `0067488abb058829f3b94584c02ea666e552c9a8`, NAS image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. The running container reports the exact build SHA and uses writable mounts for `/app/site/data`, `/app/pics`, and the Next image cache. Audit-only repairs through `686a69c0cc5011394f35add750c29663626990f8` do not change the application `site` tree.
 
 Release `0067488-20260831T050142Z` passed deterministic package hashing, production-clone Tier 2, paired backup/staged restore, immutable deployment, post-deploy database/routes/search/SMTP/sidecar checks, forced recreation, rollback/return-to-candidate, and final Tier 3. The paired backup manifest is `97afa1e660299bc7c4646e14e02c5ba10aed6f5da726f74314cf86f3f7c429c5`. Exact artifact paths, hashes, and retained rollback inputs are in [`docs/v19-release-evidence-ledger-20260901.md`](docs/v19-release-evidence-ledger-20260901.md).
 
@@ -461,10 +469,36 @@ Release `0067488-20260831T050142Z` passed deterministic package hashing, product
 
 - `node:sqlite` remains experimental in Node and emits warnings during build and runtime.
 - SMTP, Stripe, and EasyPost remain optional until configured.
-- The application dependency is Next.js 16.3.0; the release candidate passed the recorded dependency, build, image, and deployment gates. A future source change requires a new exact candidate and invalidates this release evidence for that changed boundary.
-- `Strict-Transport-Security` remains absent at the Cloudflare edge. Canonical HTTPS, `www`/HTTP redirects, and the retired-host 410 passed, but HSTS must be enabled in Cloudflare to close this residual.
+- The post-v19 source dependency is Next.js 16.3.4. The deployed v19 image remains evidence-bound to its original Next.js 16.3.0 build until the post-v19 branch produces and validates a new exact candidate. Any source change requires new dependency, build, image, recovery, and deployment evidence for the changed boundary.
+- Goal E adds host-only HSTS (`max-age=31536000`) in application response headers. Verify it survives the reverse proxy and Cloudflare at the exact-candidate live gate; no subdomain or preload policy is added.
 - After a candidate starts, confirm Studio reports schema version 13 and `quick_check=ok`; use Overview to verify the FTS5 index has equal expected/indexed counts, zero missing/stale/duplicate keys, and a passing integrity check. Inspect Projects archive/cancel/reopen and dependency preview against disposable data before any production deletion workflow.
-- In Notifications, verify all seven views render, Visitors and Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
+- Verify top-level Visitors and all six Notifications views render; Visitors and Notifications → Audit remain responsive in both themes, audit detail/export stays redacted, SMTP state is redacted, visitor-session notices remain disabled unless explicitly approved, and retrying a disabled category remains suppressed.
 - Email verification cannot be completed live until the SMTP server accepts the configured sender and recipient; the account UI displays the actual transport failure.
 - The public custom work page is contact-first and includes a credential-free procedural 3D scale preview. Photorealistic previews and AI-cleaned copies are separate optional OpenAI features. Media classification/visual search is local-first and can run without OpenAI.
 - The build can fail on Windows if a standalone `npm run start` process still has `.next/standalone/data/woodsmith.sqlite` locked.
+## Post-v19 migration gate
+
+The active launch branch adds schema v14 exact-match public-copy normalization and v15 operator-notification defaults/auth-recipient provenance. Migrations run transactionally, retain arbitrary owner customization and existing routing/templates, and fail if required audit recording fails. The 2026-09-04 read-only production snapshot passed migration, rollback injection, customized-content preservation, and two application initializations in an isolated clone. Exact source/report hashes and the verifier are recorded in `docs/post-v19-launch-audit-20260902.md`. A fresh paired database/media backup and staged restore remain mandatory. This database-only proof and local source/build checks do not authorize deployment; v19 rollback assets and evidence remain retained. The deployed Goal E candidate uses schema 16. The retained v19 image was also verified against the current compatible schema-16 state during rollback.
+
+## Website intake configuration and schema v16
+
+Compose passes `TURNSTILE_MODE` (default `managed`), `TURNSTILE_SITE_KEY`, and `TURNSTILE_SECRET_KEY` at runtime. Supply real Managed Turnstile keys for the hostname in `SITE_URL`; retain the secret only in runtime configuration. Missing/invalid keys and provider verification failures close online intake while leaving the email alternative visible. Do not use public dummy keys or test mode in production. The isolated HTTP browser lab additionally uses the existing snapshot-lab cookie exception; production cookies remain secure.
+
+Before promotion, run the fresh disposable inquiry-clone gate against a read-only online snapshot. Migration v16 adds `website_inquiries` without changing existing table rows, saved forwarding preferences or templates. Keep DB/media backups paired. B1's snapshot/rollback/startup evidence and simulated provider browser checks do not establish live Cloudflare keys, SMTP delivery or production deployment. See [website inquiries](docs/website-inquiries.md); source/runtime evidence stays outside Git.
+
+### Conditional website-generated BCC (B2 source)
+
+B2 uses the existing `settings` table with an independent `notification-conditional-routing` entry; there is no new schema migration, environment variable or SMTP configuration. Missing rules are an empty no-op, and saved owner routing/templates/settings remain intact. SQLite backups include the rules; keep the established DB/media recovery procedure. Rules affect only newly queued legitimate B1 inquiry notices and planner confirmations. Delivery retries preserve the original To/CC/BCC snapshot. Account links and quarantine remain isolated. [Notification routing](docs/notification-routing.md) defines conditions, limits and Studio recovery. B2's synthetic build/browser checks are source acceptance, not production deployment or live provider delivery proof. Normal release/recovery gates still apply; `node:sqlite` continues to emit Node's experimental API warning, and public deployment should move to Postgres, LibSQL or another stable production database.
+
+
+## Current immutable runtime control
+
+Goal E uses Compose project `woodsmith-e-release` on external network `woodsmith_default`. The restricted release directory `/volume2/docker_ssd/woodsmith/releases/goal-e-20260909` holds `accepted-compose.yml`, `immutable-runtime-override.json` (the exact accepted image and external network), and `promote-transaction.py`. The original v19 container is stopped as `woodsmith-v19-retained-goal-e`; keep it, its image and paired recovery.
+
+Recreate only the intended image with the current runtime environment:
+
+```bash
+docker compose --project-name woodsmith-e-release --env-file /volume2/docker_ssd/woodsmith/.env -f /volume2/docker_ssd/woodsmith/releases/goal-e-20260909/accepted-compose.yml -f /volume2/docker_ssd/woodsmith/releases/goal-e-20260909/immutable-runtime-override.json up -d --no-build --pull never --force-recreate woodsmith
+```
+
+The exercised compatibility rollback stops/disconnects the candidate, activates the retained v19 container on the same DB/media/cache mounts and ingress, then returns to the exact candidate. It retains current writes; it does not downgrade the database or substitute the predeployment snapshot. Schema 16 compatibility was first proved in the isolated clone, then production persistence fixtures and SQLite integrity passed at every actual transition. Use the paired staged-restoration procedure above for state recovery when compatibility/integrity checks fail. Never print resolved environment or full container inspection in shared evidence.

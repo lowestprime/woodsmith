@@ -11,8 +11,8 @@ export default async function AccountProjectsPage({ searchParams }: { searchPara
   return (
     <Shell>
       <PageSection editHref="/studio?panel=projects">
-        <PageIntro eyebrow="Account" title="Projects & orders" copy="Review the current queue, open project trackers, and move into your account profile when you want to update saved details." />
-        {checkout === "success" ? <p className="notice-panel">Payment was received for order {order ?? ""}. Order and shipping updates will appear in the studio workflow and in email notifications when delivery milestones change.</p> : null}
+        <PageIntro eyebrow="Account" title="Projects & orders" copy="Follow your orders and custom builds, from the first brief through delivery." />
+        {checkout === "success" ? <p className="notice-panel">Payment was received for order {order ?? ""}. Order and shipping updates will appear here and by email as delivery milestones change.</p> : null}
         {checkout === "cancelled" ? <p className="notice-panel danger">Checkout was cancelled before payment capture. Your cart remains available if you want to try again.</p> : null}
         {user ? (
           <div className="studio-panel">
@@ -20,7 +20,7 @@ export default async function AccountProjectsPage({ searchParams }: { searchPara
             <div className="project-listing">
               {projects.length > 0 ? projects.map((project) => <ProjectOverviewCard key={project.reference} project={project} />) : <p className="muted-copy">No projects are currently linked to this account.</p>}
             </div>
-            <p className="muted-copy"><Link href="/account/profile">Open your profile</Link> to edit account details or profile media.</p>
+            <p className="muted-copy"><Link href="/account/profile">Update your profile</Link> and contact details.</p>
           </div>
         ) : (
           <div className="studio-panel">

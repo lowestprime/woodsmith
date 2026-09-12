@@ -53,13 +53,13 @@ export function cn(...values: Array<string | false | null | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-export function toMediaUrl(assetPath: string) {
+export function toMediaUrl(assetPath: string, sourceSignature?: unknown) {
   const normalized = assetPath.replace(/\\/g, "/").replace(/^\/+/, "");
 
   return `/media/${normalized
     .split("/")
     .map((segment) => encodeURIComponent(segment))
-    .join("/")}`;
+    .join("/")}${typeof sourceSignature === "string" && /^[a-f0-9]{64}$/.test(sourceSignature) ? `?v=${sourceSignature}` : ""}`;
 }
 
 export function resolveAssetUrl(assetPath: string | null | undefined) {

@@ -53,6 +53,7 @@ function PreviewMedia({
       quality={88}
       sizes={policy.sizes}
       src={item.src}
+      unoptimized={item.unoptimized}
       style={{
         objectPosition: `${item.focalX ?? 50}% ${item.focalY ?? 50}%`,
         transform: `scale(${item.zoom ?? 1})`

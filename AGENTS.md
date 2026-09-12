@@ -13,7 +13,7 @@
   - `design/Beaman_Woodworks_V2_Google_Stitch_Beta/`: design prototypes that informed the Beaman Woodworks 2.0 layout, theme, and studio UX; inspect before major UI/theme/studio redesigns
   - `README.md`, `admin.md`, `synology-nas-deploy.md`, `woodsmith_DeepWiki_Merged_03222026.md`: authoritative documentation surfaces that must stay aligned with the codebase
   - `docker-compose.synology.yml`, `.env`, `.env.example`, `site/next.config.ts`, `site/eslint.config.mjs`, `site/tsconfig.json`: primary runtime/config surfaces
-  - `No dedicated automated test directory is currently configured`: do not assume unit/integration/e2e test coverage exists unless you add it explicitly
+  - `site/lib/*.test.mts`, `site/scripts/*.test.mjs`, `visual-audit/`: application regression tests and isolated rendered acceptance tools; inspect the current manifests for exact commands
 
 ## Setup and canonical commands
 - Install dependencies: `npm install`
@@ -21,9 +21,9 @@
 - Production build: `npm run build`
 - Lint: `npm run lint`
 - Typecheck: `npm run typecheck`
-- Unit tests: `Not currently configured in repo scripts; do not claim unit-test coverage unless you add and run it`
-- Integration tests: `Not currently configured in repo scripts`
-- E2E / smoke tests: `No dedicated automated script is currently configured; when deployment/runtime behavior is affected, use the optional local container smoke test and documented route/media curl checks from synology-nas-deploy.md`
+- Application tests: `npm run test` (Node tests including SQLite/migration, media, mutations, security and runtime-state regressions)
+- Integration tests: included in the application suite where configured; inspect the test implementation before claiming coverage
+- Rendered / smoke tests: `visual-audit` contains isolated Playwright acceptance and disposable container smoke scripts. Follow `synology-nas-deploy.md`; synthetic UI acceptance does not replace exact-image or production-clone release evidence.
 - Database migration / schema update: `No formal migration tool is currently configured; treat SQLite schema/data changes as application + persisted-data changes and update code, docs, and deployment notes together`
 - Format (if applicable): `No formatter script is currently configured`
 

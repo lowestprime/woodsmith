@@ -84,7 +84,7 @@ export const INLINE_EDIT_DEFINITIONS: readonly InlineEditDefinition[] = [
     { field: "developerHeadline", kind: "text", label: "Developer title", nullable: true, maxLength: 120, modes: updateOnly },
     { field: "developerEmail", kind: "email", label: "Developer email", required: true, modes: updateOnly },
     { field: "supportEmail", kind: "email", label: "Support email", required: true, modes: updateOnly },
-    { field: "notificationForwardEmail", kind: "email", label: "Notification forwarding email", nullable: true, modes: updateOnly },
+    { field: "notificationForwardEmail", kind: "email", label: "Account and visitor notice recipient (not global BCC)", nullable: true, modes: updateOnly },
     { field: "repoLabel", kind: "text", label: "Repository label", nullable: true, maxLength: 100, modes: updateOnly },
     { field: "repoUrl", kind: "url", label: "Repository URL", nullable: true, modes: updateOnly },
     { field: "navigation", kind: "link-list", label: "Navigation item", required: true, maxLength: 80, modes: listModes },

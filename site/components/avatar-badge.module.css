@@ -1,0 +1,31 @@
+.avatar {
+  display: inline-grid;
+  place-items: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  min-width: var(--avatar-size);
+  aspect-ratio: 1;
+  object-fit: cover;
+  object-position: center;
+  overflow: hidden;
+  border-radius: 18%;
+  vertical-align: middle;
+  background: var(--bg-soft);
+  color: var(--text);
+}
+.compact { --avatar-size: 1.75rem; font-size: 0.75rem; border-radius: 50%; }
+.public { --avatar-size: 7rem; font-size: 1.75rem; }
+.editor { --avatar-size: 5rem; font-size: 1.4rem; }
+.avatar > span {
+  display: grid;
+  place-items: center;
+  width: 72%;
+  height: 72%;
+  border-radius: inherit;
+  background: var(--bg-elevated);
+  color: var(--text);
+}
+.avatar svg { width: 72%; height: 72%; fill: none; stroke: currentColor; stroke-width: 1.7; }
+@media (max-width: 540px) {
+  .public { --avatar-size: 5rem; font-size: 1.4rem; }
+}

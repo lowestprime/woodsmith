@@ -5,12 +5,16 @@ import nodemailer from "nodemailer";
 
 import {
   createNotificationDelivery,
+  createDraftOrder,
   finishNotificationDeliveryAttempt,
   getNotificationDeliveryByIdempotencyHash,
   getNotificationDeliveryDetail,
   getNotificationPolicy,
   getNotificationTemplate,
   getSiteSettings,
+  getAuthenticationRecipient,
+  recordAuthenticationRecipient,
+  withDatabaseTransaction,
   listDueNotificationDeliveries,
   recordSmtpVerification,
   startNotificationDeliveryAttempt,
@@ -21,6 +25,9 @@ import {
   renderNotificationTemplate,
   type NotificationTypeKey
 } from "./notification-policy.ts";
+import { isAuthenticationNotification, resolveNotificationRouting } from "./notification-routing.ts";
+import { getConditionalRoutingRecord, getWebsiteInquiryForRouting } from "./db.ts";
+import { CONDITIONAL_NOTIFICATION_TYPES, conditionalContextFromInquiry, matchConditionalRules } from "./conditional-notification-routing.ts";
 
 type MailResult = {
   accepted?: unknown[];
@@ -171,68 +178,6 @@ export function setNotificationTransportFactoryForTests(
     factory ?? defaultTransportFactory;
 }
 
-function normalizeRecipients(
-  input:
-    | string
-    | string[]
-    | undefined
-    | null
-) {
-  const values = Array.isArray(input)
-    ? input
-    : input
-      ? [input]
-      : [];
-  return [
-    ...new Set(
-      values
-        .flatMap((value) =>
-          value.split(/[;,]/)
-        )
-        .map((value) =>
-          value.trim().toLowerCase()
-        )
-        .filter((value) =>
-          /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
-            value
-          )
-        )
-    )
-  ];
-}
-
-function recipientsForPolicy(
-  policy: NotificationPolicyRecord,
-  requested:
-    | string
-    | string[]
-) {
-  const requestRecipients =
-    normalizeRecipients(requested);
-  const configuredRecipients =
-    normalizeRecipients(
-      policy.recipients
-    );
-  if (
-    policy.recipientMode ===
-    "configured"
-  ) {
-    return configuredRecipients;
-  }
-  if (
-    policy.recipientMode ===
-    "request-and-configured"
-  ) {
-    return [
-      ...new Set([
-        ...requestRecipients,
-        ...configuredRecipients
-      ])
-    ];
-  }
-  return requestRecipients;
-}
-
 function fallbackPolicy(
   category: string
 ): NotificationPolicyRecord {
@@ -377,6 +322,12 @@ async function deliverNotification(
     startNotificationDeliveryAttempt(
       deliveryId
     );
+  if (isAuthenticationNotification(current.category) && (
+    current.recipients.length !== 1 || current.recipients[0] !== getAuthenticationRecipient(deliveryId) || current.ccRecipients.length || current.bccRecipients.length
+  )) {
+    const delivery = finishNotificationDeliveryAttempt({ deliveryId, attemptId: attempt.attemptId, status: "failed", errorCode: "AUTH_RECIPIENT_PROVENANCE", errorSummary: "This older authentication email lacks single-recipient proof. Request a fresh verification or reset link." });
+    return { queued: true, sent: false, notification: delivery, delivery };
+  }
   if (!transport) {
     const reason =
       "SMTP not configured";
@@ -512,7 +463,7 @@ async function deliverNotification(
   }
 }
 
-export async function sendNotificationEmail(
+export function queueNotificationEmail(
   input: {
     category: NotificationTypeKey;
     to: string | string[];
@@ -521,6 +472,7 @@ export async function sendNotificationEmail(
     text: string;
     cc?: string | string[];
     bcc?: string | string[];
+    websiteInquiryId?: string;
     variables?: Record<
       string,
       string | number | null | undefined
@@ -536,34 +488,19 @@ export async function sendNotificationEmail(
     ) ?? fallbackPolicy(
       input.category
     );
-  const recipients =
-    recipientsForPolicy(
-      policy,
-      input.to
-    );
+  let conditionalBcc: string[] = [];
+  if (input.websiteInquiryId && (CONDITIONAL_NOTIFICATION_TYPES as readonly string[]).includes(input.category)) {
+    const record = getWebsiteInquiryForRouting(input.websiteInquiryId);
+    if (!record) throw new Error("The website inquiry routing record is unavailable.");
+    if (input.category === "commission_submitted" && (record.inquiry.channel !== "commission" || !record.projectReference || record.projectReference !== input.projectReference)) throw new Error("The commission inquiry routing context does not match this Project.");
+    conditionalBcc = matchConditionalRules(getConditionalRoutingRecord().rules, input.category, conditionalContextFromInquiry(record.inquiry)).bccRecipients;
+  }
+  const { recipients, ccRecipients, bccRecipients } = resolveNotificationRouting({ category: input.category, recipientMode: policy.recipientMode, requested: input.to, configured: policy.recipients, globalForwarding: site.email.forwardTo, categoryForwarding: policy.forwardRecipients, cc: input.cc, bcc: input.bcc, conditionalBcc });
   if (recipients.length === 0) {
     throw new Error(
       "Notification has no valid primary recipient."
     );
   }
-  const configuredForwarding =
-    normalizeRecipients([
-      ...policy.forwardRecipients,
-      site.email.forwardTo
-    ]);
-  const bccRecipients = [
-    ...new Set([
-      ...configuredForwarding,
-      ...normalizeRecipients(input.bcc)
-    ])
-  ].filter((recipient) =>
-    !recipients.includes(recipient)
-  );
-  const ccRecipients =
-    normalizeRecipients(input.cc)
-      .filter((recipient) =>
-        !recipients.includes(recipient)
-      );
   const template =
     getNotificationTemplate(
       input.category
@@ -606,6 +543,7 @@ export async function sendNotificationEmail(
       );
     if (existing) {
       return {
+        shouldDeliver: false,
         queued: true,
         sent:
           existing.status === "sent",
@@ -624,8 +562,8 @@ export async function sendNotificationEmail(
     : smtpConfiguration().configured
       ? "queued"
       : "pending_configuration";
-  const created =
-    createNotificationDelivery({
+  const created = withDatabaseTransaction(() => {
+    const result = createNotificationDelivery({
       category: input.category,
       projectReference:
         input.projectReference ?? null,
@@ -640,8 +578,12 @@ export async function sendNotificationEmail(
         policy.maxAttempts,
       idempotencyHash
     });
+    if (result.created && isAuthenticationNotification(input.category)) recordAuthenticationRecipient(result.delivery.id, recipients[0]);
+    return result;
+  });
   if (!created.created) {
     return {
+      shouldDeliver: false,
       queued: true,
       sent:
         created.delivery.status === "sent",
@@ -651,6 +593,7 @@ export async function sendNotificationEmail(
   }
   if (!policy.enabled) {
     return {
+      shouldDeliver: false,
       queued: true,
       sent: false,
       reason:
@@ -659,9 +602,55 @@ export async function sendNotificationEmail(
       delivery: created.delivery
     };
   }
-  return deliverNotification(
-    created.delivery.id
-  );
+  return { shouldDeliver: true, queued: true, sent: false, notification: created.delivery, delivery: created.delivery };
+}
+
+export async function sendNotificationEmail(input: Parameters<typeof queueNotificationEmail>[0]) {
+  const result = queueNotificationEmail(input);
+  return result.shouldDeliver ? deliverNotification(result.delivery.id) : result;
+}
+
+export function queueOperatorCorrespondence(input: {
+  category: "customer_inquiry_admin" | "customer_reply_admin" | "review_submitted_admin";
+  customerName: string;
+  customerEmail: string;
+  reference: string;
+  message: string;
+  studioUrl: string;
+  eventId: string;
+  projectReference?: string;
+  inquiryContext?: import("./website-inquiry.ts").WebsiteInquiry;
+  websiteInquiryId?: string;
+}) {
+  return queueNotificationEmail({
+    category: input.category, to: getSiteSettings().builderEmail,
+    subject: `Customer correspondence: ${input.reference}`, text: "Open the woodshop workspace to read the message.",
+    variables: { customerName: input.customerName.slice(0, 120), customerEmail: input.customerEmail.slice(0, 254), reference: input.reference.slice(0, 120), messageExcerpt: input.message.slice(0, 2000), studioUrl: input.studioUrl,
+      ...(input.inquiryContext ? { inquiryIntent: input.inquiryContext.intent, inquiryTopic: input.inquiryContext.topic, sourceRoute: input.inquiryContext.sourceRoute, sourceSurface: input.inquiryContext.sourceSurface, pieceSlug: input.inquiryContext.piece?.slug ?? "", pieceTitle: input.inquiryContext.piece?.title ?? "", pieceAvailability: input.inquiryContext.piece?.availability ?? "" } : {}) },
+    projectReference: input.projectReference,
+    websiteInquiryId: input.websiteInquiryId,
+    idempotencyKey: `${input.category}:${input.eventId}`
+  });
+}
+
+export function createOrderInquiry(input: {
+  order: Parameters<typeof createDraftOrder>[0];
+  kind: "local_review" | "checkout_draft";
+  customerName: string;
+  customerEmail: string;
+  lines: ReadonlyArray<{ title: string; quantity: number }>;
+  studioUrl: string;
+}) {
+  return withDatabaseTransaction(() => {
+    const orderNumber = createDraftOrder(input.order);
+    const notice = queueOperatorCorrespondence({
+      category: "customer_inquiry_admin", customerName: input.customerName,
+      customerEmail: input.customerEmail, reference: orderNumber,
+      message: `${input.kind === "local_review" ? "Local pickup/delivery review requested." : "Checkout draft created."} Payment and fulfillment are not confirmed.\n${input.lines.slice(0, 30).map(line => `${line.quantity} x ${line.title.slice(0, 120)}`).join("\n")}`,
+      studioUrl: input.studioUrl, eventId: orderNumber
+    });
+    return { orderNumber, notice };
+  });
 }
 
 export async function retryNotificationDelivery(

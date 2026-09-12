@@ -40,7 +40,8 @@ import {
 } from "@/components/studio/use-studio-record-draft";
 
 import type {
-  StudioMutationRequest
+  StudioMutationRequest,
+  StudioMutationSnapshot
 } from "@/lib/studio-mutations";
 
 function formString(
@@ -440,9 +441,11 @@ function orderPatch(
 }
 
 export function StudioOrderEditor({
-  order
+  order,
+  onSaved
 }: {
   order: OrderRecord;
+  onSaved?: (order: OrderRecord) => void;
 }) {
   const {
     draft,
@@ -517,6 +520,11 @@ export function StudioOrderEditor({
     });
   }
 
+  const adoptOrder = useCallback((snapshot: StudioMutationSnapshot<OrderRecord>) => {
+    adoptCanonicalSnapshot(snapshot);
+    if (snapshot.phase === "saved" && !snapshot.hasUnsavedChanges && snapshot.currentEntity) onSaved?.(snapshot.currentEntity);
+  }, [adoptCanonicalSnapshot, onSaved]);
+
   return (
     <StudioAutosaveForm<
       OrderAutosavePatch,
@@ -525,10 +533,11 @@ export function StudioOrderEditor({
       className="request-form compact-form"
       createPayload={createPayload}
       entityKey={`order:${order.orderNumber}`}
+      canonicalEntity={order}
       expectedUpdatedAt={order.updatedAt}
       mutate={mutate}
       onQueue={captureQueue}
-      onStatus={adoptCanonicalSnapshot}
+      onStatus={adoptOrder}
     >
       <label>
         <span>Status</span>
@@ -608,10 +617,12 @@ function reviewPatch(
 
 export function StudioReviewEditor({
   review,
-  highlight = false
+  highlight = false,
+  onSaved
 }: {
   review: ReviewRecord;
   highlight?: boolean;
+  onSaved?: (review: ReviewRecord) => void;
 }) {
   const {
     draft,
@@ -721,6 +732,11 @@ export function StudioReviewEditor({
     });
   }
 
+  const adoptReview = useCallback((snapshot: StudioMutationSnapshot<ReviewRecord>) => {
+    adoptCanonicalSnapshot(snapshot);
+    if (snapshot.phase === "saved" && !snapshot.hasUnsavedChanges && snapshot.currentEntity) onSaved?.(snapshot.currentEntity);
+  }, [adoptCanonicalSnapshot, onSaved]);
+
   return (
     <article
       className={
@@ -768,10 +784,11 @@ export function StudioReviewEditor({
         className="request-form compact-form"
         createPayload={createPayload}
         entityKey={`review:${review.id}`}
+        canonicalEntity={review}
         expectedUpdatedAt={review.updatedAt}
         mutate={mutate}
         onQueue={captureQueue}
-        onStatus={adoptCanonicalSnapshot}
+        onStatus={adoptReview}
       >
         <div className="field-grid two-up compact-grid">
           <label>

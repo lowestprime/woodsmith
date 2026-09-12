@@ -49,7 +49,7 @@ test("list add, remove, replace, and reorder operations are deterministic", () =
   assert.deepEqual(editInlineList(["First", "Second", "Third"], move, []), ["Third", "First", "Second"]);
 });
 
-test("SQLite rollback, media synchronization, and footer URL persistence remain atomic", async () => {
+test("SQLite rollback, media synchronization, and retained footer URL persistence remain atomic", async () => {
   const root = mkdtempSync(path.join(tmpdir(), "woodsmith-inline-edit-"));
   const dataRoot = path.join(root, "data");
   const mediaRoot = path.join(root, "media");
@@ -101,13 +101,13 @@ test("SQLite rollback, media synchronization, and footer URL persistence remain 
     assert.deepEqual(db.getPiece("inline-fixture")?.mediaPaths, [relativePath]);
     assert.deepEqual(db.listPieceMediaLinks("inline-fixture").map((link) => link.relativePath), [relativePath]);
 
-    const footerPatch = validateInlineEditPatch({ resource: "settings", id: "links/repository", field: "footer.item.url", value: "https://woodmat.ch/source" });
+    const footerPatch = validateInlineEditPatch({ resource: "settings", id: "links/care", field: "footer.item.url", value: "/care-and-warranty#finish-care" });
     const settings = db.getSiteSettings();
-    const footerItem = settings.footer.groups.find((group) => group.id === "links")?.items.find((item) => item.id === "repository");
+    const footerItem = settings.footer.groups.find((group) => group.id === "links")?.items.find((item) => item.id === "care");
     assert.ok(footerItem);
     footerItem.url = String(footerPatch.value);
     db.saveSiteSettings(settings);
-    assert.equal(db.getSiteSettings().footer.groups.find((group) => group.id === "links")?.items.find((item) => item.id === "repository")?.url, "https://woodmat.ch/source");
+    assert.equal(db.getSiteSettings().footer.groups.find((group) => group.id === "links")?.items.find((item) => item.id === "care")?.url, "/care-and-warranty#finish-care");
   } finally {
     db.closeDatabaseForTests();
     rmSync(root, { recursive: true, force: true });

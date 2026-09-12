@@ -1,3 +1,4 @@
+import { applyPublicCopyRefinements } from "./public-copy-normalization.ts";
 import { accessSync, constants as fsConstants, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
@@ -13,10 +14,15 @@ import {
   type HomeServiceDefinition
 } from "./seed.ts";
 import { scanMediaAsset, scanMediaLibrary } from "./media.ts";
-import { mergeMediaPreviewMetadata } from "./media-preview.ts";
+import { existingWebsiteInquiry, insertWebsiteInquiry, inquirySubmissionIdentity, listWebsiteInquiriesInDatabase } from "./website-inquiry-store.ts";
+import type { InquiryClassification, WebsiteInquiry } from "./website-inquiry.ts";
+import { mergeMediaPreviewMetadata, preserveMediaPreviewMetadata } from "./media-preview.ts";
 import { normalizePieceCategories, type PieceCategoryDefinition } from "./categories.ts";
 import { safeFooterConfiguration, safeHomeServices } from "./site-structure.ts";
 import { applySchemaMigrations } from "./database-migrations.ts";
+import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "./notification-routing.ts";
+import { normalizeConditionalRules, type ConditionalRoutingRecord } from "./conditional-notification-routing.ts";
+import type { WebsiteInquiryRecord } from "./website-inquiry-store.ts";
 import {
   MEDIA_ASSIGNMENT_SOURCES,
   MEDIA_FOLDER_RULE_ROLES,
@@ -1077,6 +1083,7 @@ function getDatabase() {
         applySeedAssignments: !databaseExisted && seededVersionBeforeInitialization === 0
       });
       applySchemaMigrations(database);
+      applyPublicCopyRefinements(database);
       initialized = true;
     }
 
@@ -1652,7 +1659,8 @@ function syncMediaLibraryIntoDatabase(
     const existing = db.prepare(`
       SELECT piece_slug AS pieceSlug, post_slug AS postSlug, page_slug AS pageSlug, project_reference AS projectReference,
              user_email AS userEmail, focal_x AS focalX, focal_y AS focalY, zoom, reviewed, tags_json AS tagsJson,
-             metadata_json AS metadataJson, alt_text AS altText, created_at AS createdAt
+             metadata_json AS metadataJson, alt_text AS altText, created_at AS createdAt,
+             updated_at AS updatedAt, size_bytes AS sizeBytes
       FROM media_items
       WHERE relative_path = ?
       LIMIT 1
@@ -1734,7 +1742,10 @@ function syncMediaLibraryIntoDatabase(
       tagsJson: existing?.tagsJson ? String(existing.tagsJson) : "[]",
       metadataJson: JSON.stringify(metadata),
       createdAt: existing?.createdAt ? String(existing.createdAt) : media.createdAt,
-      updatedAt: media.updatedAt
+      updatedAt: existing
+        ? (existing.metadataJson !== JSON.stringify(metadata) || Number(existing.sizeBytes) !== media.sizeBytes
+          ? isoAfter(String(existing.updatedAt)) : String(existing.updatedAt))
+        : media.updatedAt
     });
   }
 
@@ -2245,6 +2256,46 @@ export function getSiteSettingsRecord(): SiteSettingsRecord {
 export function saveSiteSettings(input: SiteSettings) {
   const db = getDatabase();
   upsertSetting(db, "site", input);
+}
+
+export function getNotificationRoutingRecord(): NotificationRoutingRecord {
+  const { settings, updatedAt } = getSiteSettingsRecord();
+  return { forwardTo: settings.email.forwardTo, builderEmail: settings.builderEmail, notificationForwardEmail: settings.notificationForwardEmail, replyTo: settings.email.replyTo, updatedAt };
+}
+
+export function saveNotificationForwarding(forwardTo: string) {
+  const normalized = normalizeNotificationAddresses(forwardTo, "Global forwarding").join("\n");
+  const settings = getSiteSettings();
+  saveSiteSettings({ ...settings, email: { ...settings.email, forwardTo: normalized } });
+  return getNotificationRoutingRecord();
+}
+
+export function getConditionalRoutingRecord(): ConditionalRoutingRecord {
+  const row = getDatabase().prepare("SELECT value, updated_at AS updatedAt FROM settings WHERE key = 'notification-conditional-routing'").get() as { value: string; updatedAt: string } | undefined;
+  // A stable absent-record version enables first-save conflict checks without
+  // writing defaults on read or touching arbitrary owner settings.
+  return row ? { rules: normalizeConditionalRules(JSON.parse(row.value)), updatedAt: row.updatedAt } : { rules: [], updatedAt: "1970-01-01T00:00:00.000Z" };
+}
+
+export function saveConditionalRouting(rules: unknown) {
+  upsertSetting(getDatabase(), "notification-conditional-routing", normalizeConditionalRules(rules));
+  return getConditionalRoutingRecord();
+}
+
+export function getWebsiteInquiryForRouting(id: string): WebsiteInquiryRecord | null {
+  const row = getDatabase().prepare("SELECT id, inquiry_json, classification_json, disposition, project_reference, created_at FROM website_inquiries WHERE id = ?").get(id) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const classification = JSON.parse(String(row.classification_json));
+  if (row.disposition !== "legitimate" || classification.disposition !== "legitimate") throw new Error("Quarantined inquiries cannot queue correspondence.");
+  return { id: String(row.id), inquiry: JSON.parse(String(row.inquiry_json)), classification, projectReference: row.project_reference ? String(row.project_reference) : null, createdAt: String(row.created_at) };
+}
+
+export function recordAuthenticationRecipient(deliveryId: string, recipient: string) {
+  getDatabase().prepare("INSERT INTO notification_auth_recipients (delivery_id,recipient) VALUES (?,?)").run(deliveryId, recipient);
+}
+
+export function getAuthenticationRecipient(deliveryId: string) {
+  return (getDatabase().prepare("SELECT recipient FROM notification_auth_recipients WHERE delivery_id = ?").get(deliveryId) as { recipient: string } | undefined)?.recipient ?? null;
 }
 
 
@@ -3989,7 +4040,7 @@ export function saveMediaMetadata(input: {
 }) {
   const db = getDatabase();
   const previous = getMedia(input.relativePath);
-  if (!getMedia(input.relativePath)) {
+  if (!previous) {
     const media = scanMediaAsset(input.relativePath);
     if (!media) throw new Error(`Media file '${input.relativePath}' was not found in the configured library.`);
     db.prepare(`
@@ -3999,7 +4050,7 @@ export function saveMediaMetadata(input: {
         focal_x, focal_y, zoom, reviewed, tags_json, metadata_json,
         assignment_source, assignment_rule_id, assigned_at, assigned_by, manual_override,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', '{}', NULL, NULL, NULL, NULL, 0, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL, 50, 50, 1, 0, '[]', ?, NULL, NULL, NULL, NULL, 0, ?, ?)
     `).run(
       media.relativePath,
       media.folder,
@@ -4008,6 +4059,7 @@ export function saveMediaMetadata(input: {
       media.sizeBytes,
       media.clusterKey,
       media.guessedAlt,
+      writeJson(mergeMediaPreviewMetadata({}, media.preview)),
       media.createdAt,
       media.updatedAt
     );
@@ -4046,7 +4098,7 @@ export function saveMediaMetadata(input: {
     zoom: input.zoom,
     reviewed: input.reviewed ? 1 : 0,
     tagsJson: writeJson(input.tags),
-    metadataJson: writeJson(input.metadata ?? {}),
+    metadataJson: writeJson(preserveMediaPreviewMetadata(input.metadata ?? {}, (previous ?? getMedia(input.relativePath))?.metadata ?? {})),
     assignmentSource: input.assignmentSource === undefined ? previous?.assignmentSource ?? null : input.assignmentSource,
     assignmentRuleId: input.assignmentRuleId === undefined ? previous?.assignmentRuleId ?? null : input.assignmentRuleId,
     assignedAt: input.assignedAt === undefined ? previous?.assignedAt ?? null : input.assignedAt,
@@ -4551,6 +4603,26 @@ export function applyMediaFolderRules(actorEmail: string | null = null): MediaFo
   );
 }
 
+// Inspect explicit records without removing missing rows or applying assignments.
+export function refreshMediaTechnicalMetadata(paths: string[], actorEmail: string | null = null) {
+  if (!Array.isArray(paths) || paths.length === 0 || paths.length > 500 || paths.some((value) => typeof value !== "string" || !value.trim())) {
+    throw new Error("Choose between 1 and 500 indexed media paths.");
+  }
+  const scans = [...new Set(paths)].map((relativePath) => ({ relativePath, scan: scanMediaAsset(relativePath, { force: true }) }));
+  return withDatabaseTransaction((db) => scans.map(({ relativePath, scan }) => {
+    const current = getMedia(relativePath);
+    if (!current) throw new Error("The selected media record no longer exists.");
+    const metadata = mergeMediaPreviewMetadata(current.metadata, scan?.preview ?? { status: "unavailable", reason: "missing-file" });
+    const sizeBytes = scan?.sizeBytes ?? current.sizeBytes;
+    if (JSON.stringify(metadata) === JSON.stringify(current.metadata) && sizeBytes === current.sizeBytes) return current;
+    db.prepare("UPDATE media_items SET metadata_json = ?, size_bytes = ?, updated_at = ? WHERE relative_path = ?")
+      .run(writeJson(metadata), sizeBytes, isoAfter(current.updatedAt), relativePath);
+    const next = getMedia(relativePath)!;
+    recordAdminEditAudit({ actorEmail, entityType: "media", entityKey: relativePath, operation: "refresh-preview", before: current, after: next });
+    return next;
+  }));
+}
+
 export function refreshMediaLibrary(actorEmail: string | null = null) {
   const scanned = scanMediaLibrary();
   const scannedPaths = new Set(scanned.map((media) => media.relativePath));
@@ -5041,6 +5113,25 @@ export function createProject(input: ProjectInput) {
   return reference;
 }
 
+export function getExistingWebsiteInquiry(ownerKey: string, key: string, inquiry: WebsiteInquiry) {
+  return existingWebsiteInquiry(getDatabase(), ownerKey, key, inquiry);
+}
+
+export function listWebsiteInquiries(options: Parameters<typeof listWebsiteInquiriesInDatabase>[1] = {}) {
+  return listWebsiteInquiriesInDatabase(getDatabase(), options);
+}
+
+export function acceptWebsiteInquiry(input: { ownerKey: string; key: string; inquiry: WebsiteInquiry; classification: InquiryClassification; project?: ProjectInput }) {
+  return withDatabaseTransaction((db) => {
+    const existing = existingWebsiteInquiry(db, input.ownerKey, input.key, input.inquiry);
+    if (existing) return { record: existing, created: false as const };
+    const legitimateCommission = input.inquiry.channel === "commission" && input.classification.disposition === "legitimate";
+    if (legitimateCommission && !input.project) throw new Error("Commission details are required.");
+    const project = legitimateCommission ? createProjectIdempotent(input.project!, inquirySubmissionIdentity(input.ownerKey, input.key).projectKey) : null;
+    return { record: insertWebsiteInquiry(db, { ...input, projectReference: project?.reference }), created: true as const };
+  });
+}
+
 export function createProjectIdempotent(input: ProjectInput, idempotencyKey: string) {
   const cleanKey = idempotencyKey.trim();
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{15,127}$/.test(cleanKey)) throw new Error("Submission idempotency key is invalid.");
@@ -5070,6 +5161,7 @@ export function rollbackCommissionSubmission(reference: string, idempotencyKey: 
     db.prepare("DELETE FROM project_updates WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM project_access_grants WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM commission_submissions WHERE idempotency_hash = ?").run(idempotencyHash);
+    db.prepare("DELETE FROM website_inquiries WHERE project_reference = ?").run(reference);
     db.prepare("DELETE FROM projects WHERE reference = ?").run(reference);
     return true;
   });
@@ -5176,8 +5268,9 @@ export function appendProjectUpdate(input: {
   }
 
   const timestamp = nowIso();
+  const id = randomUUID();
   db.prepare(`INSERT INTO project_updates (id, project_reference, author_email, author_role, visibility, body, attachments_json, created_at) VALUES (:id, :projectReference, :authorEmail, :authorRole, :visibility, :body, :attachmentsJson, :createdAt)`).run({
-    id: randomUUID(),
+    id,
     projectReference: input.projectReference,
     authorEmail: input.authorEmail ?? null,
     authorRole: input.authorRole,
@@ -5187,6 +5280,7 @@ export function appendProjectUpdate(input: {
     createdAt: timestamp
   });
   db.prepare(`UPDATE projects SET updated_at = ? WHERE reference = ?`).run(timestamp, input.projectReference);
+  return id;
 }
 
 export function listProjectUpdates(projectReference: string, includePrivate = false) {
@@ -5916,15 +6010,18 @@ export function deleteProjectPermanently(
   });
 }
 
+const CART_OWNER_PREDICATE = `((:cartToken != '' AND cart_token = :cartToken AND COALESCE(user_email, '') = '') OR (:userEmail != '' AND lower(user_email) = lower(:userEmail)))`;
+
 export function listCartItems(cartToken: string, userEmail?: string | null) {
   const db = getDatabase();
-  const rows = db.prepare(`SELECT id, cart_token AS cartToken, user_email AS userEmail, piece_slug AS pieceSlug, quantity, options_json AS optionsJson, created_at AS createdAt, updated_at AS updatedAt FROM cart_items WHERE cart_token = ? OR (user_email IS NOT NULL AND lower(user_email) = lower(?)) ORDER BY datetime(updated_at) DESC`).all(cartToken, userEmail ?? "") as Record<string, unknown>[];
+  const rows = db.prepare(`SELECT id, cart_token AS cartToken, user_email AS userEmail, piece_slug AS pieceSlug, quantity, options_json AS optionsJson, created_at AS createdAt, updated_at AS updatedAt FROM cart_items WHERE ${CART_OWNER_PREDICATE} ORDER BY datetime(updated_at) DESC`).all({ cartToken: cartToken.trim(), userEmail: userEmail?.trim() || "" }) as Record<string, unknown>[];
   return rows.map(mapCartItem);
 }
 
 export function saveCartItem(input: { cartToken: string; userEmail?: string | null; pieceSlug: string; quantity: number; options?: Record<string, unknown> }) {
+  if (!input.cartToken.trim()) throw new Error("A cart session is required.");
   const db = getDatabase();
-  const existing = db.prepare(`SELECT id FROM cart_items WHERE cart_token = ? AND piece_slug = ? LIMIT 1`).get(input.cartToken, input.pieceSlug) as { id?: string } | undefined;
+  const existing = db.prepare(`SELECT id FROM cart_items WHERE cart_token = :cartToken AND piece_slug = :pieceSlug AND ${CART_OWNER_PREDICATE} LIMIT 1`).get({ cartToken: input.cartToken.trim(), pieceSlug: input.pieceSlug, userEmail: input.userEmail?.trim() || "" }) as { id?: string } | undefined;
   const timestamp = nowIso();
   db.prepare(`
     INSERT INTO cart_items (id, cart_token, user_email, piece_slug, quantity, options_json, created_at, updated_at)
@@ -5932,8 +6029,8 @@ export function saveCartItem(input: { cartToken: string; userEmail?: string | nu
     ON CONFLICT(id) DO UPDATE SET quantity = excluded.quantity, options_json = excluded.options_json, user_email = excluded.user_email, updated_at = excluded.updated_at
   `).run({
     id: existing?.id ?? randomUUID(),
-    cartToken: input.cartToken,
-    userEmail: input.userEmail ?? null,
+    cartToken: input.cartToken.trim(),
+    userEmail: input.userEmail?.trim().toLowerCase() || null,
     pieceSlug: input.pieceSlug,
     quantity: Math.max(1, input.quantity),
     optionsJson: writeJson(input.options ?? {}),
@@ -5942,9 +6039,9 @@ export function saveCartItem(input: { cartToken: string; userEmail?: string | nu
   });
 }
 
-export function removeCartItem(id: string) {
+export function removeCartItem(id: string, cartToken: string, userEmail?: string | null) {
   const db = getDatabase();
-  db.prepare(`DELETE FROM cart_items WHERE id = ?`).run(id);
+  return Number(db.prepare(`DELETE FROM cart_items WHERE id = :id AND ${CART_OWNER_PREDICATE}`).run({ id, cartToken: cartToken.trim(), userEmail: userEmail?.trim() || "" }).changes) === 1;
 }
 
 export function clearCart(cartToken: string) {
@@ -7202,7 +7299,8 @@ export function getVisitorInsights(input: {
     trendRows.map((row) => [String(row.date), row])
   );
   const trend = Array.from(
-    { length: rangeDays },
+    // Include both partial UTC boundary days in the rolling window.
+    { length: rangeDays + 1 },
     (_, index) => {
       const date = new Date(
         start.getTime() + index * 24 * 60 * 60 * 1000

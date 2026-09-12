@@ -1586,10 +1586,10 @@ function snapshotLabMutationTarget(input: {
   ) {
     return "project";
   }
+  if (panel === "visitors") return "visitor-policy";
   if (panel !== "notifications") return null;
   if (view === "types") return "notification-policy";
   if (view === "templates") return "notification-template";
-  if (view === "visitors") return "visitor-policy";
   return null;
 }
 

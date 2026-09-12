@@ -23,7 +23,7 @@ export default async function ProcessPostPage({ params }: { params: Promise<{ sl
         <p className="lede" {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p>
         {post.coverMediaPath ? <MediaCollection className="journal-cover" collectionId={`process:${post.slug}:cover`} items={[{ id: `process:${post.slug}:cover`, src: toMediaUrl(post.coverMediaPath), alt: post.title, order: 0 }]} preloadFirst title={post.title} variant="single" /> : null}
         {post.sourceUrl ? <p className="source-note">Source: <a href={post.sourceUrl} rel="noreferrer" target="_blank" {...inlineEditAttrs({ resource: "post", id: post.slug, field: "sourceLabel", urlField: "sourceUrl" })}>{post.sourceLabel || post.sourceUrl}</a></p> : null}
-        <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(post.body) as string) }} />
+        <div className="reading-body" dangerouslySetInnerHTML={{ __html: sanitizeHtml(marked.parse(post.body) as string) }} />
       </PageSection>
     </Shell>
   );

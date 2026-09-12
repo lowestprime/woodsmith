@@ -53,6 +53,17 @@ test("piece galleries and build records use mounted-library pickers", () => {
   assert.doesNotMatch(pieceEditorSource, /<input[^>]+type="text"[^>]+(?:media|path)/i);
 });
 
+test("reopening the selected media reveals the mobile inspector without discarding edits", () => {
+  const selection = functionSlice(mediaWorkspaceSource, "async function selectItem(", "async function inspectCandidate(");
+  assert.match(selection, /if \(relativePath === selectedPath\) \{\s*setMobilePane\("inspector"\);\s*return;/);
+  assert.match(selection, /await flushStudioNavigationQueues\(\)/);
+  assert.doesNotMatch(mediaWorkspaceSource, /tabIndex=\{item.relativePath === selectedItem/);
+  assert.match(mediaWorkspaceSource, /ArrowUp: -columns, ArrowDown: columns/);
+  assert.match(mediaWorkspaceSource, /\[data-media-inspector-title\].*focus/);
+  assert.match(mediaWorkspaceSource, /unoptimized: imageNeedsUnoptimized\(item\)/);
+  assert.match(mediaWorkspaceSource, /setSelectedPath\(result\.relativePath\)/);
+});
+
 test("media metadata and source-folder rules use durable no-navigation autosave", () => {
   assert.match(
     studioSource,
@@ -126,7 +137,7 @@ test("media deletion uses the shared cancel-first confirmation dialog", () => {
 test("Studio media cards do not preload every video in the paginated grid", () => {
   assert.match(
     mediaWorkspaceSource,
-    /<video muted playsInline preload="none" src=\{toMediaUrl\(item\.relativePath\)\} \/>/
+    /<video muted playsInline preload="none" src=\{toMediaUrl\(item\.relativePath, item\.metadata\.mediaSourceSignature\)\} \/>/
   );
   assert.doesNotMatch(
     mediaWorkspaceSource,

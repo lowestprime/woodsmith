@@ -6,12 +6,12 @@ export default async function VerifyAccountPage({ searchParams }: { searchParams
   const { token = "" } = await searchParams;
   const result = token
     ? await consumeVerificationTokenAction(token)
-    : { ok: false as const, email: "", displayName: "", message: "That verification link is missing a token." };
+    : { ok: false as const, email: "", displayName: "", message: "Open the complete verification link from your email." };
 
   return (
     <Shell>
       <PageSection editHref="/studio?panel=people">
-        <PageIntro eyebrow="Account" title="Email verification" copy="Buyer accounts require a confirmed email address before login is enabled." />
+        <PageIntro eyebrow="Account" title="Email verification" copy="Confirm your email address to access your projects and account." />
         <div className={`notice-panel${result.ok ? "" : " error-panel"}`}>
           <p>{result.message}</p>
           {result.ok ? <p className="muted-copy">Verified account: {result.email}</p> : null}

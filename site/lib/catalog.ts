@@ -29,7 +29,10 @@ export function getDisplayMediaPaths(piece: Pick<PieceRecord, "slug" | "mediaPat
   const links = listPieceMediaLinks(piece.slug, { publicOnly: true, roles: ["hero", "gallery", "detail", "context"] });
   const normalized = [...new Set(links.map((link) => link.relativePath))];
   return (normalized.length > 0 ? normalized : piece.mediaPaths)
-    .filter((relativePath) => getMedia(relativePath)?.metadata.mediaPreviewStatus !== "unavailable")
+    .filter((relativePath) => {
+      const media = getMedia(relativePath);
+      return Boolean(media) && media?.metadata.mediaPreviewStatus !== "unavailable";
+    })
     .slice(0, safeLimit);
 }
 

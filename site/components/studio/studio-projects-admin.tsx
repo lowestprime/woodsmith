@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import { StudioRecordList } from "@/components/studio/studio-record-list";
 import {
   useCallback,
   useRef,
@@ -482,6 +483,7 @@ function ProjectEditor({
   return (
     <article
       className="studio-panel studio-editor-card project-admin-detail"
+      data-studio-record-detail
       id={`project-${currentProject.reference.toLowerCase()}`}
     >
       <div className="studio-editor-head">
@@ -1045,7 +1047,6 @@ export function StudioProjectsAdmin({
 }: ProjectsAdminProps) {
   const [projects, setProjects] =
     useState(initialProjects);
-  const [query, setQuery] = useState("");
   const [selectedReference, setSelectedReference] =
     useState(
       initialProjects.some(
@@ -1060,25 +1061,6 @@ export function StudioProjectsAdmin({
     (item) =>
       item.reference === selectedReference
   ) ?? projects[0] ?? null;
-
-  const normalizedQuery =
-    query.trim().toLowerCase();
-  const filteredProjects = normalizedQuery
-    ? projects.filter((project) =>
-        [
-          project.reference,
-          project.guestName,
-          project.guestEmail,
-          project.status,
-          project.stage,
-          project.lifecycleState
-        ].some((value) =>
-          value.toLowerCase().includes(
-            normalizedQuery
-          )
-        )
-      )
-    : projects;
 
   const replaceProject = useCallback(
     (next: ProjectRecord) => {
@@ -1114,52 +1096,17 @@ export function StudioProjectsAdmin({
       className="studio-master-detail project-admin-workspace"
       data-audit-id="studio-projects-workspace"
     >
-      <nav
-        aria-label="Project records"
-        className="studio-master-list project-master-list"
-      >
-        <label className="studio-master-search">
-          <span className="sr-only">
-            Filter projects
-          </span>
-          <input
-            onChange={(event) => {
-              setQuery(event.target.value);
-            }}
-            placeholder="Filter projects"
-            type="search"
-            value={query}
-          />
-        </label>
-        {filteredProjects.map((project) => (
-          <button
-            aria-current={
-              project.reference ===
-                selected?.reference
-                ? "page"
-                : undefined
-            }
-            className={`studio-master-item${
-              project.reference ===
-              selected?.reference
-                ? " is-active"
-                : ""
-            }`}
-            key={project.reference}
-            onClick={() => {
-              setSelectedReference(
-                project.reference
-              );
-            }}
-            type="button"
-          >
-            <strong>{project.reference}</strong>
-            <span>
-              {project.lifecycleState} - {project.status} - {project.stage}
-            </span>
-          </button>
-        ))}
-      </nav>
+      <StudioRecordList
+        label="Projects"
+        records={projects.map((project) => ({
+          key: project.reference,
+          label: project.reference,
+          meta: `${project.lifecycleState} - ${project.status} - ${project.stage}`,
+          search: `${project.guestName} ${project.guestEmail}`
+        }))}
+        selectedKey={selected?.reference ?? ""}
+        onSelect={setSelectedReference}
+      />
 
       {selected ? (
         <ProjectEditor

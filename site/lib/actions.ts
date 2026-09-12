@@ -3,7 +3,9 @@
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
+import { processWebsiteIntake } from "./website-intake.ts";
+import type { WebsiteInquiryRecord } from "./website-inquiry-store.ts";
 import { secureCookieRequired } from "@/lib/cookie-policy";
 import {
   PIECE_MEDIA_ROLES,
@@ -19,7 +21,6 @@ import {
   checkSearchIndexIntegrity,
   consumeCommissionRenderAsset,
   consumeCommissionSubmissionQuota,
-  createDraftOrder,
   createMediaOperationBatch,
   createProject,
   createProjectIdempotent,
@@ -74,6 +75,7 @@ import {
   patchMediaMetadata,
   previewMediaFolderRules,
   refreshMediaLibrary,
+  refreshMediaTechnicalMetadata,
   reconcileMediaPieceAssignment,
   rebuildSearchIndex,
   removeCartItem,
@@ -135,6 +137,7 @@ import {
   type SiteSettingsRecord,
   type UserRecord
 } from "@/lib/db";
+import { MEDIA_CROP_ASPECTS } from "./media-crop.ts";
 import { clearSession, createPasswordHash, createSession, getCurrentUser, requireAdmin, requireUser, verifyLogin } from "@/lib/auth";
 import {
   executeStudioServerMutation,
@@ -174,12 +177,19 @@ import {
 import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
 import {
   processDueNotificationRetries,
+  queueNotificationEmail,
+  queueOperatorCorrespondence,
+  createOrderInquiry,
   retryNotificationDelivery,
   sendNotificationEmail,
   sendSmtpTest,
   summarizeEmailFailure,
   verifySmtpConfiguration
 } from "@/lib/notifications";
+import { getNotificationRoutingRecord, saveNotificationForwarding } from "@/lib/db";
+import { normalizeNotificationAddresses, type NotificationRoutingRecord } from "@/lib/notification-routing";
+import { getConditionalRoutingRecord, saveConditionalRouting } from "@/lib/db";
+import { normalizeConditionalRules, type ConditionalRoutingRecord, type ConditionalRule } from "@/lib/conditional-notification-routing";
 import { createCleanedBackgroundVariant, getAiServiceStatus } from "@/lib/ai-services";
 import { buildMediaVerificationQueue, type MediaMatchCandidate } from "@/lib/media-audit";
 import { categoryKey, normalizePieceCategories, type PieceCategoryDefinition } from "@/lib/categories";
@@ -792,8 +802,10 @@ export async function addToCartAction(formData: FormData) {
 }
 
 export async function removeCartItemAction(formData: FormData) {
+  const cartToken = await getCartToken();
+  const user = await getCurrentUser();
   const id = requiredField(formData.get("id"), "Cart line");
-  removeCartItem(id);
+  if (!removeCartItem(id, cartToken, user?.email ?? null)) redirect(`/shop/cart?error=${encodeURIComponent("This cart item is no longer available.")}`);
   revalidatePath("/shop/cart");
   redirect("/shop/cart?updated=1");
 }
@@ -802,7 +814,9 @@ export async function startCheckoutAction(formData: FormData) {
   const cartToken = await getCartToken();
   const user = await getCurrentUser();
   const site = getSiteSettings();
-  const buyerEmail = requiredField(formData.get("email"), "Email").toLowerCase();
+  const buyerAddresses = normalizeNotificationAddresses(requiredField(formData.get("email"), "Email"));
+  if (buyerAddresses.length !== 1) throw new Error("Enter one customer email address.");
+  const buyerEmail = buyerAddresses[0];
   const cartItems = listCartItems(cartToken, user?.email ?? null);
   const invalidItems: string[] = [];
   const lines = cartItems.flatMap((item) => {
@@ -820,7 +834,7 @@ export async function startCheckoutAction(formData: FormData) {
     }];
   });
 
-  if (lines.length === 0) {
+  if (lines.length === 0 || invalidItems.length > 0) {
     redirect(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`);
   }
 
@@ -833,7 +847,11 @@ export async function startCheckoutAction(formData: FormData) {
     taxRate: site.localTaxRate
   });
 
-  const orderNumber = createDraftOrder({
+  if (!consumeCommissionSubmissionQuota(`checkout:${await commissionOwnerKey(user?.email)}`, 5).allowed) throw new Error("Too many checkout requests. Please try again later.");
+  const { orderNumber, notice } = createOrderInquiry({
+    kind: "checkout_draft", customerName: optionalField(formData.get("shippingName")) || user?.displayName || "Customer",
+    customerEmail: buyerEmail, lines, studioUrl: `${resolveBaseUrl()}/studio?panel=orders`,
+    order: {
     userEmail: user?.email ?? buyerEmail,
     subtotalCents: totals.subtotalCents,
     shippingCents: totals.shippingCents,
@@ -852,7 +870,9 @@ export async function startCheckoutAction(formData: FormData) {
     billingAddress: {
       email: buyerEmail
     }
+    }
   });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
 
   if (stripeIsConfigured()) {
     const session = await createStripeCheckoutSession({
@@ -914,7 +934,8 @@ function serverCommissionEstimate(formData: FormData, requestType: string, dimen
   return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays) };
 }
 
-export async function submitContactRequestAction(formData: FormData) {
+async function submitPlannerRequest(formData: FormData) {
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
   const user = await getCurrentUser();
   const guestName = requiredField(formData.get("customerName"), "Your name").slice(0, 120);
   const guestEmail = requiredField(formData.get("email"), "Email").toLowerCase();
@@ -945,30 +966,24 @@ export async function submitContactRequestAction(formData: FormData) {
   const deliveryMode = optionalField(formData.get("deliveryMode"));
   if (deliveryMode && !["pickup", "local-delivery", "shipment"].includes(deliveryMode)) throw new Error("Delivery preference is invalid.");
   const idempotencyKey = requiredField(formData.get("idempotencyKey"), "Submission key");
-  if (optionalField(formData.get("companyWebsite"))) throw new Error("The request could not be submitted.");
-  const requestSource = optionalField(formData.get("requestSource")) || "commissions-workflow";
-  if (requestSource === "commissions-workflow" && optionalField(formData.get("accuracyConfirmation")) !== "1") throw new Error("Confirm the request details before submitting.");
+  const requestSource = "commissions-workflow";
   const ownerKey = await commissionOwnerKey(user?.email);
-  const submissionQuota = consumeCommissionSubmissionQuota(ownerKey, user ? 12 : 5);
-  if (!submissionQuota.allowed) throw new Error(`Too many requests were submitted from this browser. Try again in about ${Math.ceil(submissionQuota.retryAfterSeconds / 60)} minutes.`);
   const aiPreviewPath = optionalField(formData.get("aiPreviewPath"));
   const stagedUploads: string[] = [];
+  let intake: Awaited<ReturnType<typeof processWebsiteIntake>>;
   try {
-    for (const file of files) {
-      stagedUploads.push(await persistUploadedMedia(file, `commission-staging/${idempotencyKey.slice(0, 24)}`, {
-        maxBytes: 20 * 1024 * 1024,
-        allowedMimePrefixes: ["image/"],
-        allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"]
-      }));
-    }
-  } catch (error) {
-    stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
-    throw error;
-  }
-
-  let result: ReturnType<typeof createProjectIdempotent>;
-  try {
-    result = createProjectIdempotent({
+    const fields = Object.fromEntries(formData);
+    const plannerFields = ["intent", "referencePieceSlug", "commissionTypeSlug", "requestedWidth", "requestedDepth", "requestedHeight", "dimensionsJson", "materialPreference", "joineryPreference", "visualizerOptions", "roomUse", "roomLocation", "functionalLoad", "fitConstraints", "finishPreference", "hardwarePreference", "timingPreference", "phone", "cityRegion", "deliveryMode", "budgetDollars", "includeVisualization", "draftId"];
+    intake = await processWebsiteIntake({ fields, channel: "commission", ownerKey, authenticated: Boolean(user),
+      plannerContext: Object.fromEntries(plannerFields.map(key => [key, optionalField(formData.get(key)).slice(0, 20_000)])),
+      prepareProject: async () => {
+        for (const file of files) {
+          stagedUploads.push(await persistUploadedMedia(file, `commission-staging/${idempotencyKey.slice(0, 24)}`, {
+            maxBytes: 20 * 1024 * 1024, allowedMimePrefixes: ["image/"],
+            allowedExtensions: [".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"]
+          }));
+        }
+        return {
     userEmail: user?.email ?? null,
     guestName,
     guestEmail,
@@ -1006,11 +1021,15 @@ export async function submitContactRequestAction(formData: FormData) {
     leadTimeDays: estimate.leadTimeDays,
     shippingAddress: cityRegion ? { cityRegion } : {},
     billingAddress: { email: guestEmail }
-    }, idempotencyKey);
+        };
+      }
+    });
   } catch (error) {
     stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
     throw error;
   }
+  if (intake.record.classification.disposition === "quarantine") return { ok: true, message: "Thank you. Your message has been received." };
+  const result = { reference: intake.record.projectReference!, created: intake.created };
   const reference = result.reference;
 
   if (!result.created) stagedUploads.forEach((relativePath) => deleteMediaAsset(relativePath));
@@ -1043,7 +1062,7 @@ export async function submitContactRequestAction(formData: FormData) {
         }
         try { deleteMediaAsset(relativePath); } catch { /* Best-effort cleanup; rollback still removes the project key. */ }
       }
-      rollbackCommissionSubmission(reference, idempotencyKey);
+      rollbackCommissionSubmission(reference, intake.projectKey);
       throw error;
     }
 
@@ -1070,10 +1089,17 @@ export async function submitContactRequestAction(formData: FormData) {
       updateProject(reference, { options: { ...project.options, aiPreviewPath: ownedPreviewPath } });
     }
     appendProjectUpdate({ projectReference: reference, authorEmail: guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body: message });
+    const draftId = optionalField(formData.get("draftId"));
+    if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
+  }
+    // Replaying a submission can recover a missing outbox entry without duplicating mail.
+    const persisted = getProject(reference)!;
     const statusUrl = `${resolveBaseUrl()}/commissions/status`;
-    await sendNotificationEmail({
+    const operatorNotice = queueOperatorCorrespondence({ category: "customer_inquiry_admin", customerName: persisted.guestName, customerEmail: persisted.guestEmail, reference, message: persisted.brief, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: reference, projectReference: reference, inquiryContext: intake.record.inquiry, websiteInquiryId: intake.record.id });
+    const confirmation = queueNotificationEmail({
       category: "commission_submitted",
-      to: [guestEmail, getSiteSettings().builderEmail],
+      websiteInquiryId: intake.record.id,
+      to: persisted.guestEmail,
       subject: `Custom work request received: ${reference}`,
       text: `Your Beaman Woodworks project reference is ${reference}. Open ${statusUrl} and enter the reference with your email to view updates.`,
       html: `<p>Your Beaman Woodworks project reference is <strong>${reference}</strong>.</p><p>Open ${statusUrl} and enter the reference with your email to view updates.</p>`,
@@ -1085,9 +1111,8 @@ export async function submitContactRequestAction(formData: FormData) {
         `commission-submitted:${reference}`,
       projectReference: reference
     });
-    const draftId = optionalField(formData.get("draftId"));
-    if (draftId && user) markCommissionDraftSubmitted(draftId, user.email, reference);
-  }
+    if (operatorNotice.shouldDeliver) await retryNotificationDelivery(operatorNotice.delivery.id);
+    if (confirmation.shouldDeliver) await retryNotificationDelivery(confirmation.delivery.id);
 
   await grantProjectBrowserAccess(reference);
   revalidatePath("/commissions");
@@ -1095,8 +1120,46 @@ export async function submitContactRequestAction(formData: FormData) {
   redirect(`/requests/${reference}?created=1`);
 }
 
+async function notifyWebsiteInquiry(record: WebsiteInquiryRecord) {
+  if (record.classification.disposition !== "legitimate") return;
+  const inquiry = record.inquiry;
+  const notice = queueOperatorCorrespondence({
+    category: "customer_inquiry_admin", customerName: inquiry.customerName, customerEmail: inquiry.customerEmail,
+    reference: record.id, message: inquiry.message, eventId: record.id,
+    studioUrl: `${resolveBaseUrl()}/studio?panel=inquiries&inquiry=${encodeURIComponent(record.id)}`,
+    inquiryContext: inquiry, websiteInquiryId: record.id
+  });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
+}
+
+export async function submitWebsiteInquiryAction(_: unknown, formData: FormData) {
+  try {
+    if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+    const user = await getCurrentUser();
+    const result = await processWebsiteIntake({ fields: Object.fromEntries(formData), channel: "inquiry", ownerKey: await commissionOwnerKey(user?.email), authenticated: Boolean(user) });
+    await notifyWebsiteInquiry(result.record);
+    revalidatePath("/studio");
+    return { ok: true, message: "Thank you. Your message has been received.", receipt: result.record.id };
+  } catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, message: error instanceof Error ? error.message : "The inquiry could not be submitted. Please try again." };
+  }
+}
+
+export async function submitContactRequestAction(formData: FormData) {
+  return submitPlannerRequest(formData);
+}
+
+export async function submitWebsiteCommissionAction(_: unknown, formData: FormData) {
+  try { return await submitPlannerRequest(formData); }
+  catch (error) {
+    unstable_rethrow(error);
+    return { ok: false, message: error instanceof Error ? error.message : "The request could not be submitted. Please try again." };
+  }
+}
+
 export async function submitCommissionAction(formData: FormData) {
-  return submitContactRequestAction(formData);
+  return submitPlannerRequest(formData);
 }
 
 export async function lookupProjectStatusAction(formData: FormData) {
@@ -1114,7 +1177,13 @@ export async function submitProjectReplyAction(formData: FormData) {
   const project = getProject(reference);
   const user = await getCurrentUser();
   if (!project || !await userCanAccessProject(project, user)) redirect(`/requests/${reference}?error=access`);
-  appendProjectUpdate({ projectReference: reference, authorEmail: user?.email ?? project.guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body });
+  if (user?.role !== "admin" && !consumeCommissionSubmissionQuota(`correspondence:${await commissionOwnerKey(user?.email)}`, 20).allowed) throw new Error("Too many messages. Please try again later.");
+  const notice = withDatabaseTransaction(() => {
+    const id = appendProjectUpdate({ projectReference: reference, authorEmail: user?.email ?? project.guestEmail, authorRole: user ? "buyer-account" : "buyer", visibility: "public", body });
+    if (user?.role === "admin") return null;
+    return queueOperatorCorrespondence({ category: "customer_reply_admin", customerName: user?.displayName || project.guestName, customerEmail: user?.email || project.guestEmail, reference, message: body, studioUrl: `${resolveBaseUrl()}/studio?panel=projects&project=${encodeURIComponent(reference)}`, eventId: id, projectReference: reference });
+  });
+  if (notice?.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
   revalidatePath(`/requests/${reference}`);
   redirect(`/requests/${reference}?updated=1`);
 }
@@ -1126,8 +1195,13 @@ export async function submitReviewAction(formData: FormData) {
     redirect(`/portfolio/${encodeURIComponent(pieceSlug)}?error=${encodeURIComponent("Reviews are not open for this piece.")}`);
   }
   const reviewerName = requiredField(formData.get("reviewerName"), "Your name");
+  const reviewer = await getCurrentUser();
+  if (!consumeCommissionSubmissionQuota(`reviews:${await commissionOwnerKey(reviewer?.email)}`, 5).allowed) throw new Error("Too many reviews. Please try again later.");
   const rating = parseInteger(formData.get("rating"), 5);
-  saveReview({
+  const reviewId = crypto.randomUUID();
+  const notice = withDatabaseTransaction(() => {
+    saveReview({
+    id: reviewId,
     pieceSlug,
     userEmail: optionalField(formData.get("email")) || null,
     reviewerName,
@@ -1135,7 +1209,10 @@ export async function submitReviewAction(formData: FormData) {
     title: requiredField(formData.get("title"), "Title"),
     body: requiredField(formData.get("body"), "Review"),
     status: "draft" as const
+    });
+    return queueOperatorCorrespondence({ category: "review_submitted_admin", customerName: reviewerName, customerEmail: optionalField(formData.get("email")) || "Not supplied", reference: pieceSlug, message: `${requiredField(formData.get("title"), "Title")}\n${requiredField(formData.get("body"), "Review")}`, studioUrl: `${resolveBaseUrl()}/studio?panel=reviews`, eventId: reviewId });
   });
+  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
   revalidatePath(`/portfolio/${pieceSlug}`);
   redirect(`/portfolio/${pieceSlug}?review=submitted`);
 }
@@ -1200,9 +1277,11 @@ export async function saveSiteSettingsAction(formData: FormData) {
           fromName: optionalField(formData.get("emailFromName")) || existing.email.fromName,
           fromAddress: optionalField(formData.get("emailFromAddress")) || existing.email.fromAddress,
           replyTo: optionalField(formData.get("emailReplyTo")) || existing.email.replyTo,
-          forwardTo: optionalField(formData.get("emailForwardTo")) || existing.email.forwardTo
+          forwardTo: existing.email.forwardTo
         }
       };
+  // Routing changes require the versioned Notifications autosave, not this legacy full-form path.
+  input.email.forwardTo = existing.email.forwardTo;
   saveSiteSettings(input as SiteSettings);
   revalidatePath("/");
   revalidatePath("/about");
@@ -3762,6 +3841,17 @@ export async function saveMediaMetadataAction(_: unknown, formData: FormData): P
   }
 }
 
+export async function refreshMediaPreviewAction(relativePath: string) {
+  try {
+    const admin = await requireAdmin();
+    const [item] = refreshMediaTechnicalMetadata([relativePath], admin.email);
+    revalidateMediaSurfaces();
+    return { ok: true as const, item, message: "Preview inspected from the current source." };
+  } catch (error) {
+    return { ok: false as const, message: error instanceof Error ? error.message : "Preview refresh failed." };
+  }
+}
+
 export async function refreshMediaLibraryAction(): Promise<MediaActionResult> {
   try {
     const admin = await requireAdmin();
@@ -3912,12 +4002,7 @@ const MEDIA_PHOTO_QUALITIES = [
   "needs-reshoot"
 ] as const;
 
-const MEDIA_CROP_ASPECTS = [
-  "free",
-  "square",
-  "portrait",
-  "wide"
-] as const;
+
 
 function validateMediaMetadataAutosavePatch(
   patch: MediaMetadataAutosavePatch
@@ -4579,31 +4664,42 @@ function normalizeEmailList(
       `${label} must be a list.`
     );
   }
-  const result = [
-    ...new Set(
-      value
-        .map((entry) =>
-          String(entry).trim().toLowerCase()
-        )
-        .filter(Boolean)
-    )
-  ];
-  if (result.length > 30) {
-    throw new StudioMutationValidationError(
-      `${label} may contain at most 30 addresses.`
-    );
-  }
-  if (
-    result.some(
-      (email) =>
-        !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    )
-  ) {
-    throw new StudioMutationValidationError(
-      `${label} contains an invalid email address.`
-    );
-  }
-  return result;
+  try { return normalizeNotificationAddresses(value, label); }
+  catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+}
+
+export async function saveConditionalRoutingAutosaveAction(input: StudioServerMutationInput<{ rules: ConditionalRule[] }>): Promise<StudioMutationResult<ConditionalRoutingRecord>> {
+  if (!input.expectedUpdatedAt) return { ok: false, code: "validation", message: "Reload the current conditional routing version before saving." };
+  return executeAdminRecordAutosave(input, {
+    scope: "notification-conditional-routing-autosave", entityType: "notification-conditional-routing",
+    conflictMessage: "This operation ID was already used for a different conditional routing update.",
+    validate: patch => {
+      try { return { rules: normalizeConditionalRules(patch.rules) }; }
+      catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+    },
+    loadCurrent: () => getConditionalRoutingRecord(),
+    save: (_current, patch) => saveConditionalRouting(patch.rules),
+    loadCanonical: () => getConditionalRoutingRecord(),
+    updatedAt: entity => entity.updatedAt, entityKey: () => "website", operation: () => "update",
+    invalidate: () => revalidatePath("/studio")
+  });
+}
+
+export async function saveNotificationRoutingAutosaveAction(input: StudioServerMutationInput<{ forwardTo: string }>): Promise<StudioMutationResult<NotificationRoutingRecord>> {
+  if (!input.expectedUpdatedAt) return { ok: false, code: "validation", message: "Reload the current routing version before saving." };
+  return executeAdminRecordAutosave(input, {
+    scope: "notification-routing-autosave", entityType: "notification-routing",
+    conflictMessage: "This operation ID was already used for a different routing update.",
+    validate: patch => {
+      try { return { forwardTo: normalizeNotificationAddresses(boundedStudioString(patch.forwardTo, "Global forwarding", 8000), "Global forwarding").join("\n") }; }
+      catch (error) { throw new StudioMutationValidationError((error as Error).message); }
+    },
+    loadCurrent: () => getNotificationRoutingRecord(),
+    save: (_current, patch) => saveNotificationForwarding(patch.forwardTo),
+    loadCanonical: () => getNotificationRoutingRecord(),
+    updatedAt: entity => entity.updatedAt, entityKey: () => "site", operation: () => "update",
+    invalidate: () => revalidatePath("/studio")
+  });
 }
 
 function boundedInteger(

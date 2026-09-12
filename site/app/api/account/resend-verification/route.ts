@@ -47,7 +47,7 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     ok: true,
-    message: `SMTP accepted the verification email for ${user.email}.`,
+    message: `A verification email is on its way to ${user.email}.`,
     deliveryId: result.delivery.id
   });
 }

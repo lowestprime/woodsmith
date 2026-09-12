@@ -10,7 +10,17 @@
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
+Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+
+## Post-v19 launch release
+
+The active launch branch uses Next.js 16.3.4, a shared scroll-progress rail, an image-led home page, a compact `/contact` form, and the separate guided `/commissions` planner. Schema v14 updates exact legacy public copy and records each before/after change; customized content is preserved. The data-only v2 refinement also removes two exact legacy piece-detail arrays, using the existing history table and a one-time marker without changing the schema. About now uses compact responsive profiles; public forms and reading content have bounded measures, and uploaded photos share avatar geometry with generated initials. Default public copy is location-neutral. Default developer promotion is removed from the commercial pages without deleting the account or technical credits. See [the launch audit](docs/post-v19-launch-audit-20260902.md) for validation and remaining release gates. Production remains on the accepted v19 application until those gates pass.
+
 ## 📃 Description
+
+The launch branch repairs JPEG preview inspection for complete images with appended metadata or Motion Photo payloads. Studio's **Refresh preview** reinspects the selected source without rewriting it or changing assignments; crop defaults and video/fallback metadata saves are supported. Recovery uses content revisions to refresh Studio images, preserves technical results across saves, and survives restart. See the [media recovery evidence and source-path exceptions](docs/post-v19-launch-audit-20260902.md#goal-a-technical-media-recovery-2026-09-05). These changes are deployed in the accepted Goal E image.
+
+The launch branch also adds searchable, paginated Projects, Orders and Reviews workspaces with one active editor. Switching records flushes pending edits, transfers keyboard focus after rendering, and keeps filtering separate from the editing context. Server refreshes reconcile saved records without resetting an active autosave queue. These changes remain subject to the final production release gates.
 
 - Public portfolio pages backed only by verified or explicitly review-marked media from the NAS photo library mounted at `/app/pics`
 - Portfolio category filtering managed through editable labels, matching terms, and icon styles in the Woodshop dashboard
@@ -40,7 +50,7 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 ## 📃 Production Notes
 
 - Persistence uses `node:sqlite`, which emits Node's experimental warning during build and runtime.
-- The application currently uses Next.js 16.3.0. The additive SQLite migration ledger applies through schema version 13: versions 9-11 add notification policy/delivery records and project lifecycle/deletion ledgers, version 12 adds minimized visitor pageviews/policy data and scrubs legacy raw visitor and audit fields, and version 13 creates and rebuilds the synchronized FTS5 site-search index. Migrations update the mounted database in place and are idempotent.
+- The post-v19 source uses the security-patched Next.js 16.3.4 line. Production remains on the evidence-bound v19 image until the new exact candidate passes recovery, image, runtime, browser, and deployment gates. The additive SQLite migration ledger applies through schema version 15: versions 9-11 add notification and project-lifecycle records, version 12 minimizes visitor/audit data, version 13 adds synchronized FTS5 search, version 14 normalizes exact legacy public copy, and version 15 adds operator correspondence policies and account-link recipient provenance. Migrations preserve divergent owner customizations and run transactionally.
 - Studio overview reports the active `DATA_ROOT`, SQLite `quick_check`, journal mode, and seed version so rebuild-safe persistence can be verified from the browser. Seed upgrades are non-destructive for existing Studio-edited records.
 - `/journal` and `/journal/[slug]` now redirect to Process. New public writing should be published as Process notes.
 - The public custom work flow is contact-first and includes a credential-free, dynamically loaded React Three Fiber conceptual proportional preview. A deterministic SVG drawing remains available for fallback, printing, and submitted snapshots. Optional photorealistic preview generation is available only when explicitly configured with a server-side OpenAI key and feature flag.
@@ -51,6 +61,8 @@ Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company 
 - Visitor-session email is an explicit notification type and is disabled by default. Session recording does not imply email delivery; an administrator must deliberately enable the policy and configure its recipients.
 - Visitor identity uses purpose-separated HMAC pseudonyms. Configure an independent `VISITOR_HMAC_SECRET`, label it with `VISITOR_HMAC_KEY_ID`, and rotate both together to begin a deliberately unlinkable cohort. `VISITOR_TRACK_INTERNAL=false` excludes local/private traffic by default; the dashboard policy controls collection, city/referrer-host storage, 1-730 day retention, and manual purge.
 - SMTP passwords remain environment-only. The dashboard reports configuration and verification state without returning or rendering the password, and notification bodies are fetched only when an administrator opens a delivery detail.
+- Notifications Overview exposes reversible global BCC defaults and conditional website-generated copies for legitimate inquiry notices/planner confirmations. Rules match persisted normalized inquiry and canonical piece context; defaults are empty. Its conditional preview shows the global/type/event/conditional union with To/CC exclusions. Authentication links never receive copies. New inquiries, buyer replies, reviews and order-review requests have separate operator notices. See [notification routing](docs/notification-routing.md) for address roles, clear/conflict recovery and persistence boundaries.
+- Cart reads and removal require the current guest capability or authenticated account. Logout/shared-browser cookies do not expose account-owned cart lines, and submitting another customer's line ID cannot delete it.
 - ChatGPT Plus is not an API backend and does not include OpenAI API usage. The classification workflow is local-first; OpenAI remains an explicitly enabled compatibility option.
 
 ## 🖇️ Repository Architecture
@@ -205,6 +217,14 @@ Use these docs together:
 
 ## Current production release
 
-The validated production application is source `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner-only repairs culminate at `686a69c0cc5011394f35add750c29663626990f8`; the application `site` tree is identical at both commits, so no application redeploy was required.
+The retained v19 production baseline was source `0067488abb058829f3b94584c02ea666e552c9a8`, running on the NAS as image `sha256:904bf2785c37c4d2ac80c1dffba6f5c035d484fe8075235d5deb5fd93150085c`. Later audit-runner-only repairs culminate at `686a69c0cc5011394f35add750c29663626990f8`; the application `site` tree is identical at both commits, so no application redeploy was required.
 
 Exact Tier 1, production-clone Tier 2, paired backup/staged restore, deployment, forced-recreation persistence, rollback/return-to-candidate, and final Tier 3 passed. The full live-production run `tier3-live-full-20260901T042651Z-0067488-686a69c-e79d0ed1` validated 1,784 routes, 22,347 observations, and 5,948 captures with zero validation failures, unexpected diagnostics, unapproved cross-origin requests, or successful unsafe requests. See the release evidence ledger for exact paths, hashes, image IDs, and classified caveats.
+
+## Customer inquiries
+
+About/contact and contextual piece forms now use verified website inquiries, separate from Projects. Only legitimate full-planner submissions create Projects. High-confidence solicitation is quarantined before upload/Project/customer-mail effects and can be reviewed privately in Studio → Inquiries. Runtime Managed Turnstile keys are required; missing configuration fails closed. New-install forwarding defaults are empty, existing preferences are preserved, and authentication mail remains isolated. See [website inquiries](docs/website-inquiries.md) for setup, schema v16, verification, and operational boundaries.
+
+## Visitor analytics workspace
+
+Studio Visitors is available directly at `/studio?panel=visitors`. It provides bounded responsive map/trend charts and expandable country/daily numeric tables from the existing private aggregates. Range and recent-session pagination survive URL reload and history navigation. Notifications retains its independent optional visitor-session notice type and Audit. No schema migration, external analytics service or new runtime configuration is required. See the visitor/privacy controls in [admin.md](admin.md).

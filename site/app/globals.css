@@ -2830,3 +2830,9 @@ input[type="range"]::-moz-range-thumb {
     backdrop-filter: blur(16px);
   }
 }
+
+/* Website inquiry and private review content must fit narrow viewports. */
+.website-inquiry-form, .inquiry-review, .inquiry-review article { min-width: 0; overflow-wrap: anywhere; }
+.inquiry-review dd { margin-inline-start: 0; }
+.inquiry-message { white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.inquiry-verification { min-width: 0; max-width: 100%; }

@@ -1,6 +1,7 @@
 import {
   closeSync,
   existsSync,
+  fstatSync,
   mkdirSync,
   openSync,
   readSync,
@@ -11,7 +12,9 @@ import {
   writeFileSync
 } from "node:fs";
 import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { inspectJpegStructure } from "./jpeg-structure.ts";
+import { MEDIA_PREVIEW_INSPECTION_VERSION } from "./media-preview.ts";
 
 import type {
   MediaPreviewInspection
@@ -97,25 +100,12 @@ function bufferStartsWith(
   );
 }
 
-function bufferIncludesPair(
-  buffer: Buffer,
-  first: number,
-  second: number
-) {
-  for (let index = buffer.length - 2; index >= 0; index -= 1) {
-    if (buffer[index] === first && buffer[index + 1] === second) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function unavailable(reason: string): MediaPreviewInspection {
   return { status: "unavailable", reason };
 }
 
-export function inspectMediaPreviewFile(
-  absolutePath: string,
+function inspectMediaPreviewBytes(
+  descriptor: number,
   fileName: string,
   kind: MediaKind,
   sizeBytes: number
@@ -130,10 +120,7 @@ export function inspectMediaPreviewFile(
   const tailLength = Math.min(4_096, sizeBytes);
   const head = Buffer.alloc(headLength);
   const tail = Buffer.alloc(tailLength);
-  let descriptor: number | null = null;
-
   try {
-    descriptor = openSync(absolutePath, "r");
     const headRead = readSync(
       descriptor,
       head,
@@ -152,12 +139,7 @@ export function inspectMediaPreviewFile(
     const footer = tail.subarray(0, tailRead);
 
     if (extension === ".jpg" || extension === ".jpeg") {
-      if (!bufferStartsWith(header, [0xff, 0xd8])) {
-        return unavailable("invalid-jpeg-signature");
-      }
-      return bufferIncludesPair(footer, 0xff, 0xd9)
-        ? { status: "available", reason: null }
-        : unavailable("truncated-jpeg");
+      return inspectJpegStructure(descriptor, sizeBytes);
     }
 
     if (extension === ".png") {
@@ -222,8 +204,50 @@ export function inspectMediaPreviewFile(
     return { status: "available", reason: null };
   } catch {
     return unavailable("unreadable-image");
+  }
+}
+
+const previewCache = new Map<string, { signature: string; inspection: MediaPreviewInspection }>();
+
+export function inspectMediaPreviewFile(absolutePath: string, fileName: string, kind: MediaKind, sizeBytes: number, options: { force?: boolean } = {}): MediaPreviewInspection {
+  if (kind !== "image") return { status: "available", reason: null };
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(absolutePath, "r");
+    const fingerprint = () => {
+      const stat = fstatSync(descriptor!, { bigint: true });
+      return createHash("sha256").update([MEDIA_PREVIEW_INSPECTION_VERSION, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(":")).digest("hex");
+    };
+    const before = fingerprint();
+    const actualSize = Number(fstatSync(descriptor).size);
+    // Some filesystems preserve timestamps, or coalesce immediate writes. A
+    // content revision also detects same-size edits with identical stat values.
+    const hash = createHash("sha256").update(`preview-v${MEDIA_PREVIEW_INSPECTION_VERSION}:`);
+    const chunk = Buffer.allocUnsafe(64 * 1024);
+    let position = 0;
+    while (position < actualSize) {
+      const count = readSync(descriptor, chunk, 0, Math.min(chunk.length, actualSize - position), position);
+      if (!count) return unavailable("source-changed");
+      hash.update(chunk.subarray(0, count));
+      position += count;
+    }
+    const signature = hash.digest("hex");
+    const cached = previewCache.get(absolutePath);
+    const inspection = !options.force && cached?.signature === signature
+      ? cached.inspection : inspectMediaPreviewBytes(descriptor, fileName, kind, actualSize);
+    // Detect writes and atomic replacements during inspection.
+    const current = statSync(absolutePath, { bigint: true });
+    const inspected = fstatSync(descriptor, { bigint: true });
+    if (before !== fingerprint() || current.ino !== inspected.ino || current.dev !== inspected.dev) return unavailable("source-changed");
+    const result = { ...inspection, sourceSignature: signature };
+    previewCache.delete(absolutePath);
+    if (previewCache.size >= 512) previewCache.delete(previewCache.keys().next().value!);
+    previewCache.set(absolutePath, { signature, inspection: result });
+    return { ...result };
+  } catch {
+    return unavailable("unreadable-image");
   } finally {
-    if (descriptor !== null) closeSync(descriptor);
+    if (descriptor !== undefined) closeSync(descriptor);
   }
 }
 
@@ -392,7 +416,7 @@ export function renameMediaAsset(relativePath: string, nextBaseName: string) {
   return moveMediaAsset(relativePath, nextPath);
 }
 
-export function scanMediaAsset(relativePath: string): MediaScanRecord | null {
+export function scanMediaAsset(relativePath: string, options: { force?: boolean } = {}): MediaScanRecord | null {
   const normalized = normalizeRelativePath(relativePath);
   if (normalized.split("/").some(shouldIgnoreMediaEntry)) return null;
   const absolutePath = resolveMediaPath(normalized);
@@ -414,7 +438,8 @@ export function scanMediaAsset(relativePath: string): MediaScanRecord | null {
       absolutePath,
       fileName,
       detectMediaKind(fileName),
-      stats.size
+      stats.size,
+      options
     )
   };
 }

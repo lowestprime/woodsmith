@@ -1,4 +1,4 @@
-export type MediaFileVersion = { size: number; mtimeMs: number };
+export type MediaFileVersion = { size: number; mtimeMs: number; ctimeMs?: number };
 
 export type MediaByteRange = {
   start: number;
@@ -12,11 +12,12 @@ export type MediaByteRangeResult =
   | { kind: "unsatisfiable" };
 
 export function mediaEntityTag(file: MediaFileVersion) {
-  return `"${Math.max(0, file.size).toString(16)}-${Math.max(0, Math.trunc(file.mtimeMs)).toString(16)}"`;
+  const changed = file.ctimeMs === undefined ? "" : `-${Math.max(0, file.ctimeMs).toString(16)}`;
+  return `"${Math.max(0, file.size).toString(16)}-${Math.max(0, file.mtimeMs).toString(16)}${changed}"`;
 }
 
 export function mediaLastModified(file: MediaFileVersion) {
-  return new Date(file.mtimeMs).toUTCString();
+  return new Date(Math.max(file.mtimeMs, file.ctimeMs ?? 0)).toUTCString();
 }
 
 export function mediaRequestIsFresh(headers: Headers, file: MediaFileVersion) {
@@ -29,7 +30,7 @@ export function mediaRequestIsFresh(headers: Headers, file: MediaFileVersion) {
   if (!modifiedSince) return false;
   const parsed = Date.parse(modifiedSince);
   if (!Number.isFinite(parsed)) return false;
-  return Math.floor(file.mtimeMs / 1000) * 1000 <= parsed;
+  return Math.floor(Math.max(file.mtimeMs, file.ctimeMs ?? 0) / 1000) * 1000 <= parsed;
 }
 
 export function mediaIfRangeMatches(headers: Headers, file: MediaFileVersion) {
@@ -41,7 +42,7 @@ export function mediaIfRangeMatches(headers: Headers, file: MediaFileVersion) {
 
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) return false;
-  return Math.floor(file.mtimeMs / 1000) * 1000 <= parsed;
+  return Math.floor(Math.max(file.mtimeMs, file.ctimeMs ?? 0) / 1000) * 1000 <= parsed;
 }
 
 export function resolveMediaByteRange(value: string | null, size: number): MediaByteRangeResult {

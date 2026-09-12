@@ -3,7 +3,10 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   output: "standalone",
   images: {
-    qualities: [75, 86, 88]
+    // Content revisions invalidate media previews after source recovery. Keep
+    // other local images restricted to query-free paths.
+    localPatterns: [{ pathname: "/media/**" }, { pathname: "/**", search: "" }],
+    qualities: [75, 86, 88, 92]
   },
   outputFileTracingExcludes: {
     "/*": [
@@ -20,6 +23,7 @@ const nextConfig: NextConfig = {
         source: "/(.*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Strict-Transport-Security", value: "max-age=31536000" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "X-Frame-Options", value: "DENY" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" }

@@ -100,6 +100,8 @@ test("ordinary Studio record editors share the durable no-navigation mutation sh
 });
 
 test("existing Studio records render autosave editors while explicit operations remain separate", () => {
+  const commerceWorkspaces = readFileSync(new URL("../components/studio/studio-commerce-workspaces.tsx", import.meta.url), "utf8");
+  const composedStudio = `${studioSource}\n${commerceWorkspaces}`;
   for (const component of [
     "StudioPostEditor",
     "StudioProfileEditor",
@@ -108,18 +110,18 @@ test("existing Studio records render autosave editors while explicit operations 
     "StudioReviewEditor"
   ]) {
     assert.match(
-      studioSource,
+      composedStudio,
       new RegExp(`<${component}\\b`)
     );
   }
 
   assert.match(
-    studioSource,
-    /action=\{createInvoiceAction\}/
+    composedStudio,
+    /runOperation\(data, createInvoiceAction\)/
   );
   assert.match(
-    studioSource,
-    /action=\{createShippingLabelAction\}/
+    composedStudio,
+    /runOperation\(data, createShippingLabelAction\)/
   );
 
   const combinedEditors =

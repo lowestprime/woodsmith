@@ -23,12 +23,17 @@ export const VISUAL_AUDIT_STUDIO_VIEWS = [
       "snapshot-lab-project-autosave-roundtrip"
     ]
   },
+  {
+    id: "visitors",
+    route: "/studio?panel=visitors",
+    modes: ["live-readonly", "snapshot-lab"],
+    snapshotMutationStates: ["snapshot-lab-visitor-policy-autosave-roundtrip"]
+  },
   ...[
     "overview",
     "types",
     "templates",
     "delivery",
-    "visitors",
     "audit",
     "smtp"
   ].map((view) => ({
@@ -40,8 +45,6 @@ export const VISUAL_AUDIT_STUDIO_VIEWS = [
         ? ["snapshot-lab-notification-policy-autosave-roundtrip"]
         : view === "templates"
           ? ["snapshot-lab-notification-template-autosave-roundtrip"]
-          : view === "visitors"
-            ? ["snapshot-lab-visitor-policy-autosave-roundtrip"]
-            : []
+          : []
   }))
 ] as const;

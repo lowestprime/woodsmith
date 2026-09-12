@@ -88,7 +88,7 @@ This table is the current source audit required by R7/R8. “Ordinary pending”
 | Projects | Operational fields use `StudioAutosaveForm` | Timeline note and status-email dispatch | Archive/cancel and permanent deletion use confirmed flows with fresh server checks | COMPLETE FOR ORDINARY FIELDS |
 | Orders | Order number, status, payment status, and tracking use `StudioAutosaveForm`; financial and provider fields are excluded from the patch | Invoice and shipping-label creation remain explicit | Order list is otherwise read-only | COMPLETE FOR ORDINARY FIELDS |
 | Reviews | Existing review copy, rating, and status use `StudioAutosaveForm`; piece/user associations are preserved | None | Existing deletion uses the confirmed destructive dialog | COMPLETE FOR EXISTING EDITS |
-| Notifications | Policies, templates and visitor policy use `StudioAutosaveForm` | Retry, purge and SMTP verification/test are explicit operations | Delivery/Audit inspection is read-only; purge uses confirmation | COMPLETE FOR ORDINARY FIELDS |
+| Notifications / Visitors | Policies, templates and the top-level Visitors privacy policy use `StudioAutosaveForm` | Retry, purge and SMTP verification/test are explicit operations | Delivery/Audit inspection is read-only; purge uses confirmation | COMPLETE FOR ORDINARY FIELDS |
 
 Retained Save controls in selected non-Media workspaces are explicit queue flush checkpoints, not separate persistence paths. Media metadata and source-folder rules have no ordinary Save submit; **Next** flushes before selection changes and **Approve & next** first records the reviewed state, then flushes, then advances. Create, provider, dispatch, apply, batch, rename, upload, rollback, and destructive actions remain explicit by design.
 
