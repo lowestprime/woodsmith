@@ -121,7 +121,7 @@ test("existing Studio records render autosave editors while explicit operations 
   );
   assert.match(
     composedStudio,
-    /runOperation\(data, createShippingLabelAction\)/
+    /<StudioShippingForm\b/
   );
 
   const combinedEditors =

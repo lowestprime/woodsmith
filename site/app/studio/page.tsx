@@ -23,7 +23,7 @@ import {
   uploadMediaAction,
   savePageAction,
 } from "@/lib/actions";
-import { requireAdmin } from "@/lib/auth";
+import { getCurrentUser, requireAdmin } from "@/lib/auth";
 import Link from "next/link";
 import {
   countMedia,
@@ -728,6 +728,13 @@ export default async function StudioPage({
     visitorPage?: string;
   }>;
 }) {
+  const viewer = await getCurrentUser();
+  if (viewer?.role === "woodworker") {
+    const workerParams = await searchParams;
+    const workerPanel = workerParams.panel === "people" ? "profile" : workerParams.panel || "profile";
+    const selected = workerParams.project || workerParams.piece || workerParams.post || workerParams.order || workerParams.inquiry || "";
+    redirect(`/studio/woodworker?panel=${encodeURIComponent(workerPanel)}${selected ? `&selected=${encodeURIComponent(selected)}` : ""}`);
+  }
   const currentAdmin = await requireAdmin();
   const {
     panel: requestedPanel = "",
@@ -1053,6 +1060,7 @@ export default async function StudioPage({
       {currentPanel === "pieces" && editingPiece ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Pricing, inquiry and review policies, inventory, fulfillment, and normalized visual media assignment.</p></div><div className="studio-master-detail"><StudioMasterList items={pieces.map((piece) => ({ key: piece.slug, label: piece.title, meta: `${piece.publicationStatus} · ${piece.status}`, href: panelHref("pieces", { piece: piece.slug }) }))} newHref={panelHref("pieces", { piece: "new-piece-draft" })} newLabel="New piece" selectedKey={editingPiece.slug} /><PieceEditor categories={categories} highlight key={editingPiece.slug} mediaItems={editorMediaItems} mediaLinks={editingPieceLinks} piece={editingPiece} /></div></PageSection> : null}
       {currentPanel === "categories" && settingsRecord ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Add a portfolio group explicitly, then edit, reorder, or consolidate existing groups through one coordinated save queue.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} /></div><StudioCategoriesWorkspace record={settingsRecord} /></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
+      {currentPanel === "people" ? <PageSection><Link href="/studio/woodworkers">Manage independent woodworker businesses</Link></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} mediaItems={editorMediaItems} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} mediaItems={editorMediaItems} user={user} />)}</div></PageSection> : null}
       {currentPanel === "process" && editingPost ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Select one note, edit Markdown and source details, and choose its cover media visually.</p></div><div className="studio-master-detail"><StudioMasterList items={posts.map((post) => ({ key: post.slug, label: post.title, meta: post.publicationStatus, href: panelHref("process", { post: post.slug }) }))} newHref={panelHref("process", { post: "new-process-entry" })} newLabel="New process note" selectedKey={editingPost.slug} /><PostEditor highlight mediaItems={editorMediaItems} post={editingPost} /></div></PageSection> : null}
 

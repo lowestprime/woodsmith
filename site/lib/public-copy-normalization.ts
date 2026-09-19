@@ -425,3 +425,61 @@ export function applyPublicCopyRefinements(db: DatabaseSync) {
     throw error;
   }
 }
+
+
+export const PUBLIC_CREDIT_REFINEMENT_ID = "goal-f-retired-public-credits-v1";
+const seededDeveloperBio = "Cooper Beaman designed and built the Beaman Woodworks platform so the portfolio, media archive, shop, process writing, project tracking, and woodshop operations can all be managed in one deployment.";
+
+// Studio normalizes order numbers and adds a false woodworker flag. Neither is
+// evidence that the unchanged seeded promotional content was authored again.
+function canonicalCredit(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalCredit);
+  if (!isRecord(value)) return value;
+  return Object.fromEntries(Object.keys(value).sort().filter((key) => key !== "order").map((key) => [key,
+    key === "url" && value[key] === "https://github.com/lowestprime/woodsmith"
+      ? "https://x.gd/woodsmith_git" : canonicalCredit(value[key])
+  ]));
+}
+function sameRetiredCredit(value: unknown, expected: unknown) {
+  return JSON.stringify(canonicalCredit(value)) === JSON.stringify(canonicalCredit(expected));
+}
+export function refineRetiredPublicCredits(db: DatabaseSync) {
+  const appliedAt = new Date().toISOString();
+  const beforeMigration = db.prepare("SELECT applied_at FROM schema_migrations WHERE version = 14").get() as {applied_at:string} | undefined;
+  let profiles = 0, footerItems = 0;
+  const user = db.prepare("SELECT display_name,headline,bio,public_profile,metadata_json,updated_at FROM users WHERE email=?").get("cooperbeaman@proton.me") as Record<string,unknown> | undefined;
+  if (user && beforeMigration && String(user.updated_at) <= beforeMigration.applied_at && user.display_name === "Cooper Beaman" && user.headline === "Website Developer" && user.bio === seededDeveloperBio && user.public_profile === 1) {
+    let metadata: unknown;
+    try { metadata = JSON.parse(String(user.metadata_json)); } catch { metadata = null; }
+    if (isRecord(metadata) && metadata.showOnAboutPage === true && metadata.developer === true && (metadata.woodworker === undefined || metadata.woodworker === false) && Object.keys(metadata).every((key) => ["showOnAboutPage", "developer", "woodworker"].includes(key))) {
+      db.prepare("UPDATE users SET public_profile=0,updated_at=? WHERE email=?").run(appliedAt,"cooperbeaman@proton.me");
+      recordChange(db,{entityType:"user",entityKey:"cooperbeaman@proton.me",field:"publicProfile",before:"true",after:"false"},appliedAt,PUBLIC_CREDIT_REFINEMENT_ID);
+      profiles++;
+    }
+  }
+  const stored = db.prepare("SELECT value,updated_at FROM settings WHERE key='site'").get() as {value:string;updated_at:string} | undefined;
+  if (stored && beforeMigration && stored.updated_at <= beforeMigration.applied_at) {
+    let parsed: unknown;
+    try { parsed = JSON.parse(stored.value); } catch { parsed = null; }
+    if (isRecord(parsed) && isRecord(parsed.footer) && Array.isArray(parsed.footer.groups)) {
+      const groups = parsed.footer.groups;
+      for (let i=groups.length-1;i>=0;i--) {
+        if (sameRetiredCredit(groups[i],legacyWebsiteFooterGroup)) {
+          const before = JSON.stringify(groups[i]); groups.splice(i,1); footerItems++;
+          recordChange(db,{entityType:"setting",entityKey:"site",field:"footer.groups.website-credit",before,after:"null"},appliedAt,PUBLIC_CREDIT_REFINEMENT_ID);
+        }
+      }
+      for (const group of groups) {
+        if (!isRecord(group) || group.id !== "links" || !Array.isArray(group.items)) continue;
+        for (let i=group.items.length-1;i>=0;i--) {
+          if (sameRetiredCredit(group.items[i],legacyRepositoryFooterItem)) {
+            const before=JSON.stringify(group.items[i]);group.items.splice(i,1);footerItems++;
+            recordChange(db,{entityType:"setting",entityKey:"site",field:"footer.groups.links.repository",before,after:"null"},appliedAt,PUBLIC_CREDIT_REFINEMENT_ID);
+          }
+        }
+      }
+      if (footerItems) db.prepare("UPDATE settings SET value=?,updated_at=? WHERE key='site'").run(JSON.stringify(parsed),appliedAt);
+    }
+  }
+  return {profiles,footerItems,customContentPreserved:true};
+}

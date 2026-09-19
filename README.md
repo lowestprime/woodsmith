@@ -228,3 +228,9 @@ About/contact and contextual piece forms now use verified website inquiries, sep
 ## Visitor analytics workspace
 
 Studio Visitors is available directly at `/studio?panel=visitors`. It provides bounded responsive map/trend charts and expandable country/daily numeric tables from the existing private aggregates. Range and recent-session pagination survive URL reload and history navigation. Notifications retains its independent optional visitor-session notice type and Audit. No schema migration, external analytics service or new runtime configuration is required. See the visitor/privacy controls in [admin.md](admin.md).
+
+## Goal F branch: commerce and independent businesses
+
+This branch adds schema 17 commerce reconciliation, schema 18 conservative legacy-credit correction, and schema 19 business ownership, fee and provider-account snapshots. Independent seller access is disabled by default; global Studio remains administrator-only. `/studio/woodworker` is the scoped business workspace, and `/studio/woodworkers` manages activation, fee policies and audited ownership decisions. Public `/woodworkers` profiles and attribution appear only in enabled mode for active/public businesses.
+
+This is not a production-release claim. The accepted Goal-E deployment remains unchanged pending the full Goal-F release gates. See the [reconciliation ledger](docs/final-requirements-reconciliation-20260912.md), [seller isolation contract](docs/goal-f-seller-isolation-design.md) and [provider activation procedure](docs/goal-f-provider-activation.md).

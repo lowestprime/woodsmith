@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 
 import { secureCookieRequired } from "@/lib/cookie-policy";
-import { createProjectAccessGrant, projectAccessGrantValid, type ProjectRecord, type UserRecord } from "@/lib/db";
+import { createProjectAccessGrant, projectAccessGrantValid, workerOwnsResource, type ProjectRecord, type UserRecord } from "@/lib/db";
 
 function projectCookieName(reference: string) {
   return `bw_project_${createHash("sha256").update(reference).digest("hex").slice(0, 16)}`;
@@ -37,7 +37,7 @@ export async function projectBrowserAccessValid(reference: string) {
 }
 
 export async function userCanAccessProject(project: ProjectRecord, user: UserRecord | null) {
-  if (user?.role === "admin") return true;
+  if (user?.role === "admin" || workerOwnsResource(user, "project", project.reference)) return true;
   const signedInEmail = user?.email.toLowerCase() ?? "";
   if (signedInEmail && [project.userEmail, project.guestEmail].filter(Boolean).some((value) => String(value).toLowerCase() === signedInEmail)) return true;
   return projectBrowserAccessValid(project.reference);

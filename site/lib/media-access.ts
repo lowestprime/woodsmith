@@ -1,4 +1,6 @@
 export type MediaAccessAssociations = {
+  ownershipConflict?: boolean;
+  publicWorkerMedia?: boolean;
   projectReference?: string | null;
   privateAssociation?: boolean;
   renderAsset?: boolean;
@@ -49,6 +51,8 @@ export function classifyMediaAccess(
     return { kind: "transient", relativePath };
   }
 
+  if (associations.ownershipConflict) return { kind: "private-admin", relativePath };
+
   const projectReference =
     associations.renderProjectReference?.trim() ||
     associations.projectReference?.trim() ||
@@ -68,7 +72,7 @@ export function classifyMediaAccess(
     return { kind: "private-preview", relativePath };
   }
 
-  if (associations.privateAssociation) {
+  if (associations.privateAssociation || (pathUnder(relativePath, "workers") && !associations.publicWorkerMedia)) {
     return { kind: "private-admin", relativePath };
   }
 
@@ -93,6 +97,7 @@ export function mediaAccessAllowed(
   classification: MediaAccessClassification,
   viewer: {
     admin?: boolean;
+    workerAuthorized?: boolean;
     projectAuthorized?: boolean;
     previewOwner?: boolean;
   } = {}
@@ -104,7 +109,7 @@ export function mediaAccessAllowed(
   if (classification.kind === "private-preview") {
     return Boolean(viewer.admin || viewer.previewOwner);
   }
-  if (classification.kind === "private-admin") return Boolean(viewer.admin);
+  if (classification.kind === "private-admin") return Boolean(viewer.admin || viewer.workerAuthorized);
   return false;
 }
 

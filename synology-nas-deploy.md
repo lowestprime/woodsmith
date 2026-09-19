@@ -502,3 +502,9 @@ docker compose --project-name woodsmith-e-release --env-file /volume2/docker_ssd
 ```
 
 The exercised compatibility rollback stops/disconnects the candidate, activates the retained v19 container on the same DB/media/cache mounts and ingress, then returns to the exact candidate. It retains current writes; it does not downgrade the database or substitute the predeployment snapshot. Schema 16 compatibility was first proved in the isolated clone, then production persistence fixtures and SQLite integrity passed at every actual transition. Use the paired staged-restoration procedure above for state recovery when compatibility/integrity checks fail. Never print resolved environment or full container inspection in shared evidence.
+
+## Goal F candidate changes — not yet deployed
+
+The Goal-F branch advances SQLite through migrations 17–19 for commerce reconciliation, conservative public-credit correction and business ownership. Multi-worker mode remains disabled after migration. Keep the schema-16 Goal-E image, retained rollback container and recovery assets until the full candidate recovery/restore/deploy/recreation/rollback/return transaction passes. An older image must not be pointed casually at migrated data; use the proven paired recovery/rollback procedure.
+
+Additional optional runtime controls are `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET` and `WOODWORKER_PROVIDER_CONFIG_PATH`; the Compose template passes them through without embedding values. The last points to protected seller shipping configuration on the persistent data mount. Include it in protected paired recovery, never Git or public archives. Existing primary EasyPost and ship-from environment values remain supported. Detailed sandbox activation and retry/account-binding limits: [Goal F provider activation](docs/goal-f-provider-activation.md). No deployment is authorized by a successful synthetic fixture run alone.

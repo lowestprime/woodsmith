@@ -1,3 +1,5 @@
+import { WoodworkerAttribution } from "@/components/site-chrome";
+import { publicBusinessResourceAvailable } from "@/lib/db";
 import { marked } from "marked";
 import { connection } from "next/server";
 import { notFound } from "next/navigation";
@@ -11,7 +13,7 @@ export default async function ProcessPostPage({ params }: { params: Promise<{ sl
   await connection();
   const { slug } = await params;
   const post = getPost(slug);
-  if (!post) {
+  if (!post || post.publicationStatus !== "published" || !publicBusinessResourceAvailable("post", post.slug)) {
     notFound();
   }
 
@@ -20,6 +22,7 @@ export default async function ProcessPostPage({ params }: { params: Promise<{ sl
       <PageSection className="journal-entry" editHref={`/studio?panel=process&post=${encodeURIComponent(post.slug)}#post-${post.slug}`}>
         <p className="eyebrow">{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</p>
         <h1 {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</h1>
+        <WoodworkerAttribution kind="post" resourceKey={post.slug}/>
         <p className="lede" {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p>
         {post.coverMediaPath ? <MediaCollection className="journal-cover" collectionId={`process:${post.slug}:cover`} items={[{ id: `process:${post.slug}:cover`, src: toMediaUrl(post.coverMediaPath), alt: post.title, order: 0 }]} preloadFirst title={post.title} variant="single" /> : null}
         {post.sourceUrl ? <p className="source-note">Source: <a href={post.sourceUrl} rel="noreferrer" target="_blank" {...inlineEditAttrs({ resource: "post", id: post.slug, field: "sourceLabel", urlField: "sourceUrl" })}>{post.sourceLabel || post.sourceUrl}</a></p> : null}

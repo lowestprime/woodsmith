@@ -1,5 +1,14 @@
 # PLANS.md
 
+## Active work packet: Goal F — atomic reconciliation and residual closure
+
+Single writer on `codex/woodsmith-final-requirements-gap-closure-20260912`, starting from clean Goal-E master `7bcaa5b1`. Baseline identity/runtime/security checks pass and remain reusable. The initial atomic matrix precedes application edits: [Goal-F matrix](docs/final-requirements-reconciliation-20260912.md).
+
+Ordered work: finish source/runtime classification and historical crosswalk; close independently solvable gaps (including commerce correctness and unsuperseded seller ownership); exhaust no-guess media evidence; bounded live/browser proof; final source/tests/build/migration checks; only if runtime changes, exact clean candidate plus fresh paired recovery/staged restore/deploy/persistence/rollback/return; PR merge and master-only closure. Keep A–E evidence and rollback/recovery assets. Provider/content blockers remain explicit. No new task, writer, worktree or roadmap.
+
+
+Goal-F commerce/seller checkpoint is validated on the existing branch; commit/push identity is recorded in the restricted continuation ledger. Additive schemas 17–19 implement durable commerce reconciliation, conservative retired-credit correction, and independent business ownership. Server-scoped workspaces, profile publication, media controls, relationship/audit resolution, fee acceptance and immutable provider-account snapshots are integrated. Current narrow checks: 80/80 focused tests, typecheck and changed-source ESLint pass; bounded Chromium/Firefox acceptance passes 22/22 groups with zero console/page errors and localhost-only traffic. The disposable fixture service is stopped. Earlier 272/285-test and schema-18 build results predate this source and are not final evidence. Production remains at the accepted schema-16 Goal-E deployment. The full application suite/build, final 316-clause reconciliation, media investigation, remaining historical/browser/live proof and the entire exact release/recovery/rollback/master-only transaction remain open. Stripe, EasyPost and direct inbound Proton activation remain external blockers; see [operator procedure](docs/goal-f-provider-activation.md).
+
 ## Completed work packet: Goal E — final release
 
 **Goal E outcome: COMPLETE.** Accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55` is deployed as NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, returned container `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, schema 16. Immutable promotion, recreation/persistence, real v19 rollback and return pass. All three human Turnstile submissions, legitimate/quarantine behavior, conditional BCC, SMTP acceptance and auth isolation pass; scoped live fixtures are cleaned.

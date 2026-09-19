@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { consumeCommissionSubmissionQuota, getPiece, getSiteSettings, listCartItems } from "@/lib/db";
+import { consumeCommissionSubmissionQuota, getPiece, publicBusinessResourceAvailable, getSiteSettings, listCartItems } from "@/lib/db";
 import { getDropoffDriveMinutes, getFulfillmentSummary, getWoodshopZip, pieceShippingEnabled } from "@/lib/catalog";
 import { calculateCheckoutTotals } from "@/lib/payments";
 import { pieceCanEnterCart } from "@/lib/piece-model";
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const invalidItems: string[] = [];
   const pieces = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
-    if (!piece || !pieceCanEnterCart(piece) || piece.priceCents == null || item.quantity > piece.inventoryCount) {
+    if (!piece || !publicBusinessResourceAvailable("piece", piece.slug) || !pieceCanEnterCart(piece) || piece.priceCents == null || item.quantity > piece.inventoryCount) {
       invalidItems.push(item.pieceSlug);
       return [];
     }

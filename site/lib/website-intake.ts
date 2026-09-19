@@ -1,4 +1,4 @@
-import { acceptWebsiteInquiry, consumeCommissionSubmissionQuota, getExistingWebsiteInquiry, getPiece, type ProjectInput } from "./db.ts";
+import { acceptWebsiteInquiry, consumeCommissionSubmissionQuota, getExistingWebsiteInquiry, getPiece, publicBusinessResourceAvailable, type ProjectInput } from "./db.ts";
 import { classifyWebsiteInquiry, normalizeWebsiteInquiry, type WebsiteInquiry } from "./website-inquiry.ts";
 import { inquirySubmissionIdentity } from "./website-inquiry-store.ts";
 import { verifyInquiryTurnstile } from "./turnstile.ts";
@@ -17,6 +17,7 @@ export async function processWebsiteIntake(input: {
   const key = typeof input.fields.idempotencyKey === "string" ? input.fields.idempotencyKey : "";
   const identity = inquirySubmissionIdentity(input.ownerKey, key);
   const slug = String(input.fields.pieceSlug || input.fields.referencePieceSlug || "").trim();
+  if (slug && !publicBusinessResourceAvailable("piece", slug)) throw new Error("The selected piece is not available for inquiry.");
   const inquiry = normalizeWebsiteInquiry(input.fields, { channel: input.channel, piece: slug ? getPiece(slug) : null, plannerContext: input.plannerContext });
   if (input.channel === "commission" && input.fields.accuracyConfirmation !== "1") throw new Error("Confirm the request details before submitting.");
   const existing = getExistingWebsiteInquiry(input.ownerKey, key, inquiry);

@@ -1,3 +1,4 @@
+import { listPublicWoodworkers, getPublicResourceWoodworker } from "@/lib/db";
 import { cache, type ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -41,7 +42,7 @@ function EditGlyph() {
 
 export { CategoryIcon } from "@/components/category-icon";
 
-const RESERVED_NAV_SLUGS = new Set(["home", "portfolio", "shop", "journal", "process", "commissions", "requests", "studio", "about", "account", "search", "media", "contact"]);
+const RESERVED_NAV_SLUGS = new Set(["home", "portfolio", "shop", "journal", "process", "commissions", "requests", "studio", "about", "account", "search", "media", "contact", "woodworkers"]);
 
 export async function SiteHeader() {
   const site = getSiteSettings();
@@ -51,7 +52,7 @@ export async function SiteHeader() {
   const initialTheme = cookieStore.get("beaman-theme")?.value === "light" ? "light" : "dark";
   const cartToken = cookieStore.get("beaman-cart")?.value;
   const cartCount = cartToken ? listCartItems(cartToken, user?.email ?? null).reduce((sum, item) => sum + item.quantity, 0) : 0;
-  const accountHref = user ? (user.role === "admin" ? "/studio" : "/account/profile") : "/account/login";
+  const accountHref = user ? (user.role === "admin" ? "/studio" : user.role === "woodworker" ? "/studio/woodworker" : "/account/profile") : "/account/login";
   const accountLabel = profileInitials(user?.displayName ?? "");
   return (
     <HeaderShell>
@@ -68,6 +69,7 @@ export async function SiteHeader() {
           }).map(({ item, index }) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "settings", field: "navigation", index, urlField: "navigation.href" })}>{item.label}</SiteNavLink>)}
           {dynamicPages.map((item) => <SiteNavLink className="nav-link-pill" href={item.href} key={item.href} {...inlineEditAttrs({ resource: "page", id: item.slug, field: "navLabel" })}>{item.label}</SiteNavLink>)}
           {!seedHrefs.has("/contact") ? <SiteNavLink className="nav-link-pill" href="/contact">Contact</SiteNavLink> : null}
+          {listPublicWoodworkers().length > 0 && !seedHrefs.has("/woodworkers") ? <SiteNavLink className="nav-link-pill" href="/woodworkers">Woodworkers</SiteNavLink> : null}
           <HeaderSearch />
         </nav>
         <div className="header-actions">
@@ -129,11 +131,12 @@ export function PieceCard({ piece, categories, order = 0 }: { piece: PieceRecord
           <div className="piece-card-footer"><span {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "availabilityLabel" })}>{piece.availabilityLabel}</span></div>
         </div>
       </Link>
+      <WoodworkerAttribution kind="piece" resourceKey={piece.slug}/>
     </article>
   );
 }
 export function PostCard({ post }: { post: PostRecord }) {
-  return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p></article>;
+  return <article className="journal-card"><div className="journal-meta"><span>{post.publishedAt ? formatDate(post.publishedAt) : "Draft"}</span><span>{post.sourceUrl ? "Reference" : "Behind the scenes"}</span></div><h3><Link href={`/process/${post.slug}`} {...inlineEditAttrs({ resource: "post", id: post.slug, field: "title" })}>{post.title}</Link></h3><p {...inlineEditAttrs({ resource: "post", id: post.slug, field: "excerpt" })}>{post.excerpt}</p><WoodworkerAttribution kind="post" resourceKey={post.slug}/></article>;
 }
 export function StatusBand() {
   const bandwidth = getBandwidthSnapshot();
@@ -150,4 +153,9 @@ export function PageGrid({ children }: { children: ReactNode }) { return <div cl
 export async function PageSection({ children, className = "", id, editHref, editLabel = "Edit section" }: { children: ReactNode; className?: string; id?: string; editHref?: string; editLabel?: string }) {
   const viewer = editHref ? await getViewer() : null;
   return <section className={`page-section ${className}${editHref ? " section-has-edit" : ""}`.trim()} id={id}>{viewer?.role === "admin" && editHref ? <Link aria-label={editLabel} className="section-edit-link" href={editHref} title={editLabel}><EditGlyph /><span>Edit</span></Link> : null}{children}</section>;
+}
+
+export function WoodworkerAttribution({kind,resourceKey}:{kind:"piece"|"post";resourceKey:string}){
+  const worker=getPublicResourceWoodworker(kind,resourceKey);
+  return worker?<p className="muted-copy">By <Link href={`/woodworkers/${worker.slug}`}>{worker.business_name}</Link></p>:null;
 }

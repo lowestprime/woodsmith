@@ -1,3 +1,5 @@
+import { installWoodworkerSchema } from "./woodworkers-store.ts";
+import { installCommerceSchema } from "./commerce-store.ts";
 import { randomUUID } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import {
@@ -22,7 +24,8 @@ import {
   installSearchIndexInDatabase
 } from "./search-index.ts";
 import {
-  applyPublicCopyNormalization
+  applyPublicCopyNormalization,
+  refineRetiredPublicCredits
 } from "./public-copy-normalization.ts";
 
 type MigrationReport = Record<string, unknown>;
@@ -1053,7 +1056,10 @@ const migrations: Migration[] = [
       CREATE INDEX idx_website_inquiries_review ON website_inquiries(disposition, created_at DESC);`);
       return { inquiryStoreCreated: true, existingProjectsAndSettingsUnchanged: true };
     }
-  }
+  },
+  { version: 17, name: "commerce-order-lines-and-provider-reconciliation", checksum: "2026-09-commerce-reconciliation-v1", apply: installCommerceSchema },
+  { version: 18, name: "retired-public-credit-canonical-shapes", checksum: "2026-09-public-credits-canonical-v1", apply: refineRetiredPublicCredits },
+  { version: 19, name: "woodworker-business-ownership-and-fee-policy", checksum: "2026-09-woodworkers-v1", apply: installWoodworkerSchema }
 ];
 
 export function applySchemaMigrations(

@@ -2,7 +2,8 @@
 
 import { useCallback, useState } from "react";
 import type { OrderRecord, ReviewRecord } from "@/lib/db";
-import { createInvoiceAction, createShippingLabelAction } from "@/lib/actions";
+import { createInvoiceAction } from "@/lib/actions";
+import { StudioShippingForm } from "@/components/studio/studio-shipping-form";
 import { formatDateTime, formatMoney } from "@/lib/format";
 import { StudioOrderEditor, StudioReviewEditor } from "@/components/studio/studio-commerce-editors";
 import { StudioRecordList } from "@/components/studio/studio-record-list";
@@ -29,7 +30,7 @@ export function StudioOrdersWorkspace({ orders: initialOrders, initialReference 
       setOperationError("Finish saving or resolve the current edit before issuing an invoice or shipping label.");
       return;
     }
-    await action(data);
+    try { await action(data); } catch (error) { setOperationError(error instanceof Error ? error.message : "The provider operation failed."); }
   }
   return <div className="studio-master-detail" data-audit-id="studio-orders-workspace">
     <StudioRecordList label="Orders" records={orders.map((order) => ({ key: order.orderNumber, label: order.orderNumber, meta: `${order.status} - ${formatMoney(order.totalCents)}`, search: `${order.userEmail ?? ""} ${order.projectReference ?? ""} ${order.trackingNumber ?? ""}` }))} selectedKey={selected?.orderNumber ?? ""} onSelect={setReference} />
@@ -39,8 +40,9 @@ export function StudioOrdersWorkspace({ orders: initialOrders, initialReference 
         <StudioOrderEditor order={selected} onSaved={onSaved} />
         <div className="button-row">
           <form action={(data) => runOperation(data, createInvoiceAction)}><input name="orderNumber" type="hidden" value={selected.orderNumber} /><button className="button-secondary" type="submit">Issue invoice</button></form>
-          <form action={(data) => runOperation(data, createShippingLabelAction)}><input name="orderNumber" type="hidden" value={selected.orderNumber} /><input name="weightOunces" type="hidden" value="96" /><button className="button-secondary" type="submit">Create label</button></form>
+
         </div>
+        <StudioShippingForm key={selected.orderNumber} orderNumber={selected.orderNumber} />
         {operationError ? <p className="notice-panel danger" role="alert">{operationError}</p> : null}
         <p className="muted-copy">Updated {formatDateTime(selected.updatedAt)}</p>
       </article> : <p className="notice-panel">No orders yet.</p>}
