@@ -1,4 +1,8 @@
 "use server";
+
+import { requireProfileUser } from "@/lib/auth";
+import { profileAvatarMetadata } from "@/lib/avatar";
+import { safeAccountRedirect } from "@/lib/account-access";
 import {stripeScopeForOrder} from "@/lib/commerce-provider-scope";
 
 import { checkoutForRequest, commerceHash, prepareCheckout, snapshotCheckoutCart, bindCheckoutSession } from "@/lib/commerce-store";
@@ -592,7 +596,7 @@ export async function loginAction(formData: FormData) {
   }
 
   await createSession(user);
-  redirect(redirectTo);
+  redirect(safeAccountRedirect(redirectTo));
 }
 
 export async function studioLoginAction(formData: FormData) {
@@ -761,10 +765,12 @@ export async function resetPasswordAction(formData: FormData) {
 }
 
 export async function updateProfileAction(formData: FormData) {
-  const user = await requireUser();
-  const avatar = formData.get("avatar") as File | null;
-  let avatarPath = user.avatarPath;
-  if (avatar && avatar.size > 0) {
+  const user = await requireProfileUser();
+  const avatar = formData.get("avatar");
+  const removeAvatar = formData.get("removeAvatar") === "1";
+  let avatarPath = removeAvatar ? null : user.avatarPath;
+  if (!removeAvatar && avatar instanceof File && avatar.size > 0) {
+    if (!avatar.type.toLowerCase().startsWith("image/")) throw new Error("Choose an image for your profile.");
     avatarPath = await persistUploadedMedia(avatar, "profiles");
   }
 
@@ -783,7 +789,7 @@ export async function updateProfileAction(formData: FormData) {
     avatarPath,
     publicProfile: user.publicProfile,
     links: directLinks.length > 0 ? directLinks : parseJsonField(formData.get("linksJson"), user.links),
-    metadata: user.metadata
+    metadata: profileAvatarMetadata(user.metadata, formData)
   });
 
   revalidatePath("/about");

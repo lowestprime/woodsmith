@@ -280,3 +280,5 @@ The September 19 repair restores authenticated NAS-to-host local media AI throug
 ### Goal-F estimator and Studio reconciliation (branch validation)
 
 Saved commission-type base hours and markup now drive client/server estimates; the planning hourly rate remains $75. Public workload is scoped to the primary business and excludes closed/archived work. Studio reports paid order value by order creation month, excluding unpaid/refunded/cancelled orders. Custom category icons use sanitized SVG file import and preview. These branch changes await the final release; see [validation and exact limits](docs/goal-f-family-reconciliation.md).
+
+Goal-F account branch correction: pending customer verification permits only own-profile management, not email-owned project/cart/media access. Password changes revoke old sessions; reset links require expiry. Profile gradients/removal persist, real uploaded photos use `/media`, and project cards open the authorized tracker. These changes are locally validated and await final deployment; see [family evidence](docs/goal-f-family-reconciliation.md).

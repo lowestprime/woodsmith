@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ProfileForm } from "@/components/forms";
 import { PageIntro, PageSection, ProjectOverviewCard, Shell } from "@/components/site-chrome";
 import { VerificationResendPanel } from "@/components/verification-resend-panel";
-import { requireUser } from "@/lib/auth";
+import { requireProfileUser, userEmailVerified } from "@/lib/auth";
 import { listProjectsForEmail } from "@/lib/db";
 
 export default async function ProfilePage({
@@ -10,8 +10,8 @@ export default async function ProfilePage({
 }: {
   searchParams: Promise<{ created?: string; reset?: string; verify?: string; verificationError?: string }>;
 }) {
-  const user = await requireUser();
-  const projects = listProjectsForEmail(user.email);
+  const user = await requireProfileUser();
+  const projects = userEmailVerified(user) ? listProjectsForEmail(user.email) : [];
   const { verify } = await searchParams;
 
   return (

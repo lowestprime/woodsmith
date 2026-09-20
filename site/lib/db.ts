@@ -2490,7 +2490,10 @@ export function deleteUserProfile(email: string) {
 
 export function setPasswordHash(email: string, passwordHash: string) {
   const db = getDatabase();
-  db.prepare(`UPDATE users SET password_hash = ?, updated_at = ?, reset_token = NULL, reset_expires_at = NULL WHERE lower(email) = lower(?)`).run(passwordHash, nowIso(), email);
+  withDatabaseTransaction(() => {
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = ?, reset_token = NULL, reset_expires_at = NULL WHERE lower(email) = lower(?)`).run(passwordHash, nowIso(), email);
+    db.prepare(`DELETE FROM sessions WHERE lower(user_email) = lower(?)`).run(email);
+  });
 }
 
 export function setPasswordResetToken(email: string, token: string, expiresAt: string) {
@@ -2539,7 +2542,7 @@ export function getUserByResetToken(token: string) {
            verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt, password_hash AS passwordHash
     FROM users
-    WHERE reset_token = ? AND (reset_expires_at IS NULL OR datetime(reset_expires_at) > datetime('now'))
+    WHERE reset_token = ? AND reset_token != '' AND reset_expires_at IS NOT NULL AND datetime(reset_expires_at) > datetime('now')
     LIMIT 1
   `).get(token) as (Record<string, unknown> & { passwordHash?: string }) | undefined;
 

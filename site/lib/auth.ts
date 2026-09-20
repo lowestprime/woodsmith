@@ -1,3 +1,4 @@
+import { accountEmailVerified } from "@/lib/account-access";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
@@ -21,13 +22,7 @@ function safeEquals(left: string, right: string) {
   return timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-export function userEmailVerified(user: Pick<UserRecord, "role" | "emailVerified">) {
-  if (user.role !== "customer") {
-    return true;
-  }
-
-  return user.emailVerified;
-}
+export const userEmailVerified = accountEmailVerified;
 
 export function createPasswordHash(password: string) {
   const iterations = 120000;
@@ -91,7 +86,7 @@ export async function clearSession() {
   cookieStore.delete(COOKIE_NAME);
 }
 
-export async function getCurrentUser() {
+async function getSessionUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(COOKIE_NAME)?.value;
   if (!token) {
@@ -107,6 +102,18 @@ export async function getCurrentUser() {
   if (!user) {
     return null;
   }
+  return user;
+}
+
+export async function getCurrentUser() {
+  const user = await getSessionUser();
+  return accountEmailVerified(user) ? user : null;
+}
+
+// A pending account may manage only its own profile and verification notice.
+export async function requireProfileUser() {
+  const user = await getSessionUser();
+  if (!user) redirect("/account/login");
   return user;
 }
 

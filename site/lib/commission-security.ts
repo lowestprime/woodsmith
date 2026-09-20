@@ -1,3 +1,4 @@
+import { accountEmailVerified } from "./account-access.ts";
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 
@@ -39,6 +40,6 @@ export async function projectBrowserAccessValid(reference: string) {
 export async function userCanAccessProject(project: ProjectRecord, user: UserRecord | null) {
   if (user?.role === "admin" || workerOwnsResource(user, "project", project.reference)) return true;
   const signedInEmail = user?.email.toLowerCase() ?? "";
-  if (signedInEmail && [project.userEmail, project.guestEmail].filter(Boolean).some((value) => String(value).toLowerCase() === signedInEmail)) return true;
+  if (accountEmailVerified(user) && signedInEmail && [project.userEmail, project.guestEmail].filter(Boolean).some((value) => String(value).toLowerCase() === signedInEmail)) return true;
   return projectBrowserAccessValid(project.reference);
 }

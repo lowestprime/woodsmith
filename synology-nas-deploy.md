@@ -517,3 +517,5 @@ The September 19 repair restores authenticated NAS-to-host local media AI throug
 ### Goal-F reconciliation checkpoint
 
 The estimator/capacity/category packet adds no schema, environment variable or dependency. It changes application behavior and awaits the full Goal-F exact-image/recovery/staged-restore/deploy/recreation/rollback/return contract. Production remains the accepted Goal-E image/schema 16; local acceptance is not deployment proof. See [packet evidence](docs/goal-f-family-reconciliation.md).
+
+The Goal-F account correction also requires no migration/configuration change. After final deployment, customer sessions with unverified email cannot claim private records; password changes invalidate existing sessions. Include profile-image delivery and pending/verified account isolation in the exact candidate acceptance.

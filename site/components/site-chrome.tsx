@@ -147,7 +147,7 @@ export function ShareLinks({ title, url }: { title: string; url: string }) {
   return <div className="share-links"><a href={`mailto:?subject=${encodedTitle}&body=${encodedUrl}`}>Email</a><a href={`https://www.facebook.com/sharer/sharer.php?u=${encodedUrl}`} rel="noreferrer" target="_blank">Facebook</a><a href={`https://twitter.com/intent/tweet?text=${encodedTitle}&url=${encodedUrl}`} rel="noreferrer" target="_blank">X</a><a href={`https://pinterest.com/pin/create/button/?url=${encodedUrl}&description=${encodedTitle}`} rel="noreferrer" target="_blank">Pinterest</a></div>;
 }
 export function ProjectOverviewCard({ project }: { project: ProjectRecord }) {
-  return <article className="project-card"><div><p className="eyebrow">{project.reference}</p><h3>{project.pieceSlug || project.commissionTypeSlug || "Custom project"}</h3></div><div className="project-card-status"><span>{project.status}</span><p>{project.stage}</p></div></article>;
+  return <article className="project-card"><div><p className="eyebrow">{project.reference}</p><h3>{project.pieceSlug || project.commissionTypeSlug || "Custom project"}</h3></div><div className="project-card-status"><span>{project.status}</span><p>{project.stage}</p><Link href={`/requests/${encodeURIComponent(project.reference)}`}>Open project</Link></div></article>;
 }
 export function PageGrid({ children }: { children: ReactNode }) { return <div className="page-grid">{children}</div>; }
 export async function PageSection({ children, className = "", id, editHref, editLabel = "Edit section" }: { children: ReactNode; className?: string; id?: string; editHref?: string; editLabel?: string }) {
