@@ -13,6 +13,8 @@ Goal-F follow-up: the two dining-table identities are now exact-byte/visual/live
 
 Goal-F reconciliation follow-up: the existing 316-row matrix now records 207 VERIFIED_COMPLETE, 4 SUPERSEDED, 15 PROVIDER_BLOCKED, 2 OPTIONAL_PROVIDER_ENHANCEMENT and 88 ACTIVE_GAP clauses. These are intermediate counts, not final completion. [Current security/UX proof](docs/goal-f-current-security-ux-20260919.md) confirms redirects/host-only HSTS, authenticated cookie behavior, foreign-origin rejection, theme SSR/persistence and bounded reflow, and explicitly records absent CSP. Remaining source/live/release obligations stay active. No Goal-F production application transition has started.
 
+Account rename/delete reconciliation closes a legacy last-admin bypass and makes dependent-reference updates universally transactional; account deletion removes cart capabilities. Current focused 55-test, typecheck and affected lint gates pass. H-11 awaits final candidate/release proof.
+
 ## Completed work packet: Goal E — final release
 
 **Goal E outcome: COMPLETE.** Accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55` is deployed as NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, returned container `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, schema 16. Immutable promotion, recreation/persistence, real v19 rollback and return pass. All three human Turnstile submissions, legitimate/quarantine behavior, conditional BCC, SMTP acceptance and auth isolation pass; scoped live fixtures are cleaned.

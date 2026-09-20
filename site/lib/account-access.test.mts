@@ -47,3 +47,24 @@ test("uploaded profile photos use persisted media while bundled seed portraits k
   assert.equal(resolveAssetUrl("profiles/william-beaman.svg"),"/profiles/william-beaman.svg");
   assert.equal(resolveAssetUrl("/media/profiles/existing.png"),"/media/profiles/existing.png");
 });
+
+test("account rename/delete are atomic, preserve references, and cannot remove the last administrator", async () => {
+  const root=mkdtempSync(path.join(tmpdir(),"woodsmith-account-rename-"));const prior={DATA_ROOT:process.env.DATA_ROOT,NODE_ENV:process.env.NODE_ENV};process.env.DATA_ROOT=root;process.env.NODE_ENV="test";
+  const db=await import("./db.ts");
+  try {
+    const primary=db.getUserByEmail("woodsmithbb@proton.me")!;
+    db.withDatabaseTransaction(sql=>sql.prepare("UPDATE users SET role='customer' WHERE role='admin' AND email != ?").run(primary.email));
+    assert.throws(()=>db.saveUserProfile({...primary,role:"customer"}),/last administrator/);
+    assert.throws(()=>db.deleteUserProfile(primary.email),/last administrator/);
+    const email="rename-fixture@example.test",next="renamed-fixture@example.test";
+    db.saveUserProfile({email,role:"customer",displayName:"Fixture",headline:"",bio:"",avatarPath:null,publicProfile:false,links:[],metadata:{custom:"preserve"}});
+    db.saveCartItem({cartToken:"retired-account-browser",userEmail:email,pieceSlug:"pastry-table",quantity:1});
+    const original=db.getUserByEmail(email)!;db.createSessionRecord(email,"rename-session",new Date(Date.now()+60000).toISOString());
+    db.withDatabaseTransaction(sql=>sql.exec("CREATE TRIGGER reject_session_rename BEFORE UPDATE OF user_email ON sessions BEGIN SELECT RAISE(ABORT,'fixture reference failure'); END"));
+    assert.throws(()=>db.saveUserProfile({...original,originalEmail:email,email:next}),/fixture reference failure/);
+    assert.equal(db.getUserByEmail(next),null);assert.equal(db.getUserByEmail(email)?.id,original.id);assert.equal(db.getSessionRecord("rename-session")?.userEmail,email);
+    db.withDatabaseTransaction(sql=>sql.exec("DROP TRIGGER reject_session_rename"));db.saveUserProfile({...original,originalEmail:email,email:next});
+    assert.equal(db.getUserByEmail(email),null);assert.equal(db.getUserByEmail(next)?.id,original.id);assert.equal(db.getSessionRecord("rename-session")?.userEmail,next);assert.equal(db.getUserByEmail(next)?.metadata.custom,"preserve");
+    db.closeDatabaseForTests();assert.equal(db.getUserByEmail(next)?.id,original.id);assert.equal(db.deleteUserProfile(next),true);assert.equal(db.getSessionRecord("rename-session"),null);assert.equal(db.getUserByEmail(next),null);assert.equal(db.listCartItems("retired-account-browser").length,0);assert.equal(db.getUserByEmail(primary.email)?.role,"admin");
+  } finally {db.closeDatabaseForTests();for(const [key,value] of Object.entries(prior)){if(value===undefined)delete process.env[key];else process.env[key]=value;}rmSync(root,{recursive:true,force:true});}
+});

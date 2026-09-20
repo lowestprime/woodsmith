@@ -1242,7 +1242,7 @@ function clearUserEmailReferences(db: DatabaseSync, email: string) {
   db.prepare(`UPDATE project_updates SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
   db.prepare(`UPDATE pieces SET owner_email = NULL WHERE lower(owner_email) = lower(?)`).run(normalized);
   db.prepare(`UPDATE posts SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
-  db.prepare(`UPDATE cart_items SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`DELETE FROM cart_items WHERE lower(user_email) = lower(?)`).run(normalized);
 }
 
 function seedDefaultContent(db: DatabaseSync) {
@@ -2378,7 +2378,7 @@ export function getUserById(id: string) {
   return row ? mapUser(row) : null;
 }
 
-export function saveUserProfile(input: {
+function saveUserProfileInDatabase(input: {
   originalEmail?: string;
   email: string;
   role: UserRole;
@@ -2397,6 +2397,8 @@ export function saveUserProfile(input: {
   const existingByOriginal = getUserByEmail(originalEmail);
   const existingByNext = nextEmail === originalEmail ? existingByOriginal : getUserByEmail(nextEmail);
   const existing = existingByOriginal ?? existingByNext;
+  if (!["admin", "woodworker", "customer"].includes(input.role)) throw new Error("Invalid account role.");
+  if (existing?.role === "admin" && input.role !== "admin" && countUsersByRole("admin") <= 1) throw new Error("The last administrator cannot be demoted.");
   const timestamp = nowIso();
 
   clearSeedTombstone(db, "user", nextEmail);
@@ -2475,17 +2477,26 @@ export function saveUserProfile(input: {
   });
 }
 
-export function deleteUserProfile(email: string) {
+export function saveUserProfile(input: Parameters<typeof saveUserProfileInDatabase>[0]) {
+  return withDatabaseTransaction(() => saveUserProfileInDatabase(input));
+}
+
+function deleteUserProfileInDatabase(email: string) {
   const db = getDatabase();
   const existing = getUserByEmail(email);
   if (!existing) {
     return false;
   }
 
+  if (existing.role === "admin" && countUsersByRole("admin") <= 1) throw new Error("The last administrator cannot be deleted.");
   clearUserEmailReferences(db, existing.email);
   db.prepare(`DELETE FROM users WHERE id = ?`).run(existing.id);
   recordSeedTombstone(db, "user", existing.email.toLowerCase());
   return true;
+}
+
+export function deleteUserProfile(email: string) {
+  return withDatabaseTransaction(() => deleteUserProfileInDatabase(email));
 }
 
 export function setPasswordHash(email: string, passwordHash: string) {
