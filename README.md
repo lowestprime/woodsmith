@@ -234,3 +234,8 @@ Studio Visitors is available directly at `/studio?panel=visitors`. It provides b
 This branch adds schema 17 commerce reconciliation, schema 18 conservative legacy-credit correction, and schema 19 business ownership, fee and provider-account snapshots. Independent seller access is disabled by default; global Studio remains administrator-only. `/studio/woodworker` is the scoped business workspace, and `/studio/woodworkers` manages activation, fee policies and audited ownership decisions. Public `/woodworkers` profiles and attribution appear only in enabled mode for active/public businesses.
 
 This is not a production-release claim. The accepted Goal-E deployment remains unchanged pending the full Goal-F release gates. See the [reconciliation ledger](docs/final-requirements-reconciliation-20260912.md), [seller isolation contract](docs/goal-f-seller-isolation-design.md) and [provider activation procedure](docs/goal-f-provider-activation.md).
+
+
+### Goal-F current local sidecar operation
+
+The September 19 repair restores authenticated NAS-to-host local media AI through one owner-logon supervised task, a narrow bind and the existing NAS-only firewall. UNC filesystem paths are passed without PowerShell provider prefixes; the installed local package matches repository capabilities. Bounded real inference, cache reuse/reopen, CUDA selection and lexical fallback pass. The host must be logged in and reachable; optional paid cleanup/rendering remains disabled. See [current runtime proof and owner maintenance](docs/goal-f-local-sidecar-20260919.md). The application remains on Goal E pending the full Goal-F release.

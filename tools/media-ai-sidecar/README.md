@@ -113,3 +113,7 @@ python -m compileall -q media_ai_sidecar tests
 ```
 
 Official device behavior is documented by [SentenceTransformers device selection](https://sbert.net/docs/package_reference/sentence_transformer/model.html) and [PyTorch CUDA memory limits](https://docs.pytorch.org/docs/stable/generated/torch.cuda.memory.set_per_process_memory_fraction.html).
+
+## Current operator installation
+
+[Goal-F runtime proof](../../docs/goal-f-local-sidecar-20260919.md) records the owner-logon task, bounded supervisor, narrow bind/firewall, installed-package alignment and maintenance procedure. UNC roots are supported through `Resolve-Path.ProviderPath`; provider-qualified PowerShell paths must not be passed to Python. This host-dependent service degrades honestly while the owner is logged out or the host is unavailable.

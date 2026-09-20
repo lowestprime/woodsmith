@@ -267,3 +267,10 @@ Use **Studio → Inquiries** for general/piece messages and full-planner inquiry
 Administrators provision existing woodworker accounts at `/studio/woodworkers`, activate/deactivate businesses, edit versioned fees, bind verified Stripe connected-account IDs, and record reasoned ownership decisions. Decisions cannot split related business records or change a historical sale snapshot. Missing source photography remains a separate content-truth issue. Enable multi-worker mode only after resolving actual ownership conflicts.
 
 Active woodworkers use `/studio/woodworker` for their own profile, pieces, Process posts, media, projects, orders, reviews, legitimate inquiries and search. Customers receive no seller access. Photos upload privately; only verified, non-project media can be published. Assignment, hero/public state, order and canonical crop controls persist. Project notes distinguish customer-visible from private updates. Order tools save fulfillment context, issue configured invoices, request rates and explicitly purchase a selected label; purchasing postage does not mark an order shipped. Provider account setup remains an operator prerequisite, not a green dashboard substitute. See [provider activation](docs/goal-f-provider-activation.md).
+
+
+### Goal-F current local sidecar operation
+
+The September 19 repair restores authenticated NAS-to-host local media AI through one owner-logon supervised task, a narrow bind and the existing NAS-only firewall. UNC filesystem paths are passed without PowerShell provider prefixes; the installed local package matches repository capabilities. Bounded real inference, cache reuse/reopen, CUDA selection and lexical fallback pass. The host must be logged in and reachable; optional paid cleanup/rendering remains disabled. See [current runtime proof and owner maintenance](docs/goal-f-local-sidecar-20260919.md). The application remains on Goal E pending the full Goal-F release.
+
+The two previously unresolved dining-table identities are now byte-proven from retained backups and served correctly; see [current media truth](docs/goal-f-media-truth-20260919.md). No source rename or reassignment was required.

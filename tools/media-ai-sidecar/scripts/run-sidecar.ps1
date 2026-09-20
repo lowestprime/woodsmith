@@ -20,14 +20,14 @@ if ($Port -lt 1 -or $Port -gt 65535) {
   throw "MEDIA_AI_PORT must be from 1 through 65535."
 }
 
-$resolvedMedia = (Resolve-Path -LiteralPath $MediaRoot).Path.TrimEnd("\", "/")
+$resolvedMedia = (Resolve-Path -LiteralPath $MediaRoot).ProviderPath.TrimEnd("\", "/")
 $resolvedCache = [IO.Path]::GetFullPath($CachePath)
 $cacheParent = Split-Path -Parent $resolvedCache
 if ([string]::IsNullOrWhiteSpace($cacheParent)) {
   throw "MEDIA_AI_CACHE must include a parent directory."
 }
 [IO.Directory]::CreateDirectory($cacheParent) | Out-Null
-$resolvedCacheParent = (Resolve-Path -LiteralPath $cacheParent).Path.TrimEnd("\", "/")
+$resolvedCacheParent = (Resolve-Path -LiteralPath $cacheParent).ProviderPath.TrimEnd("\", "/")
 if ($resolvedCacheParent.Equals($resolvedMedia, [StringComparison]::OrdinalIgnoreCase) -or
     $resolvedCacheParent.StartsWith($resolvedMedia + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
   throw "MEDIA_AI_CACHE must remain outside the source media tree."
