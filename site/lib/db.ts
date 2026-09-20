@@ -6879,12 +6879,17 @@ export function getNotificationAdminSummary() {
   };
 }
 
-export function getBandwidthSnapshot(): BandwidthSnapshot {
-  const projects = listProjects(true);
-  const orders = listOrders();
-  const activeProjects = projects.filter((project) => !["Delivered", "Closed", "Cancelled"].includes(project.status)).length;
+export function getBandwidthSnapshot(ownerId: string | null = PRIMARY_WOODWORKER_ID): BandwidthSnapshot {
+  const db = getDatabase();
+  const projects = listProjects(true).filter((project) => ownerId === null || resourceOwner(db, "project", project.reference) === ownerId);
+  const orders = listOrders().filter((order) => ownerId === null || resourceOwner(db, "order", order.orderNumber) === ownerId);
+  const active = projects.filter((project) => !project.archivedAt && !project.cancelledAt && !project.completedAt && !["Delivered", "Closed", "Cancelled"].includes(project.status));
+  const activeProjects = active.length;
   const openOrders = orders.filter((order) => !["Delivered", "Refunded", "Cancelled"].includes(order.status)).length;
-  const laborWeight = projects.reduce((sum, project) => sum + Number(project.estimator.laborHours ?? 18), 0);
+  const laborWeight = active.reduce((sum, project) => {
+    const hours = Number(project.estimator.laborHours ?? 18);
+    return sum + (Number.isFinite(hours) && hours >= 0 ? hours : 18);
+  }, 0);
   const leadTimeDays = Math.max(14, Math.min(196, 21 + activeProjects * 8 + Math.round(laborWeight / 18)));
   const bandwidthPercent = Math.max(10, Math.min(98, Math.round((activeProjects * 14 + openOrders * 9 + laborWeight / 4) / 1.8)));
   const shippedCount = orders.filter((order) => order.status === "Shipped").length;
@@ -6933,12 +6938,12 @@ export function rebuildSearchIndex(
 }
 
 export function getStudioDashboardSummary(): StudioDashboardSummary {
-  const bandwidth = getBandwidthSnapshot();
+  const bandwidth = getBandwidthSnapshot(null);
   const pieces = listPieces(true);
   const posts = listPosts(true);
   const notifications = listNotifications().filter((notification) => notification.status === "queued");
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyRevenueCents = listOrders().filter((order) => order.createdAt.startsWith(currentMonth)).reduce((sum, order) => sum + order.totalCents, 0);
+  const monthlyRevenueCents = listOrders().filter((order) => order.createdAt.startsWith(currentMonth) && order.paymentStatus === "paid" && !["Refunded", "Cancelled"].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0);
   return {
     bandwidth,
     publishedPieces: pieces.filter((piece) => piece.publicationStatus === "published").length,

@@ -274,3 +274,7 @@ Active woodworkers use `/studio/woodworker` for their own profile, pieces, Proce
 The September 19 repair restores authenticated NAS-to-host local media AI through one owner-logon supervised task, a narrow bind and the existing NAS-only firewall. UNC filesystem paths are passed without PowerShell provider prefixes; the installed local package matches repository capabilities. Bounded real inference, cache reuse/reopen, CUDA selection and lexical fallback pass. The host must be logged in and reachable; optional paid cleanup/rendering remains disabled. See [current runtime proof and owner maintenance](docs/goal-f-local-sidecar-20260919.md). The application remains on Goal E pending the full Goal-F release.
 
 The two previously unresolved dining-table identities are now byte-proven from retained backups and served correctly; see [current media truth](docs/goal-f-media-truth-20260919.md). No source rename or reassignment was required.
+
+### Goal-F estimator and Studio reconciliation (branch validation)
+
+Saved commission-type base hours and markup now drive client/server estimates; the planning hourly rate remains $75. Public workload is scoped to the primary business and excludes closed/archived work. Studio reports paid order value by order creation month, excluding unpaid/refunded/cancelled orders. Custom category icons use sanitized SVG file import and preview. These branch changes await the final release; see [validation and exact limits](docs/goal-f-family-reconciliation.md).

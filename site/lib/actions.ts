@@ -901,7 +901,7 @@ function serverCommissionEstimate(formData: FormData, requestType: string, dimen
     includeVisualization: optionalField(formData.get("includeVisualization")) === "1"
   });
   const bandwidth = getBandwidthSnapshot();
-  return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays) };
+  return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays, commissionType) };
 }
 
 async function submitPlannerRequest(formData: FormData) {

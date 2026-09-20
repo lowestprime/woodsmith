@@ -285,32 +285,6 @@ export function StudioCategoriesWorkspace({
     }
   }
 
-  function commitCustomIcon(index: number) {
-    const current =
-      draftRef.current.categories[index];
-
-    if (
-      current.iconType !== "custom"
-    ) {
-      return;
-    }
-
-    const sanitized =
-      sanitizeCategoryIconSvg(
-        current.customIconSvg
-      );
-
-    if (!sanitized) {
-      return;
-    }
-
-    patchCategory(
-      index,
-      { customIconSvg: sanitized },
-      true
-    );
-  }
-
   async function deleteCategory(
     category:
       PieceCategoryAutosaveDraft
@@ -557,33 +531,7 @@ export function StudioCategoriesWorkspace({
                         Use built-in
                       </button>
                     </div>
-                    <label>
-                      <span>
-                        Sanitized SVG markup
-                      </span>
-                      <textarea
-                        data-studio-autosave="ignore"
-                        name={`category-${index}-customIconSvg`}
-                        onBlur={() => {
-                          if (!iconError) {
-                            commitCustomIcon(
-                              index
-                            );
-                          }
-                        }}
-                        onChange={(event) =>
-                          patchCategory(index, {
-                            iconType: "custom",
-                            customIconSvg:
-                              event.target.value
-                          })
-                        }
-                        rows={4}
-                        value={
-                          category.customIconSvg
-                        }
-                      />
-                    </label>
+                    <p className="muted-copy">Import an SVG file to preview and save a custom icon, or choose a built-in icon above.</p>
                     {iconError ? (
                       <p
                         className="form-status error"

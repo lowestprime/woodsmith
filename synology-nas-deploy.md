@@ -513,3 +513,7 @@ Additional optional runtime controls are `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNEC
 ### Goal-F current local sidecar operation
 
 The September 19 repair restores authenticated NAS-to-host local media AI through one owner-logon supervised task, a narrow bind and the existing NAS-only firewall. UNC filesystem paths are passed without PowerShell provider prefixes; the installed local package matches repository capabilities. Bounded real inference, cache reuse/reopen, CUDA selection and lexical fallback pass. The host must be logged in and reachable; optional paid cleanup/rendering remains disabled. See [current runtime proof and owner maintenance](docs/goal-f-local-sidecar-20260919.md). The application remains on Goal E pending the full Goal-F release.
+
+### Goal-F reconciliation checkpoint
+
+The estimator/capacity/category packet adds no schema, environment variable or dependency. It changes application behavior and awaits the full Goal-F exact-image/recovery/staged-restore/deploy/recreation/rollback/return contract. Production remains the accepted Goal-E image/schema 16; local acceptance is not deployment proof. See [packet evidence](docs/goal-f-family-reconciliation.md).

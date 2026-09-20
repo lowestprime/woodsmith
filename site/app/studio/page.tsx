@@ -1013,7 +1013,7 @@ export default async function StudioPage({
           <article className="studio-panel"><span>{summary.publishedPieces}</span><p>Published pieces</p></article>
           <article className="studio-panel"><span>{summary.publishedPosts}</span><p>Process notes</p></article>
           <article className="studio-panel"><span>Overview</span><p>Panel</p></article>
-          <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Revenue this month</p></article>
+          <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Paid order value · created this month</p></article>
         </div> : null}
         <nav aria-label="Studio workspaces" className="studio-workspace-nav">
           {STUDIO_PANELS.map((panel) => (
