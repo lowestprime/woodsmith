@@ -1,3 +1,4 @@
+import { ProcessPreview } from "@/components/process-preview";
 import { StudioShippingForm } from "@/components/studio/studio-shipping-form";
 export const metadata = {
   title: "Woodworker workspace",
@@ -463,6 +464,7 @@ export default async function WoodworkerWorkspace({
                     <span>Writing</span>
                     <textarea defaultValue={post?.body} name="body" rows={12} />
                   </label>
+                  <ProcessPreview />
                   <label>
                     <span>Tags</span>
                     <input defaultValue={post?.tags.join(", ")} name="tags" />

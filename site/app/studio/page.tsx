@@ -1,3 +1,4 @@
+import { ProcessPreview } from "@/components/process-preview";
 import { redirect } from "next/navigation";
 import {
   applyMediaFolderRulesAction,
@@ -476,8 +477,9 @@ function NewPostEditor({ post, mediaItems, highlight = false }: { post: Omit<Pos
         <Area label="Tags" name="tagsText" defaultValue={post.tags.join(", ")} rows={2} />
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
         <button className="button-primary" type="submit">Save process note</button>
+        <ProcessPreview />
       </form>
-      <p className="muted-copy">Live preview is omitted in the dashboard for performance. Use the public Process page to confirm formatting after saving.</p>
+      <p className="muted-copy">Preview the current fields before saving or publishing.</p>
     </article>
   );
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { ProcessPreview } from "@/components/process-preview";
 import {
   useCallback,
   useRef,
@@ -483,10 +484,11 @@ export function StudioPostEditor({
         >
           Save process note
         </button>
+        <ProcessPreview />
       </StudioAutosaveForm>
 
       <p className="muted-copy">
-        Use the public Process page to confirm the rendered note after saving.
+        Preview current fields before publishing; published notes also appear on the public Process page.
       </p>
     </article>
   );
