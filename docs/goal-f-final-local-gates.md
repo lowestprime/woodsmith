@@ -15,3 +15,11 @@ Tested repository: `0e193e292fde8f97a24ac0165c4b68745169f99e`. Application sourc
 Full logs and command timings remain in the restricted Goal-F evidence root (`final-gate-*.log`, `final-gates.json`). Actual TAP totals were inspected. The canonical suite covers migration rollback, retry, idempotence, reopen, older-schema upgrades, ownership backfill and provider-operation persistence. No extra duplicate migration run is needed. Node SQLite experimental and module-type warnings remain disclosed; no database/dependency change was made to silence them.
 
 Candidate smoke, final bounded Chromium/Firefox acceptance, production transition, fresh recovery/staged restore, recreation, retained rollback/return, PR integration and master-only closure remain open. Native Stripe/EasyPost/Proton activation remains provider-blocked.
+
+## Exact isolated candidate
+
+Frozen candidate source: `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`; local Docker Desktop image `woodsmith:candidate-0fac8c24`, immutable image identity `sha256:1e9f9aeaebb540a787e23bf0732687d9a0a22707539e8196ddd474c12bed53d3`, Linux/amd64. Built from `git archive` of the clean pushed commit, with exact source label. The tested `site` tree is identical to `0e193e2`; the freeze commit only records gate evidence. Later evidence-only repository commits do not change this candidate's source identity.
+
+Isolated smoke passes 15 public/authentication routes, all HTTP 200, with no retired seeded developer/footer copy in fresh state. Schema 19 initializes with `quick_check=ok`, zero foreign-key violations and multi-worker mode disabled. A synthetic mounted image is indexed and its media mount is readable/writable. Image inspection covers 1,908 application/dependency files: no `.env`, SQLite/runtime database or recovery payload; baked data directory empty, no media tree. This is clean-image/fresh-state proof, not migrated production-copy proof.
+
+The disposable container, both disposable volumes and temporary synthetic secret file were removed. The candidate image is intentionally retained. Restricted evidence: `candidate-build.json`, `candidate-build.log`, `candidate-smoke.json`, `candidate-smoke-app.log`. Production remains unchanged. Final bounded browser/candidate migration, fresh recovery/staged restore and the entire release transaction remain pending.
