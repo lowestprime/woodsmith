@@ -1,6 +1,6 @@
 # Goal F release evidence — September 22 local / September 23 UTC
 
-Production work is verified. PR integration/master-only Git closure is recorded only after it occurs.
+Goal F is complete: production proof, normal PR integration and master-only topology are verified. All 316 clauses have final classifications.
 
 ## Immutable identities and final source gates
 
@@ -56,4 +56,6 @@ Completed authenticated/navigation report: 46 checks. Returned Chromium/Firefox 
 
 ## Documentation and Git closure
 
-Current manuals now identify Goal F; dated A–E/checkpoint records stay historical. Tracked content review covered 80 original paths with zero forbidden runtime/secret/cache/media/recovery artifacts. Final documentation receives the same review. Application/Docker/Compose remains identical to the frozen candidate. PR integration/master-only topology remains explicitly open until verified.
+Current manuals now identify Goal F; dated A–E/checkpoint records stay historical. Tracked content review covered 80 original paths with zero forbidden runtime/secret/cache/media/recovery artifacts. Final documentation receives the same review. Application/Docker/Compose remains identical to the frozen candidate. PR #9 was reviewed at pinned head `36caddcf8a071860599fb66185a02e143180c06e` and merged normally as `8d8342aa8f708da8aabd48fc5517f97c371dc756`, preserving deployed-source ancestry. GitHub/WSL/CIFS/NAS were verified clean and master-only; the merged branch and stale refs are removed. The final repository head additionally records these documentation-only closure receipts; the immutable application source/image remain unchanged.
+
+Final classifications: 295 VERIFIED_COMPLETE, 4 SUPERSEDED_BY_LATER_USER_INSTRUCTION, 15 PROVIDER_BLOCKED, 2 OPTIONAL_PROVIDER_ENHANCEMENT, zero ACTIVE_GAP/CONTENT_TRUTH_BLOCKED (316 total). Minimal post-merge read-only audit passes the unchanged returned container/image/source, schema 19, quick_check, zero foreign-key violations, all 3,187 expected media paths/sizes and seven critical HTTPS routes. Full media hashes were already verified through return; no redundant transition occurred. Session telemetry may change normally and is not a stable-content invariant. No disposable Goal-F containers/volumes remain; deliberate old-image retention, fresh recovery and staged evidence remain. Existing unrelated historical/archive-keeper resources were not removed. Restricted final receipts: `goal-f-pr-merged.json`, `master-only-initial.json`, `post-merge-audit.json`, `release-scoped-disposable-check.json` and final-close ledger.

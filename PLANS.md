@@ -1,12 +1,12 @@
 # PLANS.md
 
-## Active work packet: Goal F — final Git closure
+## Completed work packet: Goal F — final release and reconciliation
 
 Goal-F production release is complete: source `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`, schema 19. Exact image/container identities are in [release evidence](docs/goal-f-release-evidence-20260922.md). Fresh paired recovery/staged restore, promotion, recreation, real retained Goal-E rollback and return pass. All 3,187 media hashes and 54 core application tables survive; arbitrary owner customization is preserved. No application source changed during closure.
 
 Final local gates pass: 310 application tests, 144 visual-audit tests, typecheck, lint with six accepted image warnings, both builds and zero production dependency vulnerabilities. Exact-image browser acceptance passes 28 groups. Current and returned Chromium/Firefox/security/pricing/editorial checks pass. Multi-worker mode stays disabled. Stripe, EasyPost and direct inbound Proton native activation remain external blockers.
 
-The [316-row matrix](docs/final-requirements-reconciliation-20260912.md) now closes only clauses with actual proof; PR integration/master-only Git consolidation remain explicitly open. Both dining identities and all 23 published pieces remain media-proven. The historical non-media Goal-E persistence marker needs no deletion and is not a missing piece identity. Retain A–E evidence and recovery/rollback assets.
+The [316-row matrix](docs/final-requirements-reconciliation-20260912.md) closes with 295 verified, 4 superseded, 15 provider-blocked, 2 optional and zero active/content-truth gaps. PR #9 merged normally; GitHub/WSL/CIFS/NAS are clean and master-only. Post-merge production identity/integrity/HTTPS pass. Both dining identities and all 23 published pieces remain media-proven. The historical non-media Goal-E persistence marker needs no deletion and is not a missing piece identity. Retain A–E evidence and recovery/rollback assets.
 
 ## Completed work packet: Goal E — final release
 
