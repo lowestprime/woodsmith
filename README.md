@@ -10,7 +10,7 @@
 
 Woodsmith is a self-hosted Next.js application for the Beaman Woodworks company website. It combines a public portfolio, shop, process writing, buyer account flow, contact-first custom work intake, project tracking, media library management, and a private Woodshop dashboard in one deployment.
 
-Production runs Goal-F source `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`, NAS image `sha256:31a0ab6bbc4d4b14f32b3888463eb05621b0fc318e7570ac607e8647a570f373`, container `de5af6a5735f689e102f8e46783a1ef59d85b56b0bb0698a54e1d8a1fc6ac98c`, schema 19. Fresh paired recovery/staged restore, immutable promotion, recreation, retained Goal-E rollback and return passed on September 23 UTC (September 22 local). See [Goal-F release evidence](docs/goal-f-release-evidence-20260922.md); Goal-E evidence remains historical.
+Production runs Goal-F source `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`, NAS image `sha256:31a0ab6bbc4d4b14f32b3888463eb05621b0fc318e7570ac607e8647a570f373`, container `de5af6a5735f689e102f8e46783a1ef59d85b56b0bb0698a54e1d8a1fc6ac98c`, schema 19. See [Goal-F release evidence](docs/goal-f-release-evidence-20260922.md); [Goal-F final requirements reconciliation](docs/final-requirements-reconciliation-20260912.md).
 
 ## Post-v19 launch release
 
