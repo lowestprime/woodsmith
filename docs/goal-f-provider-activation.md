@@ -1,6 +1,6 @@
 # Goal F provider activation — pending external access
 
-Status: **PROVIDER_BLOCKED**, not functional production acceptance. The current production runtime has no Stripe or EasyPost credentials. The available browser inventory has no authenticated Proton administrative session. No provider credentials, customer mail, charges or postage purchases were used during this audit. Source corrections remain on the Goal-F branch and are not yet deployed.
+Status: **PROVIDER_BLOCKED**, not functional production acceptance. The current production runtime has no Stripe or EasyPost credentials. The available browser inventory has no authenticated Proton administrative session. No provider credentials, customer mail, charges or postage purchases were used during this audit. Application corrections are deployed; native provider activation remains blocked.
 
 ## Stripe
 
@@ -40,7 +40,7 @@ The historical operational destinations are `wbeaman1@gmail.com` and, in the lat
 
 Source: [Proton forwarding setup, conditions and recipient confirmation](https://proton.me/support/email-forwarding). Provider forwarding UI capabilities are the authority; do not invent Sieve/body-filter support to claim this clause complete.
 
-## Independent woodworker accounts (Goal F branch)
+## Independent woodworker accounts (deployed Goal F)
 
 Multi-worker mode stays disabled by default. Provision an existing woodworker account in `/studio/woodworkers`, verify its business identity, activate it, and have that woodworker publish their profile and accept the current fee policy. Primary-business payment behavior remains unchanged. A checkout accepts one business only.
 

@@ -1,5 +1,7 @@
 # Goal F final local gates
 
+Current status: Goal F is deployed at schema 19; live acceptance, recreation, retained Goal-E rollback and return pass. [Release evidence](goal-f-release-evidence-20260922.md) supersedes pending-release statements in the dated checkpoint history below. Native provider activation remains blocked.
+
 Tested repository: `0e193e292fde8f97a24ac0165c4b68745169f99e`. Application source last changed in `f4b22f0dad1f815209dbd3f3fd62588df71aaf8e`. Subsequent evidence-only commits preserve the tested application tree. This is local-source evidence, not production-release proof.
 
 | Command | Result | Restricted log SHA-256 |

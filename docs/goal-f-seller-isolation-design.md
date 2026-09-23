@@ -1,5 +1,7 @@
 # Goal F seller isolation implementation contract
 
+Current status: Goal F is deployed at schema 19; live acceptance, recreation, retained Goal-E rollback and return pass. [Release evidence](goal-f-release-evidence-20260922.md) supersedes pending-release statements in the dated checkpoint history below. Native provider activation remains blocked.
+
 Status: branch implementation and focused service validation complete; bounded rendered checkpoint acceptance complete (22/22 Chromium/Firefox groups, zero console/page errors, localhost-only traffic). Not deployed and not final marketplace acceptance. Original W2/W3 clause 21 remains active. No explicit later instruction supersedes multiple independent woodworkers. William-centered public presentation alone is not supersession.
 
 The minimum deployment remains one Node application writer and local SQLite, with transactional reservations and server authorization. Introduce separate business profiles and memberships, explicit resource ownership, a disabled-by-default multi-worker switch, and versioned fee acceptance/sale snapshots. Keep current URLs, global administration and single-builder presentation. Existing source owner/author/assignee fields remain preserved; ownership is additive. Buyer identity must never become seller identity merely because it appears in an order, project or upload.

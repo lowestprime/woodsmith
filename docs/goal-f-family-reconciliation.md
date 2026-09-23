@@ -1,5 +1,7 @@
 # Goal F requirement-family reconciliation
 
+Current status: Goal F is deployed at schema 19; live acceptance, recreation, retained Goal-E rollback and return pass. [Release evidence](goal-f-release-evidence-20260922.md) supersedes pending-release statements in the dated checkpoint history below. Native provider activation remains blocked.
+
 ## Studio/editor family
 
 The f445c5d source is inspected at its real mutation boundaries: `requireAdmin` gates global Studio and its editor actions; record-specific actions save/delete pages, pieces and Process notes with dependency guards and route invalidation. `inline-edit-registry.ts` admits typed declared fields/modes only. Site structure/navigation/home service/feature lists use structured controls and canonical settings versions. The persisted commission-type labor/markup fields do exist; their estimator consumption was a genuine defect, corrected and independently validated below.
