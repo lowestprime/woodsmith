@@ -1,3 +1,6 @@
+import { publicWoodworkers, publicResourceWoodworker, resourceRelationshipsMatch } from "./woodworkers-store.ts";
+import { publicWorkerResourceAvailable, resourceOwner, workerForPrincipal, workerMediaPublic, PRIMARY_WOODWORKER_ID } from "./woodworkers-store.ts";
+import { assertProviderOrderEditSafe } from "./commerce-store.ts";
 import { applyPublicCopyRefinements } from "./public-copy-normalization.ts";
 import { accessSync, constants as fsConstants, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
@@ -426,6 +429,8 @@ export type MediaRecord = {
 };
 
 export type MediaAccessAssociationsRecord = {
+  ownershipConflict?: boolean;
+  publicWorkerMedia?: boolean;
   projectReference: string | null;
   privateAssociation: boolean;
   renderAsset: boolean;
@@ -1237,7 +1242,7 @@ function clearUserEmailReferences(db: DatabaseSync, email: string) {
   db.prepare(`UPDATE project_updates SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
   db.prepare(`UPDATE pieces SET owner_email = NULL WHERE lower(owner_email) = lower(?)`).run(normalized);
   db.prepare(`UPDATE posts SET author_email = NULL WHERE lower(author_email) = lower(?)`).run(normalized);
-  db.prepare(`UPDATE cart_items SET user_email = NULL WHERE lower(user_email) = lower(?)`).run(normalized);
+  db.prepare(`DELETE FROM cart_items WHERE lower(user_email) = lower(?)`).run(normalized);
 }
 
 function seedDefaultContent(db: DatabaseSync) {
@@ -2373,7 +2378,7 @@ export function getUserById(id: string) {
   return row ? mapUser(row) : null;
 }
 
-export function saveUserProfile(input: {
+function saveUserProfileInDatabase(input: {
   originalEmail?: string;
   email: string;
   role: UserRole;
@@ -2392,6 +2397,8 @@ export function saveUserProfile(input: {
   const existingByOriginal = getUserByEmail(originalEmail);
   const existingByNext = nextEmail === originalEmail ? existingByOriginal : getUserByEmail(nextEmail);
   const existing = existingByOriginal ?? existingByNext;
+  if (!["admin", "woodworker", "customer"].includes(input.role)) throw new Error("Invalid account role.");
+  if (existing?.role === "admin" && input.role !== "admin" && countUsersByRole("admin") <= 1) throw new Error("The last administrator cannot be demoted.");
   const timestamp = nowIso();
 
   clearSeedTombstone(db, "user", nextEmail);
@@ -2470,22 +2477,34 @@ export function saveUserProfile(input: {
   });
 }
 
-export function deleteUserProfile(email: string) {
+export function saveUserProfile(input: Parameters<typeof saveUserProfileInDatabase>[0]) {
+  return withDatabaseTransaction(() => saveUserProfileInDatabase(input));
+}
+
+function deleteUserProfileInDatabase(email: string) {
   const db = getDatabase();
   const existing = getUserByEmail(email);
   if (!existing) {
     return false;
   }
 
+  if (existing.role === "admin" && countUsersByRole("admin") <= 1) throw new Error("The last administrator cannot be deleted.");
   clearUserEmailReferences(db, existing.email);
   db.prepare(`DELETE FROM users WHERE id = ?`).run(existing.id);
   recordSeedTombstone(db, "user", existing.email.toLowerCase());
   return true;
 }
 
+export function deleteUserProfile(email: string) {
+  return withDatabaseTransaction(() => deleteUserProfileInDatabase(email));
+}
+
 export function setPasswordHash(email: string, passwordHash: string) {
   const db = getDatabase();
-  db.prepare(`UPDATE users SET password_hash = ?, updated_at = ?, reset_token = NULL, reset_expires_at = NULL WHERE lower(email) = lower(?)`).run(passwordHash, nowIso(), email);
+  withDatabaseTransaction(() => {
+    db.prepare(`UPDATE users SET password_hash = ?, updated_at = ?, reset_token = NULL, reset_expires_at = NULL WHERE lower(email) = lower(?)`).run(passwordHash, nowIso(), email);
+    db.prepare(`DELETE FROM sessions WHERE lower(user_email) = lower(?)`).run(email);
+  });
 }
 
 export function setPasswordResetToken(email: string, token: string, expiresAt: string) {
@@ -2534,7 +2553,7 @@ export function getUserByResetToken(token: string) {
            verification_expires_at AS verificationExpiresAt,
            created_at AS createdAt, updated_at AS updatedAt, password_hash AS passwordHash
     FROM users
-    WHERE reset_token = ? AND (reset_expires_at IS NULL OR datetime(reset_expires_at) > datetime('now'))
+    WHERE reset_token = ? AND reset_token != '' AND reset_expires_at IS NOT NULL AND datetime(reset_expires_at) > datetime('now')
     LIMIT 1
   `).get(token) as (Record<string, unknown> & { passwordHash?: string }) | undefined;
 
@@ -2632,7 +2651,7 @@ export function listPieces(includeDraft = false) {
   const query = includeDraft
     ? `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, price_mode AS priceMode, public_price_label AS publicPriceLabel, internal_estimate_cents AS internalEstimateCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode, process_section_title AS processSectionTitle, process_section_intro AS processSectionIntro, visualizer_template AS visualizerTemplate, commission_type_slug AS commissionTypeSlug, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces ORDER BY featured_rank ASC, title ASC`
     : `SELECT slug, title, subtitle, category, status, publication_status AS publicationStatus, availability_label AS availabilityLabel, summary, story, details_json AS detailsJson, tags_json AS tagsJson, materials_json AS materialsJson, dimensions_json AS dimensionsJson, price_cents AS priceCents, price_mode AS priceMode, public_price_label AS publicPriceLabel, internal_estimate_cents AS internalEstimateCents, inquiry_mode AS inquiryMode, reviews_mode AS reviewsMode, process_section_title AS processSectionTitle, process_section_intro AS processSectionIntro, visualizer_template AS visualizerTemplate, commission_type_slug AS commissionTypeSlug, inventory_count AS inventoryCount, lead_time_days AS leadTimeDays, media_paths_json AS mediaPathsJson, featured_rank AS featuredRank, owner_email AS ownerEmail, metadata_json AS metadataJson, created_at AS createdAt, updated_at AS updatedAt FROM pieces WHERE publication_status = 'published' ORDER BY featured_rank ASC, title ASC`;
-  return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPiece);
+  return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPiece).filter(piece => includeDraft || publicWorkerResourceAvailable(db, "piece", piece.slug));
 }
 
 export function getPiece(slug: string) {
@@ -2664,7 +2683,7 @@ function synchronizeLegacyPieceMediaLinks(db: DatabaseSync, pieceSlug: string, m
 export function savePiece(input: Omit<PieceRecord, "createdAt" | "updatedAt">) {
   return withDatabaseTransaction((db) => {
   const existing = getPiece(input.slug);
-  const timestamp = nowIso();
+  const timestamp = existing ? isoAfter(existing.updatedAt) : nowIso();
   const priceMode = normalizePriceMode(input.priceMode ?? input.metadata.priceMode, getPiecePriceMode(input));
   const inquiryMode = normalizeInquiryMode(input.inquiryMode ?? input.metadata.inquiryMode, getPieceInquiryMode(input));
   const reviewsMode = normalizeReviewsMode(input.reviewsMode ?? input.metadata.reviewsMode, getPieceReviewsMode(input));
@@ -3719,7 +3738,7 @@ export function listPosts(includeDraft = false) {
   const query = includeDraft
     ? `SELECT slug, title, excerpt, body, publication_status AS publicationStatus, published_at AS publishedAt, author_email AS authorEmail, cover_media_path AS coverMediaPath, tags_json AS tagsJson, source_url AS sourceUrl, source_label AS sourceLabel, created_at AS createdAt, updated_at AS updatedAt FROM posts ORDER BY COALESCE(published_at, created_at) DESC`
     : `SELECT slug, title, excerpt, body, publication_status AS publicationStatus, published_at AS publishedAt, author_email AS authorEmail, cover_media_path AS coverMediaPath, tags_json AS tagsJson, source_url AS sourceUrl, source_label AS sourceLabel, created_at AS createdAt, updated_at AS updatedAt FROM posts WHERE publication_status = 'published' ORDER BY COALESCE(published_at, created_at) DESC`;
-  return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPost);
+  return (db.prepare(query).all() as Record<string, unknown>[]).map(mapPost).filter(post => includeDraft || publicWorkerResourceAvailable(db, "post", post.slug));
 }
 
 export function getPost(slug: string) {
@@ -3731,7 +3750,7 @@ export function getPost(slug: string) {
 export function savePost(input: Omit<PostRecord, "createdAt" | "updatedAt">) {
   const db = getDatabase();
   const existing = getPost(input.slug);
-  const timestamp = nowIso();
+  const timestamp = existing ? isoAfter(existing.updatedAt) : nowIso();
   clearSeedTombstone(db, "post", input.slug);
   db.prepare(`
     INSERT INTO posts (slug, title, excerpt, body, publication_status, published_at, author_email, cover_media_path, tags_json, source_url, source_label, created_at, updated_at)
@@ -4010,9 +4029,15 @@ export function getMediaAccessAssociations(relativePath: string): MediaAccessAss
       ) AS renderProjectReference
   `).get(relativePath, relativePath, relativePath, relativePath) as Record<string, unknown>;
 
+  const owner = resourceOwner(db, "media", relativePath);
+  const publicWorkerMedia = owner !== PRIMARY_WOODWORKER_ID && workerMediaPublic(db, relativePath);
+  const ownershipConflict = Boolean(owner && !resourceRelationshipsMatch(db, "media", relativePath)) || Boolean(db.prepare("SELECT 1 FROM resource_ownership WHERE kind='media' AND resource_key=? AND woodworker_id IS NULL").get(relativePath));
+  const workerPrivate = ownershipConflict || Boolean(owner && owner !== PRIMARY_WOODWORKER_ID && !publicWorkerMedia);
   return {
+    ...(ownershipConflict ? { ownershipConflict: true } : {}),
+    ...(publicWorkerMedia ? { publicWorkerMedia: true } : {}),
     projectReference: row.projectReference ? String(row.projectReference) : null,
-    privateAssociation: Number(row.privateAssociation) === 1,
+    privateAssociation: Number(row.privateAssociation) === 1 || workerPrivate,
     renderAsset: Number(row.renderAsset) === 1,
     renderProjectReference: row.renderProjectReference ? String(row.renderProjectReference) : null
   };
@@ -4179,6 +4204,13 @@ function rewritePieceMediaLinkPaths(db: DatabaseSync, previousPath: string, next
 }
 
 function rewriteMediaReferences(db: DatabaseSync, previousPath: string, nextPath: string | null) {
+  // File moves preserve the authoritative business binding, including unresolved provenance.
+  const ownership = db.prepare("SELECT woodworker_id,conflict FROM resource_ownership WHERE kind='media' AND resource_key=?").get(previousPath);
+  if (nextPath && ownership) {
+    db.prepare("INSERT INTO resource_ownership(kind,resource_key,woodworker_id,conflict) VALUES('media',?,?,?) ON CONFLICT(kind,resource_key) DO UPDATE SET woodworker_id=excluded.woodworker_id,conflict=excluded.conflict").run(nextPath,ownership.woodworker_id,ownership.conflict);
+    db.prepare('INSERT INTO woodworker_ownership_audit VALUES(?,?,?,?,?,?,?,?)').run(randomUUID(),'media',nextPath,ownership.woodworker_id,ownership.woodworker_id,'system:media-reference-transaction',`Retained ownership while moving ${previousPath}`,nowIso());
+  }
+  db.prepare('UPDATE woodworkers SET avatar_path=?,updated_at=? WHERE avatar_path=?').run(nextPath,nowIso(),previousPath);
   const affectedPieceSlugs: string[] = [];
   const affectedPostSlugs: string[] = [];
   const affectedPageSlugs: string[] = [];
@@ -5178,7 +5210,7 @@ export function updateProject(reference: string, input: Partial<Omit<ProjectReco
     ...input,
     reference: project.reference,
     createdAt: project.createdAt,
-    updatedAt: nowIso()
+    updatedAt: isoAfter(project.updatedAt)
   };
 
   const db = getDatabase();
@@ -6063,7 +6095,8 @@ export function getOrder(orderNumber: string) {
 export function saveOrder(input: Omit<OrderRecord, "createdAt" | "updatedAt">) {
   const db = getDatabase();
   const existing = getOrder(input.orderNumber);
-  const timestamp = nowIso();
+  if (existing) assertProviderOrderEditSafe(db, input, existing);
+  const timestamp = existing ? isoAfter(existing.updatedAt) : nowIso();
   db.prepare(`
     INSERT INTO orders (order_number, user_email, project_reference, status, subtotal_cents, shipping_cents, tax_cents, discount_cents, total_cents, currency, coupon_code, shipping_rate_label, shipping_address_json, billing_address_json, stripe_checkout_session_id, stripe_payment_intent_id, stripe_invoice_id, shipping_label_id, tracking_number, invoice_status, payment_status, created_at, updated_at)
     VALUES (:orderNumber, :userEmail, :projectReference, :status, :subtotalCents, :shippingCents, :taxCents, :discountCents, :totalCents, :currency, :couponCode, :shippingRateLabel, :shippingAddressJson, :billingAddressJson, :stripeCheckoutSessionId, :stripePaymentIntentId, :stripeInvoiceId, :shippingLabelId, :trackingNumber, :invoiceStatus, :paymentStatus, :createdAt, :updatedAt)
@@ -6860,12 +6893,17 @@ export function getNotificationAdminSummary() {
   };
 }
 
-export function getBandwidthSnapshot(): BandwidthSnapshot {
-  const projects = listProjects(true);
-  const orders = listOrders();
-  const activeProjects = projects.filter((project) => !["Delivered", "Closed", "Cancelled"].includes(project.status)).length;
+export function getBandwidthSnapshot(ownerId: string | null = PRIMARY_WOODWORKER_ID): BandwidthSnapshot {
+  const db = getDatabase();
+  const projects = listProjects(true).filter((project) => ownerId === null || resourceOwner(db, "project", project.reference) === ownerId);
+  const orders = listOrders().filter((order) => ownerId === null || resourceOwner(db, "order", order.orderNumber) === ownerId);
+  const active = projects.filter((project) => !project.archivedAt && !project.cancelledAt && !project.completedAt && !["Delivered", "Closed", "Cancelled"].includes(project.status));
+  const activeProjects = active.length;
   const openOrders = orders.filter((order) => !["Delivered", "Refunded", "Cancelled"].includes(order.status)).length;
-  const laborWeight = projects.reduce((sum, project) => sum + Number(project.estimator.laborHours ?? 18), 0);
+  const laborWeight = active.reduce((sum, project) => {
+    const hours = Number(project.estimator.laborHours ?? 18);
+    return sum + (Number.isFinite(hours) && hours >= 0 ? hours : 18);
+  }, 0);
   const leadTimeDays = Math.max(14, Math.min(196, 21 + activeProjects * 8 + Math.round(laborWeight / 18)));
   const bandwidthPercent = Math.max(10, Math.min(98, Math.round((activeProjects * 14 + openOrders * 9 + laborWeight / 4) / 1.8)));
   const shippedCount = orders.filter((order) => order.status === "Shipped").length;
@@ -6879,7 +6917,9 @@ export function searchSite(
   return searchIndexInDatabase(
     getDatabase(),
     query,
-    includePrivate
+    includePrivate,
+    undefined,
+    { publicBusinessesOnly: !includePrivate }
   );
 }
 
@@ -6912,12 +6952,12 @@ export function rebuildSearchIndex(
 }
 
 export function getStudioDashboardSummary(): StudioDashboardSummary {
-  const bandwidth = getBandwidthSnapshot();
+  const bandwidth = getBandwidthSnapshot(null);
   const pieces = listPieces(true);
   const posts = listPosts(true);
   const notifications = listNotifications().filter((notification) => notification.status === "queued");
   const currentMonth = new Date().toISOString().slice(0, 7);
-  const monthlyRevenueCents = listOrders().filter((order) => order.createdAt.startsWith(currentMonth)).reduce((sum, order) => sum + order.totalCents, 0);
+  const monthlyRevenueCents = listOrders().filter((order) => order.createdAt.startsWith(currentMonth) && order.paymentStatus === "paid" && !["Refunded", "Cancelled"].includes(order.status)).reduce((sum, order) => sum + order.totalCents, 0);
   return {
     bandwidth,
     publishedPieces: pieces.filter((piece) => piece.publicationStatus === "published").length,
@@ -7377,3 +7417,26 @@ export function purgeVisitorAnalytics(
     };
   });
 }
+
+export function publicBusinessResourceAvailable(kind: "piece" | "post", key: string) {
+  return publicWorkerResourceAvailable(getDatabase(), kind, key);
+}
+export function workerOwnsResource(user: {email:string;role:string} | null, kind: "piece" | "post" | "media" | "project" | "order" | "review" | "inquiry", key: string) {
+  if (!user) return false;
+  const db = getDatabase();
+  const worker = workerForPrincipal(db, user);
+  return Boolean(worker && resourceOwner(db, kind, key) === worker.id && resourceRelationshipsMatch(db, kind, key));
+}
+
+export function businessCorrespondenceRecipient(input: {category:string; reference:string; projectReference?:string; websiteInquiryId?:string}) {
+  const db = getDatabase();
+  const kind = input.websiteInquiryId ? "inquiry" : input.projectReference ? "project" : input.category === "review_submitted_admin" ? "piece" : "order";
+  const key = input.websiteInquiryId || input.projectReference || input.reference;
+  const owner = resourceOwner(db, kind, key);
+  if (!owner || owner === PRIMARY_WOODWORKER_ID) return getSiteSettings().builderEmail;
+  const worker = db.prepare("SELECT contact_email FROM woodworkers WHERE id=? AND active=1").get(owner);
+  return worker ? String(worker.contact_email) : getSiteSettings().builderEmail;
+}
+
+export function listPublicWoodworkers(){return publicWoodworkers(getDatabase());}
+export function getPublicResourceWoodworker(kind:"piece"|"post",key:string){return publicResourceWoodworker(getDatabase(),kind,key);}

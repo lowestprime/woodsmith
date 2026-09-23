@@ -414,7 +414,7 @@ test("global routing is reversible, private, durable and separate from operator/
     for (const kind of ["local_review", "checkout_draft"] as const) {
       const inquiry = mail.createOrderInquiry({
         kind, customerName: "Buyer", customerEmail: "buyer@example.test",
-        lines: [{ title: "Pastry Table", quantity: 1 }], studioUrl: "https://example.test/studio?panel=orders",
+        lines: [{ slug: db.listPieces(true)[0].slug, title: "Pastry Table", quantity: 1, unitAmountCents: 10000 }], studioUrl: "https://example.test/studio?panel=orders",
         order: { userEmail: "buyer@example.test", subtotalCents: 10000, shippingCents: 0, taxCents: 0, discountCents: 0, currency: "USD" }
       });
       assert.equal(db.getOrder(inquiry.orderNumber)?.status, "Draft");

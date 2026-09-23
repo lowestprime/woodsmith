@@ -1,3 +1,4 @@
+import { ProcessPreview } from "@/components/process-preview";
 import { redirect } from "next/navigation";
 import {
   applyMediaFolderRulesAction,
@@ -23,7 +24,7 @@ import {
   uploadMediaAction,
   savePageAction,
 } from "@/lib/actions";
-import { requireAdmin } from "@/lib/auth";
+import { getCurrentUser, requireAdmin } from "@/lib/auth";
 import Link from "next/link";
 import {
   countMedia,
@@ -476,8 +477,9 @@ function NewPostEditor({ post, mediaItems, highlight = false }: { post: Omit<Pos
         <Area label="Tags" name="tagsText" defaultValue={post.tags.join(", ")} rows={2} />
         <label><span>Publication</span><select defaultValue={post.publicationStatus} name="publicationStatus"><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option></select></label>
         <button className="button-primary" type="submit">Save process note</button>
+        <ProcessPreview />
       </form>
-      <p className="muted-copy">Live preview is omitted in the dashboard for performance. Use the public Process page to confirm formatting after saving.</p>
+      <p className="muted-copy">Preview the current fields before saving or publishing.</p>
     </article>
   );
 }
@@ -728,6 +730,13 @@ export default async function StudioPage({
     visitorPage?: string;
   }>;
 }) {
+  const viewer = await getCurrentUser();
+  if (viewer?.role === "woodworker") {
+    const workerParams = await searchParams;
+    const workerPanel = workerParams.panel === "people" ? "profile" : workerParams.panel || "profile";
+    const selected = workerParams.project || workerParams.piece || workerParams.post || workerParams.order || workerParams.inquiry || "";
+    redirect(`/studio/woodworker?panel=${encodeURIComponent(workerPanel)}${selected ? `&selected=${encodeURIComponent(selected)}` : ""}`);
+  }
   const currentAdmin = await requireAdmin();
   const {
     panel: requestedPanel = "",
@@ -1006,7 +1015,7 @@ export default async function StudioPage({
           <article className="studio-panel"><span>{summary.publishedPieces}</span><p>Published pieces</p></article>
           <article className="studio-panel"><span>{summary.publishedPosts}</span><p>Process notes</p></article>
           <article className="studio-panel"><span>Overview</span><p>Panel</p></article>
-          <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Revenue this month</p></article>
+          <article className="studio-panel"><span>{formatMoney(summary.monthlyRevenueCents)}</span><p>Paid order value · created this month</p></article>
         </div> : null}
         <nav aria-label="Studio workspaces" className="studio-workspace-nav">
           {STUDIO_PANELS.map((panel) => (
@@ -1053,6 +1062,7 @@ export default async function StudioPage({
       {currentPanel === "pieces" && editingPiece ? <PageSection><div className="section-heading"><p className="eyebrow">Pieces</p><h2>Portfolio and shop pieces</h2><p>Pricing, inquiry and review policies, inventory, fulfillment, and normalized visual media assignment.</p></div><div className="studio-master-detail"><StudioMasterList items={pieces.map((piece) => ({ key: piece.slug, label: piece.title, meta: `${piece.publicationStatus} · ${piece.status}`, href: panelHref("pieces", { piece: piece.slug }) }))} newHref={panelHref("pieces", { piece: "new-piece-draft" })} newLabel="New piece" selectedKey={editingPiece.slug} /><PieceEditor categories={categories} highlight key={editingPiece.slug} mediaItems={editorMediaItems} mediaLinks={editingPieceLinks} piece={editingPiece} /></div></PageSection> : null}
       {currentPanel === "categories" && settingsRecord ? <PageSection><div className="section-heading"><p className="eyebrow">Categories</p><h2>Portfolio filters</h2><p>Add a portfolio group explicitly, then edit, reorder, or consolidate existing groups through one coordinated save queue.</p></div><div className="studio-grid category-editor-grid"><StudioCategoryEditor categories={categories} category={{ key: "new-category", label: "New category", icon: "object", iconName: "object", iconType: "builtin", customIconSvg: null, aliases: [], sortOrder: categories.length * 10, visible: true }} deleteAction={deletePieceCategoryAction} isNew saveAction={savePieceCategoryAction} /></div><StudioCategoriesWorkspace record={settingsRecord} /></PageSection> : null}
       {currentPanel === "custom" ? <PageSection><div className="section-heading"><p className="eyebrow">Custom work</p><h2>Contact workflow types</h2><p>Material menus, estimator defaults, and active custom request categories.</p></div><div className="studio-grid two-column-grid"><CommissionTypeEditor item={commissionTypeDraft()} />{commissionTypes.map((item) => <CommissionTypeEditor key={item.slug} item={item} />)}</div></PageSection> : null}
+      {currentPanel === "people" ? <PageSection><Link href="/studio/woodworkers">Manage independent woodworker businesses</Link></PageSection> : null}
       {currentPanel === "people" ? <PageSection><div className="section-heading"><p className="eyebrow">People</p><h2>Accounts and public profiles</h2><p>Rename profiles, replace contact emails, and remove accounts directly from the dashboard.</p></div><div className="studio-grid two-column-grid"><UserEditor currentAdminEmail={currentAdmin.email} mediaItems={editorMediaItems} user={userDraft()} />{users.map((user) => <UserEditor currentAdminEmail={currentAdmin.email} highlight={user.email.toLowerCase() === (userHighlight || email).toLowerCase()} key={user.email} mediaItems={editorMediaItems} user={user} />)}</div></PageSection> : null}
       {currentPanel === "process" && editingPost ? <PageSection><div className="section-heading"><p className="eyebrow">Process</p><h2>Process notes and references</h2><p>Select one note, edit Markdown and source details, and choose its cover media visually.</p></div><div className="studio-master-detail"><StudioMasterList items={posts.map((post) => ({ key: post.slug, label: post.title, meta: post.publicationStatus, href: panelHref("process", { post: post.slug }) }))} newHref={panelHref("process", { post: "new-process-entry" })} newLabel="New process note" selectedKey={editingPost.slug} /><PostEditor highlight mediaItems={editorMediaItems} post={editingPost} /></div></PageSection> : null}
 

@@ -1,10 +1,12 @@
+import { CheckoutForm } from "@/components/checkout-form";
+import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 import Image from "next/image";
 import { removeCartItemAction } from "@/lib/actions";
 import { getCurrentUser } from "@/lib/auth";
 import { getDisplayMediaPaths, getFulfillmentSummary } from "@/lib/catalog";
-import { getPiece, getSiteSettings, listCartItems } from "@/lib/db";
-import { calculateCheckoutTotals } from "@/lib/payments";
+import { getPiece, publicBusinessResourceAvailable, getSiteSettings, listCartItems } from "@/lib/db";
+import { calculateCheckoutTotals, stripeIsConfigured } from "@/lib/payments";
 import { formatMoney, toMediaUrl } from "@/lib/format";
 import { PageIntro, PageSection, Shell } from "@/components/site-chrome";
 
@@ -17,7 +19,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
   const cartItems = listCartItems(cartToken, user?.email ?? null);
   const lines = cartItems.flatMap((item) => {
     const piece = getPiece(item.pieceSlug);
-    if (!piece || piece.priceCents == null) return [];
+    if (!piece || piece.publicationStatus !== "published" || !publicBusinessResourceAvailable("piece", piece.slug) || piece.priceCents == null) return [];
     return [{ item, piece, firstImage: getDisplayMediaPaths(piece)[0] ?? null }];
   });
   const totals = calculateCheckoutTotals({
@@ -33,6 +35,8 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
     <Shell>
       <PageSection editHref="/studio?panel=orders">
         <PageIntro eyebrow="Cart" title="Your ledger" copy="Reserve pieces, confirm pickup or local drop-off eligibility, and request shipping only when the piece explicitly supports it." />
+        {checkout === "configuration-needed" ? <p className="notice-panel" role="status">Online payment is not configured. Continue with logistics review or contact the woodshop.</p> : null}
+        {checkout === "success" ? <p className="notice-panel" role="status">Your checkout returned successfully. Payment is confirmed separately by the payment provider; contact the woodshop for fulfillment.</p> : null}
         {error ? <div className="notice-panel" role="alert"><p>{error}</p></div> : null}
         {checkout === "local-review" && order ? <div className="notice-panel" role="status"><p>Local pickup/drop-off review was created for order <strong>{order}</strong>.</p>{summary ? <p className="muted-copy">{summary}</p> : null}</div> : null}
         <div className="cart-layout">
@@ -65,6 +69,7 @@ export default async function CartPage({ searchParams }: { searchParams: Promise
               <div><dt>Total before final logistics</dt><dd>{formatMoney(totals.totalCents)}</dd></div>
             </dl>
             <p className="fulfillment-note">Address details are collected only to determine pickup/drop-off eligibility and buyer consent. The woodshop address remains private until a pickup or drop-off is approved.</p>
+            {stripeIsConfigured() && site.checkout.automaticTax && lines.length > 0 ? <CheckoutForm checkoutKey={randomUUID()} email={user?.email ?? ""}/> : null}
             <form action="/api/shop/local-reservation" className="request-form compact-form" method="post">
               <label>
                 <span>Email</span>

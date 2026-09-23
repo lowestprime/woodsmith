@@ -67,7 +67,7 @@ export function resolveAssetUrl(assetPath: string | null | undefined) {
     return "";
   }
 
-  if (assetPath.startsWith("profiles/")) {
+  if (assetPath === "profiles/william-beaman.svg" || assetPath === "profiles/cooper-beaman.svg") {
     return `/${assetPath}`;
   }
 

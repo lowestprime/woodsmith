@@ -1,5 +1,13 @@
 # PLANS.md
 
+## Active work packet: Goal F — final Git closure
+
+Goal-F production release is complete: source `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`, schema 19. Exact image/container identities are in [release evidence](docs/goal-f-release-evidence-20260922.md). Fresh paired recovery/staged restore, promotion, recreation, real retained Goal-E rollback and return pass. All 3,187 media hashes and 54 core application tables survive; arbitrary owner customization is preserved. No application source changed during closure.
+
+Final local gates pass: 310 application tests, 144 visual-audit tests, typecheck, lint with six accepted image warnings, both builds and zero production dependency vulnerabilities. Exact-image browser acceptance passes 28 groups. Current and returned Chromium/Firefox/security/pricing/editorial checks pass. Multi-worker mode stays disabled. Stripe, EasyPost and direct inbound Proton native activation remain external blockers.
+
+The [316-row matrix](docs/final-requirements-reconciliation-20260912.md) now closes only clauses with actual proof; PR integration/master-only Git consolidation remain explicitly open. Both dining identities and all 23 published pieces remain media-proven. The historical non-media Goal-E persistence marker needs no deletion and is not a missing piece identity. Retain A–E evidence and recovery/rollback assets.
+
 ## Completed work packet: Goal E — final release
 
 **Goal E outcome: COMPLETE.** Accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55` is deployed as NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, returned container `4ebb15e6b05f59af4c96f2b5edeb4d37171604a2fe1e9d48cc5e8277ad5cb5d2`, schema 16. Immutable promotion, recreation/persistence, real v19 rollback and return pass. All three human Turnstile submissions, legitimate/quarantine behavior, conditional BCC, SMTP acceptance and auth isolation pass; scoped live fixtures are cleaned.
@@ -489,3 +497,9 @@ Root cause (from production logs `woodsmith_logs.txt`): `/media/[...slug]` used 
 2. Always-on photorealistic rendering (`ENABLE_PUBLIC_AI_RENDERING`), automatic background cleanup (`ENABLE_AI_BACKGROUND_CLEANUP`), true embedding/visual search (`ENABLE_EMBEDDING_SEARCH`), and AI media analysis (`ENABLE_AI_MEDIA_ANALYSIS`) all need approved provider credentials (`OPENAI_API_KEY`), cost limits, and deployment configuration.
 3. Local persistence still uses Node's experimental `node:sqlite`; public scale-out should migrate to Postgres, LibSQL, or another stable production database.
 4. The `embedding_cache` table is created automatically on first access; no manual migration is needed for new deployments.
+
+Goal-F family checkpoint: saved estimator policy, ownership-scoped active workload, truthful paid-order metric and structured SVG import are corrected. Current narrow checks: 11/11 estimator/category tests, typecheck and affected ESLint pass; Chromium/Firefox changed-flow acceptance passes without console/page errors. Studio family 50/50 retained checks support 18 additional atomic closures. See [family evidence](docs/goal-f-family-reconciliation.md). Newly changed public behaviors retain final live release actions; no production transition has begun.
+
+Account reconciliation closes the pending-verification email-ownership gap, password-reset session/expiry gap, profile gradient/removal/save gap, uploaded-profile static-route defect, missing project link and misleading legacy checkout-return claim. Current narrow checks: 20/20 tests, typecheck/lint and Chromium/Firefox account/profile acceptance pass. Release-dependent rows remain active. See family evidence; production remains unchanged.
+
+Media/search/commerce/public-content family reconciliation reuses retained exact evidence and now records 207 VERIFIED_COMPLETE / 88 ACTIVE_GAP / 15 PROVIDER_BLOCKED / 4 SUPERSEDED / 2 OPTIONAL (316 total). A private Process preview closes the real draft-preview implementation gap across existing/new admin and seller editors: current focused test, typecheck/lint and six two-engine rendered groups pass. Publication is unchanged. Final source/release and remaining clause-specific evidence remain open; see the updated family report and restricted continuation ledger.

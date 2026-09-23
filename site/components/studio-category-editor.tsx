@@ -99,7 +99,8 @@ export function StudioCategoryEditor({
             <label className="button-secondary category-icon-upload">Import SVG<input accept="image/svg+xml,.svg" onChange={importSvg} type="file" /></label>
             <button className="button-secondary" onClick={() => setIconType("builtin")} type="button">Use built-in</button>
           </div>
-          <label><span>Sanitized SVG markup</span><textarea name="customIconSvg" onChange={(event) => { setCustomIconSvg(event.target.value); setIconType("custom"); }} rows={4} value={customIconSvg} /></label>
+          <input name="customIconSvg" type="hidden" value={customIconSvg} />
+          <p className="muted-copy">Import an SVG file to preview and save a custom icon, or choose a built-in icon above.</p>
           {customIconError ? <p className="form-status error" role="alert">{customIconError}</p> : <p className="field-help">Only geometry, color, and transform attributes are retained. Scripts, links, styles, and external assets are rejected.</p>}
         </details>
 

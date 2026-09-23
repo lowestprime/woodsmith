@@ -30,6 +30,7 @@ export function ProfileAvatarFields({ displayName, email, avatarPath, metadata }
       <label>
         <span>Profile picture</span>
         <input
+          accept="image/*"
           name="avatar"
           onChange={(event) => {
             const file = event.currentTarget.files?.[0];

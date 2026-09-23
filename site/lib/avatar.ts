@@ -74,3 +74,12 @@ export function avatarColorInputType(value: string) {
   // Preserve custom CSS color values instead of coercing them to black.
   return /^#[0-9a-f]{6}$/i.test(value) ? "color" : "text";
 }
+
+export function profileAvatarMetadata(metadata: Record<string, unknown>, fields: FormData) {
+  const from = String(fields.get("avatarGradientFrom") ?? "").trim();
+  const to = String(fields.get("avatarGradientTo") ?? "").trim();
+  const angle = Number(fields.get("avatarGradientAngle"));
+  const color = /^(#[0-9a-f]{3,8}|(?:rgb|hsl)a?\([\d.,%+\-\s]+\))$/i;
+  if (!color.test(from) || !color.test(to) || !Number.isFinite(angle)) return metadata;
+  return { ...metadata, avatarGradient: { from, to, angle: Math.max(0, Math.min(360, angle)) } };
+}

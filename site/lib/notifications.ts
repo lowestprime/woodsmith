@@ -1,3 +1,7 @@
+import { recordOrderLines } from "./commerce-store.ts";
+import { singleOrderOwner, assignResourceOwner } from "./woodworkers-store.ts";
+import type { CheckoutLine } from "./payments.ts";
+import { businessCorrespondenceRecipient } from "./db.ts";
 import {
   createHash
 } from "node:crypto";
@@ -623,7 +627,7 @@ export function queueOperatorCorrespondence(input: {
   websiteInquiryId?: string;
 }) {
   return queueNotificationEmail({
-    category: input.category, to: getSiteSettings().builderEmail,
+    category: input.category, to: businessCorrespondenceRecipient(input),
     subject: `Customer correspondence: ${input.reference}`, text: "Open the woodshop workspace to read the message.",
     variables: { customerName: input.customerName.slice(0, 120), customerEmail: input.customerEmail.slice(0, 254), reference: input.reference.slice(0, 120), messageExcerpt: input.message.slice(0, 2000), studioUrl: input.studioUrl,
       ...(input.inquiryContext ? { inquiryIntent: input.inquiryContext.intent, inquiryTopic: input.inquiryContext.topic, sourceRoute: input.inquiryContext.sourceRoute, sourceSurface: input.inquiryContext.sourceSurface, pieceSlug: input.inquiryContext.piece?.slug ?? "", pieceTitle: input.inquiryContext.piece?.title ?? "", pieceAvailability: input.inquiryContext.piece?.availability ?? "" } : {}) },
@@ -638,11 +642,14 @@ export function createOrderInquiry(input: {
   kind: "local_review" | "checkout_draft";
   customerName: string;
   customerEmail: string;
-  lines: ReadonlyArray<{ title: string; quantity: number }>;
+  lines: readonly CheckoutLine[];
   studioUrl: string;
 }) {
-  return withDatabaseTransaction(() => {
+  return withDatabaseTransaction((db) => {
     const orderNumber = createDraftOrder(input.order);
+    recordOrderLines(db, orderNumber, input.lines);
+    const ownerId = singleOrderOwner(db, input.lines.map(line => line.slug));
+    assignResourceOwner(db, {kind:"order", key:orderNumber, ownerId, actorEmail:"system:verified-order-items", reason:"The inquiry item snapshots identify this business."});
     const notice = queueOperatorCorrespondence({
       category: "customer_inquiry_admin", customerName: input.customerName,
       customerEmail: input.customerEmail, reference: orderNumber,

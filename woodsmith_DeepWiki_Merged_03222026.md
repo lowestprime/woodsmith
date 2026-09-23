@@ -2,7 +2,7 @@
 
 This document replaces the earlier Woodsmith DeepWiki export with the current Beaman Woodworks 3.0 architecture.
 
-Production now runs accepted source `a019ec6c3e829983a20d7af939cf082420fbdb55`, NAS image `sha256:9424406acdcf6e28bdb888666b93475c8fc26124724635d97c219d6b19f7e9c3`, schema 16. Immutable promotion, container recreation, real v19 rollback and return passed on 2026-09-12. Exact release, recovery and live acceptance evidence is in [Goal E release evidence](docs/goal-e-release-evidence-20260909.md).
+Production runs Goal-F source `0fac8c242b6b87e07f7b60d4c460ee244a48c66a`, NAS image `sha256:31a0ab6bbc4d4b14f32b3888463eb05621b0fc318e7570ac607e8647a570f373`, container `de5af6a5735f689e102f8e46783a1ef59d85b56b0bb0698a54e1d8a1fc6ac98c`, schema 19. Fresh paired recovery/staged restore, immutable promotion, recreation, retained Goal-E rollback and return passed on September 23 UTC (September 22 local). See [Goal-F release evidence](docs/goal-f-release-evidence-20260922.md); Goal-E evidence remains historical.
 
 ## Overview
 
@@ -12,7 +12,7 @@ Beaman Woodworks is a self-hosted Next.js 16.3 application with a SQLite-backed 
 
 Post-v19 technical media recovery uses `jpeg-structure.ts` to inspect the primary JPEG codestream, accepting trailing payloads without transcoding. `media.ts` computes a versioned content hash in 64 KiB chunks, caches structural results by revision, and detects observed writes/replacements during inspection. Startup/reindex refresh technical metadata while preserving editorial fields and monotonic record versions; unchanged records retain their versions. `refreshMediaTechnicalMetadata` is an explicit, audited transaction over selected indexed paths, with no missing-row deletion or assignment application. Editor saves retain server-owned technical fields, and the Media autosave queue adopts newer canonical records after local work settles. Studio image URLs include the revision; Next's local image patterns allow queries under `/media/**`. HTTP validators also include file change time. `media-crop.ts` supplies shared safe defaults and form serialization. These changes are deployed; JPEG structure inspection does not replace strict decoder or identity review.
 
-The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These changes are deployed in the accepted Goal E image.
+The post-v19 launch source uses a shared 20-record picker for Projects, Orders and Reviews. Its selection boundary flushes registered autosave queues and moves focus after the selected DOM commits. Commerce collections reconcile server refreshes while preserving list context; the shared autosave form can adopt newer canonical records only after pending local work settles. These changes were accepted in Goal E and remain deployed in Goal F.
 
 - Next.js 16.3 App Router
 - React 19
@@ -265,3 +265,24 @@ Authenticated Notifications Overview integrates `conditional-routing-editor.tsx`
 ### Standalone Visitors (Goal C)
 
 The authenticated `visitors` Studio panel alone loads visitor insights, privacy policy and key-cohort status. Notifications loads delivery/policy/template/SMTP/Audit state independently. The existing local `react-svg-worldmap` renderer uses a fixed 960 by 720 intrinsic coordinate space with a local viewBox adapter and a reserved 4:3 container; the decorative map is inert and its same-aggregate country table supplies nonpointer access. The daily SVG retains its intrinsic aspect ratio and includes numeric daily visitor/session/pageview values. Rolling-window aggregation includes both partial UTC boundary days so trend pageviews reconcile with the KPI. Purpose-separated identity, minimization, retention, audit redaction and notification delivery semantics remain unchanged.
+
+## Deployed Goal F architecture
+
+Schema 19 introduces explicit business memberships and resource ownership for pieces, posts, media, projects, reviews, inquiries and orders. Buyer identity is independent of business ownership. Server-side workspace authorization requires enabled multi-worker mode, a current woodworker role, active membership and consistent owned relationships. Private media also enforces project/customer access and private/no-store caching; business conflicts cannot expose project bytes. File-reference transactions preserve business ownership and business-avatar links through moves.
+
+Commerce migrations retain item/stock/cart snapshots and provider operations across retry/reopen. Accepted fee versions and provider/account bindings are snapshotted per order; mixed sellers and forged account callbacks fail. Public profiles/search/attribution honor active/public business state, while default single-builder presentation stays in place with multi-worker mode off. See [the implementation contract](docs/goal-f-seller-isolation-design.md) for scope and the single-writer SQLite boundary. These changes are deployed in Goal F, with schema 19 and verified recreation/Goal-E compatibility/return.
+
+
+### Goal-F current local sidecar operation
+
+The September 19 repair restores authenticated NAS-to-host local media AI through one owner-logon supervised task, a narrow bind and the existing NAS-only firewall. UNC filesystem paths are passed without PowerShell provider prefixes; the installed local package matches repository capabilities. Bounded real inference, cache reuse/reopen, CUDA selection and lexical fallback pass. The host must be logged in and reachable; optional paid cleanup/rendering remains disabled. See [current runtime proof and owner maintenance](docs/goal-f-local-sidecar-20260919.md). The Goal-F application is deployed; authenticated sidecar health passes.
+
+### Goal-F deployed estimator and Studio behavior
+
+Saved commission-type base hours and markup now drive client/server estimates; the planning hourly rate remains $75. Public workload is scoped to the primary business and excludes closed/archived work. Studio reports paid order value by order creation month, excluding unpaid/refunded/cancelled orders. Custom category icons use sanitized SVG file import and preview. These changes are deployed and live-verified; see [validation and exact limits](docs/goal-f-family-reconciliation.md).
+
+Goal-F account correction: pending customer verification permits only own-profile management, not email-owned project/cart/media access. Password changes revoke old sessions; reset links require expiry. Profile gradients/removal persist, real uploaded photos use `/media`, and project cards open the authorized tracker. These changes pass final-source, candidate and live release evidence; see [family evidence](docs/goal-f-family-reconciliation.md).
+
+Goal-F Process editing includes **Preview before publishing** for existing/new administrator notes and seller notes. It renders current fields privately, with refresh/close controls, without changing publication. This is deployed with private preview acceptance; see [family evidence](docs/goal-f-family-reconciliation.md).
+
+Goal-F deployed account mutation hardening: account rename/delete and all dependent references now share one transaction, including the legacy save path. The last administrator cannot be demoted or removed. Deletion revokes sessions and removes account carts rather than turning them into guest carts. Fault-injection rollback, reopen and role protections pass; see [family evidence](docs/goal-f-family-reconciliation.md).

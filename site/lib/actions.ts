@@ -1,5 +1,14 @@
 "use server";
 
+import { requireProfileUser } from "@/lib/auth";
+import { profileAvatarMetadata } from "@/lib/avatar";
+import { safeAccountRedirect } from "@/lib/account-access";
+import {stripeScopeForOrder} from "@/lib/commerce-provider-scope";
+
+import { checkoutForRequest, commerceHash, prepareCheckout, snapshotCheckoutCart, bindCheckoutSession } from "@/lib/commerce-store";
+import { issueOrderInvoice, quoteOrderShipping, purchaseOrderLabel } from "@/lib/commerce";
+import type { ShippingParcel } from "@/lib/payments";
+
 import { createHash } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
@@ -40,6 +49,7 @@ import {
   getCommissionType,
   getPage,
   getPiece,
+  publicBusinessResourceAvailable,
   getPost,
   getProject,
   getProjectDeletionPreview,
@@ -174,7 +184,7 @@ import {
   type MediaOperationMutation,
   type MovedMediaAsset
 } from "@/lib/media-operations";
-import { calculateCheckoutTotals, createEasyPostShippingLabel, createStripeCheckoutSession, createStripeInvoice, stripeIsConfigured } from "@/lib/payments";
+import { calculateCheckoutTotals, createStripeCheckoutSession, getStripeSession, stripeIsConfigured } from "@/lib/payments";
 import {
   processDueNotificationRetries,
   queueNotificationEmail,
@@ -586,7 +596,7 @@ export async function loginAction(formData: FormData) {
   }
 
   await createSession(user);
-  redirect(redirectTo);
+  redirect(safeAccountRedirect(redirectTo));
 }
 
 export async function studioLoginAction(formData: FormData) {
@@ -755,10 +765,12 @@ export async function resetPasswordAction(formData: FormData) {
 }
 
 export async function updateProfileAction(formData: FormData) {
-  const user = await requireUser();
-  const avatar = formData.get("avatar") as File | null;
-  let avatarPath = user.avatarPath;
-  if (avatar && avatar.size > 0) {
+  const user = await requireProfileUser();
+  const avatar = formData.get("avatar");
+  const removeAvatar = formData.get("removeAvatar") === "1";
+  let avatarPath = removeAvatar ? null : user.avatarPath;
+  if (!removeAvatar && avatar instanceof File && avatar.size > 0) {
+    if (!avatar.type.toLowerCase().startsWith("image/")) throw new Error("Choose an image for your profile.");
     avatarPath = await persistUploadedMedia(avatar, "profiles");
   }
 
@@ -777,7 +789,7 @@ export async function updateProfileAction(formData: FormData) {
     avatarPath,
     publicProfile: user.publicProfile,
     links: directLinks.length > 0 ? directLinks : parseJsonField(formData.get("linksJson"), user.links),
-    metadata: user.metadata
+    metadata: profileAvatarMetadata(user.metadata, formData)
   });
 
   revalidatePath("/about");
@@ -791,7 +803,7 @@ export async function addToCartAction(formData: FormData) {
   const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
   const quantity = Math.max(1, parseInteger(formData.get("quantity"), 1));
   const piece = getPiece(pieceSlug);
-  if (!piece || !pieceCanEnterCart(piece) || quantity > piece.inventoryCount) {
+  if (!piece || !publicBusinessResourceAvailable("piece", piece.slug) || !pieceCanEnterCart(piece) || quantity > piece.inventoryCount) {
     redirect(`/shop?error=${encodeURIComponent("This piece is not available for fixed-price reservation.")}`);
   }
   const { saveCartItem } = await import("@/lib/db");
@@ -810,93 +822,57 @@ export async function removeCartItemAction(formData: FormData) {
   redirect("/shop/cart?updated=1");
 }
 
-export async function startCheckoutAction(formData: FormData) {
-  const cartToken = await getCartToken();
-  const user = await getCurrentUser();
-  const site = getSiteSettings();
-  const buyerAddresses = normalizeNotificationAddresses(requiredField(formData.get("email"), "Email"));
-  if (buyerAddresses.length !== 1) throw new Error("Enter one customer email address.");
-  const buyerEmail = buyerAddresses[0];
-  const cartItems = listCartItems(cartToken, user?.email ?? null);
-  const invalidItems: string[] = [];
-  const lines = cartItems.flatMap((item) => {
-    const piece = getPiece(item.pieceSlug);
-    if (!piece || !pieceCanEnterCart(piece) || piece.priceCents == null || item.quantity > piece.inventoryCount) {
-      invalidItems.push(item.pieceSlug);
-      return [];
-    }
-    return [{
-      slug: piece.slug,
-      title: piece.title,
-      quantity: item.quantity,
-      unitAmountCents: piece.priceCents,
-      description: piece.subtitle
-    }];
-  });
-
-  if (lines.length === 0 || invalidItems.length > 0) {
-    redirect(`/shop/cart?error=${encodeURIComponent(invalidItems.length ? `Some items are no longer available: ${invalidItems.join(", ")}` : "Your cart is empty.")}`);
+export async function startCheckoutAction(_previous: {error:string}, formData: FormData) {
+  try { await openCheckout(formData); }
+  catch(error) {
+    unstable_rethrow(error);
+    return {error:'Checkout could not be opened. Retry here to reuse this payment request. If the problem continues, contact the woodshop; do not start another payment.'};
   }
+  return {error:''};
+}
 
-  const totals = calculateCheckoutTotals({
-    lines,
-    couponCodes: [...site.couponCodes],
-    couponCode: optionalField(formData.get("couponCode")) || null,
-    shippingBaseCents: site.shippingBaseCents,
-    shippingPerItemCents: site.shippingPerItemCents,
-    taxRate: site.localTaxRate
+async function openCheckout(formData: FormData) {
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+  if(!stripeIsConfigured())redirect('/shop/cart?checkout=configuration-needed');
+  if(formData.get('fulfillmentConsent')!=='1')throw new Error('Confirm local fulfillment before checkout.');
+  const cartToken=await getCartToken(),user=await getCurrentUser(),site=getSiteSettings();
+  if(!site.checkout.automaticTax)redirect('/shop/cart?error='+encodeURIComponent('Online payment requires configured automatic tax; use logistics review.'));
+  const key=requiredField(formData.get('checkoutKey'),'Checkout request');
+  if(!/^[a-zA-Z0-9-]{20,80}$/.test(key))throw new Error('Invalid checkout request.');
+  const ownerHash=commerceHash(user?.email ? {user:user.email.toLowerCase()} : {cart:cartToken});
+  const buyerAddresses=normalizeNotificationAddresses(requiredField(formData.get('email'),'Email'));
+  if(buyerAddresses.length!==1)throw new Error('Enter one buyer email.');
+  const buyerEmail=buyerAddresses[0];
+  const requestHash=commerceHash({email:buyerEmail,coupon:optionalField(formData.get('couponCode'))||''});
+  let existing=withDatabaseTransaction(db=>checkoutForRequest(db,ownerHash,key));
+  if(existing && existing.payload_hash!==requestHash)throw new Error('This checkout request already has different buyer details. Reload to start another.');
+  if(existing?.session_id){const session=await getStripeSession(existing.session_id,withDatabaseTransaction(db=>stripeScopeForOrder(db,existing!.order_number)));if(session.status==='open'&&session.url)redirect(session.url);redirect('/shop/cart?checkout='+encodeURIComponent(session.status));}
+  if(existing && Date.now()-Date.parse(existing.created_at)>23*60*60*1000)throw new Error('The previous checkout requires provider reconciliation before retrying.');
+  if(!existing && !consumeCommissionSubmissionQuota(`checkout:${ownerHash}`,5).allowed)throw new Error('Too many checkout requests. Try again later.');
+  const prepared=withDatabaseTransaction(db=>{
+    existing=checkoutForRequest(db,ownerHash,key);
+    if(existing){
+      if(existing.payload_hash!==requestHash)throw new Error('Checkout request conflict.');
+      const order=getOrder(existing.order_number);if(!order)throw new Error('Order missing.');
+      const lines=db.prepare('SELECT piece_slug AS slug,title,quantity,unit_amount_cents AS unitAmountCents FROM order_line_items WHERE order_number=?').all(order.orderNumber) as Array<{slug:string;title:string;quantity:number;unitAmountCents:number}>;
+      return {order,lines,notice:null};
+    }
+    const items=listCartItems(cartToken,user?.email??null);
+    const lines=items.map(item=>{const piece=getPiece(item.pieceSlug);if(!piece||!publicBusinessResourceAvailable("piece", piece.slug)||!pieceCanEnterCart(piece)||piece.priceCents==null||item.quantity>piece.inventoryCount)throw new Error('A cart item is no longer available.');return {slug:piece.slug,title:piece.title,quantity:item.quantity,unitAmountCents:piece.priceCents,description:piece.subtitle};});
+    if(!lines.length)throw new Error('Your cart is empty.');
+    // Public checkout defaults to local fulfillment. Freight remains an explicit reviewed quote.
+    const totals=calculateCheckoutTotals({lines,couponCodes:[...site.couponCodes],couponCode:optionalField(formData.get('couponCode'))||null,shippingBaseCents:0,shippingPerItemCents:0,taxRate:site.localTaxRate});
+    const created=createOrderInquiry({kind:'checkout_draft',customerName:user?.displayName||'Customer',customerEmail:buyerEmail,lines,studioUrl:`${resolveBaseUrl()}/studio?panel=orders`,order:{userEmail:user?.email??buyerEmail,subtotalCents:totals.subtotalCents,shippingCents:totals.shippingCents,taxCents:totals.taxCents,discountCents:totals.discountCents,currency:site.cartCurrency,couponCode:totals.appliedCoupon?.code??null,shippingRateLabel:'Local fulfillment; timing and location by agreement',shippingAddress:{fulfillmentMode:'local_review'},billingAddress:{email:buyerEmail}}});
+    snapshotCheckoutCart(db,created.orderNumber,items);
+    const scope=stripeScopeForOrder(db,created.orderNumber);
+    prepareCheckout(db,{orderNumber:created.orderNumber,ownerHash,key,payloadHash:requestHash,automaticTax:true,allowPromotions:!scope.accountId&&site.checkout.allowPromotionCodes&&!totals.appliedCoupon});
+    return {order:getOrder(created.orderNumber)!,lines,notice:created.notice};
   });
-
-  if (!consumeCommissionSubmissionQuota(`checkout:${await commissionOwnerKey(user?.email)}`, 5).allowed) throw new Error("Too many checkout requests. Please try again later.");
-  const { orderNumber, notice } = createOrderInquiry({
-    kind: "checkout_draft", customerName: optionalField(formData.get("shippingName")) || user?.displayName || "Customer",
-    customerEmail: buyerEmail, lines, studioUrl: `${resolveBaseUrl()}/studio?panel=orders`,
-    order: {
-    userEmail: user?.email ?? buyerEmail,
-    subtotalCents: totals.subtotalCents,
-    shippingCents: totals.shippingCents,
-    taxCents: totals.taxCents,
-    discountCents: totals.discountCents,
-    currency: site.cartCurrency,
-    couponCode: totals.appliedCoupon?.code ?? null,
-    shippingRateLabel: "Standard freight estimate",
-    shippingAddress: {
-      name: optionalField(formData.get("shippingName")),
-      street1: optionalField(formData.get("shippingStreet1")),
-      city: optionalField(formData.get("shippingCity")),
-      state: optionalField(formData.get("shippingState")),
-      zip: optionalField(formData.get("shippingZip"))
-    },
-    billingAddress: {
-      email: buyerEmail
-    }
-    }
-  });
-  if (notice.shouldDeliver) await retryNotificationDelivery(notice.delivery.id);
-
-  if (stripeIsConfigured()) {
-    const session = await createStripeCheckoutSession({
-      baseUrl: resolveBaseUrl(),
-      currency: site.cartCurrency,
-      orderNumber,
-      buyerEmail,
-      lines,
-      successPath: site.checkout.successPath,
-      cancelPath: site.checkout.cancelPath,
-      automaticTax: site.checkout.automaticTax,
-      allowPromotionCodes: site.checkout.allowPromotionCodes,
-      collectShippingAddress: site.checkout.collectShippingAddress
-    });
-
-    const order = getOrder(orderNumber);
-    if (order) {
-      saveOrder({ ...order, stripeCheckoutSessionId: session.id, status: "Awaiting payment" });
-    }
-
-    redirect(session.url);
-  }
-
-  redirect(`/shop/cart?checkout=configuration-needed&order=${encodeURIComponent(orderNumber)}`);
+  if(prepared.notice?.shouldDeliver)await retryNotificationDelivery(prepared.notice.delivery.id);
+  const order=prepared.order;
+  const session=await createStripeCheckoutSession({scope:withDatabaseTransaction(db=>stripeScopeForOrder(db,order.orderNumber)),baseUrl:resolveBaseUrl(),currency:order.currency,orderNumber:order.orderNumber,buyerEmail,lines:prepared.lines,successPath:'/shop/cart',cancelPath:'/shop/cart',automaticTax:true,allowPromotionCodes:site.checkout.allowPromotionCodes,collectShippingAddress:true,totals:{subtotalCents:order.subtotalCents,shippingCents:order.shippingCents,taxCents:order.taxCents,discountCents:order.discountCents,totalCents:order.totalCents,appliedCoupon:null}});
+  withDatabaseTransaction(db=>bindCheckoutSession(db,order.orderNumber,session.id));
+  revalidatePath('/shop');revalidatePath('/portfolio');redirect(session.url);
 }
 
 function commissionAttachments(formData: FormData) {
@@ -931,7 +907,7 @@ function serverCommissionEstimate(formData: FormData, requestType: string, dimen
     includeVisualization: optionalField(formData.get("includeVisualization")) === "1"
   });
   const bandwidth = getBandwidthSnapshot();
-  return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays) };
+  return { state, estimate: calculateEstimate(state, bandwidth.activeProjects, bandwidth.leadTimeDays, commissionType) };
 }
 
 async function submitPlannerRequest(formData: FormData) {
@@ -946,7 +922,7 @@ async function submitPlannerRequest(formData: FormData) {
   let requestedPiece: ReturnType<typeof getPiece> = null;
   if (requestedPieceSlug) {
     requestedPiece = getPiece(requestedPieceSlug);
-    if (!requestedPiece || !pieceAllowsInquiry(requestedPiece)) redirect(`/contact?error=${encodeURIComponent("This piece is not currently accepting inquiries.")}`);
+    if (!requestedPiece || !publicBusinessResourceAvailable("piece", requestedPiece.slug) || !pieceAllowsInquiry(requestedPiece)) redirect(`/contact?error=${encodeURIComponent("This piece is not currently accepting inquiries.")}`);
   }
 
   const requestType = optionalField(formData.get("commissionTypeSlug")) || requestedPiece?.commissionTypeSlug || "other-custom-work";
@@ -1191,7 +1167,7 @@ export async function submitProjectReplyAction(formData: FormData) {
 export async function submitReviewAction(formData: FormData) {
   const pieceSlug = requiredField(formData.get("pieceSlug"), "Piece");
   const piece = getPiece(pieceSlug);
-  if (!piece || !pieceAcceptsReviews(piece)) {
+  if (!piece || !publicBusinessResourceAvailable("piece", piece.slug) || !pieceAcceptsReviews(piece)) {
     redirect(`/portfolio/${encodeURIComponent(pieceSlug)}?error=${encodeURIComponent("Reviews are not open for this piece.")}`);
   }
   const reviewerName = requiredField(formData.get("reviewerName"), "Your name");
@@ -8287,42 +8263,22 @@ export async function saveOrderAction(formData: FormData) {
 
 export async function createInvoiceAction(formData: FormData) {
   await requireAdmin();
-  const orderNumber = requiredField(formData.get("orderNumber"), "Order number");
-  const order = getOrder(orderNumber);
-  if (!order || !order.userEmail) {
-    redirect("/studio?panel=orders&error=invoice");
-  }
-  const invoice = await createStripeInvoice({
-    customerEmail: order.userEmail,
-    orderNumber: order.orderNumber,
-    currency: order.currency,
-    description: `Invoice for ${order.orderNumber}`,
-    totalCents: order.totalCents
-  });
-  saveOrder({ ...order, stripeInvoiceId: invoice.id, invoiceStatus: "Sent" });
-  revalidatePath("/studio");
-  redirect(`/studio?panel=orders&invoice=${encodeURIComponent(order.orderNumber)}`);
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+  await issueOrderInvoice(requiredField(formData.get('orderNumber'),'Order number'));
+  revalidatePath('/studio');
 }
-
+export async function requestShippingRatesAction(orderNumber:string,parcel:ShippingParcel) {
+  await requireAdmin();
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+  return quoteOrderShipping(orderNumber,parcel);
+}
 export async function createShippingLabelAction(formData: FormData) {
   await requireAdmin();
-  const orderNumber = requiredField(formData.get("orderNumber"), "Order number");
-  const order = getOrder(orderNumber);
-  if (!order) {
-    redirect("/studio?panel=orders&error=shipping");
-  }
-  const address = order.shippingAddress;
-  const label = await createEasyPostShippingLabel({
-    name: String(address.name || "Buyer"),
-    street1: String(address.street1 || ""),
-    city: String(address.city || ""),
-    state: String(address.state || ""),
-    zip: String(address.zip || ""),
-    weightOunces: parseInteger(formData.get("weightOunces"), 96)
-  });
-  saveOrder({ ...order, shippingLabelId: String(label.id || ""), trackingNumber: String((label as { tracker?: { tracking_code?: string } }).tracker?.tracking_code || ""), status: "Shipped" });
-  revalidatePath("/studio");
-  redirect(`/studio?panel=orders&shipped=${encodeURIComponent(order.orderNumber)}`);
+  if (!(await studioServerActionOriginAllowed())) throw new Error("The request origin is not allowed.");
+  if(formData.get('confirmPurchase')!=='1')throw new Error('Confirm the selected postage purchase.');
+  const result=await purchaseOrderLabel(requiredField(formData.get('orderNumber'),'Order'),requiredField(formData.get('operationKey'),'Saved quote'),requiredField(formData.get('shipmentId'),'Shipment'),requiredField(formData.get('rateId'),'Rate'));
+  revalidatePath('/studio');
+  return result;
 }
 
 export async function consumeVerificationTokenAction(token: string) {

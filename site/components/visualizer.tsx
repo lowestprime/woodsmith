@@ -18,6 +18,8 @@ const CommissionScene3D = dynamic(() => import("@/components/commission-scene"),
 });
 
 type CommissionTypeOption = {
+  baseLaborHours?: number;
+  baseMarkupPercent?: number;
   slug: string;
   label: string;
   description: string;
@@ -175,7 +177,7 @@ export function CustomWorkVisualizer3D({ commissionTypes, bandwidthLeadTimeDays,
     ...state,
     kind: selectedType.slug
   }), [selectedType.slug, state]);
-  const estimate = useMemo(() => calculateEstimate(syncedState, queueCount, bandwidthLeadTimeDays), [bandwidthLeadTimeDays, queueCount, syncedState]);
+  const estimate = useMemo(() => calculateEstimate(syncedState, queueCount, bandwidthLeadTimeDays, selectedType), [bandwidthLeadTimeDays, queueCount, syncedState, selectedType]);
   const svg = useMemo(() => renderIsometricSvg(syncedState), [syncedState]);
   const submissionOptions = useMemo(() => ({
     schemaVersion: 1,

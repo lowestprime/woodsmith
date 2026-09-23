@@ -1,3 +1,5 @@
+import { WoodworkerAttribution } from "@/components/site-chrome";
+import { publicBusinessResourceAvailable } from "@/lib/db";
 import type { Metadata } from "next";
 import { PieceInquiryLinks } from "@/components/piece-inquiry-links";
 import Link from "next/link";
@@ -14,7 +16,7 @@ import { formatDate, formatDimensions, formatLeadTime, toMediaUrl } from "@/lib/
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
   const { slug } = await params;
   const piece = getPiece(slug);
-  if (!piece) return { title: "Piece not found" };
+  if (!piece || piece.publicationStatus !== "published" || !publicBusinessResourceAvailable("piece", piece.slug)) return { title: "Piece not found" };
   const firstMedia = getDisplayMediaPaths(piece)[0];
   const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "").replace(/\/$/, "");
   return {
@@ -32,7 +34,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
   await connection();
   const { slug } = await params;
   const piece = getPiece(slug);
-  if (!piece) {
+  if (!piece || piece.publicationStatus !== "published" || !publicBusinessResourceAvailable("piece", piece.slug)) {
     notFound();
   }
 
@@ -91,6 +93,7 @@ export default async function PiecePage({ params }: { params: Promise<{ slug: st
         <div>
           <p className="eyebrow">{piece.category}</p>
           <h1 {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "title" })}>{piece.title}</h1>
+        <WoodworkerAttribution kind="piece" resourceKey={piece.slug}/>
           <p className="lede" {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "summary" })}>{piece.summary}</p>
           <div className="detail-stack">
             <p {...inlineEditAttrs({ resource: "piece", id: piece.slug, field: "story" })}>{piece.story}</p>

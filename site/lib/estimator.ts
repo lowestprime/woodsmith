@@ -140,18 +140,24 @@ export function calculateBoardFeet(width: number, depth: number, height: number,
   return Number((((safeWidth * safeDepth * safeHeight) / 144) * volumeFactor * 0.14).toFixed(2));
 }
 
-export function calculateEstimate(input: VisualizerState, activeQueueCount = 6, currentLeadTimeDays = 84): EstimateBreakdown {
+export type CommissionEstimatePolicy = { baseLaborHours?: number; baseMarkupPercent?: number };
+
+function configuredEstimateValue(value: number | undefined, fallback: number, maximum: number) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= maximum ? value : fallback;
+}
+
+export function calculateEstimate(input: VisualizerState, activeQueueCount = 6, currentLeadTimeDays = 84, policy?: CommissionEstimatePolicy | null): EstimateBreakdown {
   const normalized = normalizeVisualizerState(input);
   const boardFeet = calculateBoardFeet(normalized.width, normalized.depth, normalized.height, normalized.kind);
   const rate = MATERIAL_RATES[normalized.material] ?? MATERIAL_RATES.default;
   const materialCostCents = Math.round(boardFeet * rate + normalized.drawers * 8500 + normalized.shelves * 3200);
-  const baseHours = BASE_HOURS[normalized.kind] ?? BASE_HOURS["other-custom-work"];
+  const baseHours = configuredEstimateValue(policy?.baseLaborHours, BASE_HOURS[normalized.kind] ?? BASE_HOURS["other-custom-work"], 20_000);
   const joineryFactor = JOINERY_MULTIPLIER[normalized.joinery] ?? JOINERY_MULTIPLIER.default;
   const sizeFactor = Math.max(0.7, (normalized.width * normalized.depth) / (48 * 24));
   const laborHours = Number((baseHours * joineryFactor * sizeFactor + normalized.drawers * 4 + normalized.shelves * 1.5).toFixed(1));
   const laborCostCents = Math.round(laborHours * 7500);
   const overheadCostCents = Math.round((materialCostCents + laborCostCents) * 0.11);
-  const markupRate = BASE_MARKUP[normalized.kind] ?? BASE_MARKUP["other-custom-work"];
+  const markupRate = configuredEstimateValue(policy?.baseMarkupPercent, (BASE_MARKUP[normalized.kind] ?? BASE_MARKUP["other-custom-work"]) * 100, 1_000) / 100;
   const markupCostCents = Math.round((materialCostCents + laborCostCents + overheadCostCents) * markupRate);
   const totalCents = materialCostCents + laborCostCents + overheadCostCents + markupCostCents;
   const queueContribution = activeQueueCount * 5;

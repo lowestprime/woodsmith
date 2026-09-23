@@ -1,3 +1,4 @@
+import { resourceRelationshipsMatch, type OwnedResourceKind } from "./woodworkers-store.ts";
 import type { DatabaseSync } from "node:sqlite";
 
 export const SEARCH_INDEX_SCHEMA_VERSION = 1;
@@ -599,7 +600,8 @@ export function searchIndexInDatabase(
   db: DatabaseSync,
   query: string,
   includePrivate = false,
-  limit = SEARCH_RESULT_LIMIT
+  limit = SEARCH_RESULT_LIMIT,
+  scope?: { ownerId?: string; publicBusinessesOnly?: boolean }
 ) {
   const matchQuery = buildSearchMatchQuery(query);
   if (!matchQuery) {
@@ -609,6 +611,11 @@ export function searchIndexInDatabase(
     1,
     Math.min(SEARCH_RESULT_LIMIT, Math.floor(limit))
   );
+  const ownerFilter = scope?.ownerId
+    ? "AND EXISTS (SELECT 1 FROM resource_ownership ro WHERE ro.kind=entity_type AND ro.resource_key=entity_id AND ro.woodworker_id=?)"
+    : scope?.publicBusinessesOnly
+      ? `AND (entity_type='page' OR EXISTS (SELECT 1 FROM resource_ownership ro JOIN woodworkers w ON w.id=ro.woodworker_id WHERE ro.kind=entity_type AND ro.resource_key=entity_id AND (w.id='primary' OR (w.active=1 AND w.public_profile=1 AND (SELECT enabled FROM woodworker_config WHERE id=1)=1))))`
+      : "";
   const rows = db.prepare(`
     SELECT
       entity_id AS id,
@@ -630,14 +637,16 @@ export function searchIndexInDatabase(
     FROM site_search_fts
     WHERE site_search_fts MATCH ?
       AND (? = 1 OR visibility = 'public')
+      ${ownerFilter}
     ORDER BY lexicalRank ASC, title COLLATE NOCASE ASC
     LIMIT ?
   `).all(
     matchQuery,
     includePrivate ? 1 : 0,
+    ...(scope?.ownerId ? [scope.ownerId] : []),
     boundedLimit
   ) as Array<Record<string, unknown>>;
-  return rows.map((row, index) => {
+  return rows.filter(row => !scope || row.type === "page" || resourceRelationshipsMatch(db, String(row.type) as OwnedResourceKind, String(row.id))).map((row, index) => {
     const type = String(row.type) as SearchDocumentType;
     const id = String(row.id);
     return {

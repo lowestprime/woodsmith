@@ -4,7 +4,7 @@ import { listProjectsForEmail } from "@/lib/db";
 import { PageIntro, PageSection, ProjectOverviewCard, Shell } from "@/components/site-chrome";
 
 export default async function AccountProjectsPage({ searchParams }: { searchParams: Promise<{ checkout?: string; order?: string }> }) {
-  const { checkout, order } = await searchParams;
+  const { checkout } = await searchParams;
   const user = await getCurrentUser();
   const projects = user ? listProjectsForEmail(user.email) : [];
 
@@ -12,7 +12,7 @@ export default async function AccountProjectsPage({ searchParams }: { searchPara
     <Shell>
       <PageSection editHref="/studio?panel=projects">
         <PageIntro eyebrow="Account" title="Projects & orders" copy="Follow your orders and custom builds, from the first brief through delivery." />
-        {checkout === "success" ? <p className="notice-panel">Payment was received for order {order ?? ""}. Order and shipping updates will appear here and by email as delivery milestones change.</p> : null}
+        {checkout === "success" ? <p className="notice-panel">Your checkout returned successfully. Payment is confirmed separately by the payment provider; contact the woodshop for fulfillment.</p> : null}
         {checkout === "cancelled" ? <p className="notice-panel danger">Checkout was cancelled before payment capture. Your cart remains available if you want to try again.</p> : null}
         {user ? (
           <div className="studio-panel">

@@ -3,7 +3,7 @@ import { Readable } from "node:stream";
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { commissionOwnerKey, userCanAccessProject } from "@/lib/commission-security";
-import { commissionRenderAssetOwnedBy, getMediaAccessAssociations, getProject } from "@/lib/db";
+import { commissionRenderAssetOwnedBy, getMediaAccessAssociations, getProject, workerOwnsResource } from "@/lib/db";
 import { detectMediaKind, resolveMediaPath } from "@/lib/media";
 import { classifyMediaAccess, mediaAccessAllowed, mediaCacheHeaders, normalizeMediaRequestPath } from "@/lib/media-access";
 import {
@@ -64,7 +64,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ slug
       previewOwner = commissionRenderAssetOwnedBy(relativePath, ownerKey);
     }
 
-    if (!mediaAccessAllowed(access, { admin, projectAuthorized, previewOwner })) {
+    if (!mediaAccessAllowed(access, { admin, projectAuthorized, previewOwner, workerAuthorized: workerOwnsResource(user, "media", relativePath) })) {
       return notFound();
     }
   }
